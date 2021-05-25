@@ -14,3 +14,9 @@
 
 - [【修正版】动图图解！GMP模型里为什么要有P？背后的原因让人暖心] https://mp.weixin.qq.com/s?__biz=MzAwMDAxNjU4Mg==&mid=2247484769&idx=1&sn=4d813bdf0977b3415db8faf4645ee216
 
+
+
+# 笔试题
+
+- https://github.com/yqchilde/Golang-Interview
+

@@ -2,7 +2,7 @@
 
 <center><font size="2">Address: 南山大新 || Phone: 15501899800 || buoy_lee@163.com || github.com/buoylee</font></center>
 
-<center><font size="2">状态: 离职-随时到岗 || 期望薪资: 25-30K</font></center>
+<center><font size="2">状态: 离职-随时到岗 || 期望薪资: 23K</font></center>
 
 <center><font size="5"></font></center>
 
