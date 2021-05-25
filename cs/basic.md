@@ -111,5 +111,17 @@ epoll是Linux下IO多路复用select/poll的增强版本, 显著提高程序在�
 
 
 
+# 虚拟内存
+
+- [高频面试题——你真的搞懂物理内存与虚拟内存了吗] https://xie.infoq.cn/article/e082eae8d7dc5a3d5140225f9
+
+
+
+# 进程
+
+- [记一次腾讯面试：进程之间究竟有哪些通信方式？如何通信？ ---- 告别死记硬背] https://blog.csdn.net/m0_37907797/article/details/103188294
+
+
+
 
 
