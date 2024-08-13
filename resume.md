@@ -61,7 +61,7 @@ CS: 熟练 数据结构与算法.
 
 #### PROJECTS
 
-##### GRAVITY social media IM子系统
+##### GRAVITY social media IM子系统; 外包(百度)
 
 - 配合 GRAVITY chat 相关业务功能扩展.
 - 优化 IM msg 收发存储处理逻辑, 消除带状态服务, 使得更方便容器部署扩容, 提高可用性. 单台 msg handler 的 msg/sec
@@ -69,7 +69,7 @@ CS: 熟练 数据结构与算法.
 - java 服务 k8s容器化. 使实例扩容半自动化, 灰度上线/测试半自动化.
 - 涉及 netty, protobuf, grpc, Sharding-JDBC, nginx 技术应用.
 
-##### Prophecis: 机器学习支持平台
+##### Prophecis: 机器学习支持平台; 外包(微众银行)
 
 ###### Github: https://github.com/WeBankFinTech/Prophecis
 
