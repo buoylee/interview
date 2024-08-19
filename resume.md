@@ -2,7 +2,7 @@
 
 <center><font size="2">Address: 南山大新 || Phone: 15501899800 || buoy_lee@163.com || github.com/buoylee</font></center>
 
-<center><font size="2">状态: 离职-随时到岗 || 期望薪资: 30K</font></center>
+<center><font size="2">状态: 离职-随时到岗 || 期望薪资: 22-30K</font></center>
 
 <center><font size="5"></font></center>
 
@@ -10,7 +10,9 @@
 
 寻找 golang / java 后端开发工作, 热衷机器学习或相关支持项目.
 
-2016年 开始, 7年**软件开发**经验. leetcode 1-400题 2刷. 上次离职原因: 考托福.
+2016年 开始, 7年**软件开发**经验. leetcode 1-400题 2刷. 
+
+离职原因: 在封控刚要结束前, 因为有想要看看有没海外发展的机会, 想要准备托福. 加上与对象对未来的意见无法一致, 有点消沉, 导致现在才回来找工作. 因为不能持续自己的目标, 要找到一个工作与生活的平衡点, 才能继续.
 
 #### EDUCATION
 
@@ -18,11 +20,20 @@
 
 #### SKILLS
 
-编程语言: java / golang.
-
-Databases: MYSQL, redis, mongo, elasticsearch 经验.
-
-CS: 熟练 数据结构与算法.
+- 熟悉 java JVM / IO / 集合 / 并发编程
+- 熟悉 golang routine / GC / 并发编程
+- 熟悉 spring mvc, springboot, mybatis 及其部分源码.
+- 熟悉 swagger-go / gorm 框架使用.
+- 熟悉 rpc, grpc, protobuf 使用.
+- 熟悉 mysql, 了解 sharding-jdbc 分库分表.
+- 熟悉 redis, 了解 twemproxy 使用.
+- 熟悉 zookeeper, 作分布式锁使用.
+- 熟悉 nginx / caddy 使用.
+- 熟悉 docker / kubernetes(k8s).
+- 熟悉 git / maven.
+- 了解 mongo / elasticsearch 使用.
+- 熟悉 数据结构与算法.
+- 熟悉 基本 js / html, 前后端分离开发.
 
 #### WORK EXPERIENCE
 
@@ -61,15 +72,19 @@ CS: 熟练 数据结构与算法.
 
 #### PROJECTS
 
-##### GRAVITY social media IM子系统; 外包(百度)
+##### GRAVITY social media IM子系统; 外包(百度); 2021.04 - 2022.09
 
-- 配合 GRAVITY chat 相关业务功能扩展.
+baidu im 服务前身 2次开发, 给 GRAVITY 提供 im 服务. 由 10+ c++ 子服务 和 5个 java 子服务 构成的分布式 im系统.  
+im 同时在线人数一般在 1500 左右. 高峰有 4000.
+包含 java 子服务 dev/test/prod 环境 和 ci/cd 搭建. 少量 GRAVITY golang 部分业务开发.
+
+- 配合 GRAVITY chat 相关业务功能扩展. AI chat 接入. 活动消息推送. 
 - 优化 IM msg 收发存储处理逻辑, 消除带状态服务, 使得更方便容器部署扩容, 提高可用性. 单台 msg handler 的 msg/sec
   由140+提高到150+, 提升了7%
 - java 服务 k8s容器化. 使实例扩容半自动化, 灰度上线/测试半自动化.
-- 涉及 netty, protobuf, grpc, Sharding-JDBC, nginx 技术应用.
+- 大量涉及 netty, protobuf, grpc, Sharding-JDBC, nginx 技术应用.
 
-##### Prophecis: 机器学习支持平台; 外包(微众银行)
+##### Prophecis: 机器学习支持平台; 外包(微众银行); 2019.04 - 2020.10
 
 ###### Github: https://github.com/WeBankFinTech/Prophecis
 
@@ -79,6 +94,14 @@ CS: 熟练 数据结构与算法.
   **grpc**.
 - 整合 kubeflow 多learner训练, jupyter 容器化.
 - 使用 gitlab, jenkins, 进行项目 CI/CD.
+
+##### 娱乐视频直播兼酒吧大屏; 海南乐狐网络; 2016.06-2017.10
+
+- 主要负责java后端业务逻辑接口开发,部分数据表设计,H5端的js部分开发. 
+- 真人视频直播,使用3方的网易云直播, 后改阿里云视频直播, 聊天室使用网易云IM, 短信服务阿里大鱼, 
+- 后端涉及用户, 聊天室信息接口等,发礼物,霸屏,竞猜,酒吧大屏小游戏(数钱,抽奖,配对)逻辑等. 前端涉及客服im,数钱小游戏等. 
+- aliyun服务器,tomcat,dubbo,springmvc,hibernate,mysql等. 
+- 积极配合产品经理完善产品功能,用户量提高较慢.
 
 #### ADDITIONAL INFORMATION
 
