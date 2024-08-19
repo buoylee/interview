@@ -1,12 +1,12 @@
 <center><font size="5">李宏俊</font></center>
 
-<center><font size="2">Address: 南山大新 || Phone: 15501899800 || buoy_lee@163.com || github.com/buoylee</font></center>
+<center><font size="2">地址: 南山大新 || 手机: 15501899800 || 邮箱: buoy_lee@163.com || github.com/buoylee</font></center>
 
 <center><font size="2">状态: 离职-随时到岗 || 期望薪资: 22-30K</font></center>
 
 <center><font size="5"></font></center>
 
-#### SUMMARY
+#### 概述 SUMMARY
 
 寻找 golang / java 后端开发工作, 热衷机器学习或相关支持项目.
 
@@ -14,11 +14,11 @@
 
 离职原因: 在封控刚要结束前, 因为有想要看看有没海外发展的机会, 想要准备托福. 加上与对象对未来的意见无法一致, 有点消沉, 导致现在才回来找工作. 因为不能持续自己的目标, 要找到一个工作与生活的平衡点, 才能继续.
 
-#### EDUCATION
+#### 教育经历 EDUCATION
 
 本科, 广州大学华软软件学院, **网络工程**专业, 2008-2012
 
-#### SKILLS
+#### 个人技能 SKILLS
 
 - 熟悉 java JVM / IO / 集合 / 并发编程
 - 熟悉 golang routine / GC / 并发编程
@@ -35,7 +35,7 @@
 - 熟悉 数据结构与算法.
 - 熟悉 基本 js / html, 前后端分离开发.
 
-#### WORK EXPERIENCE
+#### 工作经验 WORK EXPERIENCE
 
 ##### java / golang, 深圳市赢胜数据科技有限公司(外包baidu), 2021.04 - 2022.09
 
@@ -70,7 +70,7 @@
 - 网易云信后端api接入,群发系统消息,关联本地用户信息与云信用户信息等功能.
 - 首页活动宣传广告banner 乐活live(大屏互动功能),建立在群组基础上的玩法.
 
-#### PROJECTS
+#### 项目经验 PROJECTS
 
 ##### GRAVITY social media IM子系统; 外包(百度); 2021.04 - 2022.09
 
@@ -103,6 +103,6 @@ im 同时在线人数一般在 1500 左右. 高峰有 4000.
 - aliyun服务器,tomcat,dubbo,springmvc,hibernate,mysql等. 
 - 积极配合产品经理完善产品功能,用户量提高较慢.
 
-#### ADDITIONAL INFORMATION
+#### 其他信息 ADDITIONAL INFORMATION
 
 - 全国计算机技术与软件专业技术资格考试 网络工程师(中级)
