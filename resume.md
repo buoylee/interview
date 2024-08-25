@@ -27,7 +27,7 @@
 - 熟悉 netty, 熟悉 rpc, grpc, protobuf 使用.
 - 熟悉 mysql, 了解 sharding-jdbc 分库分表.
 - 熟悉 redis, 了解 twemproxy 使用.
-- 熟悉 zookeeper, 作分布式锁使用.
+- 熟悉 zookeeper, 作分布式协调或分布式锁使用.
 - 熟悉 nginx / caddy 使用.
 - 熟悉 docker / kubernetes(k8s), 有1年k8s运维, 4年使用经验.
 - 熟悉 git / maven.
