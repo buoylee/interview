@@ -12,7 +12,7 @@
 
 2016年 开始, 5年 java 和 2年 golang 开发经验. leetcode 1-400题 2刷. 
 
-离职原因: 在封控刚要结束前, 因为有想要看看有没海外发展的机会, 想要准备托福. 加上与对象对未来的意见无法一致, 有点消沉, 导致现在才回来找工作. 因为不能持续自己的目标, 要找到一个工作与生活的平衡点, 才能继续.
+离职原因: 因为有想要看看有没海外发展的机会, 想要备考托福. 加上与对象对未来的意见无法一致, 有点消沉, 导致现在才回来找工作. 因为不能持续自己的目标, 要找到一个工作与生活的平衡点, 才能继续.
 
 #### 教育经历 EDUCATION
 
@@ -20,7 +20,7 @@
 
 #### 个人技能 SKILLS
 
-- 熟悉 java JVM / IO / 集合 / 并发编程
+- 熟悉 java JVM / NIO / 并发编程
 - 熟悉 golang routine / GC / 并发编程
 - 熟悉 spring mvc, springboot, mybatis 及其部分源码.
 - 熟悉 swagger-go / gorm 框架使用.
@@ -29,7 +29,7 @@
 - 熟悉 redis, 了解 twemproxy 使用.
 - 熟悉 zookeeper, 作分布式锁使用.
 - 熟悉 nginx / caddy 使用.
-- 熟悉 docker / kubernetes(k8s), 有1年k8s运维, 3年使用经验.
+- 熟悉 docker / kubernetes(k8s), 有1年k8s运维, 4年使用经验.
 - 熟悉 git / maven.
 - 了解 mongo / elasticsearch 使用.
 - 熟悉 数据结构与算法.
@@ -37,7 +37,7 @@
 
 #### 工作经验 WORK EXPERIENCE
 
-##### java / golang, 深圳市赢胜数据科技有限公司(外包baidu), 2021.04 - 2022.09
+##### java / golang, 深圳市赢胜数据科技有限公司(外包baidu), 2021.04 - 2024.03
 
 - GRAVITY IM子系统的2次开发.
 - 编写功能设计文档.
@@ -72,7 +72,7 @@
 
 #### 项目经验 PROJECTS
 
-##### GRAVITY social media IM子系统; 外包(百度); 2021.04 - 2022.09
+##### GRAVITY social media IM子系统; 外包(百度); 2021.04 - 2024.03
 
 baidu im 服务前身 2次开发, 给 GRAVITY 提供 im 服务. 由 10+ c++ 子服务 和 5个 java 子服务 构成的分布式 im系统.  
 im 同时在线人数一般在 1500 左右. 高峰有 4000.
