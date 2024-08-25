@@ -24,7 +24,7 @@
 - 熟悉 golang routine / GC / 并发编程
 - 熟悉 spring mvc, springboot, mybatis 及其部分源码.
 - 熟悉 swagger-go / gorm 框架使用.
-- 熟悉 rpc, grpc, protobuf 使用.
+- 熟悉 netty, 熟悉 rpc, grpc, protobuf 使用.
 - 熟悉 mysql, 了解 sharding-jdbc 分库分表.
 - 熟悉 redis, 了解 twemproxy 使用.
 - 熟悉 zookeeper, 作分布式锁使用.
