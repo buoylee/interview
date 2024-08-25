@@ -72,17 +72,20 @@
 
 #### 项目经验 PROJECTS
 
-##### GRAVITY social media IM子系统; 外包(百度); 2021.04 - 2024.03
+##### social media IM子系统; 外包(百度); 2021.04 - 2024.03
 
 baidu im 服务前身 2次开发, 给 GRAVITY 提供 im 服务. 由 10+ c++ 子服务 和 5个 java 子服务 构成的分布式 im系统.  
 im 同时在线人数一般在 1500 左右. 高峰有 4000.
-包含 java 子服务 dev/test/prod 环境 和 ci/cd 搭建. 少量 GRAVITY golang 部分业务开发.
+包含 java 子服务 dev/test/prod 环境 和 ci/cd 搭建.  social media 与 im 相关部分的 golang 业务开发.
 
-- 配合 GRAVITY chat 相关业务功能扩展. AI chat 接入. 活动消息推送. 
-- 优化 IM msg 收发存储处理逻辑, 消除带状态服务, 使得更方便容器部署扩容, 提高可用性. 单台 msg handler 的 msg/sec
+- 优化 IM msg handler 转发消息逻辑, 取消了只能由某台 msg handler 处理指定p2p消息的限制, 从而消除了带状态的服务, 使得qps更高, 也更方便容器部署扩容, 提高可用性. 单台 msg handler 的 qps
   由140+提高到150+, 提升了7%
-- java 服务 k8s容器化. 使实例扩容半自动化, 灰度上线/测试半自动化.
-- 大量涉及 netty, protobuf, grpc, Sharding-JDBC, nginx 技术应用.
+- 所有 java 组件 k8s容器化. 由固定的IP配置, 改为从 k8s service 解析出ip, 动态更新负载均衡的实际ip.
+- 负责上线, k8s容器化后, 使实例扩容半自动化, 灰度上线/测试半自动化.
+- 通过springboot构建 msg-forward 服务, 用于在 gateway 发起向 chat bot 发送消息时, 通过 msg-forward 调用 chat bot 聊天接口. 然后 chat bot 异步调用 msg-forward 发送接口回传消息.
+- 在 social media 后台取出活动user, 向 kafka 发送需要推送的消息. 在 msg-forward, 新增拉取 kafka 消息, 通过 gateway 给user发送活动消息推送.
+- 将用户消息表单独提出来, 用 Sharding-JDBC 做分库分表
+- 组件通信接口使用 netty, protobuf.
 
 ##### Prophecis: 机器学习支持平台; 外包(微众银行); 2019.04 - 2020.10
 
