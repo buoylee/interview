@@ -31,7 +31,7 @@
 - 熟悉 nginx / caddy 使用.
 - 熟悉 docker / kubernetes(k8s), 有1年k8s运维, 4年使用经验.
 - 熟悉 git / maven.
-- 了解 mongo / elasticsearch 使用.
+- 比较熟悉 mongo, 了解 elasticsearch 使用.
 - 熟悉 数据结构与算法.
 - 熟悉 基本 js / html, 前后端分离开发.
 
