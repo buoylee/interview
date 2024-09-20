@@ -32,8 +32,14 @@
 - 比较熟悉 mongo, 了解 elasticsearch 使用.
 - 熟悉 数据结构与算法.
 - 熟悉 基本 js / html, 前后端分离开发.
+- 熟悉 分布式系统, 分布式缓存
+- 了解 分布式事务, tcc/saga
 
 #### 工作经验 WORK EXPERIENCE
+
+##### java, 中软(外包baidu), 2024.09 - 至今
+
+- 押品服务迁移云上, 接入行内 skywalking.
 
 ##### java / golang, 深圳市赢胜数据科技有限公司(外包baidu), 2021.04 - 2024.03
 
@@ -69,6 +75,10 @@
 - 首页活动宣传广告banner 乐活live(大屏互动功能),建立在群组基础上的玩法.
 
 #### 项目经验 PROJECTS
+
+##### 押品服务; 外包(上海交行); 2024.03 - 至今
+
+提供抵押品入库, 抵押品借用, 押品审定, 押品出库等业务. springcloud, mybatis, k8s, skywalking, seata等.
 
 ##### social media IM子系统; 外包(百度); 2021.04 - 2024.03
 
