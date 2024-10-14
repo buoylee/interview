@@ -1,0 +1,5 @@
+- redis可以持久化到硬盘
+- redis数据类型丰富
+- redis有自己的vm, 省去自己取申请系统资源
+- 协议不同
+- value的大小, redis可以达到1GB，而memcache只有1MB。
