@@ -29,6 +29,23 @@ https://stackoverflow.com/questions/60573175/is-redisson-getlock-safe-for-distri
 
 https://github.com/redisson/redisson/issues/2669
 上述issue, 使用WAIT命令来达到强一致性.
+https://xie.infoq.cn/article/627c894e38277b17fea31027d
+这里也解释了, 新的 rlock, 同步到所有slave, 进一步降低并发现象.
+
+```
+WAIT <numslaves> <timeout>
+```
+
+​	•	numslaves：指定你希望至少有多少个 **副本节点**（replicas）确认接收到数据。
+
+​	•	timeout：指定最大等待时间（单位：毫秒）。即使没有达到预期的副本数量，等待会在超时时间后结束。
+
+
+
+## 出现并发问题情况
+
+- 假死, 无法续期, 导致锁提前释放
+- 
 
 ## refer: 
 
