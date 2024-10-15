@@ -1,6 +1,6 @@
 
 
-![Screenshot 2024-10-12 at 15.22.17](/Users/buoy/Library/Application Support/typora-user-images/Screenshot 2024-10-12 at 15.22.17.png)
+![Screenshot 2024-10-12 at 15.22.17](单线程-网络IO.assets/Screenshot 2024-10-12 at 15.22.17.png)
 
 Redis6.0 只有在网络请求的接收和解析，以及请求后的数据通过网络返回给时，使用了多线程, 但是Redis执行命令还是单线程的。
 

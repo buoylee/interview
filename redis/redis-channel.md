@@ -8,7 +8,7 @@ Redis**使用字典(map)来存储订阅关系**
 字典底层使用**哈希数组来实现，键为频道名字，值为链表，链表中的元素为连接的client对象。**
 **哈希冲突, 使用链地址法解决**（所有哈希地址冲突的键值对保存链表中）。
 
-![Screenshot 2024-10-15 at 10.30.43](/Users/buoy/Library/Application Support/typora-user-images/Screenshot 2024-10-15 at 10.30.43.png)
+![Screenshot 2024-10-15 at 10.30.43](redis-channel.assets/Screenshot 2024-10-15 at 10.30.43-8968416.png)
 
 为了统计客户端所订阅的频道信息，封装客户端信息的结构体client中，空间换时间，冗余保存了此client订阅的所有的频道名字（字典行为表现为集合数据结构）。
 
