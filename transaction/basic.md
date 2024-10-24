@@ -51,3 +51,15 @@ Saga的执行顺序有两种：
 
 
 
+
+
+https://blog.csdn.net/huxiang19851114/article/details/114607489?spm=1001.2014.3001.5506
+https://blog.csdn.net/it__ls/article/details/125622729
+https://wanght.blog.csdn.net/article/details/107702760
+https://www.imooc.com/article/320178
+
+牛客论坛项目的编程式事务：
+https://blog.csdn.net/qq_60225495/article/details/122793859?ops_request_misc=%257B%2522request%255Fid%2522%253A%2522166393900316800182176115%2522%252C%2522scm%2522%253A%252220140713.130102334.pc%255Fblog.%2522%257D&request_id=166393900316800182176115&biz_id=0&utm_medium=distribute.pc_search_result.none-task-blog-2~blog~first_rank_ecpm_v1~rank_v31_ecpm-1-122793859-null-null.nonecase&utm_term=%E7%BC%96%E7%A8%8B%E5%BC%8F%E4%BA%8B%E5%8A%A1&spm=1018.2226.3001.4450
+
+
+
