@@ -10,6 +10,8 @@
 
 https://seata.apache.org/zh-cn/blog/seata-at-lock/
 
+[Seata入门系列(22)-@GlobalLock注解使用场景及源码分析](https://yunyanchengyu.blog.csdn.net/article/details/123131592)
+
 
 
 从执行过程和提交过程可以看出，既然开启全局事务 `@GlobalTransactional`注解可以在事务提交前，查询全局锁是否存在，那为什么 Seata 还要设计多处一个 `@GlobalLock`注解呢？
