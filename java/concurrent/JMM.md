@@ -7,6 +7,8 @@ JMM 即 **Java Memory Model**, 内存模型, 和 线程间通信有关(共享内
 
 <img src="Screenshot 2024-11-09 at 23.26.59.png" alt="Screenshot 2024-11-09 at 23.26.59" style="zoom:50%;" />
 
+上图对照 [多级缓存.md](../../cs/多级缓存.md) 一起看
+
 ## while(flag == true)
 
 这种while true 执行的优先级很高, 可能会导致像死锁一样, 一直占用线程, 其他任务抢不到当前cpu.
