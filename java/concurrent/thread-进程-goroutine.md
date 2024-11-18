@@ -10,7 +10,7 @@
 
 ## 使用方式
 
-1. 实现runnable->复写run()->new Theads(runnable)->执行start()
+1. 实现runnable->复写run()->new Theads(runnable)->执行start();
    因为runnable 有 @FunctionalInterface, 也就可以用 lambda.
 2. new Theads()->复写run()->start()
 3. callable 类runnable, Executors.newFixedThreadPool(10).submit(new Callable()); 也可以new Thread(new FutureTask(new Callable()); **比 runnable, 可以对外抛异常, 有返回值**. 
