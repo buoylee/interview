@@ -22,5 +22,6 @@
 所以如果要rollback不能到这里停止, 继续往linklist尾找, 直到找到已提交的历史(就是**当前务当初记录的最新版对应的trx_id(300)**)
 
 
-****
+## bufferPool
 
+![Mysql执行过程与BufferPool缓存机制](Mysql执行过程与BufferPool缓存机制.png)
