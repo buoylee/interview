@@ -226,7 +226,7 @@ Thread.start() -> native的 Thread.start()-> JNINativeMethod中建立了jni的�
 
 
 
-## 中断机制
+## 线程中断/终止机制
 
 ### API的使用
 
