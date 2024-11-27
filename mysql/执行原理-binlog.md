@@ -2,6 +2,24 @@
 
 
 
+## binlog
+
+有 ... ,statement, mix
+
+<img src="Screenshot 2024-11-22 at 03.35.45.png" alt="Screenshot 2024-11-22 at 03.35.45" style="zoom:33%;" />
+
+<img src="Screenshot 2024-11-22 at 03.44.56.png" alt="Screenshot 2024-11-22 at 03.44.56" style="zoom:33%;" />
+
+
+
+## binlog复制机制
+
+### 半同步
+
+(多线程, 有超时), 
+
+### 异步
+
 
 
 ## 词法分析/语法分析
