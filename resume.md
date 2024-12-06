@@ -22,24 +22,28 @@
 - 熟悉 golang routine / GC / 并发编程
 - 熟悉 spring mvc, springboot, mybatis 及其部分源码.
 - 熟悉 swagger-go / gorm 框架使用.
-- 熟悉 netty, 熟悉 rpc, grpc, protobuf 使用.
-- 熟悉 mysql, 了解 sharding-jdbc 分库分表.
-- 熟悉 redis, 了解 twemproxy 使用.
-- 熟悉 zookeeper, 作分布式协调或分布式锁使用.
-- 熟悉 nginx / caddy 使用.
-- 熟悉 docker / kubernetes(k8s), 有1年k8s运维, 4年使用经验.
-- 熟悉 git / maven.
-- 比较熟悉 mongo, 了解 elasticsearch 使用.
+- 熟悉 netty 原理,  部分源码,  熟悉 rpc, grpc, protobuf 使用.
+- 熟悉 mysql 底层, 熟悉 sharding-jdbc 分库分表 原理.
+- 熟悉 redis 底层, 了解 twemproxy 使用.
+- 熟悉 zookeeper 原理, 部分源码, 作分布式协调或分布式锁使用.
+- 熟悉kafka底层实现及部分源码.
 - 熟悉 数据结构与算法.
 - 熟悉 基本 js / html, 前后端分离开发.
-- 熟悉 分布式系统, 分布式缓存
-- 了解 分布式事务, tcc/saga
+- 熟悉 分布式(springcloud/k8s各组件) 原理, 分布式缓存等.
+- 熟悉 分布式事务 原理, seata at/tcc实现及部分源码.
+- 熟悉 docker / kubernetes(k8s), 有1年k8s运维, 4年使用经验.
+- 熟悉 nginx / caddy 使用.
+- 有一定系统设计能力.
+- 熟悉 git / maven.
+- 熟悉 mongo 使用, 了解 elasticsearch 使用.
+- 了解 junit/powermock 单元测试使用.
 
 #### 工作经验 WORK EXPERIENCE
 
-##### java, 中软(外包交行), 2024.09 - 至今
+##### java, 中软(外包交行), 2024.09 - 2024.10
 
 - 押品服务迁移云上, 接入行内 skywalking.
+- 核心下移代码重构, 涉及seata分布式事务.
 
 ##### java / golang, 深圳市赢胜数据科技有限公司(外包baidu), 2021.04 - 2024.03
 
@@ -76,9 +80,10 @@
 
 #### 项目经验 PROJECTS
 
-##### 押品服务; 外包(上海交行); 2024.03 - 至今
+##### 押品服务; 外包(上海交行); 2024.03 - 2024.10
 
 提供抵押品入库, 抵押品借用, 押品审定, 押品出库等业务. springcloud, mybatis, k8s, skywalking, seata等.
+
 
 ##### social media IM子系统; 外包(百度); 2021.04 - 2024.03
 
