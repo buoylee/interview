@@ -2,7 +2,7 @@
 
 <center><font size="2">地址: 南山大新 || 手机: 15501899800 || 邮箱: buoy_lee@163.com || github.com/buoylee</font></center>
 
-<center><font size="2">状态: 离职-随时到岗 || 期望薪资: 19-24K</font></center>
+<center><font size="2">状态: 离职-1周到岗 || 期望薪资: 23K</font></center>
 
 <center><font size="5"></font></center>
 
@@ -45,7 +45,7 @@
 - 押品服务迁移云上, 接入行内 skywalking.
 - 核心下移代码重构, 涉及seata分布式事务.
 
-##### java / golang, 深圳市赢胜数据科技有限公司(外包baidu), 2021.04 - 2024.03
+##### java / golang, 深圳市赢胜数据科技有限公司(外包baidu), 2021.04 - 2022.10
 
 - GRAVITY IM子系统的2次开发.
 - 编写功能设计文档.
@@ -80,12 +80,12 @@
 
 #### 项目经验 PROJECTS
 
-##### 押品服务; 外包(上海交行); 2024.03 - 2024.10
+##### 押品服务; 外包(上海交行); 2024.09 - 2024.10
 
 提供抵押品入库, 抵押品借用, 押品审定, 押品出库等业务. springcloud, mybatis, k8s, skywalking, seata等.
 
 
-##### social media IM子系统; 外包(百度); 2021.04 - 2024.03
+##### social media IM子系统; 外包(百度); 2021.04 - 2022.10
 
 baidu im 服务前身 2次开发, 给 GRAVITY 提供 im 服务. 由 10+ c++ 子服务 和 5个 java 子服务 构成的分布式 im系统.  
 im 同时在线人数一般在 1500 左右. 高峰有 4000.

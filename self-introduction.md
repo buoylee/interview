@@ -62,7 +62,15 @@ Thank you!
 
 
 
-word: predecessor
+word: 
+predecessor -> ˈpredə
+mechanism -> 'megəni...
+transitioned -> zion
+integrating intə
+enabling -> en neib ling
+solving -> a: 
+challenging -> lən
+collaborating -> cə læ bər
 
 
 

@@ -53,3 +53,18 @@ SELECT
     │   └── Value: 18
 ```
 
+
+
+
+
+## 日志刷盘策略
+
+innodb 是redolog.
+
+<img src="image-20250104064931599.png" alt="image-20250104064931599" style="zoom: 33%;" />
+
+
+
+## 内存优化
+
+通常我们认为innodb_buﬀer_pool_size为系统内存的60%~75%最优。
