@@ -1,15 +1,26 @@
-## binlog_format=STATEMENT（默认）：
+## 概述
+
+binlog是mysql提供的日志，**所有存储引擎都可用**。
+
+
+
+## binlog选择
+
+### binlog_format=STATEMENT（默认）：
 
 **记录sql语句**到binlog中。
 
 优点: **不需要记录每一行的数据变化**，**减少binlog日志量**，节约IO，提高性能。
 
 缺点: 是在某些情况下会导致 master-slave中的数据不一致( 如sleep()函数， last_insert_id()，以及user-defined functions(udf)等会 出 现 问题).
+
+LOAD_FILE(), UUID(), USER(), FOUND_ROWS(), SYSDATE() (除非启动时启用了 --sysdate-is-now 选项) **不会复制**.
+
 **READ-COMMITTED、READ-UNCOMMITTED隔离级别**或者参数innodb_locks_unsafe_for_binlog为ON时，**禁止binlog_format=statement下的写入**.
 
 
 
-## binlog_format=ROW：
+### binlog_format=ROW：
 
 **仅记录哪条数据修改成什么样**。
 
@@ -17,7 +28,7 @@
 
 缺点: 产生大量的日志，尤其是alter table的时候会让日志暴涨。
 
-## binlog_format=MIXED：
+### binlog_format=MIXED：
 
 是以上两种level的混合使用，有函数用ROW，没函数用STATEMENT，但是无法识别系统变量
 
