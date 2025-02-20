@@ -1,3 +1,7 @@
+[toc]
+
+
+
 redis 事务, 有2种方式:
 
 **MULTI** 和  **lua**
@@ -19,9 +23,10 @@ Refer: [redis 事务 事务机制详解 MULTI、EXEC、DISCARD、WATCH](https://
 ## lua
 
 Lua 可以执行代码片段, 更好控制, 
+多条命令一次性打包,有效地减少网络开销
 
 执行的 lua 脚本, 并**不具有 ACID的原子性**, 
-**redis lua脚本的原子性**, 只能保证, 脚本作为一个整体执行且不被其他事务打断.
+**redis lua脚本的原子性**, 只保证脚本作为一个整体执行且**不被其他事务打断/插入**.
 
 ### 可以利用的场景: 
 
@@ -34,6 +39,19 @@ else
     return 0
 end
 ```
+
+
+
+检查剩余库存并扣减: 
+
+```
+// stock > num
+// incrby key[item] -num
+```
+
+
+
+
 
 refer: [Redis 执行 Lua，能保证原子性吗](https://cloud.tencent.com/developer/article/2391645)
 

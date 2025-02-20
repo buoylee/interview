@@ -28,7 +28,7 @@
 - 熟悉 zookeeper 原理, 部分源码, 作分布式协调或分布式锁使用.
 - 熟悉kafka底层实现及部分源码.
 - 熟悉 数据结构与算法.
-- 熟悉 基本 js / html, 前后端分离开发.
+- 熟悉 基本 js / html, 前后端分离开发. 了解react.
 - 熟悉 分布式(springcloud/k8s各组件) 原理, 分布式缓存等.
 - 熟悉 分布式事务 原理, seata at/tcc实现及部分源码.
 - 熟悉 docker / kubernetes(k8s), 有1年k8s运维, 4年使用经验.
@@ -45,7 +45,7 @@
 - 押品服务迁移云上, 接入行内 skywalking.
 - 核心下移代码重构, 涉及seata分布式事务.
 
-##### java / golang, 深圳市赢胜数据科技有限公司(外包baidu), 2021.04 - 2022.10
+##### java / golang, 深圳市赢胜数据科技有限公司(外包baidu), 2021.04 - 2023.03
 
 - GRAVITY IM子系统的2次开发.
 - 编写功能设计文档.
@@ -85,7 +85,7 @@
 提供抵押品入库, 抵押品借用, 押品审定, 押品出库等业务. springcloud, mybatis, k8s, skywalking, seata等.
 
 
-##### social media IM子系统; 外包(百度); 2021.04 - 2022.10
+##### social media IM子系统; 外包(百度); 2021.04 - 2023.03
 
 baidu im 服务前身 2次开发, 给 GRAVITY 提供 im 服务. 由 10+ c++ 子服务 和 5个 java 子服务 构成的分布式 im系统.  
 im 同时在线人数一般在 1500 左右. 高峰有 4000.
@@ -106,9 +106,9 @@ im 同时在线人数一般在 1500 左右. 高峰有 4000.
 
 - 角色权限子服务, 前期java springboot, mybatis, mysql. 后序用go重写, 使用swagger-go, gorm.
 - 使用 **nginx** 对 jupyter访问前的 发起校验与请求rewrite. **caddy** 作为 后端 api gateway.
-- 优化 **平台资源校验** 与 **任务状态监控和日志收集(fluent-bit, es)**, 调整 执行队列. 任务命令行工具适配. 服务间调用使用
+- 优化 **k8s集群资源校验** 与 **任务状态监控和日志收集(fluent-bit, es)**, 调整 执行队列. 任务命令行工具适配. 服务间调用使用
   **grpc**.
-- 整合 kubeflow 多learner训练, jupyter 容器化.
+- 利用 FfDL 的 服务编排 或  kubeflow 的 CRD  进行 单/多learner训练, 和 jupyter notebook 自定义容器.
 - 使用 gitlab, jenkins, 进行项目 CI/CD.
 
 ##### 娱乐视频直播兼酒吧大屏; 海南乐狐网络; 2016.06-2017.10

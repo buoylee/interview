@@ -12,6 +12,12 @@ InnoDB 等待图（wait-for graph）
 
 
 
+## canal
+
+如何保证可靠投递到MQ
+
+
+
 ## 分布式
 
 当hash后request集中出现在某一台如何处理
