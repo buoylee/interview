@@ -45,6 +45,14 @@ RererenceQueue : 对象**被回收时**， **虚拟机**会自动将这个对象
 
 
 
+## 正確處理(釋放) buff
+
+https://juejin.cn/post/7229165980932276285
+https://netty.io/wiki/reference-counted-objects.html
+https://blog.csdn.net/qq_38411796/article/details/139897991
+
+
+
 ## 参考
 
 [Netty之有效规避内存泄漏 ](https://www.cnblogs.com/549294286/p/5168454.html)

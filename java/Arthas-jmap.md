@@ -1,3 +1,5 @@
+[toc]
+
 ## 查看class反编译内容
 
 
@@ -53,6 +55,26 @@ hasMap.add...
 ### -gc [processId]
 
 实时GC
+
+
+
+## jstat
+
+```
+S0C    S1C    S0U    S1U    EC     EU     OC     OU     MC     MU     CCSC   CCSU   YGC   YGCT   FGC   FGCT  GCT  
+```
+
+S: **Survivor**
+C: **Capacity**
+U: **Utilization**
+E: **Eden**
+O: **Old**
+M: **Metaspace**
+CCS: **Compressed Class Space**
+YG: **Young** Generation **GC Count**
+T: time
+**FGC**: **Full GC Count**
+
 
 
 
