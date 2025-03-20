@@ -27,3 +27,11 @@ beanDefinition
 ClassLoader
 beanfactory
 都有post 前后置方法
+
+
+
+
+
+## bean 3級緩存必要性? 循環依賴
+
+https://developer.aliyun.com/article/766880

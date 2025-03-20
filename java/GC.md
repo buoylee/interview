@@ -2,6 +2,48 @@
 
 [toc]
 
+
+
+
+
+## 觸發時機
+
+### minor GC
+
+
+
+### major GC
+
+Survivor不夠 -> **老年代满，触发 Major GC**
+
+
+
+#### 只觸發 major GC 的場景
+
+大對象->老年代滿
+
+
+
+### 參考
+
+https://blog.csdn.net/wangxuelei036/article/details/108180150
+
+
+
+
+
+## **Major GC、Full GC、Mixed GC 的区别**
+
+
+
+![image-20250305050151985](image-20250305050151985.png)
+
+
+
+
+
+
+
 ## eden/survivor
 
 minor GC 是**同时清理 eden + 一边的survivor**, 存活的对象**移动到另一边的survivor**.
@@ -268,7 +310,7 @@ SATB只会把要**删除的引用记录到list**, 不会**重新深度扫描**, 
 
 等於打散的(同一組內存組合年輕(eden, s, old, 永久)/老年)多個區域.
 
-和 G1 不同, ZGC的3色标记不再对象头, 在指针.
+和 G1 不同, ZGC的3色标记不再对象头, 在指针. G1單純控制stw的時間不超過, 也預測stw小的先執行.
 
 所以, 即使被gc算法compact(看下邊并发重分配, 複製算法可以理解誒爲一種特殊的整理算法)了, 通過在對象指針上的顏色標記, 來判斷是否內存是否被修改, 這就是讀屏障, 
 如果有寫改, 先更新內存地址, 在訪問目標對象.
@@ -288,4 +330,6 @@ ZGC将这种行为称为指针的“自愈”（Self-Healing）能力。
 [一文了解JVM全部垃圾回收器，从Serial到ZGC](https://juejin.cn/post/6844903685374377998#heading-3)
 
 [极致八股文之JVM垃圾回收器G1&ZGC详解](https://mp.weixin.qq.com/s/Ywj3XMws0IIK-kiUllN87Q) 有空看.
+
+https://javabetter.cn/jvm/gc-collector.html#zgc
 
