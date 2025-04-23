@@ -2,13 +2,13 @@
 
 <center><font size="2">地址: 南山大新 || 手机: 15501899800 || 邮箱: buoy_lee@163.com || github.com/buoylee</font></center>
 
-<center><font size="2">状态: 离职-1周到岗 || 期望薪资: 22K可谈</font></center>
+<center><font size="2">状态: 离职-1周到岗</font></center>
 
 <center><font size="5"></font></center>
 
 #### 概述 SUMMARY
 
-寻找 golang / java 后端开发工作, 热衷机器学习或相关支持项目.
+寻找 golang / java / python 后端 或 full stack 开发工作, 热衷机器学习或相关支持项目.
 
 2016年 开始, 5年 java 和 2年 golang 开发经验. leetcode 1-400题 2刷. 
 
@@ -20,6 +20,7 @@
 
 寻找 golang / java 后端开发工作, 热衷机器学习或相关支持项目.
 2016年 开始, 5年 java 和 2年 golang 开发经验. leetcode 1-400题 2刷.
+
 - 熟悉 java JVM 调优/ NIO / 并发编程
 - 熟悉 golang routine / GC / 并发编程
 - 熟悉 spring mvc, springboot, mybatis 及其部分源码.
@@ -30,7 +31,7 @@
 - 熟悉 zookeeper 原理, 部分源码, 作分布式协调或分布式锁使用.
 - 熟悉 kafka 底层实现及部分源码.
 - 熟悉 数据结构与算法.
-- 熟悉 基本 js / html, 前后端分离开发. 了解react基本使用.
+- 熟悉 基本 js / html / jquery, 前后端分离开发. 了解 typescript, node.js, react, react native, redux 基本使用.
 - 熟悉 分布式(springcloud/k8s各组件) 原理, 分布式缓存等.
 - 熟悉 openfeign, ribbon, nacos, gateway, sentinel 等spring cloud组件应, 原理, 部分源码.
 - 了解 kubelet, kube-proxy, etcd, api-server, controller-manager, containerd 等kubernetes组件 工作原理, 自定义controller, CRD; 熟悉 docker / kubernetes(k8s), 有1年k8s运维, 4年使用经验.
@@ -41,7 +42,8 @@
 - 熟悉 mongo 使用, 了解 elasticsearch 使用.
 - 熟悉DDD架构
 - 熟悉 mokito, junit 使用, TDD 流程.
-- 了解 基本 LangChain 开发.
+- 有 python, fastapi 使用經驗.
+- 了解 openai api, Milvus, autoGPT原理,  基本 LangChain 使用, RAG 開發.
 
 #### 工作经验 WORK EXPERIENCE
 
@@ -84,6 +86,21 @@
 - 首页活动宣传广告banner 乐活live(大屏互动功能),建立在群组基础上的玩法.
 
 #### 项目经验 PROJECTS
+
+##### 託福口語練習; 獨立開發; 2025.02 - 至今
+
+提供類似 openAI advanced voice mode 服務, 實現可打斷對話, 追加字幕顯示, 本地保留歷史對話及語音. 收錄託福語料, 提供更貼近考試內容的消息反饋.
+fastAPI, langchain, Milvus, k8s, openAI api, react native 等.
+
+
+##### social media IM子系统; 外包(百度); 2021.04 - 2023.03
+
+baidu im 服务前身 2次开发, 给 GRAVITY 提供 im 服务. 由 10+ c++ 子服务 和 5个 java 子服务 构成的分布式 im系统.  
+im 同时在线人数一般在 1500 左右. 高峰有 4000.
+包含 java 子服务 dev/test/prod 环境 和 ci/cd 搭建.  social media 与 im 相关部分的 golang 业务开发.
+
+- 优化 IM msg handler 转发消息逻辑, 取消了只能由某台 msg handler 处理指定p2p消息的限制, 从而消除了带状态的服务, 使得qps更高, 也更方便容器部署扩容, 提高可用性. 单台 msg handler 的 qps
+  由140+提高到150+, 提升了7%
 
 ##### 押品服务; 外包(上海交行); 2024.09 - 2025.02
 
