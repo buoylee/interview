@@ -2,15 +2,15 @@
 
 <center><font size="2">地址: 南山大新 || 手机: 15501899800 || 邮箱: buoy_lee@163.com || github.com/buoylee</font></center>
 
-<center><font size="2">状态: 离职-1周到岗</font></center>
+<center><font size="2">状态: 在职-2周到岗</font></center>
 
 <center><font size="5"></font></center>
 
 #### 概述 SUMMARY
 
-寻找 golang / java / python 后端 或 偏后端的 full stack 开发工作, 热衷机器学习或相关支持项目.
+寻找 python / golang / java  后端 或 偏后端的 full stack 开发工作, 热衷机器学习或相关支持项目.
 
-2016年 开始, 4.5年 java 和 2年 golang 和 半年 python 开发经验. leetcode 1-400题 2刷. 
+2016年 开始, 4.5年 java, 2年 golang, 1年前端, 半年 python 开发经验. leetcode 1-400题 2刷. 
 
 #### 教育经历 EDUCATION
 
@@ -28,11 +28,11 @@
 - 熟悉 zookeeper 原理, 部分源码, 作分布式协调或分布式锁使用.
 - 熟悉 kafka 底层实现及部分源码.
 - 熟悉 数据结构与算法.
-- 熟悉 基本 js / html / jquery, 前后端分离开发. 了解 typescript, node.js, react, react native, redux 基本使用.
+- 熟悉 基本 js / html / jquery, 前后端分离开发. 了解 typescript, node.js, vue, react, react native, redux 等框架使用.
 - 了解 flutter 基本使用
 - 熟悉 分布式(springcloud/k8s各组件) 原理, 分布式缓存等.
 - 熟悉 openfeign, ribbon, nacos, gateway, sentinel 等spring cloud组件应, 原理, 部分源码.
-- 了解 kubelet, kube-proxy, etcd, api-server, controller-manager, containerd 等kubernetes组件 工作原理, 自定义controller, CRD; 熟悉 docker / kubernetes(k8s), 有1年k8s运维, 4年使用经验.
+- 了解 kubelet, kube-proxy, etcd, api-server, controller-manager, containerd 等kubernetes组件 工作原理, 自定义controller, CRD; 熟悉 docker / kubernetes(k8s), 有1年k8s运维经验, 4年k8s使用经验.
 - 熟悉 分布式事务 原理, seata at/tcc实现及部分源码.
 - 熟悉 nginx / caddy 使用.
 - 有一定系统设计能力.
@@ -41,13 +41,21 @@
 - 熟悉DDD架构
 - 熟悉 mokito, junit 使用, TDD 流程.
 - 了解 fastapi, openai api, Milvus, autoGPT原理,  LangChain, RAG 開發.
-- 使用chatgpt, cursor, deepwiki 等AI工具提升工作效率.
+- 使用chatgpt, cursor, deepwiki, claude code 等AI工具提升工作效率.
 
 #### 工作经验 WORK EXPERIENCE
 
+##### 全栈 python/js, cocorobo, 2025.05 - 至今
+
+- 角色: 全栈工程师. 配合产品设计, 调研可实施方案, 完成开发任务.
+- agent feishu/github mcp 接入, 添加单页面爬虫 tool 的前后端开发.
+- 工作流卡片 markdown to ppt 功能整合.
+- 完成文字对话文件上传功能前后端开发.
+- 结合ms speech sdk, 加入agent 语音对话能力.
+
 ##### python/golang, 聿晨科技, 2025.04 - 2025.05
 
-- 角色:项目小组长. 配合算法/前端工程师, 调研可实施方案, 完成项目经理任务.
+- 角色: 项目小组长. 配合算法/前端工程师, 调研可实施方案, 完成项目经理任务.
 - 使用 langchain 重写 算法工程师使用comfyui 编排的业务工作流.
 - 给 open-webui 加入统计 user token usage 功能.
 - 重写 原aigc服务同步调用问题, 利用kafka实现生成图文小说工作流异步化.
@@ -92,7 +100,16 @@
 
 #### 项目经验 PROJECTS
 
-##### 私有GPT应用文生文/图工作流 2025.04 - 2025.05
+##### cocoflow 2025.05 - 至今
+
+后端: python + node.js, 前端: vue + react/nextjs
+
+提供基础的语音agent能力.
+通过 open-assistant-api 提供兼容不同厂商 llm 的 agent api, 在 agent 之上实现workflow. 提供agent 提示词的调试 和workflow的编排.
+通过前端携带不同 agent 的chat history, 来实现跨 node 的消息传递来实现工作流, 前端使用了 logicflow, 
+在深圳学校利用此系统来, 举办workflow的比赛, 推进ai普及.
+
+##### 文生文/图工作流 2025.04 - 2025.05
 
 角色:项目小组长. 配合算法/前端工程师, 调研可实施方案, 完成项目经理任务.
 私有GPT应用, 提供类chatgpt文生文对话功能. 使用开源项目, open-webui, higress, 私有LLM deepseek. 添加user token usage 统计功能.
