@@ -16,6 +16,17 @@ relative/absolute
 
 
 
+| **本元素设定的定位方式**     | **包含塊(祖先元素)是誰**            |
+| ---------------------------- | ----------------------------------- |
+| position: static 或 relative | 最近的 block-level 祖先元素         |
+| position: absolute           | 最近的定位祖先（position ≠ static） |
+| position: fixed              | viewport（整個視窗）                |
+| position: sticky             | 最近可滾動祖先                      |
+
+
+
+
+
 # relative
 
 参考点(原点)是原来的位置.
@@ -76,4 +87,10 @@ right: 0(px);
 top:...
 bottom:...
 ```
+
+
+
+
+
+
 
