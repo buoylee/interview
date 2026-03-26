@@ -17,6 +17,64 @@
 
 ---
 
+## 📂 详细内容导航
+
+> 每个阶段已展开为独立文件夹，包含详细的概念解析、面试题和学习资源。**点击链接进入对应阶段：**（共 60 个文件）
+
+| 阶段 | 文件夹 | 文件数 | 核心内容 |
+|------|--------|--------|---------|
+| **0** | [数学基础](./ml-to-llm-roadmap/00-math-foundations/) | 5 | 线代 / 概率 / 微积分 / 信息论 |
+| **1** | [ML 基础](./ml-to-llm-roadmap/01-ml-basics/) | 4 | 核心概念 / 经典算法 / 评估调优 |
+| **2** | [深度学习基础](./ml-to-llm-roadmap/02-deep-learning/) | 8 | MLP / 优化器 / 迁移学习 / CNN / RNN→Attention / 对比学习 / 损失函数 |
+| **3** | [NLP + Embedding & 检索](./ml-to-llm-roadmap/03-nlp-embedding-retrieval/) | 7 | 文本表示 / Embedding / 检索理论 / 解码策略 / 受控生成 / **Tokenization 深度** |
+| **4** | [Transformer 架构](./ml-to-llm-roadmap/04-transformer-architecture/) | 5 | Self-Attention / 三种范式 / GQA+MLA+Flash / Mamba |
+| **5** | [预训练语言模型](./ml-to-llm-roadmap/05-pretrained-models/) | 4 | BERT 家族 / GPT 演进 / T5+CLIP+范式转换 |
+| **6** | [大模型 LLM 核心](./ml-to-llm-roadmap/06-llm-core/) | 16 | 训练流程 / 对齐 / Scaling / 分布式 / 推理优化 / LoRA / MoE / 多模态 / 评估 / 安全 / **Test-time Compute / 长上下文 / LLM-as-Judge / 端侧部署** |
+| **7** | [理论-应用桥接](./ml-to-llm-roadmap/07-theory-practice-bridge/) | 7 | RAG 理论深度 / Agent 架构 / Prompt 理论 / 生产排查 / **Compound AI Systems** / **微调实操** |
+| **8** | [面试串联](./ml-to-llm-roadmap/08-interview-synthesis/) | 4 | **Top 30 题** / 系统设计 / 项目叙事 |
+
+---
+
+## ⚡ 速通路线（只有 2 周时间）
+
+> 如果时间有限，按以下优先级学习。**只看 ⭐ 标记的内容，跳过其余。**
+
+### 第 1 周：核心理论
+
+| 天数 | 必看内容 | 文件 |
+|------|---------|------|
+| Day 1 | Transformer Self-Attention | [04/01-transformer-core](./ml-to-llm-roadmap/04-transformer-architecture/01-transformer-core.md) |
+| Day 2 | GQA、Flash Attention、RoPE | [04/03-attention-variants](./ml-to-llm-roadmap/04-transformer-architecture/03-attention-variants.md) |
+| Day 3 | 训练三阶段 PT→SFT→RLHF | [06/01-training-pipeline](./ml-to-llm-roadmap/06-llm-core/01-training-pipeline.md) |
+| Day 4 | 对齐 RLHF→DPO→GRPO | [06/02-alignment](./ml-to-llm-roadmap/06-llm-core/02-alignment.md) |
+| Day 5 | KV-Cache + 量化 + 端到端推理 | [06/05-inference-optimization](./ml-to-llm-roadmap/06-llm-core/05-inference-optimization.md) |
+| Day 6 | LoRA/QLoRA 原理 | [06/06-fine-tuning](./ml-to-llm-roadmap/06-llm-core/06-fine-tuning-distillation.md) |
+| Day 7 | Embedding + 检索理论 | [03/02-embedding](./ml-to-llm-roadmap/03-nlp-embedding-retrieval/02-embedding-theory.md) + [03/03-retrieval](./ml-to-llm-roadmap/03-nlp-embedding-retrieval/03-retrieval-theory.md) |
+
+### 第 2 周：面试冲刺
+
+| 天数 | 必看内容 | 文件 |
+|------|---------|------|
+| Day 8 | MoE + 模型族总览 | [06/07-moe](./ml-to-llm-roadmap/06-llm-core/07-moe.md) + [06/11-model-families](./ml-to-llm-roadmap/06-llm-core/11-model-families.md) |
+| Day 9 | RAG 理论深度 | [07/01-rag-deep-dive](./ml-to-llm-roadmap/07-theory-practice-bridge/01-rag-deep-dive.md) |
+| Day 10 | 生产排查 & 优化 | [07/04-production-debugging](./ml-to-llm-roadmap/07-theory-practice-bridge/04-production-debugging.md) |
+| Day 11-12 | 系统设计 + Top 25 题 | [08/02-system-design](./ml-to-llm-roadmap/08-interview-synthesis/02-system-design.md) + [08/01-top25](./ml-to-llm-roadmap/08-interview-synthesis/01-top25-questions.md) |
+| Day 13-14 | 项目叙事 + 查漏补缺 | [08/03-project-narrative](./ml-to-llm-roadmap/08-interview-synthesis/03-project-narrative.md) |
+
+### 速通时可跳过
+
+```
+可跳过（时间充足再看）：
+  - 阶段 0 数学基础（你已有 CS 背景，遇到不懂再查）
+  - 阶段 1 ML 基础（传统 ML 在 LLM 面试中较少考）
+  - 阶段 2 CNN 细节、VAE/GAN（除非面试多模态岗位）
+  - 阶段 6 分布式训练细节（除非面试训练岗位）
+```
+
+---
+
+下面是各阶段的大纲概览（详细内容请点击上方文件夹链接）：
+
 ## 阶段 0：数学基础速通（1 周）
 
 > 不需要精通，理解直觉即可。遇到不懂的公式回来查。
@@ -505,35 +563,42 @@ Temperature 调节      → softmax 温度参数对分布的影响
                                      └── LangChain/LangGraph
 ```
 
-### 8.2 面试高频 Top 25
+### 8.2 面试高频 Top 30
 
-| # | 问题 | 阶段 |
-|---|------|------|
-| 1 | Transformer Self-Attention 机制 | 4 |
-| 2 | BERT vs GPT 区别 | 4-5 |
-| 3 | 预训练→SFT→RLHF 三阶段 | 6 |
-| 4 | LoRA 原理与优势 | 6 |
-| 5 | MoE 混合专家 | 6 |
-| 6 | KV-Cache 加速原理 | 6 |
-| 7 | 量化方法比较 | 6 |
-| 8 | Scaling Law | 6 |
-| 9 | RAG 流程 & Embedding 原理 | 3+7 |
-| 10 | 过拟合及解决 | 1 |
-| 11 | 梯度下降 & 反向传播 | 0-2 |
-| 12 | 位置编码(RoPE) | 4 |
-| 13 | GQA/MQA vs MHA | 4 |
-| 14 | 解码策略 Top-k/Top-p/Temp | 3 |
-| 15 | Chain-of-Thought | 6 |
-| 16 | 分布式训练 DP/TP/PP | 6 |
-| 17 | 幻觉及缓解 | 6 |
-| 18 | Flash Attention | 4 |
-| 19 | DPO vs RLHF | 6 |
-| 20 | Agent ReAct 模式 | 7 |
-| 21 | **Mamba/SSM vs Transformer** | 4 |
-| 22 | **向量检索算法(HNSW)** | 3 |
-| 23 | **Function Calling 怎么训** | 3+7 |
-| 24 | **灾难性遗忘 & 解决** | 2 |
-| 25 | **模型合并方法** | 6 |
+> 详细答案见 [08/01-top25-questions.md](./ml-to-llm-roadmap/08-interview-synthesis/01-top25-questions.md)
+
+| # | 问题 | 阶段 | 热度 |
+|---|------|------|------|
+| 1 | Transformer Self-Attention 机制 | 4 | **必考** |
+| 2 | BN vs LN 区别 | 2 | 经典 |
+| 3 | Residual Connection | 2 | 经典 |
+| 4 | Word2Vec vs BERT Embedding | 3 | 经典 |
+| 5 | BPE / Tokenization 算法 | 3 | 高频 |
+| 6 | Embedding 训练（对比学习） | 3 | 高频 |
+| 7 | Hybrid Search（稀疏+稠密） | 3 | 高频 |
+| 8 | Self-Attention 完整流程 | 4 | **必考** |
+| 9 | RoPE 位置编码 | 4 | 高频 |
+| 10 | MHA/MQA/GQA 区别 | 4 | 高频 |
+| 11 | Flash Attention | 4 | 高频 |
+| 12 | Mamba/SSM vs Transformer | 4 | 区分度 |
+| 13 | 预训练→SFT→RLHF 三阶段 | 6 | **必考** |
+| 14 | DPO vs RLHF | 6 | 高频 |
+| 15 | Chinchilla Scaling Law | 6 | 高频 |
+| 16 | 分布式训练 DP/TP/PP | 6 | 工程岗 |
+| 17 | KV-Cache 加速原理 | 6 | **必考** |
+| 18 | 量化方法比较 | 6 | 高频 |
+| 19 | LoRA 原理与优势 | 6 | **必考** |
+| 20 | MoE 混合专家 | 6 | 高频 |
+| 21 | 幻觉及缓解 | 6 | 高频 |
+| 22 | 🔥 o1/R1 推理模型 & Test-time Compute | 6 | **新热点** |
+| 23 | 🔥 长上下文技术 & Lost in the Middle | 6 | **新热点** |
+| 24 | 🔥 LLM-as-Judge 评估 | 6 | **新热点** |
+| 25 | RAG 系统设计 | 7 | **必考** |
+| 26 | HNSW 向量检索 | 3 | 高频 |
+| 27 | Function Calling 训练机制 | 7 | 高频 |
+| 28 | DeepSeek 技术创新 | 6 | **新热点** |
+| 29 | 🔥 Compound AI 系统设计 | 7 | **新热点** |
+| 30 | 🔥 Prompt Injection 防御 | 6 | **新热点** |
 
 ### 8.3 学习策略
 1. **费曼学习法**：每学完一个概念用自己的话讲一遍
