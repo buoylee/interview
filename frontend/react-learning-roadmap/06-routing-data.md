@@ -197,6 +197,10 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 ### 3.1 为什么不用 useEffect + fetch
 
 ```
+还记得阶段 3 写的 useFetch Hook 吗？
+loading + error + cancelled + 竞态处理，每个请求都要写一遍。
+而且你还没有处理：缓存、重复请求去重、后台刷新、错误重试...
+
 用 useEffect + fetch 管理数据请求有什么问题？
 
   你需要手动处理：

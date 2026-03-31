@@ -1030,4 +1030,19 @@ useReducer：
 3. 阅读 Dan Abramov 的 [A Complete Guide to useEffect](https://overreacted.io/a-complete-guide-to-useeffect/)
 4. 确保会写：数据请求 + 清理、定时器 + 清理、闭包陷阱的 3 种修复方式
 
+---
+
+## 🔗 为什么接下来学 TypeScript？
+
+```
+到这里你已经掌握了 React 的核心能力：useState、useEffect、useRef、useContext、useReducer。
+
+但你可能已经注意到一些"隐患"：
+  → Props 传错了类型（string 传成了 number），运行时才发现
+  → useContext 的 value 结构不清楚，IDE 没有任何提示
+  → API 返回的数据字段拼错了，代码不报错但页面空白
+
+下一阶段用 TypeScript 解决这些问题——让 IDE 在你写代码时就告诉你哪里错了。
+```
+
 > ⬅️ [上一阶段：第一个完整组件](./02-first-component.md) | ➡️ [下一阶段：TypeScript + React](./04-typescript-react.md)

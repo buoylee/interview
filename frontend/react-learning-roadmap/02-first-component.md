@@ -997,6 +997,7 @@ const [theme, setTheme] = useState(() => {
 - 每次用户输入 → `onChange` 触发 → `setState` 更新 → React 重新渲染 → input 显示新值
 - 优点：React 完全控制表单值，方便做验证、格式化、联动
 - 对比"非受控组件"：用 `defaultValue` + `ref` 直接从 DOM 读取值，React 不参与管理
+- → 阶段 5 会详细对比受控 vs 非受控的使用场景和决策方法
 
 ### Q5: Props 和 State 的区别？
 

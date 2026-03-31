@@ -497,11 +497,72 @@ Profiler 面板（最重要的性能工具）：
    → 把频繁变化的 state 放到更小的子组件里
    → 父组件不因子组件的 state 变化而重新渲染
    → 零额外代码，最简单有效
+```
 
+```tsx
+// ❌ 状态放在父组件：输入框每次击键 → 整个 App 重新渲染 → ExpensiveList 也跟着渲染
+function App() {
+  const [text, setText] = useState('')
+  return (
+    <div>
+      <input value={text} onChange={e => setText(e.target.value)} />
+      <ExpensiveList />   {/* 每次击键都渲染！ */}
+    </div>
+  )
+}
+
+// ✅ 状态下移到子组件：输入框击键只影响 SearchInput，ExpensiveList 不受影响
+function App() {
+  return (
+    <div>
+      <SearchInput />      {/* text state 在 SearchInput 内部 */}
+      <ExpensiveList />    {/* 不再因 text 变化而渲染 ✅ */}
+    </div>
+  )
+}
+
+function SearchInput() {
+  const [text, setText] = useState('')
+  return <input value={text} onChange={e => setText(e.target.value)} />
+}
+```
+
+```
 2. 内容提升（children 模式）
    → 把不会变的 JSX 通过 children 传入
    → 父组件渲染时 children 引用不变 → 跳过
+```
 
+```tsx
+// ❌ 频繁变化的 state 在外层 → children 也跟着渲染
+function ColorPicker() {
+  const [color, setColor] = useState('red')
+  return (
+    <div style={{ background: color }}>
+      <input value={color} onChange={e => setColor(e.target.value)} />
+      <ExpensiveTree />   {/* 每次 color 变化都渲染！ */}
+    </div>
+  )
+}
+
+// ✅ 把不变的内容通过 children 传入
+function ColorPicker({ children }: { children: React.ReactNode }) {
+  const [color, setColor] = useState('red')
+  return (
+    <div style={{ background: color }}>
+      <input value={color} onChange={e => setColor(e.target.value)} />
+      {children}          {/* children 引用不变 → 不重新渲染 ✅ */}
+    </div>
+  )
+}
+
+// 使用
+<ColorPicker>
+  <ExpensiveTree />
+</ColorPicker>
+```
+
+```
 3. React.memo
    → 包裹纯展示组件
    → 配合 useCallback / useMemo 稳定 props

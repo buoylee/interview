@@ -496,9 +496,10 @@ function SearchBox() {
 function useToggle(initialValue = false) {
   const [value, setValue] = useState(initialValue)
 
-  const toggle = useCallback(() => setValue(v => !v), [])
-  const setTrue = useCallback(() => setValue(true), [])
-  const setFalse = useCallback(() => setValue(false), [])
+  // 这里用普通函数即可，阶段 7 学完 useCallback 后可以优化
+  const toggle = () => setValue(v => !v)
+  const setTrue = () => setValue(true)
+  const setFalse = () => setValue(false)
 
   return { value, toggle, setTrue, setFalse }
 }
