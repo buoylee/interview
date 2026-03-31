@@ -288,10 +288,36 @@ function Timer() {
 }
 ```
 
-### 3.7 useEffect 不是 Vue 的 watch
+### 3.7 useEffect 和 Vue 的 watch：像但不同
 
 ```
-这是从 Vue 转 React 最容易犯的概念错误：
+从行为上看，useEffect 和 Vue 的 watch 确实有相似之处：
+  Vue watch:     依赖值变了 → 执行回调
+  useEffect:     依赖值变了 → 执行回调
+  → 都是"依赖变化触发回调"
+
+但它们的设计意图和触发机制不同：
+
+  Vue watch：
+    → 意图："监听这个值，变了就做点事"
+    → 时机：值变的那一刻（同步/nextTick）
+    → 可以独立于渲染存在
+
+  useEffect：
+    → 意图："渲染完之后，和外部系统同步"
+    → 时机：渲染完成之后（异步，浏览器绘制之后）
+    → 是渲染的"后续动作"，不是独立的监听器
+
+  例子：userId 变了，重新请求用户数据
+    Vue 心智：watch(userId, () => fetchUser(userId))
+      → "我在监听 userId，它变了就请求"
+    React 心智：useEffect(() => fetchUser(userId), [userId])
+      → "渲染完了，需要和服务器同步用户数据"
+      → userId 变 → 组件重新渲染 → 渲染完 → effect 执行
+      → 中间多了"重新渲染"这一步
+
+⭐ 关键区别带来的实际影响：
+  不要把 useEffect 当 watch 来"监听 state 然后 setState"：
 
   ❌ 把 useEffect 当 watch 用：
   useEffect(() => {
@@ -300,6 +326,11 @@ function Timer() {
 
   ✅ 直接在函数体里计算（它就是一个 JS 函数！）：
   const fullName = firstName + ' ' + lastName
+
+总结：
+  useEffect 能起到类似 watch 的效果 → 对
+  useEffect 的设计意图就是 watch → 错
+  把它想成"渲染后的同步钩子，恰好支持按依赖跳过"更精确
 
   useEffect 应该用于什么？
     → 和"外部世界"同步：API 请求、DOM 操作、订阅、日志...
