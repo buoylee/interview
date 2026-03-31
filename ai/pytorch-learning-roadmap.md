@@ -2,6 +2,33 @@
 
 > **前提**：你已经理解了 ML 基础概念（梯度下降、损失函数、反向传播），现在需要学会用 PyTorch 把这些概念写成代码。
 
+## 📂 详细文档索引
+
+> 每个阶段都有独立的详细文档，包含完整代码、练习和预期输出。
+> 本文件保留**速查概览**，深入学习请看对应文档。
+
+| 阶段 | 主题 | 详细文档 | 预计时间 |
+|:---:|------|---------|:-------:|
+| 1 | 张量操作 | [01-tensors.md](pytorch-learning/01-tensors.md) | 2-3 天 |
+| 2 | 自动求导 | [02-autograd.md](pytorch-learning/02-autograd.md) | 1-2 天 |
+| 3 | 构建神经网络 | [03-neural-networks.md](pytorch-learning/03-neural-networks.md) | 2-3 天 |
+| 4 | 数据处理 | [04-data-processing.md](pytorch-learning/04-data-processing.md) | 1-2 天 |
+| 5 | 训练循环 ⭐ | [05-training-loop.md](pytorch-learning/05-training-loop.md) | 3-4 天 |
+| 6 | 预训练模型与迁移学习 | [06-pretrained-transfer.md](pytorch-learning/06-pretrained-transfer.md) | 2-3 天 |
+| 7 | 实战项目 | [07-projects.md](pytorch-learning/07-projects.md) | 3-5 天 |
+
+## 🗺️ 和整体 AI 学习路线的衔接
+
+```
+ml-to-llm-roadmap 进度          建议同步开始的 PyTorch 阶段
+─────────────────────          ─────────────────────────
+00-math-foundations ✅          （不需要 PyTorch）
+01-ml-basics                →  阶段 1-3（张量 + 自动求导 + 搭网络）
+02-deep-learning             →  阶段 4-5（数据处理 + 训练循环）
+04-transformer-architecture  →  阶段 6（预训练模型）
+06-llm-core (fine-tuning)    →  阶段 7 项目 3（手写 LoRA 微调）
+```
+
 ---
 
 ## 学习路线概览
