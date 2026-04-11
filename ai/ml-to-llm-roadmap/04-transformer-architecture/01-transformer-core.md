@@ -134,9 +134,9 @@ token 1 的输出 = 0.45×V₁ + 0.10×V₂ + 0.25×V₃ + 0.20×V₄
 
 ```
 X ─→ [×W_Q] ─→ Q ─┐
-                    ├─→ Q×K^T ─→ /√d_k ─→ softmax ─→ weights
+                  ├─→ Q×K^T ─→ /√d_k ─→ softmax ─→ weights
 X ─→ [×W_K] ─→ K ─┘                                    │
-                                                         ├─→ output
+                                                       ├─→ output
 X ─→ [×W_V] ─→ V ──────────────────────────────────────┘
 ```
 
