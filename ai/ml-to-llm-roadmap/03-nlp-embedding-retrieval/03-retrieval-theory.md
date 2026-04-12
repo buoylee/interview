@@ -4,6 +4,25 @@
 
 ---
 
+## 工程师导读
+
+> **面试优先级：⭐⭐⭐** — RAG 系统设计面试的核心
+>
+> **为什么 LLM 工程师要懂检索理论？**
+> - 面试最常见的系统设计题之一就是"设计一个 RAG 系统"
+> - HNSW 原理是面试高频题
+> - "BM25 和向量检索的区别""为什么要 Hybrid Search" — 几乎每场面试都问
+>
+> **本节核心要点**：
+> 1. BM25 = 关键词匹配（精确但不懂语义） vs Dense = 语义匹配（懂语义但可能漏关键词）
+> 2. HNSW = 多层图搜索（顶层粗搜 → 底层精搜），最常用的 ANN 算法
+> 3. 两阶段检索 = Bi-Encoder 初筛 top-100 → Cross-Encoder 精排 top-10
+> 4. Hybrid Search = BM25 + Dense，用 RRF 融合排名
+>
+> **先修**：[02-Embedding 理论](./02-embedding-theory.md)
+
+---
+
 ## 目录
 
 - [1. 稀疏检索 BM25](#1-稀疏检索-bm25)
@@ -327,7 +346,11 @@ rank_i(d) = 文档 d 在第 i 个检索系统中的排名
 ## 📖 推荐学习路径
 
 1. **重点理解**：BM25 vs Dense → Hybrid Search → Reranking 的完整流程
-2. **HNSW 原理**是面试常问
+2. **HNSW 原理**是面试常问，要能讲清"多层图 + 贪婪搜索 + 逐层细化"
 3. 检索评估指标至少知道 Recall@K 和 MRR
+
+## ⏭️ 下一节预告
+
+检索是 RAG 的"输入端"，下一节讲 LLM 的"输出端" — **语言模型如何生成文本**。你会理解自回归模型的工作原理，以及 Temperature、Top-p 这些你每天都在用的参数到底在做什么。
 
 > ⬅️ [上一节：Embedding 深度理论](./02-embedding-theory.md) | [返回概览](./README.md) | ➡️ [下一节：语言模型 & 解码](./04-language-model-decoding.md)

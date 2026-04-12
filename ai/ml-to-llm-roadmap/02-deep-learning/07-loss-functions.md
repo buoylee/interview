@@ -1,6 +1,27 @@
-# 2.7 损失函数（补充）⭐⭐⭐
+# 2.7 损失函数 ⭐⭐⭐
 
-> **一句话定位**：Softmax → Cross-Entropy → NLL Loss 是理解 LLM 训练目标的核心链条。之前各阶段零散提及，这里完整串起来。
+> **一句话定位**：Softmax → Cross-Entropy → NLL Loss 是理解 LLM 训练目标的核心链条。搞懂这些就理解了"LLM 预训练到底在优化什么"。
+
+---
+
+## 工程师导读
+
+> **面试优先级：⭐⭐⭐**
+>
+> **为什么 LLM 工程师要懂损失函数？**
+> - 面试问"LLM 的训练目标是什么" → 答案就是交叉熵（最大化预测正确 token 的概率）
+> - Temperature 怎么影响生成 → 本质是修改 Softmax 之前的 logits
+> - Perplexity（模型评估指标） → 就是交叉熵的指数
+> - RLHF 中的 KL 散度、DPO 的损失 → 都是交叉熵的变体
+>
+> **一句话总结 LLM 训练目标**：
+> ```
+> 给定 "今天天气"，模型输出 5 万个词的概率分布
+> 正确答案是 "真" → 训练目标 = 让 P("真") 尽量大
+> 损失函数 = -log P("真") → P("真") 越大，损失越小
+> ```
+>
+> **先修**：[01-神经网络基础](./01-neural-network-basics.md)（知道 Softmax 把分数变概率）
 
 ---
 
@@ -215,10 +236,14 @@ LLM 预训练时每一步：
 
 ## 📖 推荐学习路径
 
-本文串联了以下知识：
+本文串联了以下知识（按需回顾）：
 - **阶段 0** [信息论](../00-math-foundations/04-information-theory.md)：熵、交叉熵、KL 散度的数学定义
 - **阶段 2** [优化器](./02-optimizers-training.md)：梯度下降如何用 loss 更新参数
 - **阶段 3** [解码策略](../03-nlp-embedding-retrieval/04-language-model-decoding.md)：Temperature/Top-p 如何影响 softmax
 - **阶段 6** [训练流程](../06-llm-core/01-training-pipeline.md)：预训练的 CLM loss
 
-> ⬅️ [上一节：其他架构](./06-other-architectures.md) | [返回概览](./README.md)
+## ⏭️ 下一阶段预告
+
+恭喜你完成阶段 2！你现在已经理解了深度学习的核心零件。下一阶段（阶段 3）进入 **NLP 特定知识** — 文本如何变成向量、如何用向量检索、LLM 如何生成文本。这些是离你日常工作最近的理论，也是面试最常问的。
+
+> ⬅️ [上一节：对比学习 & 其他范式](./06-other-architectures.md) | [返回概览](./README.md) | ➡️ [下一阶段：NLP + Embedding & 检索理论](../03-nlp-embedding-retrieval/)

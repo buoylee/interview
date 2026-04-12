@@ -4,6 +4,24 @@
 
 ---
 
+## 工程师导读
+
+> **面试优先级：⭐⭐** — Agent 开发岗位的加分项
+>
+> **为什么 LLM 工程师要懂这些？**
+> - 你每天用 Function Calling 和 JSON Mode — 这里讲它们背后的原理
+> - 面试区分度话题："JSON Mode 底层是怎么实现的？" — 大部分候选人答不好
+> - 理解 Logit Processor 统一框架能帮你理解推理引擎（vLLM）的工作方式
+>
+> **本节核心要点**：
+> 1. JSON Mode = Constrained Decoding = 每步只允许选"合法"的 token
+> 2. Function Calling = 通过 SFT 数据教会模型输出结构化工具调用
+> 3. Temperature/Top-p/重复惩罚 都是 Logit Processor — 统一框架处理 logits
+>
+> **先修**：[04-语言模型 & 解码](./04-language-model-decoding.md)
+
+---
+
 ## 目录
 
 - [1. 为什么需要受控生成](#1-为什么需要受控生成)
@@ -279,4 +297,8 @@ for processor in logit_processors:
 2. Function Calling 的 SFT 数据格式是面试区分度话题
 3. 对 Logit Processor 统一框架有全局理解
 
-> ⬅️ [上一节：语言模型 & 解码](./04-language-model-decoding.md) | [返回概览](./README.md) | ➡️ [下一阶段：Transformer + 非 Transformer 架构](../04-transformer-architecture/)
+## ⏭️ 下一节预告
+
+本阶段最后一节：**Tokenization 算法深度解析**。BPE 是面试常问的算法题，经常要求你讲清楚训练和推理的完整流程。同时 Tokenization 直接影响 LLM 的多语言能力和成本 — 知道为什么中文比英文贵吗？答案就在分词。
+
+> ⬅️ [上一节：语言模型 & 解码](./04-language-model-decoding.md) | [返回概览](./README.md) | ➡️ [下一节：Tokenization 算法](./06-tokenization-deep-dive.md)

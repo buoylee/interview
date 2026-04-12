@@ -6,17 +6,34 @@
 
 ---
 
+## 🗺️ 学习路径指南
+
+> **给赶时间的你**：如果面试在即，按 ⭐ 数量优先学习。标注 ⭐⭐⭐ 的是面试必考，⭐ 的可以最后看或跳过。
+
+```
+快速路径（3-5 天）：
+  01 神经网络基础 → 重点看激活函数、BN vs LN、Residual Connection
+  02 优化器       → 记住 AdamW + Warmup + Cosine Decay
+  05 RNN→Attention → 理解演进动机，衔接 Transformer
+  07 损失函数     → 搞清 Softmax→CE→NLL 链条
+
+深入路径（2 周完整）：
+  按顺序 01 → 07 全部学完
+```
+
+---
+
 ## 📂 本阶段内容
 
-| 文件 | 主题 | 预计时间 | 后续关联 |
-|------|------|---------|---------|
-| [01-neural-network-basics.md](./01-neural-network-basics.md) | 神经网络基础 | Day 1-4 | 所有深度学习的基石 |
-| [02-optimizers-training.md](./02-optimizers-training.md) | 优化器 & 训练技巧 | Day 5-6 | LLM 训练配置 |
-| [03-transfer-learning.md](./03-transfer-learning.md) | 迁移学习 & 灾难性遗忘 | Day 7 | 预训练+微调范式、LoRA 动机 |
-| [04-cnn.md](./04-cnn.md) | CNN 卷积神经网络 | Day 8-9 | Residual Connection → Transformer |
-| [05-rnn-lstm-attention.md](./05-rnn-lstm-attention.md) | RNN → LSTM → Attention | Day 10-12 | ⭐ **通向 Transformer 的关键过渡** |
-| [06-other-architectures.md](./06-other-architectures.md) | 其他架构 | Day 13-14 | VAE、GAN、对比学习 → CLIP |
-| [07-loss-functions.md](./07-loss-functions.md) | **损失函数（补充）** | 随时参考 | ⭐ Softmax→CE→NLL 完整链条 |
+| 文件 | 主题 | 面试优先级 | 核心收获 |
+|------|------|-----------|---------|
+| [01-neural-network-basics.md](./01-neural-network-basics.md) | 神经网络基础 | ⭐⭐⭐ | 激活函数、BN vs LN、Residual Connection |
+| [02-optimizers-training.md](./02-optimizers-training.md) | 优化器 & 训练技巧 | ⭐⭐ | AdamW、混合精度、梯度累积 |
+| [03-transfer-learning.md](./03-transfer-learning.md) | 迁移学习 & 灾难性遗忘 | ⭐⭐ | 预训练+微调范式、LoRA 的动机 |
+| [04-cnn.md](./04-cnn.md) | CNN & Residual Connection | ⭐ | **只需掌握 Residual Connection** |
+| [05-rnn-lstm-attention.md](./05-rnn-lstm-attention.md) | RNN → LSTM → Attention | ⭐⭐⭐ | 通向 Transformer 的关键过渡 |
+| [06-other-architectures.md](./06-other-architectures.md) | 对比学习 & 其他范式 | ⭐⭐ | 对比学习 → CLIP、Embedding 的理论根基 |
+| [07-loss-functions.md](./07-loss-functions.md) | 损失函数 | ⭐⭐⭐ | Softmax → CE → NLL，LLM 训练目标 |
 
 ---
 
@@ -33,11 +50,13 @@ LSTM：能记住长距离，但不能并行
 Attention：能并行 + 捕捉任意距离 → Transformer！
 ```
 
+> **工程师视角**：你不需要能从头实现 CNN 或 LSTM。你需要理解的是：**为什么 Transformer 会取代它们**，以及 Transformer 从它们继承了什么（Residual Connection、门控机制、Attention 思想）。
+
 ## 📖 推荐资源
 
 | 资源 | 覆盖内容 | 特点 |
 |------|---------|------|
-| [3Blue1Brown《神经网络》](https://www.youtube.com/playlist?list=PLZHQObOWTQDNU6R1_67000Dx_ZCJB-3pi) | 神经网络 + 反向传播 | 最佳可视化 |
+| [3Blue1Brown《神经网络》](https://www.youtube.com/playlist?list=PLZHQObOWTQDNU6R1_67000Dx_ZCJB-3pi) | 神经网络 + 反向传播 | 最佳可视化，先看这个建立直觉 |
 | 李宏毅机器学习 (B站) | DL 全覆盖 | 中文、系统 |
 | [d2l.ai](https://d2l.ai/) | CNN/RNN/Attention 代码 | 理论+实践 |
 

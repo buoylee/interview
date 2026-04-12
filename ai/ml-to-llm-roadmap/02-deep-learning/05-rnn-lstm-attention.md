@@ -4,6 +4,30 @@
 
 ---
 
+## 工程师导读
+
+> **面试优先级：⭐⭐⭐** — 本阶段最重要的一节
+>
+> **为什么 LLM 工程师要懂这些？**
+> - 面试经典题："为什么 Transformer 取代了 LSTM？" — 不理解 LSTM 的问题就答不好这题
+> - Attention 的 Q/K/V 思想直接来自这里 — 是阶段 4 Transformer 的前置知识
+> - 理解这条演进线展现系统性思维，面试官会加分
+>
+> **本节核心故事线**（记住这条线就够了）：
+> ```
+> RNN → 能处理序列了，但记不住长距离、不能并行
+>   ↓ 加门控机制
+> LSTM → 能记住长距离了，但还是不能并行
+>   ↓ 加注意力，让解码器能"回头看"
+> Attention → 解决了信息瓶颈，但还依赖 RNN
+>   ↓ 发现 Attention 本身就够了
+> Self-Attention → 完全去掉 RNN，全部并行 → Transformer！
+> ```
+>
+> **先修**：[01-神经网络基础](./01-neural-network-basics.md)（知道梯度消失）
+
+---
+
 ## 目录
 
 - [1. RNN 循环神经网络](#1-rnn-循环神经网络)
@@ -385,5 +409,10 @@ Transformer (2017) "Attention is All You Need"
 1. 理解 RNN → LSTM → Attention 的**演进动机**（每一步解决了什么问题）
 2. **重点掌握 Attention 的 Q/K/V 直觉** → 直接衔接下一阶段的 Transformer
 3. 不需要手推 LSTM 的所有公式，理解「三个门控制什么」即可
+4. GRU 了解它是 LSTM 的简化版就够了
 
-> ⬅️ [上一节：CNN](./04-cnn.md) | [返回概览](./README.md) | ➡️ [下一节：其他架构](./06-other-architectures.md)
+## ⏭️ 下一节预告
+
+下一节讲几种"其他"的深度学习范式，其中**对比学习是重点** — 它是 CLIP（多模态）和所有 Embedding 模型（RAG 用的那些）的训练方法。Autoencoder 和 GAN 了解思想即可。
+
+> ⬅️ [上一节：CNN](./04-cnn.md) | [返回概览](./README.md) | ➡️ [下一节：对比学习 & 其他范式](./06-other-architectures.md)

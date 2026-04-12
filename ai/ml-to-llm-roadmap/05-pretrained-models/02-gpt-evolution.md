@@ -4,6 +4,26 @@
 
 ---
 
+## 工程师导读
+
+> **面试优先级：⭐⭐⭐**
+>
+> **为什么 LLM 工程师要懂 GPT 演进？**
+> - 面试常问："GPT-1/2/3 每代的关键突破是什么？"
+> - "什么是 In-Context Learning？" — 理解这个概念是理解 Prompt Engineering 的基础
+> - 展现你对 LLM 发展历史的系统性理解
+>
+> **一句话记忆 GPT 演进**：
+> ```
+> GPT-1 (117M)  → "预训练+微调"有效！但需要每个任务单独微调
+> GPT-2 (1.5B)  → 不微调也能做任务了！(Zero-shot) → 规模带来涌现
+> GPT-3 (175B)  → 给几个例子就能学会新任务 (In-Context Learning) → 改变范式
+> ```
+>
+> **先修**：[01-BERT 家族](./01-bert-family.md) + [阶段 4 / 02-三种范式](../04-transformer-architecture/02-architecture-paradigms.md)
+
+---
+
 ## 目录
 
 - [1. GPT-1：预训练+微调](#1-gpt-1预训练微调)
@@ -227,5 +247,9 @@ ChatGPT 时代（阶段6）：预训练 → SFT → RLHF → 做任务
 **答**：从 117M 到 175B，增大约 1500 倍。最大变化是能力的质变：GPT-1 需要微调，GPT-2 出现 Zero-shot，GPT-3 出现 In-Context Learning。这就是后来 Scaling Law 和涌现能力的早期证据。
 
 ---
+
+## ⏭️ 下一节预告
+
+最后一节讲几个改变游戏规则的 **里程碑模型**：T5 统一了任务格式、CLIP 开启了多模态、以及 NLP 四次范式转换的完整故事。学完这一节，你就有了从特征工程到 ChatGPT 的完整时间线。
 
 > ⬅️ [上一节：BERT 家族](./01-bert-family.md) | [返回概览](./README.md) | ➡️ [下一节：里程碑 & 范式转换](./03-milestones.md)

@@ -4,6 +4,26 @@
 
 ---
 
+## 工程师导读
+
+> **面试优先级：⭐⭐⭐**
+>
+> **为什么 LLM 工程师要懂这些？**
+> - 面试必问：激活函数（ReLU vs GELU vs SwiGLU）、BN vs LN、Residual Connection
+> - 这些不是"过时的基础知识"，它们就是 Transformer 内部的零件
+> - 理解这些能帮你 debug 训练问题（loss 不降、梯度爆炸等）
+>
+> **本节只需要记住这些**：
+> 1. 激活函数：ReLU（经典）→ GELU（BERT）→ SwiGLU（现代 LLM），记住各自用在哪
+> 2. BN vs LN：Transformer 用 LN，因为不依赖 batch，能背出 3 个原因
+> 3. Residual Connection：`y = F(x) + x`，让深层网络能训练，Transformer 每层都有
+> 4. 反向传播：不需要手推，知道 PyTorch 自动完成就行
+> 5. 权重初始化：Xavier 和 He，知道名字和适用场景
+>
+> **看不懂公式怎么办？** 每个公式下面都有"直觉"解释，看懂直觉就够面试用了。公式是给想深入理解的人准备的。
+
+---
+
 ## 目录
 
 - [1. 神经元](#1-神经元)
@@ -393,8 +413,12 @@ y = F(x) + x   (输出 = 变换 + 原始输入)
 
 ## 📖 推荐学习路径
 
-1. **3Blue1Brown《神经网络》**（4 集，约 1 小时）→ 直觉理解
-2. 重点掌握：激活函数（ReLU vs GELU）、梯度消失解决方案、BN vs LN
+1. **3Blue1Brown《神经网络》**（4 集，约 1 小时）→ 直觉理解，强烈推荐先看这个
+2. 重点掌握：激活函数（ReLU vs GELU vs SwiGLU）、BN vs LN 的区别、Residual Connection
 3. 理解 Residual Connection → 这是 Transformer 最重要的组件之一
+
+## ⏭️ 下一节预告
+
+学完神经网络的"零件"之后，下一节讲的是**怎么训练**——优化器决定参数怎么更新，训练技巧决定怎么更高效地训练。你会学到 LLM 训练的标配组合：AdamW + Warmup + Cosine Decay + BF16。
 
 > ⬅️ [返回阶段概览](./README.md) | ➡️ [下一节：优化器 & 训练技巧](./02-optimizers-training.md)

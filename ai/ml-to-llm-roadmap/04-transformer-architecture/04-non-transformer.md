@@ -4,6 +4,25 @@
 
 ---
 
+## 工程师导读
+
+> **面试优先级：⭐** — 加分项，不是必考
+>
+> **为什么 LLM 工程师要了解这些？**
+> - 面试区分度：大部分候选人只知道 Transformer，能讲 Mamba 的设计思路是加分项
+> - 帮你理解行业趋势 — 混合架构（Mamba + Attention）可能是未来方向
+> - DeepSeek 等中国大模型在这方面有创新（MLA、混合架构）
+>
+> **速读要点**（不需要深入，知道这些就够面试用了）：
+> 1. Transformer 的核心问题 = O(n^2) 复杂度 + KV-Cache 线性增长
+> 2. Mamba/SSM = 用固定大小的状态替代 KV-Cache → O(1) per step 推理
+> 3. Mamba 的关键创新 = 选择性扫描（根据输入决定记住什么、忘记什么）
+> 4. 混合架构（Jamba）= Mamba 负责高效处理 + 少量 Attention 负责精确回忆
+>
+> **先修**：[01-Transformer 核心](./01-transformer-core.md)
+
+---
+
 ## 目录
 
 - [1. Transformer 的核心问题](#1-transformer-的核心问题)
@@ -284,8 +303,12 @@ RWKV            ✅       O(1)          理论无限    ⭐⭐
 ## 📖 推荐学习路径
 
 1. **重点理解** Mamba 的选择性扫描思想和复杂度优势
-2. 知道 Transformer vs SSM 的核心权衡
+2. 知道 Transformer vs SSM 的核心权衡（精确回忆 vs 效率）
 3. 了解混合架构的趋势
 4. 推荐资源：Mamba 论文 + Albert Gu 的讲座视频
+
+## ⏭️ 下一阶段预告
+
+恭喜你完成阶段 4！你现在已经深入理解了 Transformer 和它的替代方案。下一阶段进入 **预训练语言模型时代** — BERT 家族、GPT 演进、CLIP 和 T5。这是了解大模型"家谱"的阶段，帮你理解从 BERT 到 ChatGPT 之间发生了什么。
 
 > ⬅️ [上一节：Attention 变体](./03-attention-variants.md) | [返回概览](./README.md) | ➡️ [下一阶段：预训练语言模型](../05-pretrained-models/)

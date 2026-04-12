@@ -4,6 +4,36 @@
 
 ---
 
+## 工程师导读
+
+> **面试优先级：⭐⭐⭐⭐⭐** — 如果这一阶段只能学一个文件，学这个
+>
+> **为什么这是最重要的一节？**
+> - "从头讲一遍 Self-Attention" — 几乎每场 LLM 面试都会问
+> - "为什么除以 √d_k" — Top 3 高频面试题
+> - "RoPE 是什么" — 现代 LLM 标配，面试常问
+> - 你用的每个大模型（GPT-4、Claude、LLaMA）核心都是这里讲的东西
+>
+> **本节核心要点（面试必背）**：
+> 1. Self-Attention = softmax(QK^T / √d_k) × V
+> 2. Q = "我需要什么"，K = "我有什么"，V = "我的内容" → 动态路由
+> 3. 除以 √d_k → 防止点积过大导致 softmax 饱和（梯度消失）
+> 4. Multi-Head → 不同头学不同类型的关系（语法、语义、指代等）
+> 5. RoPE → 旋转位置编码，编码相对位置，现代 LLM 标配
+> 6. FFN = 每个 token 独自"思考消化"（Attention 是"讨论交流"）
+> 7. Pre-Norm + RMSNorm + Residual = 现代 LLM 的标配组合
+>
+> **工程师类比**：把 Transformer 想象成一个团队会议
+> - **Attention** = 大家讨论，每个人根据自己的需求从别人那里获取信息
+> - **FFN** = 讨论完了各自回去思考消化
+> - **Residual** = 保留讨论前的想法（不会因为讨论就忘了自己原来想什么）
+> - **LayerNorm** = 确保每个人的音量差不多（数值稳定）
+> - 重复 N 次 = N 轮会议，每轮讨论得更深入
+>
+> **先修**：[阶段 2 / 05-RNN→LSTM→Attention](../02-deep-learning/05-rnn-lstm-attention.md)（知道 Attention 的 Q/K/V 思想）
+
+---
+
 ## 目录
 
 - [1. Transformer 全景架构](#1-transformer-全景架构)
@@ -431,8 +461,12 @@ def transformer_block(x):
 
 ## 📖 推荐学习路径
 
-1. **必看 [Illustrated Transformer](https://jalammar.github.io/illustrated-transformer/)**
-2. 能在白板上画出完整的 Attention 计算流程
-3. 确保能解释每个设计决策的原因
+1. **必看 [Illustrated Transformer](https://jalammar.github.io/illustrated-transformer/)** — 最好的可视化讲解
+2. 练习在纸上画出完整的 Attention 计算流程（Step 1-5），这是面试白板题
+3. 确保能解释每个设计决策的原因（为什么 Q/K/V？为什么 √d_k？为什么多头？）
+
+## ⏭️ 下一节预告
+
+Transformer 有三种使用方式：Encoder-only（BERT）、Decoder-only（GPT）、Encoder-Decoder（T5）。为什么最终 **Decoder-only 成了绝对主流**？下一节给出答案。
 
 > ⬅️ [返回阶段概览](./README.md) | ➡️ [下一节：三种架构范式](./02-architecture-paradigms.md)

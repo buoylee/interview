@@ -9,16 +9,32 @@
 
 ---
 
+## 🗺️ 学习路径指南
+
+```
+快速路径（4-5 天）：
+  01 文本表示     → 理解演进脉络即可，不需要记公式
+  02 Embedding   → ⭐ 重点！RAG 面试必考
+  03 检索理论     → ⭐ 重点！BM25 vs Dense + HNSW
+  04 语言模型     → 理解 AR vs AE + 解码策略
+  06 Tokenization → BPE 面试常问，要会讲流程
+
+深入路径（1.5 周完整）：
+  按顺序全部学完，05 受控生成是加分项
+```
+
+---
+
 ## 📂 本阶段内容
 
-| 文件 | 主题 | 预计时间 | 后续关联 |
-|------|------|---------|---------|
-| [01-text-representation.md](./01-text-representation.md) | 文本表示演进 | Day 1-2 | 从 One-Hot 到 BERT 的完整脉络 |
-| [02-embedding-theory.md](./02-embedding-theory.md) | Embedding 深度理论 | Day 3-4 | ⭐ RAG 的 Embedding 底层原理 |
-| [03-retrieval-theory.md](./03-retrieval-theory.md) | 检索理论 | Day 5-6 | ⭐ RAG 的检索底层原理 |
-| [04-language-model-decoding.md](./04-language-model-decoding.md) | 语言模型 & 解码 | Day 7-8 | LLM 生成机制 |
-| [05-controlled-generation.md](./05-controlled-generation.md) | 受控生成 & 结构化输出 | Day 9-10 | Function Calling、JSON Mode |
-| [06-tokenization-deep-dive.md](./06-tokenization-deep-dive.md) | Tokenization 算法深度解析 | Day 11 | ⭐ BPE/WordPiece/Unigram 面试核心 |
+| 文件 | 主题 | 面试优先级 | 核心收获 |
+|------|------|-----------|---------|
+| [01-text-representation.md](./01-text-representation.md) | 文本表示演进 | ⭐⭐ | One-Hot → Word2Vec → BERT 的脉络 |
+| [02-embedding-theory.md](./02-embedding-theory.md) | Embedding 深度理论 | ⭐⭐⭐ | RAG 的 Embedding 底层原理 |
+| [03-retrieval-theory.md](./03-retrieval-theory.md) | 检索理论 | ⭐⭐⭐ | BM25、HNSW、Hybrid Search |
+| [04-language-model-decoding.md](./04-language-model-decoding.md) | 语言模型 & 解码 | ⭐⭐⭐ | AR vs AE、Top-p/Temperature |
+| [05-controlled-generation.md](./05-controlled-generation.md) | 受控生成 & 结构化输出 | ⭐⭐ | JSON Mode、Function Calling |
+| [06-tokenization-deep-dive.md](./06-tokenization-deep-dive.md) | Tokenization 算法 | ⭐⭐⭐ | BPE 面试核心，常要求讲流程 |
 
 ---
 
@@ -33,17 +49,16 @@ Embedding 如何训练？
   Word2Vec(Skip-gram) → 对比学习(InfoNCE) → Sentence-BERT
 
 如何用 Embedding 检索？
-  BM25(稀疏) + Dense Retrieval(稠密) → Hybrid Search
+  BM25(稀疏) + Dense Retrieval(稠密) → Hybrid Search → Reranking
 
 如何生成文本？
   自回归 P(next|context) → Greedy/Beam/Top-k/Top-p/Temperature
 
 如何控制输出？
   Prompt约束 → 解码约束(Constrained Decoding) → 微调约束(Function Calling)
-
-Tokenization 算法？
-  BPE(频率合并) / WordPiece(似然合并) / Unigram(删减) / Byte-level BPE(字节级)
 ```
+
+> **工程师视角**：这一阶段是离你日常工作最近的理论。你调 Embedding 模型、选向量数据库、调 Temperature 参数、用 Function Calling — 这里讲的就是这些东西背后的原理。面试官最爱问的也是这些。
 
 ## 📖 推荐资源
 

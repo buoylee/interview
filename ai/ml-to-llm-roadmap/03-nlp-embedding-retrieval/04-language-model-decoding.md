@@ -4,6 +4,25 @@
 
 ---
 
+## 工程师导读
+
+> **面试优先级：⭐⭐⭐**
+>
+> **为什么 LLM 工程师要懂这些？**
+> - 你每天都在用 Temperature 和 Top-p — 这里讲它们到底在做什么
+> - 面试必问："自回归和自编码的区别？为什么大模型用自回归？"
+> - 理解 Causal Mask 是理解 Transformer Decoder 的前置知识
+>
+> **本节核心要点**：
+> 1. 自回归（GPT）= 从左到右逐个预测 → 生成的主流范式
+> 2. 自编码（BERT）= 完形填空 → 用于理解任务（Embedding、分类）
+> 3. Temperature 低 = 更确定（代码/数学），Temperature 高 = 更随机（创意写作）
+> 4. Top-p 比 Top-k 好 → 因为 Top-p 能自动适应不同位置的确定性
+>
+> **先修**：[阶段 2 / 07-损失函数](../02-deep-learning/07-loss-functions.md)（知道 Softmax 和交叉熵）
+
+---
+
 ## 目录
 
 - [1. 语言模型的两种范式](#1-语言模型的两种范式)
@@ -316,7 +335,11 @@ ChatGPT: temperature + top_p（二选一调节）
 ## 📖 推荐学习路径
 
 1. 理解 AR vs AE 的区别 → 为什么 GPT 赢了
-2. **重点掌握解码策略**（Top-k/Top-p/Temperature）→ 直接影响 LLM 使用
-3. Perplexity 理解直觉即可
+2. **重点掌握解码策略**（Top-k/Top-p/Temperature）→ 你每天都在用这些参数
+3. Perplexity 理解直觉即可（"模型在多少个词之间犹豫"）
+
+## ⏭️ 下一节预告
+
+语言模型能自由生成文本了，但我们经常需要它**按特定格式输出**（JSON、函数调用）。下一节讲 **受控生成** — JSON Mode 底层是什么？Function Calling 怎么训练的？这些是你在 Agent 开发中天天使用的功能。
 
 > ⬅️ [上一节：检索理论](./03-retrieval-theory.md) | [返回概览](./README.md) | ➡️ [下一节：受控生成 & 结构化输出](./05-controlled-generation.md)

@@ -4,6 +4,27 @@
 
 ---
 
+## 工程师导读
+
+> **面试优先级：⭐⭐**
+>
+> **BERT 在 2024+ 还有用吗？**
+> BERT 不能聊天，但在以下场景仍然是最佳选择：
+> - Embedding 模型（BGE、E5 都基于 BERT 架构）
+> - 分类/NER 任务
+> - Cross-Encoder Reranker
+> - 小规模高效部署
+>
+> **本节核心要点**：
+> 1. BERT 的 MLM 训练：15% token 被遮掩（80% [MASK] + 10% 随机 + 10% 不变）
+> 2. RoBERTa 的核心发现："BERT 没训练够" → Scaling 的早期信号
+> 3. DeBERTa = 效果最好的 BERT 变体（解耦注意力）
+> 4. 知识蒸馏（DistilBERT）= 大模型教小模型 → 理解蒸馏思想
+>
+> **先修**：[阶段 4 / 02-三种架构范式](../04-transformer-architecture/02-architecture-paradigms.md)
+
+---
+
 ## 目录
 
 - [1. BERT 原版](#1-bert-原版)
@@ -246,5 +267,9 @@ BERT 家族不做大模型对话 → 但在以下场景仍然是最佳选择：
 **答**：用大模型（教师）的 soft label 指导小模型（学生）学习。高温 softmax 的输出包含类间关系信息（比 one-hot 更丰富）。DistilBERT 用 BERT(12层) 蒸馏为 6 层，保留 97% 效果。
 
 ---
+
+## ⏭️ 下一节预告
+
+BERT 是"理解"这条路的代表。下一节讲"生成"这条路的代表 — **GPT 的演进**。从 GPT-1（需要微调）到 GPT-3（只要写 prompt），参数量增大 1500 倍带来了质的飞跃。这个故事是理解 Scaling Law 和 ChatGPT 的基础。
 
 > ⬅️ [返回阶段概览](./README.md) | ➡️ [下一节：GPT 演进](./02-gpt-evolution.md)

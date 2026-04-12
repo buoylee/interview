@@ -4,6 +4,25 @@
 
 ---
 
+## 工程师导读
+
+> **面试优先级：⭐⭐⭐** — 做 RAG 的工程师必须会
+>
+> **为什么 LLM 工程师要深入懂 Embedding？**
+> - 你选 Embedding 模型（BGE vs E5 vs OpenAI）需要理解它们的差异
+> - 你决定是否微调 Embedding 需要理解训练原理
+> - 面试高频题："Embedding 模型是怎么训练的？""Bi-Encoder 和 Cross-Encoder 的区别？"
+>
+> **本节核心要点**：
+> 1. Embedding 模型 = BERT + 对比学习训练 → 输出句子级向量
+> 2. Bi-Encoder（快，用于初检） vs Cross-Encoder（准，用于重排）
+> 3. 余弦相似度 = 只比方向不比长度 → 不受文本长度影响
+> 4. 硬负样本质量 = Embedding 模型质量的关键
+>
+> **先修**：[01-文本表示](./01-text-representation.md) + [阶段 2 / 06-对比学习](../02-deep-learning/06-other-architectures.md)
+
+---
+
 ## 目录
 
 - [1. 从词向量到句子向量](#1-从词向量到句子向量)
@@ -311,5 +330,9 @@ OpenAI 的 text-embedding-3 系列支持此特性
 1. **重点理解**：对比学习训练 + 余弦相似度 + 硬负样本
 2. 知道主流模型的差异和选择原则
 3. Sentence-BERT 论文值得一读
+
+## ⏭️ 下一节预告
+
+有了 Embedding 之后，怎么用它检索？下一节讲 **检索理论** — BM25 怎么工作的、HNSW 为什么快、为什么要 Hybrid Search、为什么要两阶段检索。这些是 RAG 系统设计面试的核心话题。
 
 > ⬅️ [上一节：文本表示演进](./01-text-representation.md) | [返回概览](./README.md) | ➡️ [下一节：检索理论](./03-retrieval-theory.md)

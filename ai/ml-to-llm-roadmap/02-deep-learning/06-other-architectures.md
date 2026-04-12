@@ -1,6 +1,21 @@
-# 2.6 其他架构（Day 13-14）
+# 2.6 对比学习 & 其他范式（Day 13-14）
 
-> **一句话定位**：Autoencoder、GAN、对比学习是深度学习的三大生成/表示学习范式。对比学习是 CLIP 和 Embedding 模型的理论基础，必须掌握。
+> **一句话定位**：对比学习是 CLIP 和 Embedding 模型的理论基础，必须掌握。Autoencoder 和 GAN 了解思想即可。
+
+---
+
+## 工程师导读
+
+> **面试优先级：⭐⭐⭐（对比学习）/ ⭐（AE、GAN）**
+>
+> **为什么 LLM 工程师要懂对比学习？**
+> - 你用的每个 Embedding 模型（BGE、E5、text-embedding-3）都是对比学习训练的
+> - CLIP（多模态 LLM 的基础）就是图文对比学习
+> - 面试经常问："你用的 Embedding 模型是怎么训练的？" — 答案就是对比学习
+>
+> **速读建议**：如果时间紧，**直接跳到第 4 部分（对比学习）**，前面 AE/VAE/GAN 浏览 1 分钟了解概念即可。
+>
+> **先修**：[01-神经网络基础](./01-neural-network-basics.md)
 
 ---
 
@@ -289,9 +304,13 @@ sim = 余弦相似度
 
 ## 📖 推荐学习路径
 
-1. **重点掌握对比学习** → 理解 CLIP 和 Embedding 模型的原理
-2. VAE 理解 KL 约束的思想即可
+1. **重点掌握对比学习**（第 4 部分）→ 理解 CLIP 和 Embedding 模型的训练原理
+2. VAE 理解 KL 约束的思想即可（和 RLHF 中的 KL 约束同一个概念）
 3. GAN 了解对抗思想，不需要深入
 4. 推荐看 Lilian Weng 的 Contrastive Learning 博文
 
-> ⬅️ [上一节：RNN → LSTM → Attention](./05-rnn-lstm-attention.md) | [返回概览](./README.md) | ➡️ [下一阶段：NLP + Embedding & 检索理论](../03-nlp-embedding-retrieval/)
+## ⏭️ 下一节预告
+
+下一节是本阶段的收尾：**损失函数**。Softmax → Cross-Entropy → NLL 这条链是 LLM 训练目标的核心。搞懂了这些，你就理解了"LLM 预训练到底在做什么" — 答案是：最大化预测正确 token 的概率。
+
+> ⬅️ [上一节：RNN → LSTM → Attention](./05-rnn-lstm-attention.md) | [返回概览](./README.md) | ➡️ [下一节：损失函数](./07-loss-functions.md)

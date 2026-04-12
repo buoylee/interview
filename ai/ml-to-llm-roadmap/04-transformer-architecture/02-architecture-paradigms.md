@@ -4,6 +4,23 @@
 
 ---
 
+## 工程师导读
+
+> **面试优先级：⭐⭐⭐**
+>
+> **为什么 LLM 工程师要懂三种范式？**
+> - 面试必问："BERT 和 GPT 的区别？" "为什么大模型都是 Decoder-only？"
+> - 帮你理解什么时候用 BERT 类模型（Embedding、分类）vs GPT 类模型（生成）
+>
+> **一句话记忆**：
+> - BERT = 双向完形填空 → 适合理解（Embedding、分类、Reranking）
+> - GPT = 单向下一词预测 → 适合生成（对话、写作）→ **大模型主流**
+> - T5 = 编码器+解码器 → 统一 text-to-text → 思想被 GPT 继承
+>
+> **先修**：[01-Transformer 核心](./01-transformer-core.md)
+
+---
+
 ## 目录
 
 - [1. 三种范式对比](#1-三种范式对比)
@@ -144,8 +161,12 @@ T5 的统一格式：text-to-text
 
 ## 📖 推荐学习路径
 
-1. 重点理解三种范式的 Attention 区别（Mask 不同）
-2. 理解 Decoder-only 胜出的原因
-3. 知道 BERT 在哪些场景仍然有价值
+1. 重点理解三种范式的 Attention 区别（Mask 不同 — 全可见 vs 因果掩码）
+2. 理解 Decoder-only 胜出的四个原因（数据利用率、Scaling、统一性、自然性）
+3. 知道 BERT 在哪些场景仍然有价值（Embedding、分类、Reranking）
+
+## ⏭️ 下一节预告
+
+标准 Attention 有一个大问题：O(n^2) 复杂度 + KV-Cache 太大。下一节讲 **Attention 变体** — GQA 怎么减少 KV-Cache、Flash Attention 怎么加速计算。这些是现代 LLM 的核心工程创新。
 
 > ⬅️ [上一节：Transformer 核心](./01-transformer-core.md) | [返回概览](./README.md) | ➡️ [下一节：Attention 变体](./03-attention-variants.md)

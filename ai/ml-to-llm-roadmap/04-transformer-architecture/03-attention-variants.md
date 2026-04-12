@@ -4,6 +4,29 @@
 
 ---
 
+## 工程师导读
+
+> **面试优先级：⭐⭐（GQA、Flash Attention）/ ⭐（MLA、Sparse Attention）**
+>
+> **为什么 LLM 工程师要懂 Attention 变体？**
+> - 面试问"Flash Attention 是什么？为什么重要？" — 常见于偏工程的岗位
+> - 理解 KV-Cache 问题帮你理解推理优化和部署成本
+> - 了解 GQA 帮你理解为什么 LLaMA 2/3 能更高效地服务
+>
+> **本节核心要点**：
+> 1. MHA→MQA→GQA：逐步减少 KV-Cache（32 组→1 组→8 组），GQA 是当前标准
+> 2. Flash Attention：**不是近似算法**，结果精确 — 核心是分块在 GPU 快速内存中计算
+> 3. MLA（DeepSeek）：用低秩压缩进一步减少 KV-Cache — 了解即可
+>
+> **工程师类比**：
+> - MHA = 32 个人各有各的笔记本 → 占空间大
+> - GQA = 32 个人分 8 组，每组共用 1 本 → 平衡效率和灵活性
+> - Flash Attention = 不改计算结果，只优化计算过程（在快速内存中算完再写回）
+>
+> **先修**：[01-Transformer 核心](./01-transformer-core.md)
+
+---
+
 ## 目录
 
 - [1. MHA 原始多头注意力](#1-mha-原始多头注意力)
@@ -264,6 +287,10 @@ BigBird: 窗口 + 全局 + 随机
 ### Q3: DeepSeek 的 MLA 是什么？
 
 **答**：用低秩压缩 KV-Cache。不直接缓存 K 和 V（维度高），而是缓存压缩后的潜在向量 C（维度低），推理时从 C 恢复出 K/V。本质是 SVD/低秩分解在 KV-Cache 上的应用。
+
+## ⏭️ 下一节预告
+
+Transformer 虽然强大，但 O(n^2) 是它的天花板。有没有替代方案？下一节讲 **非 Transformer 架构** — Mamba/SSM 用 O(n) 复杂度处理序列。这是面试区分度话题：大部分候选人只知道 Transformer，能讲 Mamba 是加分项。
 
 ---
 
