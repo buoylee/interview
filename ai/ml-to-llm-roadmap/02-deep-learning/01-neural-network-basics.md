@@ -69,6 +69,10 @@ y = f(z)                             (非线性激活)
 深 > 宽 的直觉：
   - 深层网络可以学习层次化特征（底层学简单特征，高层学复杂组合）
   - 类比：先学笔画 → 学部首 → 学汉字 → 学词语 → 学句子
+  - ⚠️ 这不是人为指定的，而是训练过程中自动涌现的
+    - 证据1：CNN 特征可视化（Zeiler & Fergus 2013）直接看到浅层学边缘、深层学语义
+    - 证据2：NLP 探针实验（Tenney et al. 2019）发现 BERT 浅层编码语法、深层编码语义
+    - 注意：实际各层的分工比类比模糊得多，不是严格的一一对应
 ```
 
 ### 2.3 前向传播
@@ -79,6 +83,11 @@ h = x
 for layer in layers:
     h = activation(layer.weight @ h + layer.bias)
 output = h
+
+# ↕ 等价展开 ↕
+h1 = activation(W1 @ x  + b1)    # 第1层所有神经元的输出（向量）
+h2 = activation(W2 @ h1 + b2)    # 第2层吃 h1，输出 h2
+output = h2                       # 逐层传递，不是累加
 ```
 
 > 🔑 **ML 关联**：Transformer 中的 FFN（前馈网络）就是一个两层 MLP：
