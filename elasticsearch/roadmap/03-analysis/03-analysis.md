@@ -273,6 +273,8 @@ ChatGPT
 - 有更新时自动加载，**不需要重启 ES**
 - 生产环境推荐使用远程热更新，方便运维
 
+> **⚠️ 热更新的重要限制**：无论本地还是远程词典更新，都**只对更新后新写入的文档生效**。已有文档的倒排索引不会自动重建——如果你新增了「ChatGPT」到词典，之前包含"ChatGPT"的文档仍然按旧词典切分（可能被切成"chat"+"gpt"）。要让旧数据也使用新词典，必须对索引做 Reindex（或 `_update_by_query` 触发重新分词）。这是生产中常踩的坑。
+
 **词典优先级**：自定义词典 > IK 内置主词典。如果你的自定义词 "奥特曼" 在 IK 主词典中不存在，加入自定义词典后就能被正确识别为一个完整的词。
 
 > **面试怎么答**："ik_smart 和 ik_max_word 的区别？生产中怎么选？"
@@ -503,14 +505,23 @@ PUT /products_pinyin
     "properties": {
       "name": {
         "type": "text",
-        "analyzer": "pinyin_analyzer"
+        "analyzer": "ik_max_word",
+        "fields": {
+          "pinyin": {
+            "type": "text",
+            "analyzer": "pinyin_analyzer",
+            "search_analyzer": "ik_smart"
+          }
+        }
       }
     }
   }
 }
 ```
 
-效果：索引 "华为手机" 后，搜索 `"huawei"`、`"hw"`、`"华为"` 都能匹配。
+效果：索引 "华为手机" 后，在 `name.pinyin` 子字段上搜索 `"huawei"`、`"hw"`、`"华为"` 都能匹配。
+
+> **为什么拼音用 Multi-fields 而不是直接配在主字段上？** 如果主字段直接用 pinyin_analyzer，搜索时也会把搜索词转拼音——搜"绑定"会被转成 `bangding`，可能误匹配到"帮顶"（也是 `bangding`）。正确做法是把拼音作为一个 Multi-fields **子字段**，搜索时用 `ik_smart` 而非 pinyin 分词：这样搜中文走精确语义匹配，只有用户输入拼音时才会命中拼音 Term。查询时同时搜 `name`（中文）和 `name.pinyin`（拼音），用 `multi_match` 的 `best_fields` 取最高分。
 
 > **注意**：pinyin 插件需要单独安装（`./bin/elasticsearch-plugin install analysis-pinyin`），不是 ES 自带的。
 
@@ -561,20 +572,32 @@ PUT /my_index
 ```
 
 ```
-# synonyms.txt（每行一组同义词，逗号分隔）
+# synonyms.txt 支持两种语法：
+
+# 等价同义词（双向）：搜任一个都能匹配到其他
 北大,北京大学
 手机,移动电话,mobile phone
 ES,Elasticsearch
+
+# 单向映射：左边 → 右边（只扩展不替换）
+iPhone => 苹果手机,Apple手机
+MBP => MacBook Pro
+# 搜 "iPhone" 会扩展为同时搜 "苹果手机" 和 "Apple手机"
+# 但搜 "苹果手机" 不会反向匹配 "iPhone"
 ```
+
+> **等价 vs 单向怎么选？** 品牌简写→全称（iPhone→苹果手机）用单向映射，避免搜"苹果手机"错误匹配到所有 iPhone 文档。真正的同义词（手机=移动电话）用等价映射。
 
 **方式 3：synonym_graph（ES 5.4+，推荐用于搜索时）**
 
 ```json
 "my_synonym_filter": {
-  "type": "synonym_graph",       // 比 synonym 更准确地处理多词同义词
+  "type": "synonym_graph",
   "synonyms_path": "analysis/synonyms.txt"
 }
 ```
+
+**synonym vs synonym_graph 的区别**：当同义词中有**多词组合**时（如 `"移动电话"` 是两个 Token），普通 `synonym` 会简单地在同一个位置插入所有同义词 Token，破坏了 Token 之间的位置关系，导致 `match_phrase` 等依赖位置信息的查询产生错误结果。`synonym_graph` 则使用图结构（Token Graph）正确记录多词同义词的位置偏移，保证短语查询仍然准确。**规则：索引时只能用 `synonym`（ES 不支持索引期用 graph），搜索时推荐用 `synonym_graph`。**
 
 ### 同义词放在索引时还是搜索时？
 
@@ -706,6 +729,10 @@ POST /_analyze
     { "token": "awesome",       "start_offset": 17, "end_offset": 24, "position": 2 }
   ]
 }
+# 注意 position 字段：它记录了每个 Token 在原始文本中的位置序号。
+# 这个信息对 match_phrase（短语匹配）至关重要——阶段 4 会讲到，
+# match_phrase 不仅要求每个 Term 都匹配，还要求它们的 position 是连续的。
+# 所以 _analyze 返回的 position 能帮你判断"为什么 match_phrase 匹配/不匹配"。
 ```
 
 ### 对比不同 Analyzer
@@ -1043,6 +1070,64 @@ GET /analyzer_diff_test/_search
 
 # 7. 清理
 DELETE /analyzer_diff_test
+```
+
+### 练习 4：Normalizer——keyword 大小写不敏感匹配
+
+```
+# 1. 创建索引——email 字段使用 Normalizer
+PUT /normalizer_test
+{
+  "settings": {
+    "analysis": {
+      "normalizer": {
+        "lowercase_normalizer": {
+          "type": "custom",
+          "filter": ["lowercase"]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "email": {
+        "type": "keyword",
+        "normalizer": "lowercase_normalizer"
+      },
+      "email_raw": {
+        "type": "keyword"
+      }
+    }
+  }
+}
+
+# 2. 写入数据（注意大写）
+PUT /normalizer_test/_doc/1
+{ "email": "Admin@Example.COM", "email_raw": "Admin@Example.COM" }
+
+# 3. 用小写查 Normalizer 字段——能搜到吗？
+GET /normalizer_test/_search
+{
+  "query": { "term": { "email": "admin@example.com" } }
+}
+# ✅ 预期：能搜到。Normalizer 在写入和查询时都做了 lowercase 处理
+
+# 4. 用原始大写查 Normalizer 字段——能搜到吗？
+GET /normalizer_test/_search
+{
+  "query": { "term": { "email": "Admin@Example.COM" } }
+}
+# ✅ 预期：也能搜到。查询词也经过 Normalizer 处理
+
+# 5. 对比：用小写查没有 Normalizer 的字段
+GET /normalizer_test/_search
+{
+  "query": { "term": { "email_raw": "admin@example.com" } }
+}
+# ❌ 预期：搜不到。keyword 默认大小写敏感，必须完全一致
+
+# 6. 清理
+DELETE /normalizer_test
 ```
 
 ---

@@ -671,6 +671,8 @@ Shard 0 的 Top 5：          Shard 1 的 Top 5：
 
 返回结果中会包含 `doc_count_error_upper_bound`（最大可能的误差）和每个桶的 `doc_count_error`，帮你判断结果的可靠性。
 
+**怎么看这个误差值？** 假设返回 `"doc_count_error_upper_bound": 500`，意味着**漏掉的桶里最多可能有 500 个文档**。如果你的 Top 5 里最后一个桶有 3000 个文档，误差 500 对排名没有影响（不会被漏掉的桶超过）；如果最后一个桶只有 600 个文档，误差 500 就值得警惕了——可能有被遗漏的桶实际文档数更高。此时应增大 `shard_size`。
+
 ### Composite Aggregation——聚合结果分页
 
 当你需要对高基数字段（如几十万个用户 ID）做 terms 聚合时，`size=100000` 会消耗大量内存。Composite 聚合提供了**分页能力**：

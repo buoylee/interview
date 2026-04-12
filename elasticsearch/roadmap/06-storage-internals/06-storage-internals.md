@@ -104,6 +104,8 @@ Term "手机" 的 Posting List：
   └──────────────────────────────────────────┘
 ```
 
+> **串联阶段 4**：Frequencies 就是 BM25 公式中 **TF（词频）** 的数据来源。阶段 4 讲到"TF 越高分数越高但有饱和度"——现在你知道这个 TF 值物理上存在 Posting List 里，搜索时直接读取，不需要临时计算。Positions 则是 `match_phrase`（短语匹配）判断 Term 顺序的依据，Offsets 是高亮（Highlight）定位关键词位置的依据。
+
 ### Posting List 的编码优化
 
 几百万个文档 ID 直接存储太浪费空间。Lucene 使用了两种核心压缩技术：

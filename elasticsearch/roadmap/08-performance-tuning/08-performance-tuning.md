@@ -503,6 +503,9 @@ profile.shards[0].searches[0].query[0]:
   ├── 增长速率（每天/每月新增多少）
   ├── 保留周期（数据保留多久）
   └── 数据膨胀系数（原始数据 → ES 索引后通常 1.5-2 倍）
+      膨胀来源：倒排索引（Term Dictionary + Posting List）+ Doc Values（列式存储）
+               + _source（原始 JSON 完整保存一份）+ Segment 元数据/FST 等
+      text 字段多的索引膨胀更大（分词后 Term 多），纯 keyword 的膨胀较小
 
 步骤 2：计算分片数
   ├── 总数据量 = 当前 + 增长 × 保留周期

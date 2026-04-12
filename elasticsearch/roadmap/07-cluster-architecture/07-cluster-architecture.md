@@ -597,8 +597,10 @@ POST /_bulk
 {"name": "doc_3"}
 
 # 4. 查看路由——每个文档在哪个 Shard
-GET /cluster_test/_doc/1?routing=_explain
-# 或
+# 用 _search_shards API 查看路由信息
+GET /cluster_test/_search_shards?routing=doc_1
+
+# 或直接看所有分片的文档分布
 GET /_cat/shards/cluster_test?v
 ```
 
