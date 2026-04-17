@@ -15,6 +15,10 @@ ai/
     └── production-guide.md    # 生产版: 多模型、可靠、安全、可持续使用
 ```
 
+## 补充主题
+
+- `openai-claude-chat-completion-接口整理.md` — OpenAI / Claude 的接口选型、三段最小示例和官方链接索引
+
 ## 学习顺序
 
 ### 路线 A: RAG + 记忆系统
