@@ -2,7 +2,7 @@
 
 > **定位**：你做过一些 RAG / Agent / LLM 应用开发，但对 LLM 底层只有基础理解。本路线从 AI Engineer 综合面试能力出发，反向补齐 Transformer、训练、推理、评估和系统设计知识。
 
-## 如何使用这套路线路
+## 如何使用这套路线
 
 | 你的目标 | 推荐路径 |
 |---------|---------|
@@ -10,7 +10,9 @@
 | 想系统补底层 | 走「系统学习路径」，主线遇到不懂再回 foundations |
 | 正在做 RAG / Agent 项目 | 从 RAG、Agent、生成控制三个模块开始，再补 Transformer |
 
-## 新路线总览
+## 新路线目标结构（迁移中）
+
+下面是迁移完成后的目标结构；当前批次会逐步创建新目录和复习笔记。
 
 ```text
 01 RAG 与检索系统
@@ -35,20 +37,21 @@ foundations 按需补课
 
 ## 面试冲刺路径
 
-> Transformer 样板和复习笔记会随着本批迁移任务完成逐步可用；在此之前，旧版 RAG、Agent 和系统设计链接仍可作为可用 fallback。
+> Transformer 样板和复习笔记会随着本批迁移任务完成逐步可用；在此之前，旧版 Transformer、RAG、Agent 和系统设计链接仍可作为可用 fallback。
 
 1. Transformer 必要基础：[04-transformer-foundations](./ml-to-llm-roadmap/04-transformer-foundations/)（后续任务创建）
 2. Transformer 复习笔记：[09-review-notes/03-transformer-core-cheatsheet.md](./ml-to-llm-roadmap/09-review-notes/03-transformer-core-cheatsheet.md)（后续任务创建）
-3. 旧版 RAG 深度材料：[07/01-rag-deep-dive.md](./ml-to-llm-roadmap/07-theory-practice-bridge/01-rag-deep-dive.md)
-4. 旧版 Agent 架构材料：[07/02-agent-architecture.md](./ml-to-llm-roadmap/07-theory-practice-bridge/02-agent-architecture.md)
-5. 旧版系统设计材料：[08/02-system-design.md](./ml-to-llm-roadmap/08-interview-synthesis/02-system-design.md)
+3. 旧版 Transformer 核心材料：[04/01-transformer-core.md](./ml-to-llm-roadmap/04-transformer-architecture/01-transformer-core.md)
+4. 旧版 RAG 深度材料：[07/01-rag-deep-dive.md](./ml-to-llm-roadmap/07-theory-practice-bridge/01-rag-deep-dive.md)
+5. 旧版 Agent 架构材料：[07/02-agent-architecture.md](./ml-to-llm-roadmap/07-theory-practice-bridge/02-agent-architecture.md)
+6. 旧版系统设计材料：[08/02-system-design.md](./ml-to-llm-roadmap/08-interview-synthesis/02-system-design.md)
 
 ## 系统学习路径
 
 1. 从主线模块开始，不从数学开始。
-2. 每篇主线教程的「学前检查」会告诉你缺哪个基础。
-3. 缺基础时进入 `foundations/`，补完再回主线。
-4. 每个模块学完后，用 `09-review-notes/` 做面试复盘。
+2. 每篇已迁移主线教程的「学前检查」会告诉你缺哪个基础。
+3. 缺基础时进入迁移中的 `foundations/`；对应基础文件创建后，补完再回主线。
+4. 每个模块迁移完成后，用对应 `09-review-notes/` 做面试复盘。
 
 ## 迁移说明
 
