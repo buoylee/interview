@@ -120,3 +120,14 @@ flex:1 1 0 == flex:1  (全部拉伸)
 flex:0 0 auto == flex:none (不能缩放)
 
 flex: 0 1 auto == flex: 0 auto
+
+
+
+## 常见坑：嵌套 scroll 不出滚动条 / 内容撑爆容器
+
+flex 子项的 `min-height: auto` **不是 0**，而是 `min-content`（内容最小尺寸）。
+导致 `flex: 1` 的子被内容顶高，`overflow: auto` 在嵌套结构里出不了滚动条。
+
+修复口诀：**中间的 flex 非 scroll 容器都加 `min-height: 0`**（row 方向同理加 `min-width: 0`）。
+
+详细原理、诊断方法、面试 Q&A 见：[flex-nested-scroll-min-height.md](./flex-nested-scroll-min-height.md)

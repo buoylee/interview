@@ -13,7 +13,9 @@
 │ 应用层（具体协议）                                             │
 │                                                              │
 │  http.md ────── websocket.md ────── sse.md    webrtc.md      │
-│                                                   │          │
+│      │                                            │          │
+│      ├── polling.md（HTTP 上的异步等待模式）       │          │
+│      │                                            │          │
 │  └──────── 都建立在 TCP 之上 ────────┘           │          │
 │                      │                          UDP+ICE+DTLS │
 └──────────────────────┼───────────────────────────┼───────────┘
@@ -49,10 +51,11 @@
 1. [`basic.md`](./basic.md) — TCP/UDP 本体、三握四挥、状态机、URI/URL
 2. [`socket-io.md`](./socket-io.md) — socket API、粘包、epoll、Reactor 模式
 3. [`http.md`](./http.md) — HTTP 协议全景与排障手册
-4. [`sse.md`](./sse.md) — 在 HTTP 上做服务端推
-5. [`websocket.md`](./websocket.md) — 在 HTTP 握手后切全双工
-6. [`webrtc.md`](./webrtc.md) — 跳出 HTTP，走 UDP + NAT 穿透
-7. [`实时通信协议选型.md`](./实时通信协议选型.md) — 把 4/5/6 的选型与排障串起来
+4. [`polling.md`](./polling.md) — 在 HTTP 上做异步等待（短/长轮询）
+5. [`sse.md`](./sse.md) — 在 HTTP 上做服务端推
+6. [`websocket.md`](./websocket.md) — 在 HTTP 握手后切全双工
+7. [`webrtc.md`](./webrtc.md) — 跳出 HTTP，走 UDP + NAT 穿透
+8. [`实时通信协议选型.md`](./实时通信协议选型.md) — 把 4/5/6/7 的选型与排障串起来
 
 ### 🎯 面试冲刺
 
@@ -81,6 +84,7 @@
 | [basic.md](./basic.md) | TCP/UDP 协议、三握四挥、状态机、TIME_WAIT 根因、拥塞控制、URI/URL | 怎么用 API，具体应用协议 |
 | [socket-io.md](./socket-io.md) | socket 系统调用、listen backlog、粘包分帧、5 种 IO 模型、epoll 演进、Reactor | 具体应用协议的帧格式 |
 | [http.md](./http.md) | HTTP 报文 / 方法 / 状态码 / 头 / 连接管理 / 版本演进 / TLS / 缓存 / Cookie / CORS / 代理 / 性能排障 | TCP 本身、IO 模型 |
+| [polling.md](./polling.md) | 短/长轮询的使用与优化、双通道架构、规模化技巧、与 SSE/WebSocket 的决策边界 | SSE/WebSocket 协议细节（→ 各自文档） |
 | [websocket.md](./websocket.md) | WebSocket 握手、帧格式、心跳、断线重连 | epoll 原理、TCP 保活机制 |
 | [sse.md](./sse.md) | SSE 事件流格式、自动重连、LLM token 流场景 | HTTP chunked 底层机制（→ http.md） |
 | [webrtc.md](./webrtc.md) | ICE / STUN / TURN / DTLS-SRTP / 媒体协商 | TCP（WebRTC 不用 TCP） |
