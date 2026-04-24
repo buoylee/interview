@@ -1,5 +1,16 @@
 # 4.1 Transformer 核心组件（Day 1-3）⭐⭐⭐
 
+> **迁移提示**：新版路线已将 Transformer 核心拆成更顺滑的学习链路：
+>
+> - 为什么应用工程师需要懂 Transformer：[../04-transformer-foundations/01-why-ai-engineers-need-transformer.md](../04-transformer-foundations/01-why-ai-engineers-need-transformer.md)
+> - 从 Token 到向量：[../04-transformer-foundations/02-token-to-vector.md](../04-transformer-foundations/02-token-to-vector.md)
+> - Self-Attention 与 Q/K/V：[../04-transformer-foundations/03-self-attention-qkv.md](../04-transformer-foundations/03-self-attention-qkv.md)
+> - Transformer Block：[../04-transformer-foundations/04-transformer-block.md](../04-transformer-foundations/04-transformer-block.md)
+> - Decoder-only 与逐 Token 生成：[../04-transformer-foundations/05-decoder-only-and-generation.md](../04-transformer-foundations/05-decoder-only-and-generation.md)
+> - 面试速记：[../09-review-notes/03-transformer-core-cheatsheet.md](../09-review-notes/03-transformer-core-cheatsheet.md)
+>
+> 本旧文暂时保留作为综合参考，不再作为默认学习入口。
+
 > **一句话定位**：面试 Top 1 高频题。必须能从头讲清楚 Self-Attention 的完整计算过程，解释每个设计决策的原因。
 
 ---

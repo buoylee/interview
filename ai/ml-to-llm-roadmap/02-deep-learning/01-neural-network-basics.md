@@ -1,5 +1,14 @@
 # 2.1 神经网络基础（Day 1-4）
 
+> **迁移提示**：新版路线已将本篇拆成更小的基础补课材料，避免神经元、反向传播、归一化、Residual、RMSNorm、SwiGLU 在同一篇里混讲。
+>
+> - 神经元 / MLP / 激活函数：[foundations/deep-learning/01-neuron-mlp-activation.md](../foundations/deep-learning/01-neuron-mlp-activation.md)
+> - 反向传播 / 梯度问题：[foundations/deep-learning/02-backprop-gradient-problems.md](../foundations/deep-learning/02-backprop-gradient-problems.md)
+> - Normalization / Residual / 初始化：[foundations/deep-learning/03-normalization-residual-initialization.md](../foundations/deep-learning/03-normalization-residual-initialization.md)
+> - FFN / GELU / SwiGLU：[foundations/deep-learning/04-ffn-gating-for-transformer.md](../foundations/deep-learning/04-ffn-gating-for-transformer.md)
+>
+> 本旧文暂时保留作为参考，不再作为默认学习入口。
+
 > **一句话定位**：神经网络 = 一堆矩阵乘法 + 非线性激活函数的堆叠。理解这一点，后面的 CNN、RNN、Transformer 只是「怎么堆叠」的不同设计。
 
 ---
