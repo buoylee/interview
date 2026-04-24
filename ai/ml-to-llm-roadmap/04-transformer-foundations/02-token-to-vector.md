@@ -35,7 +35,7 @@ Token ID 只是词表中的编号。模型真正计算的是 embedding 向量。
 Embedding Table 形状 = V x d_model
 ```
 
-如果 token ID 是 `314`，模型取出 embedding table 第 `314` 行作为这个 token 的向量。
+如果 token ID 是 `314`，模型取出 embedding table 中 ID 为 `314` 对应的那一行作为这个 token 的向量。
 
 ### 位置还没有进入
 
