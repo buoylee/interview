@@ -10,14 +10,19 @@ ai/
 │   ├── 03-advanced-rag-theory.md        # RAG 进阶理论
 │   └── 04-memory-system-tech-glossary.md # 记忆系统术语表
 │
-└── coding-agent/              # Coding Agent 构建
-    ├── build-guide.md         # 学习版: 从零手撸，理解原理 (Phase 1-6)
-    └── production-guide.md    # 生产版: 多模型、可靠、安全、可持续使用
+├── coding-agent/              # Coding Agent 构建
+│   ├── build-guide.md         # 学习版: 从零手撸，理解原理 (Phase 1-6)
+│   └── production-guide.md    # 生产版: 多模型、可靠、安全、可持续使用
+│
+└── agent-platform/             # 企业 Agent 平台工程方案
+    ├── agent-local-vs-cloud-selection.md # 本地/云上选型与主流工具调研
+    └── cloud-agent-architecture.md       # 云上 Agent 最终落地架构
 ```
 
 ## 补充主题
 
 - `openai-claude-chat-completion-接口整理.md` — OpenAI / Claude 的接口选型、三段最小示例和官方链接索引
+- `agent-platform/` — Agent 平台选型、云上架构、安全治理、RAG、工具网关、评测与发布方案
 
 ## 学习顺序
 
@@ -28,7 +33,11 @@ ai/
 1. `coding-agent/build-guide.md` — 先动手搭原型，理解 agent 原理
 2. `coding-agent/production-guide.md` — 再升级为生产级架构
 
-两个版本的区别:
+### 路线 C: 企业 Agent 平台落地
+1. `agent-platform/agent-local-vs-cloud-selection.md` — 先做本地/云上/混合方案和工具选型
+2. `agent-platform/cloud-agent-architecture.md` — 再看最终云上架构、组件拆分和治理方案
+
+Coding Agent 两个版本的区别:
 
 | 维度 | 学习版 | 生产版 |
 |------|--------|--------|
