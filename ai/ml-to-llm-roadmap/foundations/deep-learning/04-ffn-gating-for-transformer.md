@@ -19,7 +19,7 @@ FFN = 每个 token 自己消化
 
 GELU 是 Transformer FFN 中常见的平滑激活函数。和 ReLU 直接把负数变成 0 不同，GELU 会把小的负值柔和压低，而不是硬切掉。
 
-GLU 把 FFN 拆成信息分支和门控分支。信息分支提供要传递的内容，门控分支用连续数值逐元素调节哪些内容更该通过。SwiGLU 是现代 LLM 常见的 gated FFN 变体，用 SiLU/Swish 风格的 gate 来做这种连续调节。
+GLU 把 FFN 拆成信息分支和门控分支。信息分支提供要传递的内容，门控分支用连续数值逐元素调节信息分支。SwiGLU 是现代 LLM 常见的 gated FFN 变体，用 SiLU/Swish 风格的 gate 做连续乘法调节；这个 gate 是连续乘法因子，不一定限制在 0 到 1。
 
 ## 最小公式
 
@@ -67,7 +67,7 @@ FFN(x) = W_down * (SiLU(W_gate * x) elementwise_multiply (W_up * x))
 
 扩维给模型更多加工空间，投回原维度保证可以继续和 residual 相加。
 
-用 GLU/SwiGLU 时，可以把中间加工看成两路信号：一路产生候选内容，另一路产生连续 gate。gate 接近 0 的位置会压低对应内容，gate 较大的位置会让对应内容更容易通过。
+用 GLU/SwiGLU 时，可以把中间加工看成两路信号：一路产生候选内容，另一路产生连续 gate。SwiGLU 的 gate 是逐元素乘法因子，不是 if/else，也不一定像 sigmoid 一样被限制在 0 到 1。
 
 ## 常见误解
 

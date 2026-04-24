@@ -32,7 +32,7 @@ theta_new = theta_old - learning_rate * gradient
 
 ```text
 预测太大 -> loss 变大
-梯度下降根据梯度: 让相关权重沿降低 loss 的方向变小
+梯度下降根据梯度: 让相关参数朝降低 loss 的方向调整
 优化器更新权重
 下一次预测更接近目标
 ```
