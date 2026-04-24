@@ -23,17 +23,19 @@ Residual:
 y = x + F(x)
 ```
 
-LayerNorm:
+LayerNorm（简化直觉）:
 
 ```text
 normalized_x = (x - mean(x)) / std(x)
 ```
 
-RMSNorm:
+RMSNorm（简化直觉）:
 
 ```text
 normalized_x = x / rms(x)
 ```
+
+真实实现通常还会加入 `epsilon` 防止除以 0，并带有 learnable/可学习 的 scale 参数来恢复模型需要的数值尺度。
 
 初始化常用规则:
 

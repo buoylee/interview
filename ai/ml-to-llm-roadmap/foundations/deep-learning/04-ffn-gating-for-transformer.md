@@ -44,12 +44,16 @@ GLU(x) = A(x) elementwise_multiply sigmoid(B(x))
 SwiGLU 风格:
 
 ```text
-FFN(x) = W2 * (SiLU(W1 * x) elementwise_multiply (V * x))
+FFN(x) = W_down * (SiLU(W_gate * x) elementwise_multiply (W_up * x))
 ```
 
 - `Phi(x)`：标准正态分布的累积分布值，可以理解为连续保留比例。
-- `A(x)` 或 `V * x`：信息分支。
-- `B(x)` 或 `W1 * x`：门控分支。
+- `A(x)`：GLU 里的信息分支。
+- `B(x)`：GLU 里的门控分支。
+- `W_gate`、`W_up`、`W_down`：FFN projection matrices，不是 Attention 里的 K/V。
+- `W_gate * x`：SwiGLU 的门控分支。
+- `W_up * x`：SwiGLU 的信息分支。
+- `W_down`：把中间维度投回原维度，方便继续 residual 相加。
 - `elementwise_multiply`：逐元素相乘，不是矩阵乘法。
 
 ## 逐步例子

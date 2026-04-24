@@ -26,13 +26,13 @@ theta_new = theta_old - learning_rate * gradient
 
 - `theta`：模型参数。
 - `learning_rate`：每次更新的步长。
-- `gradient`：loss 对参数的变化方向。
+- `gradient`：loss 对参数的变化方向。严格说，梯度指向让 loss 增大的方向；梯度下降会减去 `learning_rate * gradient`，沿相反方向更新参数。
 
 ## 逐步例子
 
 ```text
 预测太大 -> loss 变大
-梯度告诉模型: 让相关权重变小
+梯度下降根据梯度: 让相关权重沿降低 loss 的方向变小
 优化器更新权重
 下一次预测更接近目标
 ```
