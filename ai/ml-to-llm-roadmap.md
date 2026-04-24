@@ -27,20 +27,20 @@
 foundations 按需补课
 ```
 
-## 第一批迁移样板（执行中）
+## 第一批迁移样板（已创建）
 
 | 模块 | 内容 | 入口 | 状态 |
 |------|------|------|------|
-| Transformer 必要基础 | 从 AI Engineer 视角系统理解 Transformer | [04-transformer-foundations](./ml-to-llm-roadmap/04-transformer-foundations/) | 后续任务创建 |
-| Deep Learning 补课 | 支撑 Transformer 的神经网络基础 | [foundations/deep-learning](./ml-to-llm-roadmap/foundations/deep-learning/) | 后续任务创建 |
-| Transformer 面试复习 | 30 秒答案、追问、易混点和项目连接 | [03-transformer-core-cheatsheet](./ml-to-llm-roadmap/09-review-notes/03-transformer-core-cheatsheet.md) | 后续任务创建 |
+| Transformer 必要基础 | 从 AI Engineer 视角系统理解 Transformer | [04-transformer-foundations](./ml-to-llm-roadmap/04-transformer-foundations/) | 已创建 |
+| Deep Learning 补课 | 支撑 Transformer 的神经网络基础 | [foundations/deep-learning](./ml-to-llm-roadmap/foundations/deep-learning/) | 已创建 |
+| Transformer 面试复习 | 30 秒答案、追问、易混点和项目连接 | [03-transformer-core-cheatsheet](./ml-to-llm-roadmap/09-review-notes/03-transformer-core-cheatsheet.md) | 已创建 |
 
 ## 面试冲刺路径
 
-> Transformer 样板和复习笔记会随着本批迁移任务完成逐步可用；在此之前，旧版 Transformer、RAG、Agent 和系统设计链接仍可作为可用 fallback。
+> 这条路径适合先冲 AI Engineer 面试：先补 Transformer 必要基础，再用速记文档复盘，旧版 RAG、Agent 和系统设计材料作为后续扩展。
 
-1. Transformer 必要基础：[04-transformer-foundations](./ml-to-llm-roadmap/04-transformer-foundations/)（后续任务创建）
-2. Transformer 复习笔记：[09-review-notes/03-transformer-core-cheatsheet.md](./ml-to-llm-roadmap/09-review-notes/03-transformer-core-cheatsheet.md)（后续任务创建）
+1. Transformer 必要基础：[04-transformer-foundations](./ml-to-llm-roadmap/04-transformer-foundations/)
+2. Transformer 复习笔记：[09-review-notes/03-transformer-core-cheatsheet.md](./ml-to-llm-roadmap/09-review-notes/03-transformer-core-cheatsheet.md)
 3. 旧版 Transformer 核心材料：[04/01-transformer-core.md](./ml-to-llm-roadmap/04-transformer-architecture/01-transformer-core.md)
 4. 旧版 RAG 深度材料：[07/01-rag-deep-dive.md](./ml-to-llm-roadmap/07-theory-practice-bridge/01-rag-deep-dive.md)
 5. 旧版 Agent 架构材料：[07/02-agent-architecture.md](./ml-to-llm-roadmap/07-theory-practice-bridge/02-agent-architecture.md)
