@@ -17,6 +17,10 @@ Attention = token 之间交流
 FFN = 每个 token 自己消化
 ```
 
+GELU 是 Transformer FFN 中常见的平滑激活函数。和 ReLU 直接把负数变成 0 不同，GELU 会把小的负值柔和压低，而不是硬切掉。
+
+GLU 把 FFN 拆成信息分支和门控分支。信息分支提供要传递的内容，门控分支用连续数值逐元素调节哪些内容更该通过。SwiGLU 是现代 LLM 常见的 gated FFN 变体，用 SiLU/Swish 风格的 gate 来做这种连续调节。
+
 ## 最小公式
 
 标准 FFN:
@@ -25,11 +29,28 @@ FFN = 每个 token 自己消化
 FFN(x) = W2 * activation(W1 * x + b1) + b2
 ```
 
+GELU 直觉公式:
+
+```text
+GELU(x) ~= x * Phi(x)
+```
+
+GLU 风格:
+
+```text
+GLU(x) = A(x) elementwise_multiply sigmoid(B(x))
+```
+
 SwiGLU 风格:
 
 ```text
 FFN(x) = W2 * (SiLU(W1 * x) elementwise_multiply (V * x))
 ```
+
+- `Phi(x)`：标准正态分布的累积分布值，可以理解为连续保留比例。
+- `A(x)` 或 `V * x`：信息分支。
+- `B(x)` 或 `W1 * x`：门控分支。
+- `elementwise_multiply`：逐元素相乘，不是矩阵乘法。
 
 ## 逐步例子
 
@@ -42,6 +63,8 @@ FFN(x) = W2 * (SiLU(W1 * x) elementwise_multiply (V * x))
 
 扩维给模型更多加工空间，投回原维度保证可以继续和 residual 相加。
 
+用 GLU/SwiGLU 时，可以把中间加工看成两路信号：一路产生候选内容，另一路产生连续 gate。gate 接近 0 的位置会压低对应内容，gate 较大的位置会让对应内容更容易通过。
+
 ## 常见误解
 
 | 误解 | 修正 |
@@ -49,6 +72,7 @@ FFN(x) = W2 * (SiLU(W1 * x) elementwise_multiply (V * x))
 | Transformer 只有 Attention 重要 | FFN 通常占大量参数和计算 |
 | GELU/SwiGLU 是面试背诵细节 | 它们影响模型表达能力和训练效果 |
 | 门控就是 if/else | 门控是连续的逐元素调节，不是硬规则 |
+| GLU 和普通激活函数一样只处理一条分支 | GLU 有信息分支和 gate 分支，gate 会调制信息分支 |
 
 ## 回到主线
 
