@@ -49,7 +49,7 @@ LoRA 路径: x @ (W + A @ B)
 
 ## 原理层
 
-LoRA 假设很多任务适配不需要在完整参数空间里大幅移动，只需要一个低秩方向的增量。训练时冻结 base model，只更新 adapter 参数。这样显存、存储和多任务版本管理都更轻：同一个 base model 可以配多个 LoRA adapter。
+LoRA 假设很多任务适配不需要在完整参数空间里大幅移动，只需要一个低秩方向的增量。训练时冻结 base model，只更新 adapter 参数。实际使用中，LoRA 通常挂在选定的投影层上，例如 attention 的 Q/K/V/O projection 或 FFN projection，而不是必须覆盖每一个矩阵。这样显存、存储和多任务版本管理都更轻：同一个 base model 可以配多个 LoRA adapter。
 
 QLoRA 解决的是训练显存问题。它把 base model 以低比特量化形式加载并冻结，再通过 LoRA adapter 训练少量参数。注意，QLoRA 不是“量化后全量训练”，而是“量化 base + LoRA 训练”的组合。
 
