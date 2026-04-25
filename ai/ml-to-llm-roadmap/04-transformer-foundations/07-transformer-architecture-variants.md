@@ -97,16 +97,18 @@ Encoder-Decoder 保留了两段式结构：Encoder 读 source，Decoder 根据 s
 
 ```text
 source: 中文句子
-decoder input: <BOS> I like
-prediction target: I like apples
+decoder input:     <BOS> | I | like
+prediction target: I     | like | apples
 ```
 
-Decoder 的每一步预测都同时依赖两类信息：
+每个可见的 Decoder 输入位置，都要预测下一个 target token。Decoder 的每一步预测都同时依赖两类信息：
 
 - 通过 masked self-attention 读取已经出现的 target prefix。
 - 通过 cross-attention 读取 Encoder 产出的 source 表示。
 
 这让 Encoder-Decoder 很适合 source 和 target 明确不同的任务，例如翻译、摘要、改写、问答到结构化输出。T5 的 text-to-text 思路就是把多种 NLP 任务都改写成“输入文本 -> 输出文本”。
+
+在 T5 预训练里，source 可以是被破坏或挖空的文本，target 是要还原的 span；在下游任务里，source/target 才对应翻译、摘要、问答等具体输入输出。
 
 ### Decoder-only：把所有条件都变成 prefix
 
@@ -173,7 +175,7 @@ Decoder-only 对通用 LLM 友好，核心原因不是“Encoder 没用”，而
 
 ## 深入参考
 
-本篇已经覆盖主线需要的三种架构范式。读完后，如果你想看更压缩的模型对比和预训练目标，可以再读旧版参考：
+本篇已经覆盖主线需要的三种架构范式。读完后，如果你想看更压缩的模型对比和预训练目标，可以再读这些补充参考：
 
 - [三大架构范式](../04-transformer-architecture/02-architecture-paradigms.md)
 - [BERT 系列：理解型模型](../05-pretrained-models/01-bert-family.md)
