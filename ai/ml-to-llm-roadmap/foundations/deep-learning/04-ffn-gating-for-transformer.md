@@ -6,7 +6,7 @@
 
 ## 你在主线哪里会用到
 
-- [Transformer Block](../../04-transformer-foundations/04-transformer-block.md)
+- [Transformer Block](../../04-transformer-foundations/05-transformer-block.md)
 
 ## 最小直觉
 
@@ -80,4 +80,4 @@ FFN(x) = W_down * (SiLU(W_gate * x) elementwise_multiply (W_up * x))
 
 ## 回到主线
 
-读完后回到 [Transformer Block](../../04-transformer-foundations/04-transformer-block.md)，理解 FFN 在 block 中的位置和作用。
+读完后回到 [Transformer Block](../../04-transformer-foundations/05-transformer-block.md)，理解 FFN 在 block 中的位置和作用。

@@ -63,5 +63,5 @@ KV Cache 让历史别重算。
 - [为什么 AI Engineer 需要懂 Transformer](../04-transformer-foundations/01-why-ai-engineers-need-transformer.md)
 - [从 Token 到向量](../04-transformer-foundations/02-token-to-vector.md)
 - [Self-Attention 与 Q/K/V](../04-transformer-foundations/04-self-attention-qkv.md)
-- [Transformer Block](../04-transformer-foundations/04-transformer-block.md)
+- [Transformer Block](../04-transformer-foundations/05-transformer-block.md)
 - [Decoder-only 与逐 Token 生成](../04-transformer-foundations/05-decoder-only-and-generation.md)

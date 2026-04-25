@@ -6,7 +6,7 @@
 
 ## 你在主线哪里会用到
 
-- [Transformer Block](../../04-transformer-foundations/04-transformer-block.md)
+- [Transformer Block](../../04-transformer-foundations/05-transformer-block.md)
 - [Decoder-only 与逐 Token 生成](../../04-transformer-foundations/05-decoder-only-and-generation.md)
 
 ## 最小直觉
@@ -76,4 +76,4 @@ Pre-Norm 把 Norm 放在 Attention/FFN 前面，通常比 Post-Norm 更容易训
 
 ## 回到主线
 
-读完后回到 [Transformer Block](../../04-transformer-foundations/04-transformer-block.md)，理解 Pre-Norm、Residual 和 RMSNorm 如何组成现代 LLM block。
+读完后回到 [Transformer Block](../../04-transformer-foundations/05-transformer-block.md)，理解 Pre-Norm、Residual 和 RMSNorm 如何组成现代 LLM block。

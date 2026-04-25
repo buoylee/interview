@@ -7,7 +7,7 @@
 ## 你在主线哪里会用到
 
 - [Self-Attention 与 Q/K/V](../../04-transformer-foundations/04-self-attention-qkv.md)
-- [Transformer Block](../../04-transformer-foundations/04-transformer-block.md)
+- [Transformer Block](../../04-transformer-foundations/05-transformer-block.md)
 
 ## 最小直觉
 
@@ -49,4 +49,4 @@ theta_new = theta_old - learning_rate * gradient
 
 ## 回到主线
 
-读完后回到 [Transformer Block](../../04-transformer-foundations/04-transformer-block.md)，理解 Residual 和 Norm 为什么是深层 Transformer 的关键。
+读完后回到 [Transformer Block](../../04-transformer-foundations/05-transformer-block.md)，理解 Residual 和 Norm 为什么是深层 Transformer 的关键。

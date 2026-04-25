@@ -1,4 +1,4 @@
-# 4.4 Transformer Block：Attention、FFN、Residual、Norm 如何配合
+# 4.5 Transformer Block：Attention、FFN、Residual、Norm 如何配合
 
 ## 你为什么要学这个
 
@@ -87,4 +87,4 @@ LayerNorm 会在每个 token 的 hidden dimension 上减去均值并除以标准
 
 ## 下一步
 
-下一篇读 [05-decoder-only-and-generation.md](./05-decoder-only-and-generation.md)，看 Transformer Block 如何组成 GPT 类生成模型。
+下一篇读 `06-original-transformer-encoder-decoder.md`（待创建），看多个 Transformer Block 如何组成原始 Transformer 的 Encoder 和 Decoder。
