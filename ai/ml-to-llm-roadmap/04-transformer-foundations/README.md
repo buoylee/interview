@@ -13,17 +13,17 @@
 
 ## 学习路径
 
-| 顺序 | 文件 | 解决的问题 | 状态 |
-|------|------|------------|------|
-| 1 | [01-why-ai-engineers-need-transformer.md](./01-why-ai-engineers-need-transformer.md) | 为什么应用工程师也要系统理解 Transformer | 已存在 |
-| 2 | [02-token-to-vector.md](./02-token-to-vector.md) | 文本如何变成模型能处理的向量 | 已存在 |
-| 3 | [03-why-attention-needs-context.md](./03-why-attention-needs-context.md) | 为什么 token 需要读取上下文 | 已存在 |
-| 4 | [04-self-attention-qkv.md](./04-self-attention-qkv.md) | Self-Attention 和 Q/K/V 到底在算什么 | 已存在 |
-| 5 | [05-transformer-block.md](./05-transformer-block.md) | 一个 Transformer 层如何把 Attention、FFN、Residual、Norm 组合起来 | 已存在 |
-| 6 | [06-original-transformer-encoder-decoder.md](./06-original-transformer-encoder-decoder.md) | 原始 Transformer 的 Encoder 和 Decoder 分别负责什么 | 已创建 |
-| 7 | [07-transformer-architecture-variants.md](./07-transformer-architecture-variants.md) | BERT、T5、GPT 三种架构范式为什么不同 | 已创建/可读 |
-| 8 | [08-decoder-only-generation.md](./08-decoder-only-generation.md) | GPT 类模型如何基于已有上下文逐 token 生成 | 已创建/可读 |
-| 9 | [09-kv-cache-context-cost.md](./09-kv-cache-context-cost.md) | KV Cache、prefill、decode 和长上下文成本如何关联 | 已创建/可读 |
+| 顺序 | 文件 | 解决的问题 |
+|------|------|------------|
+| 1 | [01-why-ai-engineers-need-transformer.md](./01-why-ai-engineers-need-transformer.md) | 为什么应用工程师也要系统理解 Transformer |
+| 2 | [02-token-to-vector.md](./02-token-to-vector.md) | 文本如何变成模型能处理的向量 |
+| 3 | [03-why-attention-needs-context.md](./03-why-attention-needs-context.md) | 为什么 token 需要读取上下文 |
+| 4 | [04-self-attention-qkv.md](./04-self-attention-qkv.md) | Self-Attention 和 Q/K/V 到底在算什么 |
+| 5 | [05-transformer-block.md](./05-transformer-block.md) | 一个 Transformer 层如何把 Attention、FFN、Residual、Norm 组合起来 |
+| 6 | [06-original-transformer-encoder-decoder.md](./06-original-transformer-encoder-decoder.md) | 原始 Transformer 的 Encoder 和 Decoder 分别负责什么 |
+| 7 | [07-transformer-architecture-variants.md](./07-transformer-architecture-variants.md) | BERT、T5、GPT 三种架构范式为什么不同 |
+| 8 | [08-decoder-only-generation.md](./08-decoder-only-generation.md) | GPT 类模型如何基于已有上下文逐 token 生成 |
+| 9 | [09-kv-cache-context-cost.md](./09-kv-cache-context-cost.md) | KV Cache、prefill、decode 和长上下文成本如何关联 |
 
 ## 学前检查
 

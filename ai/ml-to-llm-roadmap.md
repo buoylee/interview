@@ -37,15 +37,20 @@ foundations 按需补课
 
 ## 面试冲刺路径
 
-> 这条路径适合先冲 AI Engineer 面试：先走 Transformer 系统学习模块，再用速记文档复盘，旧版 RAG、Agent 和系统设计材料作为后续扩展。
+> 这条路径适合先冲 AI Engineer 面试：先走 Transformer 系统学习模块，再用面试路径和速记文档复盘。旧版 RAG、Agent 和系统设计材料只作为可选参考。
 
 1. Transformer 系统学习模块：[04-transformer-foundations](./ml-to-llm-roadmap/04-transformer-foundations/)
 2. Transformer 面试阅读路径：[interview-paths/ai-engineer-transformer.md](./ml-to-llm-roadmap/interview-paths/ai-engineer-transformer.md)
 3. Transformer 复习笔记：[09-review-notes/03-transformer-core-cheatsheet.md](./ml-to-llm-roadmap/09-review-notes/03-transformer-core-cheatsheet.md)
-4. 旧版 Transformer 核心材料：[04/01-transformer-core.md](./ml-to-llm-roadmap/04-transformer-architecture/01-transformer-core.md)
-5. 旧版 RAG 深度材料：[07/01-rag-deep-dive.md](./ml-to-llm-roadmap/07-theory-practice-bridge/01-rag-deep-dive.md)
-6. 旧版 Agent 架构材料：[07/02-agent-architecture.md](./ml-to-llm-roadmap/07-theory-practice-bridge/02-agent-architecture.md)
-7. 旧版系统设计材料：[08/02-system-design.md](./ml-to-llm-roadmap/08-interview-synthesis/02-system-design.md)
+
+### 可选旧版参考
+
+下面材料尚未迁入新路线，只作为扩展查阅，不属于默认冲刺步骤：
+
+- 旧版 Transformer 核心材料：[04/01-transformer-core.md](./ml-to-llm-roadmap/04-transformer-architecture/01-transformer-core.md)
+- 旧版 RAG 深度材料：[07/01-rag-deep-dive.md](./ml-to-llm-roadmap/07-theory-practice-bridge/01-rag-deep-dive.md)
+- 旧版 Agent 架构材料：[07/02-agent-architecture.md](./ml-to-llm-roadmap/07-theory-practice-bridge/02-agent-architecture.md)
+- 旧版系统设计材料：[08/02-system-design.md](./ml-to-llm-roadmap/08-interview-synthesis/02-system-design.md)
 
 ## 系统学习路径
 
