@@ -25,6 +25,13 @@
 | 8 | [08-decoder-only-generation.md](./08-decoder-only-generation.md) | GPT 类模型如何基于已有上下文逐 token 生成 |
 | 9 | [09-kv-cache-context-cost.md](./09-kv-cache-context-cost.md) | KV Cache、prefill、decode 和长上下文成本如何关联 |
 
+## 关键概念定位
+
+如果你正在验证 Encoder / Decoder 这条线，不要只读 README 或 review note，直接读这两篇：
+
+- [06-original-transformer-encoder-decoder.md](./06-original-transformer-encoder-decoder.md)：具体解释原始 Transformer 为什么分 Encoder 和 Decoder，source / target sequence、causal mask、cross-attention 分别解决什么问题。
+- [07-transformer-architecture-variants.md](./07-transformer-architecture-variants.md)：具体解释 Encoder-only、Encoder-Decoder、Decoder-only 如何从 Encoder / Decoder 结构里演化出来，以及 BERT、T5、GPT 分别适合什么任务。
+
 ## 学前检查
 
 如果下面概念不熟，先按需补课：
