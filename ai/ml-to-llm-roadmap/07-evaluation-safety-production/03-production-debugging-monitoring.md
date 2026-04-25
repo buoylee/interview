@@ -93,7 +93,7 @@ Optional retrieval/context 和 optional tool/output parser 之所以标成可选
 
 应用里，生产排查最好和发布流程绑定：每次改动先跑 golden set 和 regression set，再小流量上线，观察质量、延迟、成本、安全、拒答率、schema failure、drift 和用户反馈。出现问题时，用固定样本重放并对比版本，而不是只读几条聊天记录下结论。
 
-面试里，如果被问“LLM 应用线上质量下降怎么办”，可以按症状到组件回答：先定义下降指标，抽样失败案例，固定可复现输入；检查 input、prompt、model、decoding、parser、guardrail、infra；如有检索或工具，再检查这些可选组件；最后用 eval 和 regression set 验证修复。
+面试里，如果被问“LLM 应用线上质量下降怎么办”，可以按症状到组件回答：先定义下降指标，抽样失败案例，固定可复现输入；检查 input、prompt、model、decoding、parser/schema（如果系统有结构化输出）、guardrail、infra；如有检索或工具，再检查这些可选组件；最后用 eval 和 regression set 验证修复。
 
 ## 常见误区
 
