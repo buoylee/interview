@@ -1,5 +1,7 @@
 # Transformer 核心面试速记
 
+> 这份笔记用于复习，不适合作为第一次学习入口。第一次学习先读 [Transformer 系统学习主线](../04-transformer-foundations/)。
+
 ## 30 秒答案
 
 Transformer 的核心是 Self-Attention：每个 token 通过 Q/K/V 判断该关注哪些上下文 token，并把相关 token 的 V 加权汇总。现代 LLM 还依赖 FFN、Residual、LayerNorm/RMSNorm 和 Decoder-only 自回归生成；这些概念能帮助应用工程师解释 RAG 上下文组织、长上下文成本、KV Cache、工具调用和生成稳定性问题。
@@ -26,6 +28,9 @@ Q 表示当前 token 想找什么，K 表示每个 token 能被如何匹配，V 
 | 为什么要 Residual？ | 保留原始信息，提供更短的梯度路径，让深层网络更容易训练。 |
 | 为什么现代 LLM 多是 Decoder-only？ | 自回归目标简单统一，适合通用生成、对话、工具调用和规模化训练。 |
 | KV Cache 缓存什么？ | 缓存历史 token 在各层 Attention 中的 K/V，避免生成每个新 token 时重复计算历史上下文。 |
+| BERT、T5、GPT 架构差异是什么？ | BERT 是 Encoder-only，适合理解和表示；T5 是 Encoder-Decoder，适合输入到输出转换；GPT 是 Decoder-only，适合把 prompt、上下文和输出统一成自回归生成。 |
+| Cross-attention 解决什么问题？ | 在 Encoder-Decoder 中，Decoder 生成输出时通过 cross-attention 读取 Encoder 对输入序列的表示。 |
+| KV Cache 为什么不消除长 prompt 成本？ | KV Cache 复用历史 K/V 加速 decode，但长 prompt（long prompt）仍要先经过 prefill，且缓存占用和读取成本会随上下文增长。 |
 
 ## 易混点
 
@@ -62,7 +67,10 @@ KV Cache 让历史别重算。
 
 - [为什么 AI Engineer 需要懂 Transformer](../04-transformer-foundations/01-why-ai-engineers-need-transformer.md)
 - [从 Token 到向量](../04-transformer-foundations/02-token-to-vector.md)
+- [为什么 Attention 需要上下文](../04-transformer-foundations/03-why-attention-needs-context.md)
 - [Self-Attention 与 Q/K/V](../04-transformer-foundations/04-self-attention-qkv.md)
 - [Transformer Block](../04-transformer-foundations/05-transformer-block.md)
+- [原始 Transformer Encoder/Decoder](../04-transformer-foundations/06-original-transformer-encoder-decoder.md)
+- [三种 Transformer 架构范式](../04-transformer-foundations/07-transformer-architecture-variants.md)
 - [Decoder-only 与逐 Token 生成](../04-transformer-foundations/08-decoder-only-generation.md)
 - [KV Cache、上下文长度与推理成本](../04-transformer-foundations/09-kv-cache-context-cost.md)
