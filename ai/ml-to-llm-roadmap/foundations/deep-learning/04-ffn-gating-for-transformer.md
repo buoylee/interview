@@ -38,7 +38,7 @@ Attention 的工作是把相关 token 的信息聚合过来。但聚合之后，
 
 ## 核心概念
 
-标准 FFN 可以写成：
+标准 FFN 是 position-wise / 逐位置的：同一套 FFN 会独立应用到每个 token 的向量上。可以写成：
 
 ```text
 FFN(x) = W_down * activation(W_up * x)
@@ -53,7 +53,7 @@ FFN(x) = W_down * activation(W_up * x)
 -> W_down 投回原维度
 ```
 
-GELU 是一种平滑激活函数。它不像硬 cutoff 那样简单地把一侧砍掉，而是用连续曲线柔和地压低或保留输入。直觉上，GELU 不是“负数全部归零”，而是“越不像有用信号，保留得越少”。
+GELU 是一种平滑激活函数。它不像硬 cutoff 那样简单地把一侧砍掉，而是用连续曲线柔和地压低或保留输入。直觉上，GELU 会根据数值大小平滑缩放输入：较大的正值保留更多，接近零或负值会被更强压低。
 
 GLU 会把 FFN 的中间层拆成两路：
 
@@ -91,7 +91,7 @@ W_down：把加工结果压回 Transformer Block 需要的维度
 
 ## 和 Transformer 的连接
 
-在 Transformer Block 里，Attention 和 FFN 通常交替出现：
+在常见 Transformer Block 里，Attention 子层后面通常接 FFN 子层：
 
 ```text
 token 表示
