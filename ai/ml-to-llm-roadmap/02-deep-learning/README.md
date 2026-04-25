@@ -1,39 +1,40 @@
-# 阶段 2：深度学习基础（2 周）
+# 阶段 2：深度学习基础（旧版参考）
 
-> **目标**：理解神经网络的工作原理，掌握从 MLP → CNN → RNN → Attention 的演进脉络。这是通向 Transformer 和大模型的必经之路。
+> **定位**：这个目录保留旧版深度学习材料，供查漏补缺和扩展阅读使用。新版系统学习默认不从这里顺序读，而是从 [Transformer 必要基础](../04-transformer-foundations/) 出发，按需回到 [Deep Learning 补课](../foundations/deep-learning/)。
 >
-> **你的定位**：你已经在使用基于 Transformer 的模型（GPT、BERT），这里补齐「Transformer 之前发生了什么」以及「为什么需要 Transformer」。
+> **为什么这样改**：原来的深度学习阶段把太多前置概念塞进同一条学习线，容易让只想补 LLM 底层的学习者感觉跳跃。新版把“第一次讲懂 Transformer”放在主线，把神经网络基础拆成小的 foundation。
 
 ---
 
-## 🗺️ 学习路径指南
+## 新版默认路径
 
-> **给赶时间的你**：如果面试在即，按 ⭐ 数量优先学习。标注 ⭐⭐⭐ 的是面试必考，⭐ 的可以最后看或跳过。
-
+```text
+先读 Transformer 主线
+  -> 卡在神经网络基础
+  -> 回到 foundations/deep-learning 对应小节补课
+  -> 补完回到原 Transformer 章节
 ```
-快速路径（3-5 天）：
-  01 神经网络基础 → 重点看激活函数、BN vs LN、Residual Connection
-  02 优化器       → 记住 AdamW + Warmup + Cosine Decay
-  05 RNN→Attention → 理解演进动机，衔接 Transformer
-  07 损失函数     → 搞清 Softmax→CE→NLL 链条
 
-深入路径（2 周完整）：
-  按顺序 01 → 07 全部学完
-```
+默认入口：
+
+- [Transformer 必要基础](../04-transformer-foundations/)
+- [Deep Learning 补课](../foundations/deep-learning/)
+- [新版神经网络基础入口](./01-neural-network-basics.md)
 
 ---
 
-## 📂 本阶段内容
+## 旧版材料索引
 
-| 文件 | 主题 | 面试优先级 | 核心收获 |
-|------|------|-----------|---------|
-| [01-neural-network-basics.md](./01-neural-network-basics.md) | 神经网络基础 | ⭐⭐⭐ | 激活函数、BN vs LN、Residual Connection |
-| [02-optimizers-training.md](./02-optimizers-training.md) | 优化器 & 训练技巧 | ⭐⭐ | AdamW、混合精度、梯度累积 |
-| [03-transfer-learning.md](./03-transfer-learning.md) | 迁移学习 & 灾难性遗忘 | ⭐⭐ | 预训练+微调范式、LoRA 的动机 |
-| [04-cnn.md](./04-cnn.md) | CNN & Residual Connection | ⭐ | **只需掌握 Residual Connection** |
-| [05-rnn-lstm-attention.md](./05-rnn-lstm-attention.md) | RNN → LSTM → Attention | ⭐⭐⭐ | 通向 Transformer 的关键过渡 |
-| [06-other-architectures.md](./06-other-architectures.md) | 对比学习 & 其他范式 | ⭐⭐ | 对比学习 → CLIP、Embedding 的理论根基 |
-| [07-loss-functions.md](./07-loss-functions.md) | 损失函数 | ⭐⭐⭐ | Softmax → CE → NLL，LLM 训练目标 |
+| 文件 | 主题 | 面试优先级 | 核心收获 | 说明 |
+|------|------|-----------|---------|------|
+| [01-neural-network-basics.md](./01-neural-network-basics.md) | 神经网络基础 | ⭐⭐⭐ | 激活函数、BN vs LN、Residual Connection | 新版入口，指向拆分后的 foundation |
+| [legacy/01-neural-network-basics-reference.md](./legacy/01-neural-network-basics-reference.md) | 神经网络基础旧版长文 | ⭐⭐⭐ | 激活函数、BN vs LN、Residual Connection | 旧版参考，不建议作为第一次学习入口 |
+| [02-optimizers-training.md](./02-optimizers-training.md) | 优化器 & 训练技巧 | ⭐⭐ | AdamW、混合精度、梯度累积 | 旧版参考 |
+| [03-transfer-learning.md](./03-transfer-learning.md) | 迁移学习 & 灾难性遗忘 | ⭐⭐ | 预训练+微调范式、LoRA 的动机 | 旧版参考 |
+| [04-cnn.md](./04-cnn.md) | CNN & Residual Connection | ⭐ | **只需掌握 Residual Connection** | 旧版参考 |
+| [05-rnn-lstm-attention.md](./05-rnn-lstm-attention.md) | RNN → LSTM → Attention | ⭐⭐⭐ | 通向 Transformer 的关键过渡 | 旧版参考 |
+| [06-other-architectures.md](./06-other-architectures.md) | 对比学习 & 其他范式 | ⭐⭐ | 对比学习 → CLIP、Embedding 的理论根基 | 旧版参考 |
+| [07-loss-functions.md](./07-loss-functions.md) | 损失函数 | ⭐⭐⭐ | Softmax → CE → NLL，LLM 训练目标 | 旧版参考 |
 
 ---
 
