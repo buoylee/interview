@@ -47,7 +47,7 @@ new token 2 -> reuse old K/V -> append new K/V
 
 - RAG 文档塞太多会增加 prefill 成本。
 - 多轮对话历史太长会增加 KV Cache 显存占用。
-- 流式输出快，是因为 decode 可以复用历史 K/V。
+- 流式输出能更早看到结果，是因为 token 边生成边返回；KV Cache 则让每步 decode 少重复计算历史 K/V。
 - 成本优化常常要减少无效上下文，而不是只调 temperature。
 
 ## 常见误区
