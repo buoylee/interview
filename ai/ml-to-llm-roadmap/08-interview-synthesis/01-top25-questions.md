@@ -13,12 +13,12 @@
 Q·K 的方差和 d_k 成正比，d_k 大时点积值过大导致 softmax 趋向 one-hot → 梯度消失。除以 √d_k 归一化方差为 1，让 softmax 输出更平滑。
 
 ### 2. Batch Normalization 和 Layer Normalization 的区别？(⭐⭐⭐)
-> 阶段 2 | [详细](../02-deep-learning/01-neural-network-basics.md)
+> 阶段 2 | [详细](../foundations/deep-learning/03-normalization-residual-initialization.md)
 
 BN 在 batch 维度归一化（同一特征跨样本），LN 在特征维度归一化（同一样本跨特征）。Transformer 用 LN 因为 (1) 序列长度不同 BN 不适用 (2) LN 不依赖 batch size。
 
 ### 3. 什么是 Residual Connection？为什么重要？(⭐⭐⭐)
-> 阶段 2 | [详细](../02-deep-learning/04-cnn.md)
+> 阶段 2 | [详细](../foundations/deep-learning/03-normalization-residual-initialization.md)
 
 y = F(x) + x，输出 = 变换 + 原始输入。梯度至少是 1（不消失），信息可以直接传到底层。没有它，几十层的 Transformer 根本无法训练。
 
