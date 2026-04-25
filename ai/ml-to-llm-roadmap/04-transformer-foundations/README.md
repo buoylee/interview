@@ -20,8 +20,8 @@
 | 3 | [03-why-attention-needs-context.md](./03-why-attention-needs-context.md) | 为什么 token 需要读取上下文 |
 | 4 | [04-self-attention-qkv.md](./04-self-attention-qkv.md) | Self-Attention 和 Q/K/V 到底在算什么 |
 | 5 | [05-transformer-block.md](./05-transformer-block.md) | 一个 Transformer 层如何把 Attention、FFN、Residual、Norm 组合起来 |
-| 6 | [06-original-transformer-encoder-decoder.md](./06-original-transformer-encoder-decoder.md) | 原始 Transformer 的 Encoder 和 Decoder 分别负责什么 |
-| 7 | [07-transformer-architecture-variants.md](./07-transformer-architecture-variants.md) | BERT、T5、GPT 三种架构范式为什么不同 |
+| 6 | [06-original-transformer-encoder-decoder.md](./06-original-transformer-encoder-decoder.md) | 原始 Transformer 的 Encoder/Decoder 分工、数据流和 cross-attention |
+| 7 | [07-transformer-architecture-variants.md](./07-transformer-architecture-variants.md) | Encoder-only、Encoder-Decoder、Decoder-only 的结构选择和训练目标 |
 | 8 | [08-decoder-only-generation.md](./08-decoder-only-generation.md) | GPT 类模型如何基于已有上下文逐 token 生成 |
 | 9 | [09-kv-cache-context-cost.md](./09-kv-cache-context-cost.md) | KV Cache、prefill、decode 和长上下文成本如何关联 |
 
@@ -29,8 +29,8 @@
 
 如果你正在验证 Encoder / Decoder 这条线，不要只读 README 或 review note，直接读这两篇：
 
-- [06-original-transformer-encoder-decoder.md](./06-original-transformer-encoder-decoder.md)：具体解释原始 Transformer 为什么分 Encoder 和 Decoder，source / target sequence、causal mask、cross-attention 分别解决什么问题。
-- [07-transformer-architecture-variants.md](./07-transformer-architecture-variants.md)：具体解释 Encoder-only、Encoder-Decoder、Decoder-only 如何从 Encoder / Decoder 结构里演化出来，以及 BERT、T5、GPT 分别适合什么任务。
+- [06-original-transformer-encoder-decoder.md](./06-original-transformer-encoder-decoder.md)：解释原始 Transformer 为什么分 Encoder 和 Decoder，并进一步讲清 Encoder self-attention、Decoder masked self-attention、cross-attention 的数据流，以及训练/推理时 Decoder 输入的区别。
+- [07-transformer-architecture-variants.md](./07-transformer-architecture-variants.md)：解释 Encoder-only、Encoder-Decoder、Decoder-only 如何从 Encoder / Decoder 结构里演化出来，并进一步讲清 MLM、CLM、source-to-target、prefix 续写这些训练目标和输出形态差异。
 
 ## 学前检查
 
@@ -50,7 +50,8 @@
 - Multi-Head Attention 为什么不是简单重复。
 - Residual、LayerNorm、FFN 在 Transformer Block 中分别负责什么。
 - 原始 Transformer 为什么分 Encoder 和 Decoder。
-- Encoder-only、Encoder-Decoder、Decoder-only 分别适合什么任务。
+- Cross-attention 中 Q、K、V 分别来自哪里。
+- Encoder-only、Encoder-Decoder、Decoder-only 的训练目标分别倾向什么。
 - 为什么 Decoder-only 成为主流 LLM 架构。
 - KV Cache 为什么加速 decode，但不消除长 prompt 的 prefill 成本。
 - Transformer 的哪些机制会影响上下文长度、延迟和推理成本。
