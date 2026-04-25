@@ -77,7 +77,7 @@ Sure, here is the JSON:
 
 | 机制 | 解决的问题 | 边界 |
 |------|------------|------|
-| JSON mode | 输出必须像 JSON | 不一定符合你的字段和类型要求 |
+| JSON mode | 约束或引导输出保持 JSON 语法合法，具体保证取决于平台 | 不一定符合你的字段和类型要求 |
 | Schema-constrained decoding | 字段、类型、枚举更稳定 | 语义仍可能错 |
 | Grammar-constrained decoding | 能表达更一般的语法规则 | 需要设计 grammar，复杂时影响延迟 |
 | Validation-retry | 发现错误后补救 | 不是保证，重试仍可能失败 |

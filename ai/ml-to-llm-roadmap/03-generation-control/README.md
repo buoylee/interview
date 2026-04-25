@@ -13,8 +13,9 @@
 | 如果你不懂 | 先补 |
 |------------|------|
 | Decoder-only 为什么逐 token 生成 | [Decoder-only 与生成](../04-transformer-foundations/08-decoder-only-generation.md) |
-| KV Cache 为什么影响生成成本 | [KV Cache 与上下文成本](../04-transformer-foundations/09-kv-cache-context-cost.md) |
 | Softmax 后得到概率分布是什么意思 | [Attention 中的 softmax 直觉](../04-transformer-foundations/04-self-attention-qkv.md) |
+
+如果你关心生成延迟、长上下文和成本，再读 [KV Cache 与上下文成本](../04-transformer-foundations/09-kv-cache-context-cost.md)。它不是理解本模块三篇文章的前置条件。
 
 ## 这个模块要解决的主线问题
 

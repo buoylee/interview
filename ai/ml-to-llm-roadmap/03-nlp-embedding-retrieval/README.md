@@ -18,11 +18,11 @@
   01 文本表示     → 理解演进脉络即可，不需要记公式
   02 Embedding   → ⭐ 重点！RAG 面试必考
   03 检索理论     → ⭐ 重点！BM25 vs Dense + HNSW
-  04 语言模型     → 理解 AR vs AE + 解码策略
+  04 语言模型     → 理解 AR vs AE；生成控制默认读 ../03-generation-control/
   06 Tokenization → BPE 面试常问，要会讲流程
 
 深入路径（1.5 周完整）：
-  按顺序全部学完，05 受控生成是加分项
+  按顺序读 01/02/03/04/06；旧版 05 受控生成仅作扩展参考
 ```
 
 ---
@@ -34,8 +34,8 @@
 | [01-text-representation.md](./01-text-representation.md) | 文本表示演进 | ⭐⭐ | One-Hot → Word2Vec → BERT 的脉络 |
 | [02-embedding-theory.md](./02-embedding-theory.md) | Embedding 深度理论 | ⭐⭐⭐ | RAG 的 Embedding 底层原理 |
 | [03-retrieval-theory.md](./03-retrieval-theory.md) | 检索理论 | ⭐⭐⭐ | BM25、HNSW、Hybrid Search |
-| [04-language-model-decoding.md](./04-language-model-decoding.md) | 语言模型 & 解码 | ⭐⭐⭐ | AR vs AE、Top-p/Temperature |
-| [05-controlled-generation.md](./05-controlled-generation.md) | 受控生成 & 结构化输出 | ⭐⭐ | JSON Mode、Function Calling |
+| [04-language-model-decoding.md](./04-language-model-decoding.md) | 语言模型 & 解码旧版参考 | ⭐⭐⭐ | AR vs AE；新版生成控制默认读 [03-generation-control](../03-generation-control/) |
+| [05-controlled-generation.md](./05-controlled-generation.md) | 受控生成 & 结构化输出旧版参考 | ⭐⭐ | JSON Mode、Function Calling；新版默认读 [03-generation-control](../03-generation-control/) |
 | [06-tokenization-deep-dive.md](./06-tokenization-deep-dive.md) | Tokenization 算法 | ⭐⭐⭐ | BPE 面试核心，常要求讲流程 |
 
 ---
@@ -57,7 +57,7 @@ Embedding 如何训练？
   自回归 P(next|context) → Greedy/Beam/Top-k/Top-p/Temperature
 
 如何控制输出？
-  Prompt约束 → 解码约束(Constrained Decoding) → 微调约束(Function Calling)
+  Prompt约束 → 解码/Schema约束 → 输出协议(Function Calling/Tool Calling)
 ```
 
 > **工程师视角**：这一阶段是离你日常工作最近的理论。你调 Embedding 模型、选向量数据库、调 Temperature 参数、用 Function Calling — 这里讲的就是这些东西背后的原理。面试官最爱问的也是这些。
