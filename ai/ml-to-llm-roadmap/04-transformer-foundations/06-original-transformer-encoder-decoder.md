@@ -51,6 +51,94 @@ Decoder 输入：已经生成的 target token，例如 `I like`。
 
 Decoder 输出：下一个 target token 的概率，例如 `apples`。
 
+## 原理层：Encoder 和 Decoder 的数据流
+
+先把一个 Transformer block 里的 self-attention 回忆一下：当前 token 会产生一个 Query，用它去和一组 Key 做匹配，再按匹配权重读取对应的 Value。区别在于，不同位置的 Q/K/V 来自哪里，以及哪些位置允许被看见。
+
+### Encoder self-attention：source token 之间互相读
+
+Encoder 处理的是已经完整给定的 source sequence。以 `我 喜欢 苹果` 为例，Encoder 的每一层都会让每个 source token 产生自己的 Q/K/V：
+
+```text
+source tokens: 我 | 喜欢 | 苹果
+
+每个 token 都产生:
+  Q: 我现在想找什么信息
+  K: 我能被别人用什么特征匹配到
+  V: 如果别人关注我，我能提供什么内容
+```
+
+因为 source sequence 已经完整给定，`我` 可以看 `喜欢` 和 `苹果`，`苹果` 也可以反过来看 `我` 和 `喜欢`。所以 Encoder self-attention 通常是双向的。
+
+这一步的输出不是一个单独向量，而是一组上下文表示：每个 source token 都变成了“结合整句上下文之后的 token 表示”。
+
+### Decoder masked self-attention：target token 只能读已经出现的部分
+
+Decoder 处理的是 target sequence，也就是正在生成的输出。生成英文翻译时，如果当前已经有 `I like`，模型要预测下一个 token，不能提前看到标准答案里的 `apples`。
+
+所以 Decoder self-attention 也会从 target token 产生 Q/K/V，但会加 causal mask：
+
+```text
+target prefix: I | like | ?
+
+位置 I:
+  只能看 I
+
+位置 like:
+  可以看 I, like
+
+下一个位置:
+  可以看 I, like
+  不能看未来答案 apples
+```
+
+这就是 masked self-attention。它不是让 Decoder “少理解一点”，而是强制模型遵守生成任务的时间顺序：只能根据已经出现的 target prefix 预测下一个 token。
+
+### Cross-attention：Decoder 用当前生成需求去读 Encoder 结果
+
+Decoder block 比 Encoder block 多一个 cross-attention。它连接的是两条序列：
+
+```text
+Encoder 输出:
+  source 表示: 我' | 喜欢' | 苹果'
+
+Decoder 当前状态:
+  target prefix 表示: I' | like'
+
+Cross-attention:
+  Q 来自 Decoder 当前状态
+  K/V 来自 Encoder 的 source 表示
+```
+
+这句话很关键：cross-attention 里的 Query 来自 Decoder，Key 和 Value 来自 Encoder。
+
+直觉上，它在问：
+
+> 我现在正在生成 target 里的这个位置，为了决定下一个词，应该回看 source sequence 的哪些部分？
+
+如果 Decoder 正在生成 `apples`，它的 Query 可能会更关注 Encoder 输出里和 `苹果` 对应的 Key，然后读取那个位置的 Value。
+
+### 训练时和推理时为什么不一样
+
+训练时，标准答案已经存在。例如目标句子是 `I like apples`。模型通常会看到右移后的 target prefix：
+
+```text
+Decoder 输入: <BOS> | I | like
+预测目标:       I | like | apples
+```
+
+这叫 teacher forcing。模型不是一次性复制答案，而是在每个位置学习“看到前面的 token 后，下一个 token 应该是什么”。
+
+推理时没有标准答案，只有模型自己已经生成的内容：
+
+```text
+第 1 步: <BOS> -> I
+第 2 步: <BOS> I -> like
+第 3 步: <BOS> I like -> apples
+```
+
+所以推理必须逐 token 进行。这个区别会在后面的 Decoder-only 和 KV Cache 中继续出现。
+
 ## 和 LLM 应用的连接
 
 - 翻译和摘要天然像“输入序列到输出序列”的任务。
@@ -62,13 +150,22 @@ Decoder 输出：下一个 target token 的概率，例如 `apples`。
 - Encoder 不是“只编码不理解”，它会通过 self-attention 形成上下文表示。
 - Decoder 不是只能看自己，它可以通过 cross-attention 读取 Encoder 输出。
 - Causal mask 限制的是 Decoder 生成侧，避免它看见未来 target token。
+- Cross-attention 不是 Encoder 自己内部的 attention，而是 Decoder 用自己的 Query 去读取 Encoder 输出的 Key/Value。
+- 训练时 Decoder 可以拿到右移后的标准答案前缀；推理时只能拿到模型已经生成的前缀。
 
 ## 自测
 
 1. Source sequence 和 target sequence 分别是什么？
-2. Encoder 为什么通常可以双向看输入？
-3. Decoder 为什么需要 causal mask？
-4. Cross-attention 连接了哪两部分？
+2. Encoder self-attention 的 Q/K/V 都来自哪里？
+3. Decoder masked self-attention 为什么不能看未来 target token？
+4. Cross-attention 中 Q、K、V 分别来自哪里？
+5. 训练时右移后的 target prefix 和推理时已生成 prefix 有什么区别？
+
+## 深入参考
+
+本篇已经覆盖主线需要的 Encoder/Decoder 数据流。读完后，如果你想看更公式化的 attention 计算，可以再读旧版参考：
+
+- [Transformer 核心架构](../04-transformer-architecture/01-transformer-core.md)
 
 ## 下一步
 
