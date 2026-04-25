@@ -35,6 +35,8 @@ y = x + F(x)
 
 LayerNorm 是在一个 token 的表示内部做归一化。它不是跨 batch 统计不同样本，而是对同一个 token 向量的各个维度计算均值和方差，再把这个 token 表示调整到更稳定的尺度。Transformer 常用 LayerNorm，因为生成时 batch 大小和序列形态可能变化，依赖 batch 统计会不方便。
 
+真实实现通常还会加入 `epsilon` 防止除以 0，并带有可学习的 scale；LayerNorm 通常也有可学习的 bias/shift。
+
 RMSNorm 是更轻量的归一化变体。它通常不做 mean-centering，不先减去均值，而是用 root-mean-square 控制向量整体尺度：
 
 ```text
@@ -43,14 +45,16 @@ normalized_x = x / rms(x)
 
 直觉上，LayerNorm 同时调整“中心”和“尺度”，RMSNorm 主要调整“尺度”。很多 LLM 使用 RMSNorm，是因为它计算更简单，通常也足够稳定。
 
-初始化控制训练刚开始时信号的尺度，并打破对称。权重太大可能让激活和梯度逐层放大；权重太小可能让信息和梯度逐层变弱。另一方面，如果同一层神经元用完全相同的初始权重，它们会得到相同梯度并学到相同东西。随机初始化让它们从不同起点出发，才能分工学习不同模式。
+初始化控制训练刚开始时信号的尺度，并打破对称。权重太大可能让激活和梯度逐层放大；权重太小可能让信息和梯度逐层变弱。另一方面，如果同一层神经元用完全相同的初始权重，它们会得到相同梯度并学到相同东西。随机初始化让它们从不同起点出发，才能分工学习不同模式。初始化主要管训练刚开始的尺度，Residual 和 Norm 则帮助尺度在很多 block 之间继续保持可控。
 
 Pre-Norm 指在 Transformer Block 里，把归一化放在 Attention/FFN 之前。常见结构可以简化理解为：
 
 ```text
-x -> Norm -> Attention -> Residual Add
-x -> Norm -> FFN       -> Residual Add
+x = x + Attention(Norm(x))
+x = x + FFN(Norm(x))
 ```
+
+这里的 residual stream 是逐步更新的：Attention 更新后的 `x` 会继续作为 FFN 的输入，而不是 Attention 和 FFN 从同一个旧 `x` 并行运行。
 
 对于深层 Transformer，Pre-Norm 往往比把 Norm 放在子层之后更稳定，因为每个 Attention/FFN 子层收到的输入尺度更可控。
 
