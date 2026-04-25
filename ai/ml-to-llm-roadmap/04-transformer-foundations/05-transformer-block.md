@@ -87,4 +87,4 @@ LayerNorm 会在每个 token 的 hidden dimension 上减去均值并除以标准
 
 ## 下一步
 
-下一篇读 `06-original-transformer-encoder-decoder.md`（待创建），看多个 Transformer Block 如何组成原始 Transformer 的 Encoder 和 Decoder。
+下一篇读 [06-original-transformer-encoder-decoder.md](./06-original-transformer-encoder-decoder.md)，看多个 Transformer Block 如何组成原始 Transformer 的 Encoder 和 Decoder。

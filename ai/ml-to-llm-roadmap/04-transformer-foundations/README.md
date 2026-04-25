@@ -20,7 +20,7 @@
 | 3 | [03-why-attention-needs-context.md](./03-why-attention-needs-context.md) | 为什么 token 需要读取上下文 | 已存在 |
 | 4 | [04-self-attention-qkv.md](./04-self-attention-qkv.md) | Self-Attention 和 Q/K/V 到底在算什么 | 已存在 |
 | 5 | [05-transformer-block.md](./05-transformer-block.md) | 一个 Transformer 层如何把 Attention、FFN、Residual、Norm 组合起来 | 已存在 |
-| 6 | `06-original-transformer-encoder-decoder.md` | 原始 Transformer 的 Encoder 和 Decoder 分别负责什么 | 待创建 |
+| 6 | [06-original-transformer-encoder-decoder.md](./06-original-transformer-encoder-decoder.md) | 原始 Transformer 的 Encoder 和 Decoder 分别负责什么 | 已创建 |
 | 7 | `07-transformer-architecture-variants.md` | BERT、T5、GPT 三种架构范式为什么不同 | 待创建 |
 | 8 | [05-decoder-only-and-generation.md](./05-decoder-only-and-generation.md)（目标：`08-decoder-only-generation.md`） | GPT 类模型为什么能逐 token 生成 | 已存在/待重命名 |
 | 9 | `09-kv-cache-context-cost.md` | KV Cache、prefill、decode 和长上下文成本如何关联 | 待创建 |
