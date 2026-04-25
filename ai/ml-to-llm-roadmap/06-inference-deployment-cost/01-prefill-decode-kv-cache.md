@@ -31,14 +31,14 @@ LLM 的服务端要解决两个不同问题：
 
 Prefill 是“读题”。模型把输入 prompt 中的所有 token 过一遍 Transformer，得到每一层 attention 需要的历史 K/V。
 
-Decode 是“逐字作答”。模型根据已有上下文预测下一个 token，把这个新 token 的 K/V 追加进缓存，再预测下一个 token。
+Decode 是“逐字作答”。模型把上一步刚生成的 token 作为这一步输入，计算并追加这个 token 的 K/V，再用当前位置 logits 预测下一个 token。
 
 KV Cache 缓存的是过去 token 在每一层 attention 中的 Key 和 Value 表示，不是缓存最终答案，也不是缓存 prompt 到 answer 的映射。
 
 几个服务指标可以这样放：
 
 - TTFT：time to first token，从请求进入到第一个输出 token 出现，通常强烈受 prefill 和排队影响。
-- tokens/sec：decode 阶段每秒能生成多少 token，常用于衡量流式输出速度。
+- tokens/sec：decode 阶段每秒能生成多少 token。它可以指单个请求的流式输出速度，也可以指整个服务在 batching 后的总吞吐，需要看上下文。
 - context length：输入和已生成输出的上下文长度，影响 attention 和 KV Cache 占用。
 - batch size：同一时间一起送入 GPU 的请求数量，影响吞吐、排队和显存压力。
 
@@ -58,16 +58,22 @@ Answer:
    处理 Question: Name one capital city in Europe. Answer:
    为这些历史 token 计算并保存每层 K/V。
 
-2. Decode 第 1 步:
-   用最后位置的表示预测下一个 token，得到 "Paris"。
-   把 "Paris" 的 K/V 追加到 KV Cache。
+2. Prefill 结束时:
+   用最后位置的 logits 采样第一个输出 token，得到 "Paris"。
+   注意：这一步还没有计算 "Paris" 自己的 K/V。
 
-3. Decode 第 2 步:
-   用 prompt + "Paris" 的上下文预测下一个 token，可能得到 "."。
-   把 "." 的 K/V 追加到 KV Cache。
+3. Decode 第 1 步:
+   把 "Paris" 作为新输入 token。
+   计算并追加 "Paris" 的 K/V。
+   用当前位置 logits 预测下一个 token，可能得到 "."。
+
+4. Decode 第 2 步:
+   把 "." 作为新输入 token。
+   计算并追加 "." 的 K/V。
+   再预测下一个 token。
 ```
 
-如果没有 KV Cache，第 2 步需要重新计算 prompt 和 `"Paris"` 的历史 K/V；第 3 步又要重新计算 prompt、`"Paris"` 和 `"."`。KV Cache 的价值就是让 decode 只为新增 token 做增量计算。
+如果没有 KV Cache，每次预测下一个 token 前，都要重新计算 prompt 加上此前已生成 token 的历史 K/V。KV Cache 的价值就是复用 prompt 和已生成 token 的 K/V，让 decode 主要为本步新增 token 做增量计算。
 
 ## 原理层
 
