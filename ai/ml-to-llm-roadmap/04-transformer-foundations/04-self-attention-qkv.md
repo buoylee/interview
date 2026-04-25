@@ -2,7 +2,7 @@
 
 ## 你为什么要学这个
 
-上一篇已经把 Attention 的动机拆成三个问题：当前 token 想找什么、其他 token 能提供什么、当前 token 应该读取什么。本篇把这三个问题具体落到 Q、K、V。
+上一篇已经把 Attention 的动机拆成四个问题：当前 token 想找什么、其他 token 声明自己有什么、其他 token 真正提供什么内容、当前 token 应该从每个 token 读取多少。本篇把前三个问题具体落到 Q、K、V，并解释读取比例如何由 attention weights 得到。
 
 Self-Attention 是 LLM 理解上下文的核心机制。面试里的 Q/K/V、`sqrt(d_k)`、Multi-Head、长上下文复杂度，都是从这一节展开。
 

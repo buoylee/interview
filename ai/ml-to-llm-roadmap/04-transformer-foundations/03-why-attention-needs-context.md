@@ -11,7 +11,7 @@
 
 ## 一个真实问题
 
-在句子 `Apple released a new model` 和 `I ate an apple` 里，`Apple/apple` 的含义不同。只看单个 token 的向量，很难判断它是公司还是水果。模型必须让 token 读取上下文。
+在句子 `苹果发布了新产品` 和 `我吃了一个苹果` 里，`苹果` 的含义不同。只看单个 token 的向量，很难判断它是公司还是水果。模型必须让 token 读取上下文。
 
 ## 核心概念
 
@@ -25,13 +25,14 @@ Embedding 给每个 token 一个初始向量，但这个向量还没有吸收当
 
 ### Attention 的目标
 
-Attention 要回答三个问题：
+Attention 要回答四个问题：
 
 1. 当前 token 想找什么信息。
-2. 其他 token 能提供什么信息。
-3. 当前 token 应该从每个 token 读取多少信息。
+2. 其他 token 声明自己有什么信息。
+3. 其他 token 真正提供什么内容。
+4. 当前 token 应该从每个 token 读取多少信息。
 
-这三个问题会在下一篇变成 Q、K、V。
+下一篇会把前三个问题分别对应到 Q、K、V；第四个问题由注意力权重和 softmax 解决。
 
 ## 最小心智模型
 
@@ -50,15 +51,15 @@ Attention 要回答三个问题：
 ## 常见误区
 
 - Attention 不是让模型“理解一切”，它只是提供一种读取上下文的机制。
-- Embedding 不是最终语义，经过 Attention 后的 hidden state 才吸收了当前上下文。
+- Embedding 不是最终语义。hidden state 可以先理解成“某一层输出的、已经吸收上下文的 token 向量”；经过 Attention 后的 hidden state 才吸收了当前上下文。
 - 不是所有 token 都同等重要，Attention 权重表达的是相对读取比例。
 
 ## 自测
 
 1. 为什么只看 embedding 不足以处理上下文含义？
-2. Attention 想解决哪三个问题？
+2. Attention 想解决哪四个问题？
 3. 为什么 RAG 回答需要上下文读取能力？
 
 ## 下一步
 
-下一篇读 [04-self-attention-qkv.md](./04-self-attention-qkv.md)，把“想找什么、谁能提供、读取什么”具体变成 Q/K/V。
+下一篇读 [04-self-attention-qkv.md](./04-self-attention-qkv.md)，把“想找什么、声明有什么、真正提供什么”具体变成 Q/K/V，并看读取比例如何由 attention weights 得到。

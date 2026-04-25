@@ -6,7 +6,7 @@
 
 ## 你在主线哪里会用到
 
-- [Self-Attention 与 Q/K/V](../../04-transformer-foundations/03-self-attention-qkv.md)
+- [Self-Attention 与 Q/K/V](../../04-transformer-foundations/04-self-attention-qkv.md)
 - [Transformer Block](../../04-transformer-foundations/04-transformer-block.md)
 
 ## 最小直觉
