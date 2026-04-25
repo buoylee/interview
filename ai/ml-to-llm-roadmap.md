@@ -8,11 +8,11 @@
 |---------|---------|
 | 面试在 2 周内 | 先走「面试冲刺路径」，只看主线模块和 review notes |
 | 想系统补底层 | 走「系统学习路径」，主线遇到不懂再回 foundations |
-| 正在做 RAG / Agent 项目 | 从 RAG、Agent、生成控制三个模块开始，再补 Transformer |
+| 正在做 RAG / Agent 项目 | RAG / Agent 专项暂用旧版参考；先补生成控制、Transformer、推理、评估和系统设计 |
 
 ## 新路线目标结构（迁移中）
 
-下面是迁移完成后的目标结构；首批 Transformer 系统学习样板和复习笔记已创建，Deep Learning 补课已系统化，其他模块后续按这个结构继续迁移。
+下面是迁移完成后的目标结构；当前已系统化 Transformer、生成控制、训练对齐、推理部署、评估安全、系统设计和 Deep Learning 补课。RAG 与 Agent 保留旧版资料，后续单独系统化。
 
 ```text
 01 RAG 与检索系统
@@ -27,21 +27,33 @@
 foundations 按需补课
 ```
 
-## 第一批迁移成果
+## 迁移成果
 
 | 模块 | 内容 | 入口 | 状态 |
 |------|------|------|------|
-| Transformer 系统学习样板 | 从 AI Engineer 视角系统理解 Transformer | [04-transformer-foundations](./ml-to-llm-roadmap/04-transformer-foundations/) | 已创建 |
+| RAG 与检索系统 | 旧版资料保留，后续单独系统化 | [旧版 RAG 参考](./ml-to-llm-roadmap/07-theory-practice-bridge/01-rag-deep-dive.md) | 待迁移 |
+| Agent 与工具调用 | 旧版资料保留，后续单独系统化 | [旧版 Agent 参考](./ml-to-llm-roadmap/07-theory-practice-bridge/02-agent-architecture.md) | 待迁移 |
+| 生成控制与结构化输出 | 解码参数、结构化输出、Function Calling 输出形态 | [03-generation-control](./ml-to-llm-roadmap/03-generation-control/) | 已系统化 |
+| Transformer 必要基础 | 从 AI Engineer 视角系统理解 Transformer | [04-transformer-foundations](./ml-to-llm-roadmap/04-transformer-foundations/) | 已创建 |
+| 训练、对齐与微调 | 预训练、SFT、偏好对齐、LoRA/QLoRA | [05-training-alignment-finetuning](./ml-to-llm-roadmap/05-training-alignment-finetuning/) | 已系统化 |
+| 推理优化、部署与成本 | Prefill/Decode、KV Cache、batching、量化、长上下文 | [06-inference-deployment-cost](./ml-to-llm-roadmap/06-inference-deployment-cost/) | 已系统化 |
+| 评估、安全与生产排查 | Eval、LLM-as-Judge、幻觉、安全、监控排查 | [07-evaluation-safety-production](./ml-to-llm-roadmap/07-evaluation-safety-production/) | 已系统化 |
+| 系统设计与项目叙事 | 通用 AI 系统设计、模型路由、项目表达 | [08-system-design-project-narrative](./ml-to-llm-roadmap/08-system-design-project-narrative/) | 已系统化 |
+| 面试复习笔记 | 30 秒答案、追问、易混点和项目连接 | [09-review-notes](./ml-to-llm-roadmap/09-review-notes/) | 部分完成 |
 | Deep Learning 补课 | 支撑 Transformer 的神经网络基础 | [foundations/deep-learning](./ml-to-llm-roadmap/foundations/deep-learning/) | 已系统化 |
-| Transformer 面试复习 | 30 秒答案、追问、易混点和项目连接 | [03-transformer-core-cheatsheet](./ml-to-llm-roadmap/09-review-notes/03-transformer-core-cheatsheet.md) | 已创建 |
 
 ## 面试冲刺路径
 
-> 这条路径适合先冲 AI Engineer 面试：先走 Transformer 系统学习模块，再用面试路径和速记文档复盘。旧版 RAG、Agent 和系统设计材料只作为可选参考。
+> 这条路径适合先冲 AI Engineer 面试：先走系统学习模块，再用面试路径和速记文档复盘。旧版 RAG、Agent 材料只作为可选参考。
 
 1. Transformer 系统学习模块：[04-transformer-foundations](./ml-to-llm-roadmap/04-transformer-foundations/)
 2. Transformer 面试阅读路径：[interview-paths/ai-engineer-transformer.md](./ml-to-llm-roadmap/interview-paths/ai-engineer-transformer.md)
 3. Transformer 复习笔记：[09-review-notes/03-transformer-core-cheatsheet.md](./ml-to-llm-roadmap/09-review-notes/03-transformer-core-cheatsheet.md)
+4. 生成控制面试路径：[interview-paths/ai-engineer-generation-control.md](./ml-to-llm-roadmap/interview-paths/ai-engineer-generation-control.md)
+5. 训练对齐面试路径：[interview-paths/ai-engineer-training-alignment.md](./ml-to-llm-roadmap/interview-paths/ai-engineer-training-alignment.md)
+6. 推理部署面试路径：[interview-paths/ai-engineer-inference-deployment.md](./ml-to-llm-roadmap/interview-paths/ai-engineer-inference-deployment.md)
+7. 评估安全面试路径：[interview-paths/ai-engineer-evaluation-safety.md](./ml-to-llm-roadmap/interview-paths/ai-engineer-evaluation-safety.md)
+8. 系统设计面试路径：[interview-paths/ai-engineer-system-design.md](./ml-to-llm-roadmap/interview-paths/ai-engineer-system-design.md)
 
 ### 可选旧版参考
 
@@ -54,10 +66,11 @@ foundations 按需补课
 
 ## 系统学习路径
 
-1. 从主线模块开始，不从数学开始。
-2. 每篇已迁移主线教程的「学前检查」会告诉你缺哪个基础。
-3. 缺基础时进入 `foundations/`；Deep Learning 前置知识已拆成小节，补完再回主线。
-4. 每个模块迁移完成后，用对应 `09-review-notes/` 做面试复盘。
+1. 从 [Transformer 必要基础](./ml-to-llm-roadmap/04-transformer-foundations/) 开始。
+2. 缺 Deep Learning 前置知识时进入 [foundations/deep-learning](./ml-to-llm-roadmap/foundations/deep-learning/)。
+3. 然后按目标选择：生成控制、训练对齐、推理部署、评估安全、系统设计。
+4. RAG 与 Agent 暂时使用旧版参考，后续单独系统化。
+5. 每个模块学完后，用对应 `09-review-notes/` 做面试复盘。
 
 ## 迁移说明
 
