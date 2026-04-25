@@ -28,7 +28,7 @@ AI 系统设计不是把模型 API 接进后端就结束。你需要把不确定
 
 ## 深入参考
 
-旧版材料仍可作为扩展阅读：
+学完本模块后，旧版材料仍可作为扩展阅读：
 
 - [旧版系统设计材料](../08-interview-synthesis/02-system-design.md)
 - [旧版项目叙事模板](../08-interview-synthesis/03-project-narrative.md)
