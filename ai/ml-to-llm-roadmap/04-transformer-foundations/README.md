@@ -1,6 +1,6 @@
 # 04 Transformer 必要基础
 
-> **定位**：这不是算法岗训练手册，而是 AI Engineer 面试需要掌握的 Transformer 底层模型。目标是让你能解释 RAG、Agent、结构化输出、上下文长度、推理成本背后的模型机制。
+> **定位**：这是第一次系统学习 Transformer 的主线，不是面试速记。读完这里，再进入 `interview-paths/` 和 `09-review-notes/` 做压缩复习。
 
 ## 你会学到什么
 
@@ -15,11 +15,15 @@
 
 | 顺序 | 文件 | 解决的问题 |
 |------|------|------------|
-| 1 | [01-why-ai-engineers-need-transformer.md](./01-why-ai-engineers-need-transformer.md) | 为什么应用工程师也要懂 Transformer |
-| 2 | [02-token-to-vector.md](./02-token-to-vector.md) | 文本如何进入模型 |
-| 3 | [03-self-attention-qkv.md](./03-self-attention-qkv.md) | Self-Attention 到底怎么算 |
-| 4 | [04-transformer-block.md](./04-transformer-block.md) | 一个 Transformer 层由哪些零件组成 |
-| 5 | [05-decoder-only-and-generation.md](./05-decoder-only-and-generation.md) | 为什么 GPT 类模型能逐 token 生成 |
+| 1 | [01-why-ai-engineers-need-transformer.md](./01-why-ai-engineers-need-transformer.md) | 为什么应用工程师也要系统理解 Transformer |
+| 2 | [02-token-to-vector.md](./02-token-to-vector.md) | 文本如何变成模型能处理的向量 |
+| 3 | [03-why-attention-needs-context.md](./03-why-attention-needs-context.md) | 为什么 token 需要读取上下文 |
+| 4 | [04-self-attention-qkv.md](./04-self-attention-qkv.md) | Self-Attention 和 Q/K/V 到底在算什么 |
+| 5 | [05-transformer-block.md](./05-transformer-block.md) | 一个 Transformer 层如何把 Attention、FFN、Residual、Norm 组合起来 |
+| 6 | [06-original-transformer-encoder-decoder.md](./06-original-transformer-encoder-decoder.md) | 原始 Transformer 的 Encoder 和 Decoder 分别负责什么 |
+| 7 | [07-transformer-architecture-variants.md](./07-transformer-architecture-variants.md) | BERT、T5、GPT 三种架构范式为什么不同 |
+| 8 | [08-decoder-only-generation.md](./08-decoder-only-generation.md) | GPT 类模型为什么能逐 token 生成 |
+| 9 | [09-kv-cache-context-cost.md](./09-kv-cache-context-cost.md) | KV Cache、prefill、decode 和长上下文成本如何关联 |
 
 ## 学前检查
 
@@ -38,7 +42,10 @@
 - 为什么 Attention 要除以 `sqrt(d_k)`。
 - Multi-Head Attention 为什么不是简单重复。
 - Residual、LayerNorm、FFN 在 Transformer Block 中分别负责什么。
+- 原始 Transformer 为什么分 Encoder 和 Decoder。
+- Encoder-only、Encoder-Decoder、Decoder-only 分别适合什么任务。
 - 为什么 Decoder-only 成为主流 LLM 架构。
+- KV Cache 为什么加速 decode，但不消除长 prompt 的 prefill 成本。
 - Transformer 的哪些机制会影响上下文长度、延迟和推理成本。
 
 ## 复习入口
