@@ -364,7 +364,7 @@ FFN: 对每个 token 独立做非线性变换
 
 ## 6. Residual + LayerNorm
 
-> 详见 [02-深度学习 / 01-神经网络基础](../02-deep-learning/01-neural-network-basics.md) 中的归一化章节。
+> 详见 [Deep Learning 补课 / Normalization、Residual 与初始化](../foundations/deep-learning/03-normalization-residual-initialization.md)。
 
 ### 6.1 Pre-Norm（现代 LLM 用法）
 
