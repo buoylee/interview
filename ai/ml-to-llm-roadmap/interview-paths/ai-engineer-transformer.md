@@ -36,7 +36,7 @@
 
 ## 项目连接
 
-- RAG embedding / rerank：连接 Encoder-only。
+- RAG embedding / rerank：常见做法更接近 Encoder-only 的理解/匹配思路。
 - RAG 长文档上下文：连接 prefill、context cost。
 - Agent 工具调用：连接 Decoder-only 生成结构化 token。
 - 流式输出：连接自回归 decode 和 KV Cache。
