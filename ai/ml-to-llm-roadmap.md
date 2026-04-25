@@ -32,7 +32,7 @@ foundations 按需补课
 | 模块 | 内容 | 入口 | 状态 |
 |------|------|------|------|
 | Transformer 系统学习样板 | 从 AI Engineer 视角系统理解 Transformer | [04-transformer-foundations](./ml-to-llm-roadmap/04-transformer-foundations/) | 已创建 |
-| Deep Learning 补课 | 支撑 Transformer 的神经网络基础 | [foundations/deep-learning](./ml-to-llm-roadmap/foundations/deep-learning/) | 已创建 |
+| Deep Learning 补课 | 支撑 Transformer 的神经网络基础 | [foundations/deep-learning](./ml-to-llm-roadmap/foundations/deep-learning/) | 已系统化 |
 | Transformer 面试复习 | 30 秒答案、追问、易混点和项目连接 | [03-transformer-core-cheatsheet](./ml-to-llm-roadmap/09-review-notes/03-transformer-core-cheatsheet.md) | 已创建 |
 
 ## 面试冲刺路径
@@ -56,7 +56,7 @@ foundations 按需补课
 
 1. 从主线模块开始，不从数学开始。
 2. 每篇已迁移主线教程的「学前检查」会告诉你缺哪个基础。
-3. 缺基础时进入迁移中的 `foundations/`；对应基础文件创建后，补完再回主线。
+3. 缺基础时进入 `foundations/`；Deep Learning 前置知识已拆成小节，补完再回主线。
 4. 每个模块迁移完成后，用对应 `09-review-notes/` 做面试复盘。
 
 ## 迁移说明

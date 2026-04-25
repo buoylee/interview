@@ -1,21 +1,23 @@
 # Deep Learning 补课
 
-> **定位**：这里不是重新学完整深度学习，而是补齐读 Transformer 时最容易卡住的神经网络基础。主线遇到不懂再回来查，不需要一开始全部读完。
+> **定位**：这是一个补课 layer，不是第一默认路线。默认路径是先走 [Transformer mainline](../../04-transformer-foundations/)；遇到卡点时进入对应 foundation page；补完后回到原来的 lesson。
 
 ## 什么时候需要回来补
 
+下面四页按依赖顺序排列：
+
 | 你卡在哪里 | 先读 |
 |------------|------|
-| 不理解向量、线性层、MLP、激活函数 | [01-neuron-mlp-activation.md](./01-neuron-mlp-activation.md) |
-| 不理解为什么深层网络难训练 | [02-backprop-gradient-problems.md](./02-backprop-gradient-problems.md) |
-| 不理解 Residual、LayerNorm、RMSNorm、初始化 | [03-normalization-residual-initialization.md](./03-normalization-residual-initialization.md) |
-| 不理解 FFN、GELU、SwiGLU 为什么出现在 Transformer 里 | [04-ffn-gating-for-transformer.md](./04-ffn-gating-for-transformer.md) |
+| 1. 不理解 Neuron、MLP、activation | [01-neuron-mlp-activation.md](./01-neuron-mlp-activation.md) |
+| 2. 不理解 Backprop、gradient problems | [02-backprop-gradient-problems.md](./02-backprop-gradient-problems.md) |
+| 3. 不理解 Residual、Norm、initialization | [03-normalization-residual-initialization.md](./03-normalization-residual-initialization.md) |
+| 4. 不理解 FFN、GELU、SwiGLU 为什么出现在 Transformer 里 | [04-ffn-gating-for-transformer.md](./04-ffn-gating-for-transformer.md) |
 
 ## 推荐读法
 
-1. 先走 [Transformer 必要基础](../../04-transformer-foundations/)。
-2. 遇到不懂的概念，再按上表回到对应补课材料。
-3. 补完后回到原来的 Transformer 章节，不要在 foundation 里横向扩散。
+1. 默认先走 [Transformer mainline](../../04-transformer-foundations/)。
+2. 遇到不懂的概念，再按上表进入具体 foundation page。
+3. 补完后回到原来的 lesson，不要在 foundation 里横向扩散。
 
 ## 读完后你应该能解释
 
