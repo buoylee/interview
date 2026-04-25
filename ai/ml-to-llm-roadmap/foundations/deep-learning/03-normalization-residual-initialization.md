@@ -7,7 +7,7 @@
 ## 你在主线哪里会用到
 
 - [Transformer Block](../../04-transformer-foundations/05-transformer-block.md)
-- [Decoder-only 与逐 Token 生成](../../04-transformer-foundations/05-decoder-only-and-generation.md)
+- [Decoder-only 与逐 Token 生成](../../04-transformer-foundations/08-decoder-only-generation.md)
 
 ## 最小直觉
 

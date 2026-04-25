@@ -64,4 +64,5 @@ KV Cache 让历史别重算。
 - [从 Token 到向量](../04-transformer-foundations/02-token-to-vector.md)
 - [Self-Attention 与 Q/K/V](../04-transformer-foundations/04-self-attention-qkv.md)
 - [Transformer Block](../04-transformer-foundations/05-transformer-block.md)
-- [Decoder-only 与逐 Token 生成](../04-transformer-foundations/05-decoder-only-and-generation.md)
+- [Decoder-only 与逐 Token 生成](../04-transformer-foundations/08-decoder-only-generation.md)
+- [KV Cache、上下文长度与推理成本](../04-transformer-foundations/09-kv-cache-context-cost.md)

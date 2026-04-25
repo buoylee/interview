@@ -85,4 +85,4 @@ Decoder-only:
 
 ## 下一步
 
-下一篇读 `08-decoder-only-generation.md`（待创建），在已经理解三种架构后，专门看 Decoder-only 如何逐 token 生成。
+下一篇读 [08-decoder-only-generation.md](./08-decoder-only-generation.md)，在已经理解三种架构后，专门看 Decoder-only 如何逐 token 生成。
