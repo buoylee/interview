@@ -1,6 +1,6 @@
 # 04 Transformer 必要基础
 
-> **定位**：这是第一次系统学习 Transformer 的主线，不是面试速记。系统主线完成后，再进入后续新增的 `interview-paths/` 和 `09-review-notes/` 做压缩复习。
+> **定位**：这是第一次系统学习 Transformer 的主线，不是面试速记。系统主线完成后，再进入 [Transformer 面试阅读路径](../interview-paths/ai-engineer-transformer.md) 和 `09-review-notes/` 做压缩复习。
 
 ## 你会学到什么
 
