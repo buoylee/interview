@@ -66,4 +66,4 @@ Embedding Table 形状 = V x d_model
 
 ## 下一步
 
-下一篇读 [03-self-attention-qkv.md](./03-self-attention-qkv.md)，看这些 token 向量如何互相读取信息。
+下一篇读 [03-why-attention-needs-context.md](./03-why-attention-needs-context.md)，先理解为什么 token 需要读取上下文，再进入 Q/K/V。

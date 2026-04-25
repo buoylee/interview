@@ -1,6 +1,8 @@
-# 4.3 Self-Attention 与 Q/K/V
+# 4.4 Self-Attention 与 Q/K/V
 
 ## 你为什么要学这个
+
+上一篇已经把 Attention 的动机拆成三个问题：当前 token 想找什么、其他 token 能提供什么、当前 token 应该读取什么。本篇把这三个问题具体落到 Q、K、V。
 
 Self-Attention 是 LLM 理解上下文的核心机制。面试里的 Q/K/V、`sqrt(d_k)`、Multi-Head、长上下文复杂度，都是从这一节展开。
 
@@ -8,7 +10,7 @@ Self-Attention 是 LLM 理解上下文的核心机制。面试里的 Q/K/V、`sq
 
 你需要知道：
 
-- token 已经被表示成向量；不熟先看 [02-token-to-vector.md](./02-token-to-vector.md)。
+- token 已经被表示成向量，并理解为什么需要上下文读取；不熟先看 [03-why-attention-needs-context.md](./03-why-attention-needs-context.md)。
 - softmax 会把一组分数变成和为 1 的权重；不熟时回看旧版 [概率基础](../00-math-foundations/02-probability.md)。
 
 ## 一个真实问题
