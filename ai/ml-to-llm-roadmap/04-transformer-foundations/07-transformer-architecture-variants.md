@@ -72,7 +72,7 @@ Decoder-only:
 
 ## 常见误区
 
-- Encoder-only 不是“对生成完全没用”，而是不是天然自回归生成。
+- Encoder-only 不是“对生成完全没用”，而是它并非天然自回归生成。
 - Decoder-only 不是“没有 Encoder 所以不能理解输入”，它把输入放在同一个上下文序列里读取。
 - Encoder-Decoder 不是过时架构，它在 seq2seq 任务里仍然有清晰优势。
 
