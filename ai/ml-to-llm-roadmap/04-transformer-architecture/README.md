@@ -10,17 +10,17 @@
 
 ---
 
-## 🗺️ 学习路径指南
+## 🗺️ 旧版参考顺序
 
-> **这一阶段是面试重中之重。** Self-Attention 的计算流程几乎是每场 LLM 面试都会问到的。
+> **仅用于旧版材料查阅。** 这不是第一次系统学习 Transformer 的默认路线；首次学习请从 [04-transformer-foundations](../04-transformer-foundations/) 开始。旧版顺序适合回查 Attention 变体、非 Transformer 架构等参考内容。
 
 ```
-快速路径（4-5 天）：
-  01 Transformer 核心 → ⭐⭐⭐ 最重要！必须能白板讲清 Self-Attention
+旧版快速查阅（4-5 天）：
+  01 Transformer 核心 → ⭐⭐⭐ Self-Attention 面试背景材料
   02 三种范式        → 理解 BERT vs GPT vs T5 的区别
   03 Attention 变体  → GQA 和 Flash Attention 是面试高频
 
-深入路径（1.5 周完整）：
+旧版完整参考（1.5 周完整）：
   按顺序全部学完，04 非 Transformer 是面试区分度话题
 ```
 
