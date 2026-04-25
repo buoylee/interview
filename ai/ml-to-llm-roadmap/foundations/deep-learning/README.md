@@ -1,6 +1,6 @@
 # Deep Learning 补课
 
-> **定位**：这是一个补课 layer，不是第一默认路线。默认路径是先走 [Transformer mainline](../../04-transformer-foundations/)；遇到卡点时进入对应 foundation page；补完后回到原来的 lesson。
+> **定位**：这是一个补课层，不是第一默认路线。默认路径是先走 [Transformer 主线](../../04-transformer-foundations/)；遇到卡点时进入对应补课页；补完后回到原来的章节。
 
 ## 什么时候需要回来补
 
@@ -15,9 +15,9 @@
 
 ## 推荐读法
 
-1. 默认先走 [Transformer mainline](../../04-transformer-foundations/)。
-2. 遇到不懂的概念，再按上表进入具体 foundation page。
-3. 补完后回到原来的 lesson，不要在 foundation 里横向扩散。
+1. 默认先走 [Transformer 主线](../../04-transformer-foundations/)。
+2. 遇到不懂的概念，再按上表进入具体补课页。
+3. 补完后回到原来的章节，不要在 foundation 里横向扩散。
 
 ## 读完后你应该能解释
 
