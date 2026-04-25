@@ -65,4 +65,4 @@ new token 2 -> reuse old K/V -> append new K/V
 
 ## 下一步
 
-系统学习到这里先完成 Transformer 主线。面试前再读 `../interview-paths/ai-engineer-transformer.md`（待创建）和 [Transformer 核心面试速记](../09-review-notes/03-transformer-core-cheatsheet.md)。
+系统学习到这里先完成 Transformer 主线。面试前再读 [Transformer 面试阅读路径](../interview-paths/ai-engineer-transformer.md) 和 [Transformer 核心面试速记](../09-review-notes/03-transformer-core-cheatsheet.md)。
