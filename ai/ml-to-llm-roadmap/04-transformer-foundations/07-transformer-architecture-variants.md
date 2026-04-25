@@ -62,6 +62,90 @@ Decoder-only:
   prompt + history + context -> next token -> next token -> ...
 ```
 
+## 原理层：结构选择和训练目标
+
+三种架构不只是“长得不一样”，它们通常也对应不同的训练目标和输出形态。理解这一层后，BERT、T5、GPT 的差异就不再只是背表格。
+
+### Encoder-only：更适合理解型目标
+
+Encoder-only 保留的是双向读取输入的能力。每个 token 都可以结合左右上下文形成表示，所以它天然适合“读完输入后做判断或产出表示”。
+
+典型预训练目标是 MLM，也就是 Masked Language Modeling：
+
+```text
+输入: 我 喜欢 [MASK]
+目标: 苹果
+```
+
+模型不是从左到右生成整句话，而是利用左右上下文预测被遮住的位置。这会推动模型学习上下文理解能力。
+
+在应用里，Encoder-only 的输出常见有三种用法：
+
+```text
+token 表示 -> NER / token classification
+句向量 -> embedding / semantic search
+query-document 表示 -> rerank / matching
+```
+
+所以 BERT 类模型适合 embedding/rerank，不是因为它“不会生成所以只能检索”，而是因为它的结构和训练目标更偏向完整读取输入、形成可比较的表示。
+
+### Encoder-Decoder：适合 source-to-target 学习
+
+Encoder-Decoder 保留了两段式结构：Encoder 读 source，Decoder 根据 source 和已知 target prefix 预测下一个 target token。
+
+训练时可以写成：
+
+```text
+source: 中文句子
+decoder input: <BOS> I like
+prediction target: I like apples
+```
+
+Decoder 的每一步预测都同时依赖两类信息：
+
+- 通过 masked self-attention 读取已经出现的 target prefix。
+- 通过 cross-attention 读取 Encoder 产出的 source 表示。
+
+这让 Encoder-Decoder 很适合 source 和 target 明确不同的任务，例如翻译、摘要、改写、问答到结构化输出。T5 的 text-to-text 思路就是把多种 NLP 任务都改写成“输入文本 -> 输出文本”。
+
+### Decoder-only：把所有条件都变成 prefix
+
+Decoder-only 保留的是自回归生成能力。它通常使用 CLM，也就是 Causal Language Modeling / next-token prediction：
+
+```text
+输入前缀: The capital of France is
+预测下一个 token: Paris
+```
+
+它不单独区分 source 和 target，而是把所有信息排成一个连续上下文：
+
+```text
+system instruction
+user question
+retrieved documents
+tool schema
+assistant answer prefix
+```
+
+模型要做的是在这个 prefix 后继续预测下一个 token。RAG 文档、历史对话、工具说明并不是通过 cross-attention 接进来，而是作为同一段上下文的一部分被 masked self-attention 读取。
+
+### 为什么现代通用 LLM 多采用 Decoder-only
+
+Decoder-only 对通用 LLM 友好，核心原因不是“Encoder 没用”，而是它把训练和推理都统一成同一种形式：
+
+```text
+给定 prefix -> 预测下一个 token -> 把新 token 接回 prefix -> 继续预测
+```
+
+这个形式有几个工程和规模化优势：
+
+- 数据形态简单：网页、书籍、代码、对话都可以变成 next-token prediction。
+- 训练目标统一：不需要为每类任务单独设计输入输出结构。
+- 推理接口统一：prompt、上下文、工具 schema、示例、历史消息都可以拼成 prefix。
+- 应用组合方便：RAG、Agent、function calling 都可以表达成“给模型更多上下文，再让它继续生成”。
+
+因此 Decoder-only 成为现代通用 LLM 的主流，不代表 Encoder-only 或 Encoder-Decoder 过时；它只是最适合大规模通用生成这个目标。
+
 ## 和 LLM 应用的连接
 
 - RAG embedding 和 rerank 常常更接近 Encoder-only 用法，因为目标是理解和比较文本。
@@ -75,13 +159,26 @@ Decoder-only:
 - Encoder-only 不是“对生成完全没用”，而是它并非天然自回归生成。
 - Decoder-only 不是“没有 Encoder 所以不能理解输入”，它把输入放在同一个上下文序列里读取。
 - Encoder-Decoder 不是过时架构，它在 seq2seq 任务里仍然有清晰优势。
+- BERT、T5、GPT 的差异不只是模型名字不同，还包括结构、训练目标和输出形态的差异。
+- Decoder-only 能读 prompt 里的材料，不是因为它有单独的 Encoder，而是因为材料已经被放进同一个 prefix。
 
 ## 自测
 
 1. 为什么 BERT 适合 embedding/rerank？
-2. T5 为什么需要 cross-attention？
-3. GPT 为什么可以把检索文档和用户问题放进同一个 prompt？
-4. 三种架构的输入输出形式分别是什么？
+2. MLM 和 CLM 的核心区别是什么？
+3. T5 为什么适合 source-to-target 任务？
+4. GPT 为什么可以把检索文档和用户问题放进同一个 prompt？
+5. 三种架构的输入输出形式分别是什么？
+6. 为什么现代通用 LLM 多采用 Decoder-only？
+
+## 深入参考
+
+本篇已经覆盖主线需要的三种架构范式。读完后，如果你想看更压缩的模型对比和预训练目标，可以再读旧版参考：
+
+- [三大架构范式](../04-transformer-architecture/02-architecture-paradigms.md)
+- [BERT 系列：理解型模型](../05-pretrained-models/01-bert-family.md)
+- [GPT 演进：生成式模型](../05-pretrained-models/02-gpt-evolution.md)
+- [预训练模型里程碑](../05-pretrained-models/03-milestones.md)
 
 ## 下一步
 
