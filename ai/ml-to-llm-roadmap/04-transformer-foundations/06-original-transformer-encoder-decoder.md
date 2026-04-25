@@ -72,4 +72,4 @@ Decoder 输出：下一个 target token 的概率，例如 `apples`。
 
 ## 下一步
 
-下一篇读 `07-transformer-architecture-variants.md`（待创建），看 BERT、T5、GPT 如何从这套结构中选择不同部分。
+下一篇读 [07-transformer-architecture-variants.md](./07-transformer-architecture-variants.md)，看 BERT、T5、GPT 如何从这套结构中选择不同部分。
