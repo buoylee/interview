@@ -1,8 +1,8 @@
 # 阶段 4：Transformer + 非 Transformer 架构（1.5 周）
 
-> **迁移提示**：新版路线已新增 AI Engineer 视角的 Transformer 样板模块：[04-transformer-foundations](../04-transformer-foundations/)。
+> **迁移提示**：新版路线已将 Transformer 的首次学习入口迁到系统学习模块：[04-transformer-foundations](../04-transformer-foundations/)。
 >
-> 旧版阶段 4 暂时保留作为更宽的参考材料；如果你是为了 LLM 应用工程师面试学习，优先看新版模块和 [Transformer 核心面试速记](../09-review-notes/03-transformer-core-cheatsheet.md)。
+> 旧版阶段 4 暂时保留作为更宽的参考材料；如果你是第一次系统学习 Transformer，请从 [04-transformer-foundations](../04-transformer-foundations/) 开始，再用 [Transformer 核心面试速记](../09-review-notes/03-transformer-core-cheatsheet.md) 复盘。
 
 > **目标**：深入理解 Transformer 的每个组件，掌握 Attention 变体（MHA→GQA→MLA→Flash Attention），以及 Mamba/SSM 等替代架构。这是面试的核心战场。
 >

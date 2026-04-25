@@ -4,10 +4,13 @@
 >
 > - 为什么应用工程师需要懂 Transformer：[../04-transformer-foundations/01-why-ai-engineers-need-transformer.md](../04-transformer-foundations/01-why-ai-engineers-need-transformer.md)
 > - 从 Token 到向量：[../04-transformer-foundations/02-token-to-vector.md](../04-transformer-foundations/02-token-to-vector.md)
+> - 为什么 Attention 需要上下文：[../04-transformer-foundations/03-why-attention-needs-context.md](../04-transformer-foundations/03-why-attention-needs-context.md)
 > - Self-Attention 与 Q/K/V：[../04-transformer-foundations/04-self-attention-qkv.md](../04-transformer-foundations/04-self-attention-qkv.md)
 > - Transformer Block：[../04-transformer-foundations/05-transformer-block.md](../04-transformer-foundations/05-transformer-block.md)
+> - 原始 Transformer Encoder/Decoder：[../04-transformer-foundations/06-original-transformer-encoder-decoder.md](../04-transformer-foundations/06-original-transformer-encoder-decoder.md)
+> - 三种 Transformer 架构范式：[../04-transformer-foundations/07-transformer-architecture-variants.md](../04-transformer-foundations/07-transformer-architecture-variants.md)
 > - Decoder-only 与逐 Token 生成：[../04-transformer-foundations/08-decoder-only-generation.md](../04-transformer-foundations/08-decoder-only-generation.md)
-> - KV Cache、上下文长度与推理成本：[../04-transformer-foundations/09-kv-cache-context-cost.md](../04-transformer-foundations/09-kv-cache-context-cost.md)
+> - KV Cache 与上下文成本：[../04-transformer-foundations/09-kv-cache-context-cost.md](../04-transformer-foundations/09-kv-cache-context-cost.md)
 > - 面试速记：[../09-review-notes/03-transformer-core-cheatsheet.md](../09-review-notes/03-transformer-core-cheatsheet.md)
 >
 > 本旧文暂时保留作为综合参考，不再作为默认学习入口。
