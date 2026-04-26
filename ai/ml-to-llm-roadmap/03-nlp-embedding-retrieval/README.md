@@ -1,6 +1,6 @@
 # 阶段 3：NLP + Embedding & 检索理论（1.5 周）
 
-> **新版路线说明**：这个目录仍保留 NLP、Embedding、检索和旧版生成控制材料。默认学习路径中，生成控制已经迁入 [03-generation-control](../03-generation-control/)；RAG 与检索系统会在后续单独系统化。
+> **新版路线说明**：这个目录仍保留 NLP、Embedding、检索和旧版生成控制材料。RAG 默认路线已经迁入 [RAG 与检索系统](../01-rag-retrieval-systems/)；NLP、Embedding 与检索理论继续作为背景参考；生成控制默认读 [03-generation-control](../03-generation-control/)。
 
 > **目标**：理解文本如何变成向量，向量如何用来检索，以及语言模型的生成机制。这是你 RAG/Agent 实战经验的理论根基。
 >
@@ -32,8 +32,8 @@
 | 文件 | 主题 | 面试优先级 | 核心收获 |
 |------|------|-----------|---------|
 | [01-text-representation.md](./01-text-representation.md) | 文本表示演进 | ⭐⭐ | One-Hot → Word2Vec → BERT 的脉络 |
-| [02-embedding-theory.md](./02-embedding-theory.md) | Embedding 深度理论 | ⭐⭐⭐ | RAG 的 Embedding 底层原理 |
-| [03-retrieval-theory.md](./03-retrieval-theory.md) | 检索理论 | ⭐⭐⭐ | BM25、HNSW、Hybrid Search |
+| [02-embedding-theory.md](./02-embedding-theory.md) | Embedding 深度理论 | ⭐⭐⭐ | RAG 背景参考：Embedding 底层原理 |
+| [03-retrieval-theory.md](./03-retrieval-theory.md) | 检索理论 | ⭐⭐⭐ | RAG 背景参考：BM25、HNSW、Hybrid Search |
 | [04-language-model-decoding.md](./04-language-model-decoding.md) | 语言模型 & 解码旧版参考 | ⭐⭐⭐ | AR vs AE；新版生成控制默认读 [03-generation-control](../03-generation-control/) |
 | [05-controlled-generation.md](./05-controlled-generation.md) | 受控生成 & 结构化输出旧版参考 | ⭐⭐ | JSON Mode、Function Calling；新版默认读 [03-generation-control](../03-generation-control/) |
 | [06-tokenization-deep-dive.md](./06-tokenization-deep-dive.md) | Tokenization 算法 | ⭐⭐⭐ | BPE 面试核心，常要求讲流程 |
