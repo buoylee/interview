@@ -98,4 +98,6 @@ Transformer Block 通常由 Attention、FFN、Residual Add 和 Norm 组合而成
 
 ## 回到主线
 
+深入参考可回到 [旧版深度学习基础](../../02-deep-learning/)。
+
 现在回到 [Transformer Block](../../04-transformer-foundations/05-transformer-block.md)。阅读时，把每个 block 看成“Norm 先稳定输入，Attention/FFN 做变换，Residual 保留路径”的组合，而不是一堆孤立模块。

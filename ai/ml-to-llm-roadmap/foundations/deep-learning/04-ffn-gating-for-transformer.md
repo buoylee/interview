@@ -126,4 +126,6 @@ token 表示
 
 ## 回到主线
 
+深入参考可回到 [旧版深度学习基础](../../02-deep-learning/)。
+
 回到 [Transformer Block](../../04-transformer-foundations/05-transformer-block.md)，把 FFN 放进完整结构里理解：Attention 先让 token 之间交换信息，FFN 再让每个 token 独立加工信息。
