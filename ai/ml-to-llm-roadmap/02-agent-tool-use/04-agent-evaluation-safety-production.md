@@ -82,7 +82,9 @@ final answer: 退款被银行拒绝，已转人工复核，预计 1 个工作日
 
 loop limit 防止无限循环和成本失控，例如最多 6 步、最多 2 次同类重试、总耗时不超过 30 秒。但它也可能让复杂任务过早停止，所以要配合 stop_reason 和 fallback：达到限制时说明当前进度、缺口和人工升级方式。
 
-生产日志至少应记录：request_id、user_id 或匿名主体、goal、state snapshot、model/prompt/schema 版本、tool calls、tool arguments、observations 摘要、validation errors、policy results、retry count、latency、token cost、stop_reason、final answer 和 human escalation 标记。
+生产日志至少应记录：request_id、user_id 或匿名主体、goal、state snapshot、model/prompt/schema 版本、tool calls、脱敏后的 tool arguments、参数摘要或安全引用 ID、observations 摘要、validation errors、policy results、retry count、latency、token cost、stop_reason、final answer 和 human escalation 标记。
+
+这里的日志不是“能记多少就记多少”。工具参数可能包含 PII、密钥、订单号、邮箱、内部 ID 或用户原文，生产系统要有 redaction、访问控制和 retention policy；能用安全引用 ID 关联原始记录时，不要把敏感原文直接写进通用日志。
 
 ## 和应用/面试的连接
 
