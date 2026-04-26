@@ -1,4 +1,4 @@
-# 阶段 1：机器学习基础（2 周）
+# 阶段 1：机器学习基础（旧版参考）
 
 > **新版路线说明**：这个目录是解锁后的传统 ML 深入资料，不是进入 LLM 主线的硬性前置。第一次读 Transformer 时不需要先完整学习本目录；当你想补“模型如何学习、评估、泛化”时再回来。
 
@@ -43,4 +43,4 @@
 | 《百面机器学习》 | 面试题 | 刷题用 |
 | scikit-learn 文档 | 算法实现 | 代码参考 |
 
-> ⬅️ [上一阶段：数学基础](../00-math-foundations/) | ➡️ [下一阶段：深度学习基础](../02-deep-learning/)
+> 回到新版主线：[Transformer 必要基础](../04-transformer-foundations/) | 按卡点解锁：[Foundations 解锁层](../foundations/) | 旧版参考：[数学基础](../00-math-foundations/) / [深度学习基础](../02-deep-learning/)

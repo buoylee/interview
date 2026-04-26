@@ -1,4 +1,4 @@
-# 阶段 3：NLP + Embedding & 检索理论（1.5 周）
+# 阶段 3：NLP + Embedding & 检索理论（旧版参考）
 
 > **新版路线说明**：这个目录仍保留 NLP、Embedding、检索和旧版生成控制材料。RAG 默认路线已经迁入 [RAG 与检索系统](../01-rag-retrieval-systems/)；NLP、Embedding 与检索理论继续作为背景参考；生成控制默认读 [03-generation-control](../03-generation-control/)。如果你是从 Transformer 主线卡在 token、vocab、token id 或 embedding table，先读 [Tokenization 与 Embedding 补课](../foundations/nlp-tokenization-embedding/)；读完再回到这里补完整 NLP、Embedding 与检索理论。
 
@@ -7,7 +7,7 @@
 > **你的定位**：你已经在用 Embedding + 向量检索 + Reranking，这里搞懂「为什么这样做」和「底层原理是什么」。
 
 > [!NOTE]
-> **从阶段 2 过来的衔接说明**：阶段 2 讲的是通用深度学习（MLP→CNN→RNN→Attention），阶段 3 是 **NLP 领域特定知识**。两者是不同维度：阶段 2 是「架构演进」，阶段 3 是「文本怎么表示和处理」。所以这里从 One-Hot 开始讲不是"退步"，而是在 NLP 的维度把基础补齐。阶段 2 的 Attention 知识会在阶段 4 Transformer 中深度展开。
+> **旧版衔接说明**：旧阶段 2 讲的是通用深度学习（MLP→CNN→RNN→Attention），旧阶段 3 是 **NLP 领域特定知识**。两者是不同维度：阶段 2 是「架构演进」，阶段 3 是「文本怎么表示和处理」。所以这里从 One-Hot 开始讲不是"退步"，而是在 NLP 的维度把基础补齐。新版默认从 [Transformer 必要基础](../04-transformer-foundations/) 开始，需要这些背景时再回来看。
 
 ---
 
@@ -22,17 +22,17 @@
 
 ---
 
-## 🗺️ 学习路径指南
+## 🗺️ 旧版参考阅读顺序
 
 ```
-快速路径（4-5 天）：
+旧版快速补读（4-5 天）：
   01 文本表示     → 理解演进脉络即可，不需要记公式
   02 Embedding   → ⭐ 重点！RAG 面试必考
   03 检索理论     → ⭐ 重点！BM25 vs Dense + HNSW
   04 语言模型     → 理解 AR vs AE；生成控制默认读 ../03-generation-control/
   06 Tokenization → BPE 面试常问，要会讲流程
 
-深入路径（1.5 周完整）：
+旧版完整补读（1.5 周）：
   按顺序读 01/02/03/04/06；旧版 05 受控生成仅作扩展参考
 ```
 
@@ -81,4 +81,4 @@ Embedding 如何训练？
 | Lilian Weng Blog | Embedding, 检索, 生成 | 深度技术博客 |
 | Sentence-BERT 论文 | Embedding 模型训练 | 必读 |
 
-> ⬅️ [上一阶段：深度学习基础](../02-deep-learning/) | ➡️ [下一阶段：Transformer + 非 Transformer 架构](../04-transformer-architecture/)
+> 回到新版主线：[Transformer 必要基础](../04-transformer-foundations/) | 按卡点解锁：[Foundations 解锁层](../foundations/) | 相关主线：[RAG 与检索系统](../01-rag-retrieval-systems/) / [生成控制](../03-generation-control/)

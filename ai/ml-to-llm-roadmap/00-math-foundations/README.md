@@ -1,4 +1,4 @@
-# 阶段 0：数学基础速通（1 周）
+# 阶段 0：数学基础速通（旧版参考）
 
 > **新版路线说明**：这个目录是解锁后的数学深入资料，不是默认主线。如果你是从 Transformer 主线卡在向量、矩阵、点积、logits 或 softmax，先读 [Transformer 最小数学](../foundations/math-for-transformer/)；读完再回到这里补完整数学直觉。
 
