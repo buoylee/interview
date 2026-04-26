@@ -1,6 +1,6 @@
 # 阶段 3：NLP + Embedding & 检索理论（1.5 周）
 
-> **新版路线说明**：这个目录仍保留 NLP、Embedding、检索和旧版生成控制材料。RAG 默认路线已经迁入 [RAG 与检索系统](../01-rag-retrieval-systems/)；NLP、Embedding 与检索理论继续作为背景参考；生成控制默认读 [03-generation-control](../03-generation-control/)。
+> **新版路线说明**：这个目录仍保留 NLP、Embedding、检索和旧版生成控制材料。RAG 默认路线已经迁入 [RAG 与检索系统](../01-rag-retrieval-systems/)；NLP、Embedding 与检索理论继续作为背景参考；生成控制默认读 [03-generation-control](../03-generation-control/)。如果你是从 Transformer 主线卡在 token、vocab、token id 或 embedding table，先读 [Tokenization 与 Embedding 补课](../foundations/nlp-tokenization-embedding/)；读完再回到这里补完整 NLP、Embedding 与检索理论。
 
 > **目标**：理解文本如何变成向量，向量如何用来检索，以及语言模型的生成机制。这是你 RAG/Agent 实战经验的理论根基。
 >
@@ -8,6 +8,17 @@
 
 > [!NOTE]
 > **从阶段 2 过来的衔接说明**：阶段 2 讲的是通用深度学习（MLP→CNN→RNN→Attention），阶段 3 是 **NLP 领域特定知识**。两者是不同维度：阶段 2 是「架构演进」，阶段 3 是「文本怎么表示和处理」。所以这里从 One-Hot 开始讲不是"退步"，而是在 NLP 的维度把基础补齐。阶段 2 的 Attention 知识会在阶段 4 Transformer 中深度展开。
+
+---
+
+## 什么时候读旧 NLP/Embedding 资料
+
+| 你已经读懂 | 再回来看 |
+| --- | --- |
+| token、vocab、token id、embedding table | [文本表示演进](./01-text-representation.md) 和 [Embedding 深度理论](./02-embedding-theory.md) |
+| RAG 主线里的召回、rerank、context assembly | [检索理论](./03-retrieval-theory.md) |
+| 生成控制主线 | [语言模型 & 解码旧版参考](./04-language-model-decoding.md) |
+| 需要 BPE 算法细节 | [Tokenization 算法](./06-tokenization-deep-dive.md) |
 
 ---
 

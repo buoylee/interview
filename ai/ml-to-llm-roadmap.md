@@ -40,7 +40,7 @@ foundations 按需补课
 | 评估、安全与生产排查 | Eval、LLM-as-Judge、幻觉、安全、监控排查 | [07-evaluation-safety-production](./ml-to-llm-roadmap/07-evaluation-safety-production/) | 已系统化 |
 | 系统设计与项目叙事 | 通用 AI 系统设计、模型路由、项目表达 | [08-system-design-project-narrative](./ml-to-llm-roadmap/08-system-design-project-narrative/) | 已系统化 |
 | 面试复习笔记 | 30 秒答案、追问、易混点和项目连接 | [09-review-notes](./ml-to-llm-roadmap/09-review-notes/) | 已系统化 |
-| Deep Learning 补课 | 支撑 Transformer 的神经网络基础 | [foundations/deep-learning](./ml-to-llm-roadmap/foundations/deep-learning/) | 已系统化 |
+| Foundations 解锁层 | 支撑 Transformer 的数学、NLP 与神经网络最小前置 | [foundations](./ml-to-llm-roadmap/foundations/) | 已系统化 |
 
 ## 面试冲刺路径
 
@@ -69,10 +69,11 @@ foundations 按需补课
 ## 系统学习路径
 
 1. 从 [Transformer 必要基础](./ml-to-llm-roadmap/04-transformer-foundations/) 开始。
-2. 缺 Deep Learning 前置知识时进入 [foundations/deep-learning](./ml-to-llm-roadmap/foundations/deep-learning/)。
-3. 如果目标是应用系统，按需进入：RAG、Agent、生成控制、推理部署、评估安全、系统设计。
-4. 如果目标是模型理解，按需进入：训练对齐、推理部署、评估安全。
-5. 每个模块学完后，用对应 `09-review-notes/` 做面试复盘。
+2. 卡在数学、NLP/token/embedding 或 Deep Learning 前置知识时，进入 [foundations 解锁层](./ml-to-llm-roadmap/foundations/)。
+3. 旧 `00-03` 是解锁后的深入资料，不再作为第一默认路线。
+4. 如果目标是应用系统，按需进入：RAG、Agent、生成控制、推理部署、评估安全、系统设计。
+5. 如果目标是模型理解，按需进入：训练对齐、推理部署、评估安全。
+6. 每个模块学完后，用对应 `09-review-notes/` 做面试复盘。
 
 ## 迁移说明
 

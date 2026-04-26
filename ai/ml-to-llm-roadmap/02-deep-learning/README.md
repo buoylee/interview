@@ -1,6 +1,6 @@
 # 阶段 2：深度学习基础（旧版参考）
 
-> **定位**：这个目录保留旧版深度学习材料，供查漏补缺和扩展阅读使用。新版系统学习默认不从这里顺序读，而是从 [Transformer 必要基础](../04-transformer-foundations/) 出发，按需回到 [Deep Learning 补课](../foundations/deep-learning/)。
+> **定位**：这个目录保留旧版深度学习材料，供查漏补缺和扩展阅读使用。新版系统学习默认不从这里顺序读，而是从 [Transformer 必要基础](../04-transformer-foundations/) 出发，卡住时先进入 [Foundations 解锁层](../foundations/) 和 [Deep Learning 补课](../foundations/deep-learning/)。旧 `02-deep-learning` 是 foundation 页面之后的深度参考。
 >
 > **为什么这样改**：原来的深度学习阶段把太多前置概念塞进同一条学习线，容易让只想补 LLM 底层的学习者感觉跳跃。新版把“第一次讲懂 Transformer”放在主线，把神经网络基础拆成小的 foundation。
 
@@ -18,6 +18,7 @@
 默认入口：
 
 - [Transformer 必要基础](../04-transformer-foundations/)
+- [Foundations 解锁层](../foundations/)
 - [Deep Learning 补课](../foundations/deep-learning/)
 - [新版神经网络基础入口](./01-neural-network-basics.md)
 
