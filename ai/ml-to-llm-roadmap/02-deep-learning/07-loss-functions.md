@@ -237,13 +237,13 @@ LLM 预训练时每一步：
 ## 📖 推荐学习路径
 
 本文串联了以下知识（按需回顾）：
-- **阶段 0** [信息论](../00-math-foundations/04-information-theory.md)：熵、交叉熵、KL 散度的数学定义
-- **阶段 2** [优化器](./02-optimizers-training.md)：梯度下降如何用 loss 更新参数
-- **阶段 3** [解码策略](../03-nlp-embedding-retrieval/04-language-model-decoding.md)：Temperature/Top-p 如何影响 softmax
-- **阶段 6** [训练流程](../06-llm-core/01-training-pipeline.md)：预训练的 CLM loss
+- **旧版数学参考** [信息论](../00-math-foundations/04-information-theory.md)：熵、交叉熵、KL 散度的数学定义
+- **旧版深度学习参考** [优化器](./02-optimizers-training.md)：梯度下降如何用 loss 更新参数
+- **生成控制相关参考** [解码策略](../03-nlp-embedding-retrieval/04-language-model-decoding.md)：Temperature/Top-p 如何影响 softmax
+- **训练主线参考** [训练流程](../06-llm-core/01-training-pipeline.md)：预训练的 CLM loss
 
-## ⏭️ 下一阶段预告
+## ⏭️ 回到新版路线
 
-恭喜你完成阶段 2！你现在已经理解了深度学习的核心零件。下一阶段（阶段 3）进入 **NLP 特定知识** — 文本如何变成向量、如何用向量检索、LLM 如何生成文本。这些是离你日常工作最近的理论，也是面试最常问的。
+如果你是从 Deep Learning 补课来到这里，读到这里已经足够支撑理解 softmax、交叉熵和 KL 约束。下一步优先回到 Transformer 主线；如果要补 NLP、Embedding 或 RAG 背景，再按需读旧版 `03` 或新版 RAG 主线。
 
-> ⬅️ [上一节：对比学习 & 其他范式](./06-other-architectures.md) | [返回概览](./README.md) | ➡️ [下一阶段：NLP + Embedding & 检索理论](../03-nlp-embedding-retrieval/)
+> ⬅️ [上一节：对比学习 & 其他范式](./06-other-architectures.md) | [返回旧版深度学习概览](./README.md) | 回到新版主线：[Transformer 必要基础](../04-transformer-foundations/) | 按需参考：[NLP + Embedding & 检索理论](../03-nlp-embedding-retrieval/)

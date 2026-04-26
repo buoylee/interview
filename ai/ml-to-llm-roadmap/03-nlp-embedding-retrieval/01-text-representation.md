@@ -20,7 +20,7 @@
 > BERT：上下文相关了 → 同一个词在不同句子有不同向量
 > ```
 >
-> **先修**：阶段 2 完成即可
+> **按需先修**：按旧版参考阅读时，了解神经网络基础即可；如果你是从 Transformer 主线卡在 token/vocab，先读 [Tokenization 与 Embedding 补课](../foundations/nlp-tokenization-embedding/)。
 
 ---
 

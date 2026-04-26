@@ -19,7 +19,7 @@
 > 3. Temperature 低 = 更确定（代码/数学），Temperature 高 = 更随机（创意写作）
 > 4. Top-p 比 Top-k 好 → 因为 Top-p 能自动适应不同位置的确定性
 >
-> **先修**：[阶段 2 / 07-损失函数](../02-deep-learning/07-loss-functions.md)（知道 Softmax 和交叉熵）
+> **按需先修**：知道 Softmax 和交叉熵即可；不熟时先读 [Logits、Softmax 与概率分布](../foundations/math-for-transformer/02-logits-softmax-probability.md)，再按需读旧版 [损失函数](../02-deep-learning/07-loss-functions.md)。
 
 ---
 

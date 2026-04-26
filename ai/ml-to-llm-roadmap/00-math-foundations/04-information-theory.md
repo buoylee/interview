@@ -295,7 +295,7 @@ IG(Y, X) = H(Y) - H(Y|X)
 
 1. **重点掌握**：交叉熵（作为损失函数）和 KL 散度（理解 RLHF）
 2. 信息熵和互信息了解直觉即可
-3. 困惑度会在阶段 3（语言模型）中再次出现
+3. 困惑度会在语言模型和生成控制主题中再次出现
 4. **推荐视频**：StatQuest 的 Entropy、Cross-Entropy 相关视频
 
-> ⬅️ [上一节：微积分](./03-calculus.md) | [返回概览](./README.md) | ➡️ [下一阶段：阶段 1 - ML 基础](../01-ml-basics/)
+> ⬅️ [上一节：微积分](./03-calculus.md) | [返回旧版数学概览](./README.md) | 回到新版主线：[Transformer 必要基础](../04-transformer-foundations/) | 按卡点解锁：[Foundations 解锁层](../foundations/)

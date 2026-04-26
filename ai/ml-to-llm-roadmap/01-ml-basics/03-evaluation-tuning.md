@@ -344,7 +344,7 @@ LLM：    生成任务没有唯一答案 → 评估更复杂
 | **NDCG** | 考虑排序质量的综合指标 |
 | Hit Rate | 前 K 条中有没有至少一个正确答案 |
 
-→ 知道这些指标是什么就好，阶段 3 和 7 会详细展开。
+→ 知道这些指标是什么就好，RAG 检索评估和模型评估安全主题会继续展开。
 
 ---
 
@@ -354,4 +354,4 @@ LLM：    生成任务没有唯一答案 → 评估更复杂
 2. 重点理解：Precision vs Recall 权衡、正则化（L2/Dropout）
 3. 《百面机器学习》中评估部分的面试题
 
-> ⬅️ [上一节：经典算法](./02-classic-algorithms.md) | [返回概览](./README.md) | ➡️ [下一阶段：深度学习基础](../02-deep-learning/)
+> ⬅️ [上一节：经典算法](./02-classic-algorithms.md) | [返回旧版 ML 概览](./README.md) | 回到新版主线：[Transformer 必要基础](../04-transformer-foundations/) | 按卡点解锁：[Foundations 解锁层](../foundations/)

@@ -316,8 +316,8 @@ Unigram: 从大词表开始，不断删减（自顶向下）
 
 ---
 
-## ⏭️ 下一阶段预告
+## ⏭️ 回到新版路线
 
-恭喜你完成阶段 3！你现在已经理解了 NLP 的核心知识 — 文本表示、Embedding、检索、生成、受控输出、分词。下一阶段进入**面试的核心战场：Transformer 架构**。Self-Attention 的计算流程几乎是每场 LLM 面试都会问到的，准备好了吗？
+如果你是为了补 tokenization 细节读到这里，下一步优先回到 [Transformer 必要基础](../04-transformer-foundations/)；如果目标是应用系统，再进入 [RAG 与检索系统](../01-rag-retrieval-systems/) 或 [生成控制](../03-generation-control/)。
 
-> ⬅️ [上一节：受控生成](./05-controlled-generation.md) | [返回概览](./README.md) | ➡️ [下一阶段：Transformer 架构](../04-transformer-architecture/)
+> ⬅️ [上一节：受控生成](./05-controlled-generation.md) | [返回旧版 NLP/Embedding 概览](./README.md) | 回到新版主线：[Transformer 必要基础](../04-transformer-foundations/)

@@ -407,7 +407,7 @@ Transformer (2017) "Attention is All You Need"
 ## 📖 推荐学习路径
 
 1. 理解 RNN → LSTM → Attention 的**演进动机**（每一步解决了什么问题）
-2. **重点掌握 Attention 的 Q/K/V 直觉** → 直接衔接下一阶段的 Transformer
+2. **重点掌握 Attention 的 Q/K/V 直觉** → 直接衔接新版 Transformer 主线
 3. 不需要手推 LSTM 的所有公式，理解「三个门控制什么」即可
 4. GRU 了解它是 LSTM 的简化版就够了
 

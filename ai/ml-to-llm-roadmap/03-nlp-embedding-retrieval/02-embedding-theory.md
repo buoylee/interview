@@ -19,7 +19,7 @@
 > 3. 余弦相似度 = 只比方向不比长度 → 不受文本长度影响
 > 4. 硬负样本质量 = Embedding 模型质量的关键
 >
-> **先修**：[01-文本表示](./01-text-representation.md) + [阶段 2 / 06-对比学习](../02-deep-learning/06-other-architectures.md)
+> **按需先修**：[01-文本表示](./01-text-representation.md) + 旧版深度学习参考里的 [对比学习](../02-deep-learning/06-other-architectures.md)
 
 ---
 
