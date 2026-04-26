@@ -123,4 +123,4 @@ Function Calling 通常包含几类控制：
 Function Calling: 把结构化输出用于工具调用意图表达
 ```
 
-继续往后学习时，先把 Function Calling 当作输出形态理解。至于 Agent 如何决定是否调用工具、调用几轮、如何处理观察结果，那是后续 Agent 模块的主题。
+继续往后学习时，先把 Function Calling 当作输出形态理解。至于 Agent 如何决定是否调用工具、调用几轮、如何处理观察结果，进入 [Agent 与工具调用](../02-agent-tool-use/)。

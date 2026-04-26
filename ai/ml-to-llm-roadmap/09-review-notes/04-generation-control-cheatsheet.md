@@ -12,7 +12,7 @@ LLM 不是一次性写完整答案，而是逐 token 生成。Temperature 作用
 
 结构化输出要分层看：prompt 只是自然语言要求，JSON mode 让输出更像合法 JSON，Schema/grammar-constrained decoding 把字段、类型、枚举和语法路径放进生成约束，validation-retry 是生成后的补救。约束越靠近解码过程，格式保证越强；越靠后处理，越像失败恢复。
 
-Function Calling 本质上是结构化输出：模型输出函数名和 arguments，应用层解析、校验、执行真实工具，再决定是否把结果交回模型。它不是 Agent，也不是模型自动执行工具。RAG 和 Agent 可以在后续系统里使用这类输出协议，但不是本模块默认内容。
+Function Calling 本质上是结构化输出：模型输出函数名和 arguments，应用层解析、校验、执行真实工具，再决定是否把结果交回模型。它不是 Agent，也不是模型自动执行工具。RAG 和 Agent 可以在对应系统里使用这类输出协议，但不是本模块默认内容。
 
 ## 高频追问
 
