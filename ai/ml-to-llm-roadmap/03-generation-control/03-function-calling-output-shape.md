@@ -4,7 +4,7 @@
 
 当用户问“上海明天天气怎么样”时，模型自己通常不知道实时天气。系统需要让模型表达“我想调用天气工具，并给出城市参数”。Function Calling 解决的就是这种输出形态问题：让模型输出一个结构化 call，而不是一段自由文本。
 
-这一篇只讨论 Function Calling 的输出协议和边界，不讨论 Agent 的计划、循环、记忆、多步反思或工具编排架构。这些会放到未来 Agent 模块单独系统化。
+这一篇只讨论 Function Calling 的输出协议和边界，不讨论 Agent 的计划、循环、记忆、多步反思或工具编排架构。Agent 的系统化学习见 [Agent 与工具调用](../02-agent-tool-use/)。
 
 ## 学前检查
 
@@ -92,7 +92,7 @@ Function Calling 通常包含几类控制：
 - Function Calling 是输出协议：模型输出可解析的调用形状。
 - Agent 是控制架构：系统如何规划、循环、观察工具结果、决定下一步。
 
-这一篇只覆盖前者。Agent 的多轮 tool loop、planner、executor、memory 和 reflection 都不在本模块范围内，会在未来 Agent 模块处理。
+这一篇只覆盖前者。Agent 的多轮 tool loop、planner、executor、memory 和 reflection 都不在本模块范围内，继续读 [Agent 与工具调用](../02-agent-tool-use/)。
 
 工程上你要能说清：工具 schema 怎么设计，参数如何验证，工具结果如何回传，什么时候强制工具，什么时候允许模型直接回答，以及失败时如何追问、重试或降级。
 
