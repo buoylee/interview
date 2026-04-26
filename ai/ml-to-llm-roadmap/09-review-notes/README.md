@@ -6,6 +6,8 @@
 
 | 笔记 | 对应系统主线 |
 |------|--------------|
+| [RAG 与检索系统速记](./01-rag-retrieval-systems-cheatsheet.md) | [RAG 与检索系统](../01-rag-retrieval-systems/) |
+| [Agent 与工具调用速记](./02-agent-tool-use-cheatsheet.md) | [Agent 与工具调用](../02-agent-tool-use/) |
 | [Transformer 核心速记](./03-transformer-core-cheatsheet.md) | [Transformer 必要基础](../04-transformer-foundations/) |
 | [生成控制速记](./04-generation-control-cheatsheet.md) | [生成控制与结构化输出](../03-generation-control/) |
 | [训练对齐微调速记](./05-training-alignment-finetuning-cheatsheet.md) | [训练、对齐与微调](../05-training-alignment-finetuning/) |
