@@ -36,12 +36,18 @@
 
 如果下面概念不熟，先按需补课：
 
-| 概念 | 补课材料 |
-|------|----------|
-| 神经元、线性层、激活函数 | [foundations/deep-learning/01-neuron-mlp-activation.md](../foundations/deep-learning/01-neuron-mlp-activation.md) |
-| 反向传播、梯度消失/爆炸 | [foundations/deep-learning/02-backprop-gradient-problems.md](../foundations/deep-learning/02-backprop-gradient-problems.md) |
-| Residual、LayerNorm、初始化 | [foundations/deep-learning/03-normalization-residual-initialization.md](../foundations/deep-learning/03-normalization-residual-initialization.md) |
-| FFN、GELU、SwiGLU | [foundations/deep-learning/04-ffn-gating-for-transformer.md](../foundations/deep-learning/04-ffn-gating-for-transformer.md) |
+| 概念 | 先补 |
+|------|------|
+| token、vocab、token id | [Token、Vocab 与 Token ID](../foundations/nlp-tokenization-embedding/01-token-vocab-token-id.md) |
+| embedding table、位置信息 | [Embedding Table 与位置信息](../foundations/nlp-tokenization-embedding/02-embedding-table-and-position.md) |
+| 向量、矩阵、点积 | [向量、矩阵和点积](../foundations/math-for-transformer/01-vector-matrix-dot-product.md) |
+| logits、softmax、概率分布 | [Logits、Softmax 与概率分布](../foundations/math-for-transformer/02-logits-softmax-probability.md) |
+| 神经元、线性层、激活函数 | [Deep Learning 补课 01](../foundations/deep-learning/01-neuron-mlp-activation.md) |
+| 反向传播、梯度消失/爆炸 | [Deep Learning 补课 02](../foundations/deep-learning/02-backprop-gradient-problems.md) |
+| Residual、LayerNorm、初始化 | [Deep Learning 补课 03](../foundations/deep-learning/03-normalization-residual-initialization.md) |
+| FFN、GELU、SwiGLU | [Deep Learning 补课 04](../foundations/deep-learning/04-ffn-gating-for-transformer.md) |
+
+旧 `00-03` 目录是解锁后的深入资料；第一次卡住时优先读 `foundations/` 对应短文。
 
 ## 学完后你应该能回答
 

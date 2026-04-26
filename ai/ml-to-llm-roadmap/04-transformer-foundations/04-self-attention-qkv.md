@@ -11,7 +11,9 @@ Self-Attention 是 LLM 理解上下文的核心机制。面试里的 Q/K/V、`sq
 你需要知道：
 
 - token 已经被表示成向量，并理解为什么需要上下文读取；不熟先看 [03-why-attention-needs-context.md](./03-why-attention-needs-context.md)。
-- softmax 会把一组分数变成和为 1 的权重；不熟时回看旧版 [概率基础](../00-math-foundations/02-probability.md)。
+- 点积和 `QK^T` 是怎么得到匹配分数的；不熟先看 [向量、矩阵和点积](../foundations/math-for-transformer/01-vector-matrix-dot-product.md)。
+- softmax 会把一组分数变成和为 1 的权重；不熟先看 [Logits、Softmax 与概率分布](../foundations/math-for-transformer/02-logits-softmax-probability.md)。
+- 如果看到完整公式会断掉，先看 [Attention 公式的最小数学拆解](../foundations/math-for-transformer/03-attention-math-minimal.md)。
 
 ## 一个真实问题
 

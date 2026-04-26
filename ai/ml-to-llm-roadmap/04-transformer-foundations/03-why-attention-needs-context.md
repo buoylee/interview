@@ -8,6 +8,7 @@
 
 - 你知道 token ID 和 embedding 的区别；不熟先看 [02-token-to-vector.md](./02-token-to-vector.md)。
 - 你知道一个 token 可以表示成一个向量；不需要先懂 Q/K/V。
+- 如果 token、token id、embedding table 仍不清楚，先补 [Tokenization 与 Embedding 补课](../foundations/nlp-tokenization-embedding/)。
 
 ## 一个真实问题
 

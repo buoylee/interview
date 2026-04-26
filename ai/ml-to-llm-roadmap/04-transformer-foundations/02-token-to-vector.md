@@ -8,8 +8,9 @@ LLM 不能直接处理字符串。它先把文本切成 token，再把 token ID 
 
 你需要知道：
 
-- 向量是数字列表，可以表示一个对象的特征。
-- 矩阵乘法可以把一批向量一起变换；不熟时回看旧版 [线性代数基础](../00-math-foundations/01-linear-algebra.md)。
+- token、vocab、token id 的关系；不熟先看 [Token、Vocab 与 Token ID](../foundations/nlp-tokenization-embedding/01-token-vocab-token-id.md)。
+- embedding table 和位置信息；不熟先看 [Embedding Table 与位置信息](../foundations/nlp-tokenization-embedding/02-embedding-table-and-position.md)。
+- 向量是数字列表，矩阵乘法可以把一批向量一起变换；不熟先看 [向量、矩阵和点积](../foundations/math-for-transformer/01-vector-matrix-dot-product.md)。
 
 ## 一个真实问题
 
