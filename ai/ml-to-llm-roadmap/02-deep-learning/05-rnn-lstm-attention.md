@@ -10,7 +10,7 @@
 >
 > **为什么 LLM 工程师要懂这些？**
 > - 面试经典题："为什么 Transformer 取代了 LSTM？" — 不理解 LSTM 的问题就答不好这题
-> - Attention 的 Q/K/V 思想直接来自这里 — 是阶段 4 Transformer 的前置知识
+> - Attention 的 Q/K/V 直觉会帮助理解新版 Transformer 主线
 > - 理解这条演进线展现系统性思维，面试官会加分
 >
 > **本节核心故事线**（记住这条线就够了）：

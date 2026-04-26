@@ -11,7 +11,7 @@
 > **为什么 LLM 工程师要懂这些？**
 > - 你每天都在用 Temperature 和 Top-p — 这里讲它们到底在做什么
 > - 面试必问："自回归和自编码的区别？为什么大模型用自回归？"
-> - 理解 Causal Mask 是理解 Transformer Decoder 的前置知识
+> - 理解 Causal Mask 会帮助你理解 Transformer Decoder 的生成约束
 >
 > **本节核心要点**：
 > 1. 自回归（GPT）= 从左到右逐个预测 → 生成的主流范式
