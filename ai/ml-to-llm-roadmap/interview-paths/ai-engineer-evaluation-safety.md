@@ -4,7 +4,7 @@
 
 - 需要把“感觉模型不错”变成可度量、可回归、可监控的工程体系。
 - 面试中会被追问 eval、LLM-as-Judge、幻觉、Prompt Injection、guardrails 和线上回退定位。
-- RAG 和 Agent 先延后；本路径先处理通用 LLM 应用的质量与安全闭环。
+- RAG 与 Agent 有独立面试路径；本路径先处理通用 LLM 应用的质量与安全闭环。
 
 ## 90 分钟冲刺
 
