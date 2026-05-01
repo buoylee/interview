@@ -86,7 +86,11 @@ def downstream_timeout_seconds():
 
 
 def downstream_retry_attempts():
-    return max(0, int(os.getenv("DOWNSTREAM_RETRY_ATTEMPTS", "2")))
+    try:
+        attempts = int(os.getenv("DOWNSTREAM_RETRY_ATTEMPTS", "2"))
+    except ValueError:
+        attempts = 2
+    return min(3, max(0, attempts))
 
 
 def trace_id_from(headers):
@@ -264,6 +268,18 @@ def parse_int_param(query, name, default):
     return parse_int_value(value)
 
 
+def parse_enabled_param(query):
+    values = query.get("enabled")
+    if values is None:
+        return True
+    value = values[0].strip().lower()
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    raise ValueError
+
+
 def parse_path_id(path, prefix):
     value = path[len(prefix):] if path.startswith(prefix) else ""
     if not value or "/" in value:
@@ -370,26 +386,17 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/chaos/cpu":
                 status = self.handle_cpu_chaos(query)
             elif path == "/chaos/slow-db":
-                enabled = query.get("enabled", ["true"])[0].lower() == "true"
-                with chaos_lock:
-                    chaos["slow_db"] = enabled
-                self.send_json(200, {"slow_db": enabled})
+                status = self.handle_boolean_chaos(query, "slow_db")
             elif path == "/chaos/slow-downstream":
                 status = self.handle_slow_downstream_chaos(query)
             elif path == "/chaos/redis-big-key":
                 status = self.handle_redis_big_key_chaos(query)
             elif path == "/chaos/redis-slow":
-                enabled = query.get("enabled", ["true"])[0].lower() == "true"
-                with chaos_lock:
-                    chaos["redis_slow"] = enabled
-                self.send_json(200, {"redis_slow": enabled})
+                status = self.handle_boolean_chaos(query, "redis_slow")
             elif path == "/chaos/downstream-delay":
                 status = self.handle_downstream_delay_chaos(query)
             elif path == "/chaos/retry-storm":
-                enabled = query.get("enabled", ["true"])[0].lower() == "true"
-                with chaos_lock:
-                    chaos["retry_storm"] = enabled
-                self.send_json(200, {"retry_storm": enabled})
+                status = self.handle_boolean_chaos(query, "retry_storm")
             elif path == "/chaos/reset":
                 status = self.handle_reset_chaos()
             else:
@@ -517,8 +524,23 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(200, {"slow_downstream_ms": delay_ms})
         return 200
 
+    def handle_boolean_chaos(self, query, key):
+        try:
+            enabled = parse_enabled_param(query)
+        except ValueError:
+            self.send_json(400, {"error": "invalid enabled"})
+            return 400
+        with chaos_lock:
+            chaos[key] = enabled
+        self.send_json(200, {key: enabled})
+        return 200
+
     def handle_redis_big_key_chaos(self, query):
-        enabled = query.get("enabled", ["true"])[0].lower() == "true"
+        try:
+            enabled = parse_enabled_param(query)
+        except ValueError:
+            self.send_json(400, {"error": "invalid enabled"})
+            return 400
         with chaos_lock:
             chaos["redis_big_key"] = enabled
         try:
