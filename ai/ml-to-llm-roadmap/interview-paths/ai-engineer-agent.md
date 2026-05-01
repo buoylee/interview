@@ -7,7 +7,7 @@
 - 这不是零基础学习入口；先掌握生成控制和基础系统设计，再用本路径冲刺 Agent 面试。
 - RAG 或生成控制只作为前置边界理解，不作为本路径默认复习步骤。
 
-## 90 分钟冲刺
+## 90-120 分钟冲刺
 
 | 顺序 | 阅读 | 目标 |
 |------|------|------|
@@ -15,21 +15,25 @@
 | 2 | [Tool Use and Recovery](../02-agent-tool-use/02-tool-use-and-recovery.md) | 说明工具 schema、权限、校验、失败恢复和重试 |
 | 3 | [State, Memory and Planning](../02-agent-tool-use/03-state-memory-and-planning.md) | 区分 state、memory、planning 的作用和风险 |
 | 4 | [Agent Evaluation, Safety and Production](../02-agent-tool-use/04-agent-evaluation-safety-production.md) | 建立评估、限流、审计、安全和上线口径 |
-| 5 | [Agent Tool Use Cheatsheet](../09-review-notes/02-agent-tool-use-cheatsheet.md) | 压缩成面试答案 |
+| 5 | [Agent Patterns and Architectures](../02-agent-tool-use/05-agent-patterns-and-architectures.md) | 对比 ReAct、plan-and-execute、router、graph、reflection、multi-agent、memory 和 durable agent |
+| 6 | [Agent Tool Use Cheatsheet](../09-review-notes/02-agent-tool-use-cheatsheet.md) | 压缩成面试答案 |
 
 ## 半天复盘
 
-1. 先读系统学习页，按“边界和循环 -> 工具执行 -> 状态规划 -> 生产安全”串起来。
+1. 先读系统学习页，按“边界和循环 -> 工具执行 -> 状态规划 -> 生产安全 -> 模式选型”串起来。
 2. 用一个真实任务复述 observe-act loop：观察输入、选择动作、调用工具、处理结果、决定是否继续。
-3. 准备失败定位表：模型选错工具、schema 不清、参数非法、权限不足、状态污染、工具超时。
-4. 最后读 [Agent Tool Use Cheatsheet](../09-review-notes/02-agent-tool-use-cheatsheet.md)，检查答案能否压到 3 到 5 分钟。
+3. 准备模式选型表：ReAct、plan-and-execute、router/supervisor、graph-constrained、reflection/evaluator、multi-agent、memory-augmented、durable agent。
+4. 准备失败定位表：模型选错工具、schema 不清、参数非法、权限不足、状态污染、工具超时。
+5. 最后读 [Agent Tool Use Cheatsheet](../09-review-notes/02-agent-tool-use-cheatsheet.md)，检查答案能否压到 3 到 5 分钟。
 
 ## 必答问题
 
 - Agent 和普通 LLM 调用、Function Calling、workflow 的区别？
 - ReAct 或 observe-act loop 的核心是什么？
+- 除了 ReAct，还有哪些 Agent 模式？分别适合什么场景？
 - Tool schema、权限、参数校验和错误恢复怎么设计？
 - State、memory、planning 分别解决什么问题？
+- Router/supervisor、graph-constrained agent 和 multi-agent 的区别是什么？
 - Agent 系统怎么评估、限流、审计和防止失控？
 - 什么时候不该用 Agent？
 - Agent 失败时怎么定位是模型、工具、状态还是权限问题？

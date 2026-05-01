@@ -8,6 +8,7 @@
 2. [工具调用、权限与失败恢复](./02-tool-use-and-recovery.md)
 3. [状态、记忆与任务规划](./03-state-memory-and-planning.md)
 4. [Agent 评估、安全与生产排查](./04-agent-evaluation-safety-production.md)
+5. [Agent 模式与架构选型](./05-agent-patterns-and-architectures.md)
 
 ## 学前检查
 
@@ -26,7 +27,7 @@ Agent 不是“模型会自动执行工具”，而是一个受控循环：
 目标 -> 状态 -> 选择下一步 -> 生成 tool call -> 应用执行工具 -> 观察结果 -> 更新状态 -> 停止或继续
 ```
 
-学完本模块，你应该能区分普通 LLM 调用、Function Calling、workflow 和 Agent，并能设计工具权限、失败恢复、状态管理、评估、安全和生产排查。
+学完本模块，你应该能区分普通 LLM 调用、Function Calling、workflow 和 Agent，并能设计工具权限、失败恢复、状态管理、评估、安全和生产排查；同时能说明 ReAct 以外的 plan-and-execute、router/supervisor、graph-constrained、reflection、multi-agent、memory-augmented 和 durable agent 等模式该如何选型。
 
 ## 深入参考
 
