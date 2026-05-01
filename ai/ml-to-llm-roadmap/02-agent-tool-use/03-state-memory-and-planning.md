@@ -98,6 +98,8 @@ Tree-of-Thought、Graph-of-Thought 和 MCTS 都可以看成更复杂的搜索或
 
 下一篇会看这些状态和轨迹如何进入评估、安全和生产日志：[Agent 评估、安全与生产排查](./04-agent-evaluation-safety-production.md)。
 
+如果面试官继续追问 ReAct 以外的 Agent 模式，可以接着读：[Agent 模式与架构选型](./05-agent-patterns-and-architectures.md)。
+
 ## 常见误区
 
 | 误区 | 更准确的理解 |

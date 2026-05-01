@@ -32,7 +32,7 @@ foundations 按需补课
 | 模块 | 内容 | 入口 | 状态 |
 |------|------|------|------|
 | RAG 与检索系统 | 外部知识接入、检索、上下文组装、评估排查 | [01-rag-retrieval-systems](./ml-to-llm-roadmap/01-rag-retrieval-systems/) | 已系统化 |
-| Agent 与工具调用 | 工具调用循环、状态记忆、失败恢复、安全评估 | [02-agent-tool-use](./ml-to-llm-roadmap/02-agent-tool-use/) | 已系统化 |
+| Agent 与工具调用 | 工具调用循环、Agent 模式选型、状态记忆、失败恢复、安全评估 | [02-agent-tool-use](./ml-to-llm-roadmap/02-agent-tool-use/) | 已系统化 |
 | 生成控制与结构化输出 | 解码参数、结构化输出、Function Calling 输出形态 | [03-generation-control](./ml-to-llm-roadmap/03-generation-control/) | 已系统化 |
 | Transformer 必要基础 | 从 AI Engineer 视角系统理解 Transformer | [04-transformer-foundations](./ml-to-llm-roadmap/04-transformer-foundations/) | 已创建 |
 | 训练、对齐与微调 | 预训练、SFT、偏好对齐、LoRA/QLoRA | [05-training-alignment-finetuning](./ml-to-llm-roadmap/05-training-alignment-finetuning/) | 已系统化 |
