@@ -12,7 +12,7 @@
 | 渠道事实 | `ChannelPaymentSucceeded`、`PayoutSucceeded` | `channel-adapter` / 渠道账单 |
 | 账户事实 | `RechargeAccountCredited`、`WithdrawFreezeConsumed` | `account-service` |
 | 账本事实 | `RechargeLedgerPosted`、`WithdrawLedgerPosted` | `ledger-service` |
-| 回调事实 | `PaymentCallbackReceived`、`PaymentCallbackVerified`、`PaymentCallbackApplied` | `payment-service` |
+| 回调事实 | `PaymentCallbackReceived`、`PaymentCallbackVerified`、`PaymentCallbackApplied` | 收到/幂等/应用归 `payment-service`，验签事实归 `channel-adapter` |
 | 对账事实 | `ChannelStatementImported`、`ChannelMismatchDetected` | `reconciliation-service` |
 | 修复事实 | `ChannelRepairRequested`、`ManualRepairCompleted` | `reconciliation-service` / 运营复核 |
 
@@ -75,7 +75,9 @@ ChannelStatementImported
 -> local order matched
 -> account movement matched
 -> ledger posting matched
--> matched or ChannelMismatchDetected
+-> matched
+
+ChannelMismatchDetected
 -> ChannelRepairRequested
 -> ManualRepairCompleted
 ```
