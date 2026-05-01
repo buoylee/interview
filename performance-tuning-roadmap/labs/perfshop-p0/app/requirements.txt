@@ -1,2 +1,2 @@
 mysql-connector-python==9.0.0
-
+redis==7.4.0
