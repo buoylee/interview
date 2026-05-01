@@ -670,11 +670,16 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def wait_for_db():
-    for _ in range(60):
+    for _ in range(180):
         try:
             conn = connect_db()
-            conn.close()
-            return
+            try:
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM products")
+                cursor.fetchone()
+                return
+            finally:
+                conn.close()
         except Exception:
             time.sleep(1)
     raise RuntimeError("database did not become ready")

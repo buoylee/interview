@@ -10,10 +10,10 @@ services:
     volumes:
       - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pperfshop123"]
+      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -P 3306 -uroot -p$${MYSQL_ROOT_PASSWORD} $${MYSQL_DATABASE} -N -B -e 'SELECT COUNT(*) >= 20000 FROM products' 2>/dev/null | grep -q 1"]
       interval: 5s
-      timeout: 3s
-      retries: 20
+      timeout: 5s
+      retries: 40
 
   redis:
     image: redis:7.4-alpine
