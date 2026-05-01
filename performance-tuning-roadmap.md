@@ -365,7 +365,7 @@ P → 0 → 1 → 2 → 3 → 3.5 → 主语言 4/5/6 → 7 → 8 → 9a → 9b 
 
 > **不搭环境，后面全是纸上谈兵。** 这个阶段只做一件事：让你有一个可以练习的完整环境。
 
-**前置条件**：Docker 和 Docker Compose 已安装，Java/Go/Python 开发环境就绪。
+**前置条件**：Docker 和 Docker Compose 已安装。Java / Go / Python 本地开发环境只在进入 P2 三语言同构实验或对应语言专项时需要。
 
 **学完能做什么**：一条命令拉起最小实验环境，至少跑通一个 HTTP 服务、Prometheus 指标和 Grafana 观测入口。完整 Java / Go / Python 三语言 PerfShop 属于 P2 目标态，不是阶段 P 的完成前置。
 
@@ -375,7 +375,7 @@ P → 0 → 1 → 2 → 3 → 3.5 → 主语言 4/5/6 → 7 → 8 → 9a → 9b 
 | 02-perfshop-demo.md | PerfShop 作为贯穿项目的目标架构 / P0 单服务闭环 / P1 多组件扩展 / P2 Java + Go + Python 三语言同构目标 |
 
 **动手练习**：
-1. `docker compose up -d` 启动 P0 环境，确认 Grafana 或 Prometheus 有数据
+1. 在 performance-tuning-roadmap/labs/perfshop-p0/ 下执行 `docker compose up -d` 启动 P0 环境，确认 Grafana 或 Prometheus 有数据
 2. 用 curl 请求一个 PerfShop 商品查询接口，确认返回正常
 3. 在后续 P1/P2 阶段再补 Trace、Redis、Kafka 和三语言同构服务
 
