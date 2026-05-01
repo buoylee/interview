@@ -6,6 +6,7 @@
 
 - [2026-05-01-financial-consistency-design.md](../docs/superpowers/specs/2026-05-01-financial-consistency-design.md)
 - [2026-05-01-financial-scenario-matrix-design.md](../docs/superpowers/specs/2026-05-01-financial-scenario-matrix-design.md)
+- [2026-05-01-financial-scenario-matrix-expansion-design.md](../docs/superpowers/specs/2026-05-01-financial-scenario-matrix-expansion-design.md)
 - [旧笔记索引](./references.md)
 
 ## 当前决策
