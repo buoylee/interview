@@ -126,10 +126,14 @@ class Handler(BaseHTTPRequestHandler):
                     status = 400
                     self.send_json(400, {"error": "invalid delay_ms"}, trace_id)
                 else:
-                    with chaos_lock:
-                        chaos["delay_ms"] = max(0, delay_ms)
-                        current_delay_ms = chaos["delay_ms"]
-                    self.send_json(200, {"delay_ms": current_delay_ms}, trace_id)
+                    if delay_ms < 0:
+                        status = 400
+                        self.send_json(400, {"error": "invalid delay_ms"}, trace_id)
+                    else:
+                        with chaos_lock:
+                            chaos["delay_ms"] = delay_ms
+                            current_delay_ms = chaos["delay_ms"]
+                        self.send_json(200, {"delay_ms": current_delay_ms}, trace_id)
             elif path == "/chaos/reset":
                 with chaos_lock:
                     chaos["delay_ms"] = 0
@@ -156,6 +160,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             product_id = int(path.rsplit("/", 1)[1])
         except ValueError:
+            self.send_json(400, {"error": "invalid product_id"}, trace_id)
+            return 400
+        if product_id <= 0:
             self.send_json(400, {"error": "invalid product_id"}, trace_id)
             return 400
         recommendations = [
