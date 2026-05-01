@@ -2,13 +2,13 @@
 
 ## 这篇解决什么问题
 
-前面已经讲过单 Agent 的工具循环、状态、workflow、durable execution 和 eval。Multi-agent 继续往前一步：当一个 Agent 的职责、工具、权限、上下文和评估标准都变得太宽时，系统可能需要多个 Agent 或 specialist 协作。
+前面已经讲过单 Agent 的工具循环、状态、workflow 和 durable execution；eval 章节会在后面系统展开评估口径。Multi-agent 继续往前一步：当一个 Agent 的职责、工具、权限、上下文和评估标准都变得太宽时，系统可能需要多个 Agent 或 specialist 协作。
 
 这一篇解决的问题是：怎样把 multi-agent 设计成显式协调协议，而不是几段自由角色聊天。真正的 multi-agent 架构要定义谁分派、谁执行、谁写状态、谁裁决冲突、谁停止，以及如何评估整个协作过程。
 
 ## 学前检查
 
-读这篇前，建议先理解：
+读这篇前，建议先理解前两项；评估部分可以在读完本篇后回看第三项：
 
 - Agent 如何使用状态、记忆和计划：[State、Memory 与 Planning](./03-state-memory-and-planning.md)
 - 常见 Agent 模式，尤其是 router / supervisor 和 multi-agent：[Agent 模式与架构选型](./05-agent-patterns-and-architectures.md)

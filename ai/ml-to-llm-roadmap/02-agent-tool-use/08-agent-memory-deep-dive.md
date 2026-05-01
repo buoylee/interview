@@ -142,6 +142,6 @@ Agent memory 怎么设计？
 
 到这里，你应该能把 Agent memory 看成一个受治理的子系统：它负责保存可复用历史线索，也负责限制这些线索什么时候能写、能读、能影响行动，以及什么时候必须失效。
 
-下一步要看：当用户文本、工具输出、历史记忆和外部检索都可能携带风险时，Agent 如何做安全边界和攻击防护。
+下一步要看：当一个 Agent 的职责、工具、权限、上下文和评估标准变得太宽时，如何设计显式协作协议。
 
-下一篇：[Agent Security 深入](./10-agent-security-deep-dive.md)
+下一篇：[Multi-Agent 协作机制](./09-multi-agent-coordination.md)
