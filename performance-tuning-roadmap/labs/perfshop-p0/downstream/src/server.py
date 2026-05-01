@@ -96,6 +96,8 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 status = 404
                 self.send_json(404, {"error": "not found"}, trace_id)
+        except BrokenPipeError:
+            status = 499
         except Exception as exc:
             status = 500
             self.send_json(500, {"error": str(exc)}, trace_id)
@@ -141,6 +143,8 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 status = 404
                 self.send_json(404, {"error": "not found"}, trace_id)
+        except BrokenPipeError:
+            status = 499
         except Exception as exc:
             status = 500
             self.send_json(500, {"error": str(exc)}, trace_id)
