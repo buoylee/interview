@@ -51,6 +51,7 @@
 ```text
 01-transfer
   分布式转账：账户、冻结、扣减、入账、流水、幂等、补偿、对账。
+  入口：[01-transfer](./01-transfer/README.md)
 
 02-payment-recharge-withdraw
   充值、提现、支付回调、渠道超时、渠道对账。
