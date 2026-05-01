@@ -272,7 +272,7 @@ def parse_enabled_param(query):
     values = query.get("enabled")
     if values is None:
         return True
-    value = values[0].strip().lower()
+    value = values[0].lower()
     if value == "true":
         return True
     if value == "false":
