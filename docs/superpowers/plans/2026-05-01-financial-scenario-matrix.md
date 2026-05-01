@@ -1,0 +1,296 @@
+# Financial Scenario Matrix Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Build `financial-consistency/00-scenario-matrix.md` and link it from the financial consistency learning entry point.
+
+**Architecture:** This is a documentation-only change. `00-scenario-matrix.md` becomes the navigation and comparison layer for common distributed transaction scenarios, while `README.md` remains the top-level entry point and links to the matrix before the detailed `01-transfer` module.
+
+**Tech Stack:** Markdown, Git, `rg`, `git diff --check`.
+
+---
+
+## File Structure
+
+- Create: `financial-consistency/00-scenario-matrix.md`
+  - Owns the cross-scenario map.
+  - Compares business actions, consistency risks, external systems, reversibility, recommended patterns, verification focus, and target learning modules.
+  - Links only to existing concrete modules where the target exists. Planned modules remain as code-formatted directory names.
+
+- Modify: `financial-consistency/README.md`
+  - Adds the scenario matrix design spec to the formal design document list.
+  - Adds `00-scenario-matrix` before `01-transfer` in the stage route.
+
+- Reference only: `docs/superpowers/specs/2026-05-01-financial-scenario-matrix-design.md`
+  - Approved design source for scope and acceptance criteria.
+
+## Task 1: Create Scenario Matrix
+
+**Files:**
+- Create: `financial-consistency/00-scenario-matrix.md`
+
+- [ ] **Step 1: Confirm the target file does not exist**
+
+Run:
+
+```bash
+test ! -e financial-consistency/00-scenario-matrix.md
+```
+
+Expected: exit code `0`.
+
+- [ ] **Step 2: Create `financial-consistency/00-scenario-matrix.md` with this exact content**
+
+Use `apply_patch` to add the file:
+
+```markdown
+# 00 分布式事务场景矩阵
+
+这个文件回答一个问题：真实世界常见的分布式事务场景有哪些，以及每类场景应该用什么一致性思路分析。
+
+它不是完整教程。完整状态机、事件流、失败矩阵和验证路线会放到具体模块中。这里先给出横向地图，帮助学习者知道每个场景为什么难、靠什么机制收敛，以及后面应该进入哪个模块继续展开。
+
+## 如何阅读
+
+每一行都从业务出发，而不是从框架名词出发。
+
+阅读顺序：
+
+1. 先看场景和典型业务动作，确认这个事务链路真实发生了什么。
+2. 再看一致性难点，理解系统最怕哪类错误。
+3. 再看外部系统和可逆性，判断能否技术回滚，还是只能业务补偿。
+4. 再看推荐模式，理解 Outbox、Saga、TCC、Temporal、对账和人工处理如何组合。
+5. 最后看核心验证和后续模块，把场景接回学习路线。
+
+## 场景分层
+
+| 层级 | 场景类型 | 学习重点 |
+| --- | --- | --- |
+| L1 资金内核 | 转账、充值、提现、退款 | 账户、冻结、扣减、入账、分录、幂等、状态机、Outbox、对账 |
+| L2 外部渠道 | 支付回调、渠道超时、渠道未知状态 | 外部系统不可控、重复回调、查询补偿、未知状态收敛、渠道账单核对 |
+| L3 业务资源组合 | 电商交易、组合支付、旅行预订 | Saga、TCC、资源预留、可补偿动作、不可逆动作、长流程编排 |
+| L4 清结算与运营闭环 | 跨境、多币种、单边账、人工修复 | 汇率、轧差、清算、差错处理、人工审核、审计证据链 |
+
+## 场景矩阵
+
+| 场景 | 典型业务动作 | 一致性难点 | 外部系统 | 可逆性 | 推荐模式 | 核心验证 | 后续模块 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 账户转账 | A 冻结或扣减，B 入账，生成借贷分录，发布交易事件 | 资金守恒、重复扣款、入账缺失、分录不完整、消息重复 | 无直接外部渠道 | 处理中可释放冻结；过账后用冲正分录，不删除历史 | 本地事务、TCC 式冻结、Outbox、Saga、对账 | 总金额守恒、同一幂等键一次业务效果、借贷分录成对、终态不可回退 | [01-transfer](./01-transfer/README.md) |
+| 充值 | 创建充值单，调用支付渠道，收到成功回调后给账户入账并记分录 | 渠道成功但本地入账失败、重复回调、回调晚于查询、渠道账单和本地订单不一致 | 支付渠道、银行通道 | 支付成功不可数据库回滚；可发起退款或人工差错处理 | 幂等回调、Outbox、查询补偿、渠道对账、Saga | 渠道订单、本地充值单、账户流水、会计分录金额一致 | `02-payment-recharge-withdraw` |
+| 提现 | 冻结用户余额，提交出款，银行成功后消耗冻结并记账，失败后释放冻结 | 出款未知状态、重复出款、冻结长期悬挂、银行成功但本地状态未推进 | 银行或出款渠道 | 提交前可释放冻结；出款成功后只能反向入账或人工处理 | TCC 式冻结、Temporal/Saga、渠道查询、渠道对账 | 同一提现单不重复出款、冻结最终消耗或释放、银行流水和账本一致 | `02-payment-recharge-withdraw` |
+| 支付回调 | 渠道通知支付结果，系统验签、幂等处理、推进订单或账户状态 | 回调至少一次、伪造回调、乱序回调、成功状态不能被失败覆盖 | 支付渠道 | 回调本身不可回滚；错误处理通过状态修复和差错流程 | 签名验证、幂等键、状态机单调推进、Outbox、对账 | 重复回调只有一次业务效果，状态只能从处理中进入合法终态 | `02-payment-recharge-withdraw` |
+| 电商下单、支付、库存扣减 | 创建订单，预留库存，支付成功后确认库存和订单，失败或取消时释放资源 | 超卖、支付成功但订单取消、库存释放和支付回调竞争、消息延迟 | 支付渠道，可能有物流系统 | 库存预留可释放；已支付可退款；已发货后不能简单取消 | Saga/Temporal、库存 TCC、Outbox、幂等消费者、退款补偿 | 库存不为负，已支付订单必须有明确履约或退款路径 | `03-order-payment-inventory` |
+| 订单取消 | 取消未支付或已支付订单，释放库存、退优惠券，必要时退款 | 取消和支付回调并发、取消和发货并发、重复退款、资源释放不完整 | 支付渠道、物流系统 | 未履约前大多可补偿；已发货后进入退货或人工流程 | 状态机、Saga、Outbox、退款补偿、人工审核 | 终态合法，库存和优惠资源不重复释放，退款金额不超过支付金额 | `03-order-payment-inventory` |
+| 退款 | 创建退款单，生成冲正分录，调用渠道退款，完成后更新订单和账户状态 | 部分退款、重复退款、退款成功但本地状态失败、渠道退款未知 | 支付渠道、银行通道 | 退款成功后不能撤销原退款，只能发起新的收款或人工处理 | 退款单幂等、Saga/Temporal、账本冲正、渠道对账 | 累计退款不超过原支付金额，同一退款单一次业务效果 | `03-order-payment-inventory` |
+| 优惠券、积分、余额组合支付 | 锁定优惠券、扣减积分、冻结余额，剩余金额走支付渠道，成功后确认资源 | 多资源锁定不一致、优惠券重复使用、积分和余额单边扣减、支付失败释放不完整 | 支付渠道，内部营销系统 | 内部资源通常可释放或冲正；外部支付成功后需要退款 | TCC、Saga、Outbox、资源锁定表、幂等确认和取消 | 优惠券一次使用，积分和余额变化可对账，组合金额等于订单应付金额 | `03-order-payment-inventory` |
+| 机票、酒店、租车组合预订 | 预留航班、酒店、租车和保险，支付后确认，各供应商分别出票或确认 | 外部供应商状态不一致、出票不可逆、取消费用、部分成功需要业务补偿 | 航司、酒店、租车、保险供应商、支付渠道 | 预留期内可取消；出票或担保确认后只能退改签、赔付或人工处理 | Temporal/Saga、供应商幂等键、超时查询、人工处理、对账 | 每个供应商状态都有最终归类，已收款行程必须完成履约、退款或人工差错处理 | `04-travel-booking-saga` |
+| 外部渠道超时或未知状态 | 调用银行、支付、航司或酒店接口后没有得到确定结果，后续靠查询或回调收敛 | 不能把超时当失败，重试可能造成重复业务效果，未知状态长期悬挂 | 任意外部渠道 | 未知状态不可直接撤销，必须先查询事实 | `UNKNOWN` 状态、定时查询、幂等请求号、对账、人工升级 | 未知状态必须收敛到成功、失败或人工处理，重复请求不产生重复外部动作 | `02-payment-recharge-withdraw` |
+| 跨境汇款 | 锁定汇率，合规检查，扣款，走代理行或本地清算网络，收款方入账 | 汇率、手续费、合规拒绝、银行截留、时区和清算日、退汇 | 银行、清算网络、合规服务、外汇服务 | 已发出汇款通常不能技术回滚，只能退汇、反向交易或人工修复 | 长流程 Temporal/Saga、账本分录、清算对账、人工审核 | 汇率、手续费、本金、清算状态和账本分录一致；同一汇款不重复发送 | `07-reconciliation` |
+| 多币种结算 | 按币种记账，使用汇率换算，轧差后清算，记录汇兑损益 | 舍入误差、汇率锁定、跨币种资金守恒、清算批次差异 | 外汇牌价源、清算银行 | 账务更正用冲正和调整分录，不覆盖历史 | 账本优先、不可变分录、批处理控制、Outbox、对账 | 分币种守恒，舍入进入指定科目，汇兑损益可解释 | `07-reconciliation` |
+| 对账发现单边账 | 对比交易单、账户流水、会计分录、Outbox、消费记录和渠道账单，识别差错 | 找准事实来源，区分漏记、重复、状态悬挂和外部差异，修复不能掩盖问题 | 可能涉及支付渠道、银行或供应商 | 通过补分录、冲正、补事件或人工工单修复 | 对账任务、差错分类、修复工作流、审计日志、人工复核 | 每个差异有分类、责任方、修复动作和审计证据 | `07-reconciliation` |
+| 人工补偿与运营修复 | 运营或财务人员处理悬挂交易、渠道差错、客户赔付或供应商异常 | 人为操作可能绕过状态机，错误修复可能制造二次差错 | 视具体差错而定 | 必须通过新的补偿动作修复，不能直接改历史事实 | Maker-checker、权限控制、操作审计、补偿工作流、复核报表 | 人工动作有审批链，修复后不变量仍成立，所有证据可审计 | `07-reconciliation` |
+
+## 模式选择规则
+
+矩阵里的推荐模式不是互斥选择。真实系统通常是组合使用：
+
+- 单服务内部一致性靠本地数据库事务、唯一约束和状态机。
+- 跨服务事实发布靠 Outbox、可靠事件发布和幂等消费者。
+- 可预留资源适合 TCC 思维，例如余额冻结、库存预占、优惠券锁定。
+- 长流程适合 Saga/Temporal，例如提现、退款、旅行预订、跨境汇款。
+- 外部系统不可控时，先查询事实，再决定重试、补偿、退款、赔付或人工处理。
+- 资金链路必须有对账，不能只依赖接口返回值或消息消费位点。
+- 核心场景必须定义不变量，并通过属性测试、集成测试、故障注入、历史检查和对账持续验证。
+
+## 进入具体模块的顺序
+
+推荐学习顺序：
+
+1. [01-transfer](./01-transfer/README.md)
+2. `02-payment-recharge-withdraw`
+3. `03-order-payment-inventory`
+4. `04-travel-booking-saga`
+5. `05-patterns`
+6. `06-verification-lab`
+7. `07-reconciliation`
+8. `08-interview-synthesis`
+
+这个顺序先建立资金不变量，再引入外部渠道未知状态，然后进入组合业务和清结算闭环。
+```
+
+- [ ] **Step 3: Verify the file exists and has the expected title**
+
+Run:
+
+```bash
+test -f financial-consistency/00-scenario-matrix.md
+rg -n "^# 00 分布式事务场景矩阵" financial-consistency/00-scenario-matrix.md
+```
+
+Expected:
+
+```text
+1:# 00 分布式事务场景矩阵
+```
+
+- [ ] **Step 4: Commit the matrix file**
+
+Run:
+
+```bash
+git add financial-consistency/00-scenario-matrix.md
+git commit -m "docs: add financial scenario matrix"
+```
+
+Expected: commit succeeds and includes only `financial-consistency/00-scenario-matrix.md`.
+
+## Task 2: Link Matrix From Top-Level README
+
+**Files:**
+- Modify: `financial-consistency/README.md`
+
+- [ ] **Step 1: Add the matrix design spec to the formal design document list**
+
+In `financial-consistency/README.md`, change this block:
+
+```markdown
+正式设计文档：
+
+- [2026-05-01-financial-consistency-design.md](../docs/superpowers/specs/2026-05-01-financial-consistency-design.md)
+- [旧笔记索引](./references.md)
+```
+
+to:
+
+```markdown
+正式设计文档：
+
+- [2026-05-01-financial-consistency-design.md](../docs/superpowers/specs/2026-05-01-financial-consistency-design.md)
+- [2026-05-01-financial-scenario-matrix-design.md](../docs/superpowers/specs/2026-05-01-financial-scenario-matrix-design.md)
+- [旧笔记索引](./references.md)
+```
+
+- [ ] **Step 2: Add `00-scenario-matrix` before `01-transfer`**
+
+In `financial-consistency/README.md`, change this section:
+
+```markdown
+## 阶段路线
+
+- [01-transfer](./01-transfer/README.md)
+  分布式转账：账户、冻结、扣减、入账、流水、幂等、补偿、对账。
+```
+
+to:
+
+```markdown
+## 阶段路线
+
+- [00-scenario-matrix](./00-scenario-matrix.md)
+  真实分布式事务场景地图：资金内核、外部渠道、组合交易、清结算和人工修复。
+
+- [01-transfer](./01-transfer/README.md)
+  分布式转账：账户、冻结、扣减、入账、流水、幂等、补偿、对账。
+```
+
+- [ ] **Step 3: Verify README links**
+
+Run:
+
+```bash
+rg -n "\./00-scenario-matrix.md|2026-05-01-financial-scenario-matrix-design.md" financial-consistency/README.md
+```
+
+Expected output includes:
+
+```text
+8:- [2026-05-01-financial-scenario-matrix-design.md](../docs/superpowers/specs/2026-05-01-financial-scenario-matrix-design.md)
+52:- [00-scenario-matrix](./00-scenario-matrix.md)
+```
+
+Line numbers may shift by a few lines if surrounding text changes.
+
+- [ ] **Step 4: Commit README link update**
+
+Run:
+
+```bash
+git add financial-consistency/README.md
+git commit -m "docs: link financial scenario matrix"
+```
+
+Expected: commit succeeds and includes only `financial-consistency/README.md`.
+
+## Task 3: Verify Matrix Coverage And Document Hygiene
+
+**Files:**
+- Verify: `financial-consistency/00-scenario-matrix.md`
+- Verify: `financial-consistency/README.md`
+
+- [ ] **Step 1: Verify all required scenarios are present**
+
+Run:
+
+```bash
+rg -n "账户转账|充值|提现|支付回调|电商下单|订单取消|退款|优惠券|机票|外部渠道超时|跨境汇款|多币种结算|对账发现单边账|人工补偿" financial-consistency/00-scenario-matrix.md
+```
+
+Expected: output includes each of these scenario names at least once:
+
+```text
+账户转账
+充值
+提现
+支付回调
+电商下单
+订单取消
+退款
+优惠券
+机票
+外部渠道超时
+跨境汇款
+多币种结算
+对账发现单边账
+人工补偿
+```
+
+- [ ] **Step 2: Verify the matrix explains its navigation role**
+
+Run:
+
+```bash
+rg -n "它不是完整教程|横向地图|进入具体模块的顺序" financial-consistency/00-scenario-matrix.md
+```
+
+Expected output includes all three phrases.
+
+- [ ] **Step 3: Scan for incomplete-document markers**
+
+Run:
+
+```bash
+rg -n "TO[D]O|TB[D]|待[定]|占[位]|以[后]补|未[决]|大[概]|随[便]" financial-consistency/00-scenario-matrix.md financial-consistency/README.md
+```
+
+Expected: no output and exit code `1`.
+
+- [ ] **Step 4: Check markdown whitespace**
+
+Run:
+
+```bash
+git diff --check
+```
+
+Expected: no output and exit code `0`.
+
+- [ ] **Step 5: Verify working tree only contains intended state**
+
+Run:
+
+```bash
+git status --short
+```
+
+Expected: no modified tracked files related to this plan. Unrelated untracked files may remain untouched and must not be added to the financial scenario matrix commits.
+
