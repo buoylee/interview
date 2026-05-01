@@ -20,6 +20,7 @@ CREATED
 
 ```text
 CHANNEL_FAILED
+FAILED
 RECONCILIATION_REQUIRED
 MANUAL_REVIEW
 ```
@@ -94,7 +95,7 @@ MANUAL_REVIEW
 
 | 非法转换 | 原因 |
 | --- | --- |
-| `CHANNEL_UNKNOWN -> CHANNEL_FAILED` | 超时不是失败，必须查询事实或等待回调。 |
+| `CHANNEL_UNKNOWN -> CHANNEL_FAILED（无可信失败事实）` | 超时不是失败，必须有查询、回调或账单给出的可信失败事实。 |
 | `PAYOUT_UNKNOWN -> FUNDS_RELEASED` | 未知出款不能释放冻结，否则可能造成用户拿到钱且余额恢复。 |
 | `SUCCEEDED -> CHANNEL_FAILED` | 失败回调不能覆盖已确认成功终态。 |
 | `PAYOUT_SUCCEEDED -> PAYOUT_SUBMITTED` | 出款成功后不能重新提交出款。 |
