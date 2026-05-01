@@ -7,13 +7,13 @@
 | F01 | 请求重复提交 | 多次进入 orchestrator | 幂等键返回同一结果 | 同一幂等键只产生一次业务效果 |
 | F02 | 风控服务超时 | 不知道风控是否通过 | 查询风控结果或重试 | 未通过风控不能扣款 |
 | F03 | 冻结资金成功但响应超时 | orchestrator 以为失败 | 查询 account freeze 状态 | 不能重复冻结 |
-| F04 | 借方分录成功但 orchestrator 宕机 | workflow 停在旧状态 | 恢复后按 transaction_id 查询 ledger | 借方分录不能重复 |
-| F05 | 借方成功，贷方失败 | 单边资金影响 | 进入补偿或人工处理 | 不能静默丢失单边账 |
+| F04 | 借方分录成功但 orchestrator 宕机 | workflow 停在旧状态 | 恢复后同时检查 account-side `FreezeConsumed` 与 ledger-side `DebitPosted`；缺哪个事实就重试哪个事实，无法自动补齐则进入 manual repair/review | 借方分录不能重复，`DEBIT_POSTED` 必须同时具备 `FreezeConsumed` 与 `DebitPosted` |
+| F05 | 借方成功，贷方失败 | 单边资金影响 | 按已持久化事实选择正向重试、允许场景下的补偿，或 manual repair/review | 不能静默丢失单边账 |
 | F06 | Kafka 重复投递 | 消费者重复收到事件 | event_id 去重 | 不能重复扣款或入账 |
 | F07 | Kafka 消息乱序 | 后置事件先到 | 状态机拒绝非法推进 | 状态不能倒退或跳跃 |
 | F08 | Outbox 写入成功但发布器宕机 | 事件未发布 | 发布器重启继续扫描 | 状态变更对应事件最终发布或异常告警 |
 | F09 | 补偿失败 | 资金状态悬挂 | 进入 `MANUAL_REVIEW` | 异常必须可见、可追踪 |
-| F10 | 对账发现余额不一致 | 快照和分录不一致 | 生成差错记录和修复工单 | 账务差异不能被忽略 |
+| F10 | 对账发现余额不一致 | account movement、balance snapshot 与 ledger posting 之间出现差异 | 生成差错记录和修复工单 | 账务差异不能被忽略 |
 
 ## F05 拆分说明
 
