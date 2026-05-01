@@ -7,6 +7,7 @@
 ```text
 Client
 -> transaction-orchestrator: CreateTransfer(command, idempotency_key)
+-> durable fact: TransferRequested
 -> risk-service: CheckTransferRisk(command/response)
 -> durable fact: RiskApproved
 -> account-service: ReserveDebit
@@ -27,6 +28,8 @@ Client
 - `DEBIT_POSTED` 状态迁移要求付款方冻结被消费，即看到 `FreezeConsumed`，并且 `ledger-service` 完成 `PostDebitEntry`。
 - `CREDIT_POSTED` 状态迁移要求收款方账户入账，即看到 `AccountCredited`，并且 `ledger-service` 完成 `PostCreditEntry`。
 - orchestrator 不能只因为收到 `DebitPosted` 或 `CreditPosted` 就推进状态；它还必须同时看到对应 account movement fact 和 ledger posting fact。
+- `TransferRequested` 由 orchestrator 创建转账的本地事务和 outbox 产生，用于 reconciliation/audit；本模块中它不驱动 `risk-service`。
+- 如果 `AccountCredited` 已完成但 `CreditPosted` 失败或延迟，必须重试贷方 ledger posting，或进入 manual repair/review；此时收款方账户已经入账，不能走正常金融补偿。`DEBIT_POSTED` 的补偿只在 credit 尚未发生时有效。
 - Kafka 只负责 topic、partition、保留和投递语义；业务幂等由各服务自己的 inbox/dedup 记录保证。
 
 ### 风控边界
