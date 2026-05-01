@@ -33,6 +33,8 @@
 
 ## 3. 场景训练模板
 
+`labs/perfshop-p0/` 当前可直接支持 Redis 慢操作、大 Key、downstream timeout 和 retry storm 的 P1-mini 练习。Kafka consumer lag、Jaeger Trace 和日志聚合属于手工环境或目标态练习，面试准备时可以先用 P1-mini 的 `trace_id` 日志和 Prometheus 指标完成证据链。
+
 ```text
 场景：
 现象：

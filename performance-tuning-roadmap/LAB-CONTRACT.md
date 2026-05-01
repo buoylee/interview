@@ -9,14 +9,15 @@
 - 当前仓库已经提供的最小可运行实验。
 - 用来说明目标能力的完整生产级场景。
 
-两者都重要，但用途不同。学习者应该先用当前可运行的 P0 完成闭环，再逐步扩展到 P1 和 P2。
+两者都重要，但用途不同。学习者应该先用当前可运行的 P0 完成单服务闭环，再用 P1-mini 完成缓存和下游依赖闭环，最后逐步扩展到 P1 后续能力和 P2。
 
 ## 2. 实验成熟度
 
 | 层级 | 状态 | 目标 | 当前说明 |
 |------|------|------|----------|
 | P0 | 当前可运行 | 单服务、MySQL、Prometheus、Grafana、wrk/Locust、3 类故障注入 | 已在 `labs/perfshop-p0/` 提供 |
-| P1 | 后续扩展 | Redis、Kafka、Tracing、日志聚合、更多故障注入 | 文档可先描述目标，练习需标注环境要求 |
+| P1-mini | 当前可运行 | Redis cache-aside、downstream、trace_id 关联、timeout、retry storm | 已在 `labs/perfshop-p0/` 提供 |
+| P1 | 后续扩展 | Kafka、OpenTelemetry/Jaeger、日志聚合、连接池耗尽、更多故障注入 | 文档可先描述目标，练习需标注环境要求 |
 | P2 | 目标态 | Java / Go / Python 三语言同构 PerfShop，多服务链路和完整 runtime 对比 | 用于路线终局设计，不应写成当前 P 阶段必需 |
 
 ## 3. 练习状态标签
@@ -46,20 +47,33 @@ P0 的完成标准是学习者能走完：
 压测 -> 观测 -> 假设 -> 证据 -> 定位 -> 修复或关闭故障 -> 复测 -> 记录
 ```
 
-## 5. P1 扩展目标
+## 5. 当前 P1-mini 能力
 
-P1 应优先补齐会显著提高排查训练价值的组件：
+当前 `labs/perfshop-p0/` 还提供 P1-mini：
 
-- Redis 慢命令和大 Key。
+- Redis 服务和 App cache-aside。
+- Redis slow 和 big key chaos。
+- 独立 downstream 推荐服务。
+- App 到 downstream 的 timeout 和失败返回 502。
+- App/downstream 响应头与结构化日志中的 `X-Trace-Id` / `trace_id` 关联。
+- Downstream delay 和 retry storm。
+- Redis、App downstream、downstream 服务三类 Prometheus 指标。
+
+P1-mini 的完成标准是学习者可以证明单点问题如何放大成跨组件延迟或错误率上升。
+
+## 6. 后续 P1 扩展目标
+
+P1-mini 之后，P1 应优先补齐会显著提高排查训练价值、但当前还不属于一键可运行的组件：
+
 - OpenTelemetry Trace 和 Jaeger。
-- 日志聚合或至少结构化日志关联 TraceID。
+- 日志聚合。
 - 连接池耗尽。
-- 下游超时和重试风暴。
 - Kafka consumer lag 或等价消息积压场景。
+- 更完整的限流、熔断、降级和隔离策略。
 
-P1 的完成标准是学习者可以证明单点问题如何放大成跨组件延迟或错误率上升。
+后续 P1 的完成标准是学习者可以把 P1-mini 的 trace_id / metrics 证据升级为更完整的 Trace、日志平台和容量治理证据。
 
-## 6. P2 扩展目标
+## 7. P2 扩展目标
 
 P2 才承担完整三语言 PerfShop：
 
@@ -70,7 +84,7 @@ P2 才承担完整三语言 PerfShop：
 
 P2 的完成标准是学习者能解释同一性能问题在不同语言 runtime 下的诊断差异。
 
-## 7. 写作规则
+## 8. 写作规则
 
 - 不把 P2 目标态写成阶段 P 的硬性前置。
 - 所有新练习都要说明运行状态标签。

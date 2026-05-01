@@ -93,14 +93,15 @@ P 实践环境
 |------|---------|
 | 需要更深 Linux 观测 | 02/06 eBPF |
 | TLS、证书、握手慢 | 08/04 TLS 排查 |
-| Redis 或 Kafka 高频故障 | 9b 中间件性能 |
+| Redis 高频故障 | 先做 `labs/perfshop-p0` 的 P1-mini Redis slow / big key，再学 9b 中间件性能 |
+| Kafka consumer lag | 9b 中间件性能，当前需要手工环境或未来 P2 扩展 |
 | 架构改造和容量提升 | 11 架构级性能优化 |
 | 容器或 K8s 资源问题 | 12 容器与云原生性能 |
 | 团队级稳定性建设 | 13/03-13/05 |
 
 ### 2.4 按面试目标选择路线
 
-所有学习者先完成 P0 最小闭环，然后按目标选择 track：
+所有学习者先完成 P0 最小闭环，再完成 P1-mini 的 Redis/downstream/retry 闭环，然后按目标选择 track：
 
 | 面试目标 | 推荐入口 | 学习重点 |
 |----------|----------|----------|
@@ -183,7 +184,7 @@ P 实践环境
 
 产物：
 - 一张 RED Dashboard
-- 一条 Jaeger Trace
+- 一条 trace_id 关联日志或 Jaeger Trace
 - 一份 30 秒压测输出
 
 ### Checkpoint 3：主语言排查
@@ -248,7 +249,7 @@ P 实践环境
 
 PerfShop 是这套路线的主轴。它不必一开始就完整实现三语言、微服务、Kafka、全套故障注入，但必须尽早具备最小可运行闭环。
 
-P0 最小实验闭环的详细标准见：[labs/perfshop-p0](./labs/perfshop-p0/)。
+P0 / P1-mini 可运行实验闭环的详细标准见：[labs/perfshop-p0](./labs/perfshop-p0/)。
 
 ### 5.1 P0：最小实验闭环
 
@@ -257,7 +258,6 @@ P0 最小实验闭环的详细标准见：[labs/perfshop-p0](./labs/perfshop-p0/
 - 一个后端服务（Java、Go、Python 任一门）
 - 一个 HTTP 接口
 - MySQL
-- Redis 可选
 - Prometheus 指标
 - Grafana Dashboard
 - wrk 或 Locust 压测
@@ -272,17 +272,32 @@ P0 的目标不是系统完整，而是让学习者能完成：
 压测 → 观察异常 → 采集证据 → 定位根因 → 修改 → 复测
 ```
 
-### 5.2 P1：多组件排查
+### 5.2 P1-mini：当前可运行的多组件排查
 
-在 P0 跑通后再补：
+P0 跑通后，直接在同一个 `labs/perfshop-p0/` 中完成 P1-mini：
 
-- Redis 慢命令和大 Key
+- Redis cache-aside
+- Redis slow 和 Redis big key
+- 独立 downstream 推荐服务
+- App/downstream `X-Trace-Id` 透传和结构化日志关联
+- Downstream delay、App timeout 和稳定 502
+- Retry storm 和 `app_downstream_retries_total`
+
+P1-mini 的目标是让学习者证明：缓存、下游依赖和重试策略如何把局部问题放大成跨组件延迟或错误率上升。
+
+### 5.3 P1：后续多组件扩展
+
+P1-mini 之后再补：
+
 - Kafka consumer lag
-- 链路追踪
-- 下游超时和重试风暴
+- OpenTelemetry Trace 和 Jaeger
 - 日志聚合
+- 连接池耗尽
+- 更完整的降级、限流和熔断策略
 
-### 5.3 P2：三语言对称实验
+这些内容可以先作为 `Runnable with manual setup` 或 `Target-state example` 学习，不应阻塞第 0 轮闭环。
+
+### 5.4 P2：三语言对称实验
 
 最后补齐：
 

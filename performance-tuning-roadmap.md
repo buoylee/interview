@@ -50,13 +50,14 @@
 
 必学：
 
-```
-P → 1 → 2 的核心工具 → 3 的 Prometheus/Grafana → 3.5 → 选择一门语言的 profiling → 7 → 9a → 14 的一个场景
+```text
+P0 → P1-mini → 1 → 2 的核心工具 → 3 的 Prometheus/Grafana → 3.5 → 选择一门语言的 profiling → 7 → 9a/9b → 10 → 14 的一个场景
 ```
 
 产出：
 - 一份 PerfShop 基线压测数据
 - 一张 RED Dashboard
+- 一份 Redis 或 downstream 故障的 trace_id / 指标证据
 - 一份 profiling 证据（火焰图、pprof 或 py-spy）
 - 一份慢查询或热点方法的优化前后对比
 - 一份 1 页性能排查记录
@@ -68,7 +69,7 @@ P → 1 → 2 的核心工具 → 3 的 Prometheus/Grafana → 3.5 → 选择一
 学习顺序：
 
 ```
-P → 0 → 1 → 2 → 3 → 3.5 → 主语言 4/5/6 → 7 → 8 → 9a → 9b → 10 → 13 → 14
+P0 → P1-mini → 0 → 1 → 2 → 3 → 3.5 → 主语言 4/5/6 → 7 → 8 → 9a → 9b → 10 → 13 → 14
 ```
 
 阶段 11 和 12 可以根据工作场景插入：如果正在做架构优化，提前学 11；如果服务跑在容器或 K8s 中，提前学 12。
@@ -106,7 +107,7 @@ P → 0 → 1 → 2 → 3 → 3.5 → 主语言 4/5/6 → 7 → 8 → 9a → 9b 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────┐
 │                               准备层（环境）                                         │
-│  阶段P 实践环境搭建（P0 最小可运行闭环；P2 再扩展为三语言 PerfShop）                 │
+│  阶段P 实践环境搭建（P0 单服务闭环；P1-mini Redis/downstream；P2 三语言目标态）      │
 │       (0.5周)                                                                       │
 └─────────────────────────────────────┬───────────────────────────────────────────────┘
                                       ▼
@@ -170,7 +171,7 @@ P → 0 → 1 → 2 → 3 → 3.5 → 主语言 4/5/6 → 7 → 8 → 9a → 9b 
 └─────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**21 个阶段，100 个文件，预计 30-32 周（每天 1-2 小时）**
+**21 个阶段，100 个正式学习单元，预计 30-32 周（每天 1-2 小时）**
 
 ---
 
@@ -188,7 +189,9 @@ P → 0 → 1 → 2 → 3 → 3.5 → 主语言 4/5/6 → 7 → 8 → 9a → 9b 
 
 > 整条路线围绕一个**贯穿项目**展开实操，避免「学完理论不知道怎么串起来」。
 
-**PerfShop** 是一个简化的电商 API 服务，包含三个语言版本（Java / Go / Python），具备以下模块：
+**PerfShop** 是一个简化的电商 API 服务。当前仓库已经提供可运行的 `labs/perfshop-p0/`：P0 覆盖单服务、MySQL、Prometheus/Grafana、压测和基础 chaos；P1-mini 在同一实验中补齐 Redis cache-aside、downstream 服务、trace_id 关联、timeout 和 retry storm。
+
+完整 Java / Go / Python 三语言同构 PerfShop 属于 P2 目标态，不是开始学习的前置条件。P2 目标会继续扩展：
 - 商品查询（涉及数据库、缓存）
 - 下单（涉及并发、事务、MQ）
 - 用户鉴权（涉及网络、TLS）
@@ -197,13 +200,13 @@ P → 0 → 1 → 2 → 3 → 3.5 → 主语言 4/5/6 → 7 → 8 → 9a → 9b 
 
 | 阶段 | 在 PerfShop 上做什么 |
 |------|---------------------|
-| P | 搭建 P0 最小环境，先跑通一个可观测服务 |
+| P | 搭建 P0/P1-mini 环境，先跑通单服务、缓存和下游调用的可观测闭环 |
 | 3 | 接入 Prometheus + 日志 + Tracing |
 | 3.5 | 用 wrk 对商品查询接口加压 |
 | 4a | 用 async-profiler 找到 Java 版的瓶颈 |
 | 5a | 用 pprof 找到 Go 版的瓶颈 |
 | 6a | 用 py-spy 找到 Python 版的瓶颈 |
-| 7 | 完整压测三语言版本，输出性能报告 |
+| 7 | 先压测 P0/P1-mini，再在 P2 阶段完整压测三语言版本 |
 | 8 | 模拟网络超时，用 tcpdump 排查 |
 | 9a | 用 EXPLAIN 优化慢查询 |
 | 9b | 排查 Redis 慢命令 |
@@ -224,13 +227,13 @@ P → 0 → 1 → 2 → 3 → 3.5 → 主语言 4/5/6 → 7 → 8 → 9a → 9b 
 |------|------|
 | [LEARNING-GUIDE.md](./performance-tuning-roadmap/LEARNING-GUIDE.md) | 学习节奏 / 三层路线 / 阶段检查点 / PerfShop 落地优先级 / 学习单元统一模板 |
 | [templates/](./performance-tuning-roadmap/templates/) | 排查记录 / 压测报告 / Profiling 报告 / 复盘模板 |
-| [labs/perfshop-p0/](./performance-tuning-roadmap/labs/perfshop-p0/) | PerfShop P0 最小实验闭环标准 |
+| [labs/perfshop-p0/](./performance-tuning-roadmap/labs/perfshop-p0/) | PerfShop P0 / P1-mini 可运行实验闭环 |
 
 ### 准备层
 
 | 阶段 | 文件夹 | 文件数 | 核心内容 |
 |------|--------|--------|---------|
-| **P** | [实践环境搭建](./performance-tuning-roadmap/P-lab-setup/) | 2 | Docker Compose 监控栈 / P0 最小 PerfShop 闭环 |
+| **P** | [实践环境搭建](./performance-tuning-roadmap/P-lab-setup/) | 2 | Docker Compose 监控栈 / P0 单服务闭环 / P1-mini 多组件闭环 |
 
 ### 基础层
 
@@ -297,7 +300,7 @@ P → 0 → 1 → 2 → 3 → 3.5 → 主语言 4/5/6 → 7 → 8 → 9a → 9b 
 |------|--------|--------|---------|
 | **14** | [综合实战](./performance-tuning-roadmap/14-capstone/) | 3 | 贯穿项目演练指南 / 全链路性能工程实战 / 排查能力自测题 |
 
-**共 100 个详细学习单元 + 21 个阶段学习指南 + 1 个总学习指南 + 学习产物模板 + PerfShop P0 实验标准**
+**共 100 个正式学习单元 + 21 个阶段学习指南 + 1 个总学习指南 + 学习产物模板 + PerfShop P0/P1-mini 实验标准**
 
 ---
 
@@ -367,17 +370,18 @@ P → 0 → 1 → 2 → 3 → 3.5 → 主语言 4/5/6 → 7 → 8 → 9a → 9b 
 
 **前置条件**：Docker 和 Docker Compose 已安装。Java / Go / Python 本地开发环境只在进入 P2 三语言同构实验或对应语言专项时需要。
 
-**学完能做什么**：一条命令拉起最小实验环境，至少跑通一个 HTTP 服务、Prometheus 指标和 Grafana 观测入口。完整 Java / Go / Python 三语言 PerfShop 属于 P2 目标态，不是阶段 P 的完成前置。
+**学完能做什么**：一条命令拉起最小实验环境，跑通一个 HTTP 服务、MySQL、Redis、downstream、Prometheus 指标和 Grafana 观测入口。完整 Java / Go / Python 三语言 PerfShop 属于 P2 目标态，不是阶段 P 的完成前置。
 
 | 文件 | 内容 |
 |------|------|
 | 01-monitoring-stack.md | Docker Compose 编排 / Prometheus + Grafana + Jaeger + Loki 一键部署 / 端口与访问 / 数据持久化 / 常见问题 |
-| 02-perfshop-demo.md | PerfShop 作为贯穿项目的目标架构 / P0 单服务闭环 / P1 多组件扩展 / P2 Java + Go + Python 三语言同构目标 |
+| 02-perfshop-demo.md | PerfShop 作为贯穿项目的目标架构 / P0 单服务闭环 / P1-mini 当前可运行多组件扩展 / P2 Java + Go + Python 三语言同构目标 |
 
 **动手练习**：
-1. 在 performance-tuning-roadmap/labs/perfshop-p0/ 下执行 `docker compose up -d` 启动 P0 环境，确认 Grafana 或 Prometheus 有数据
+1. 在 performance-tuning-roadmap/labs/perfshop-p0/ 下执行 `docker compose up -d` 启动 P0/P1-mini 环境，确认 Grafana 或 Prometheus 有数据
 2. 用 curl 请求一个 PerfShop 商品查询接口，确认返回正常
-3. 在后续 P1/P2 阶段再补 Trace、Redis、Kafka 和三语言同构服务
+3. 请求 `/api/recommendations/1`，再开启 Redis slow 或 downstream delay，确认可以用指标和 `trace_id` 解释现象
+4. Kafka、Jaeger、日志聚合和三语言同构服务留到后续手工环境或 P2 目标态
 
 ---
 
@@ -707,7 +711,7 @@ P → 0 → 1 → 2 → 3 → 3.5 → 主语言 4/5/6 → 7 → 8 → 9a → 9b 
 
 > **Redis 慢命令和 Kafka consumer lag 是生产环境最高频的性能问题之一，但很多人只会用不会排查。**
 
-**前置条件**：阶段 3 的 Metrics 和 Prometheus 已掌握。PerfShop 的 Redis 和 Kafka 已运行。
+**前置条件**：阶段 3 的 Metrics 和 Prometheus 已掌握。PerfShop P1-mini 的 Redis 已运行；Kafka consumer lag 练习需要额外手工环境或未来 P2 扩展。
 
 **学完能做什么**：能定位 Redis 慢命令和大 Key；能分析 Redis 内存构成并优化；能排查 Kafka consumer lag 并调优吞吐。
 
@@ -719,9 +723,9 @@ P → 0 → 1 → 2 → 3 → 3.5 → 主语言 4/5/6 → 7 → 8 → 9a → 9b 
 | 04-mq-debugging.md | Consumer lag 排查 / 消息积压处理 / 分区倾斜(skew) / Rebalance 风暴 / 消息丢失排查 / 监控指标(Kafka Exporter) |
 
 **动手练习**：
-1. 在 PerfShop 中使用 `KEYS *` 命令（故意的），用 `SLOWLOG GET` 找到它，改为 `SCAN`
-2. 用 `redis-cli --bigkeys` 扫描 PerfShop 的 Redis，找出大 Key，分析数据结构是否合理
-3. 给 PerfShop 的 Kafka consumer 设置 `max.poll.records=1`（故意制造 lag），用 Kafka Exporter + Grafana 看到 lag 增长，然后调优恢复
+1. 在 PerfShop P1-mini 中开启 `/chaos/redis-slow?enabled=true`，用 `redis_operation_duration_seconds` 证明 Redis 变慢
+2. 开启 `/chaos/redis-big-key?enabled=true`，用 `redis-cli --bigkeys` 或 Redis 指标分析大 Key 风险
+3. Kafka consumer lag 作为 `Runnable with manual setup` 练习：给 Kafka consumer 设置 `max.poll.records=1`（故意制造 lag），用 Kafka Exporter + Grafana 看到 lag 增长，然后调优恢复
 
 ---
 
