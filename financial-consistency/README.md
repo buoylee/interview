@@ -5,6 +5,7 @@
 正式设计文档：
 
 - [2026-05-01-financial-consistency-design.md](../docs/superpowers/specs/2026-05-01-financial-consistency-design.md)
+- [2026-05-01-financial-scenario-matrix-design.md](../docs/superpowers/specs/2026-05-01-financial-scenario-matrix-design.md)
 - [旧笔记索引](./references.md)
 
 ## 当前决策
@@ -47,6 +48,9 @@
 核心原则：先知道系统永远不能违反什么，再讨论用什么事务模式和框架。
 
 ## 阶段路线
+
+- [00-scenario-matrix](./00-scenario-matrix.md)
+  真实分布式事务场景地图：资金内核、外部渠道、组合交易、清结算和人工修复。
 
 - [01-transfer](./01-transfer/README.md)
   分布式转账：账户、冻结、扣减、入账、流水、幂等、补偿、对账。
