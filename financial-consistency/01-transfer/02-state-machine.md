@@ -53,7 +53,7 @@ CREDIT_POSTED -> SUCCEEDED
 | `REQUESTED` | `RISK_CHECKED`, `FAILED` | 风控通过或请求前置校验失败 |
 | `RISK_CHECKED` | `DEBIT_RESERVED`, `FAILED` | 冻结资金或后续校验失败 |
 | `DEBIT_RESERVED` | `DEBIT_POSTED`, `COMPENSATING` | 借记入账或释放冻结资金 |
-| `DEBIT_POSTED` | `CREDIT_POSTED`, `COMPENSATING` | 贷记入账；仅在贷记未发生且无法继续时补偿 |
+| `DEBIT_POSTED` | `CREDIT_POSTED`, `COMPENSATING` | 贷记入账；仅在贷记未发生且无法继续时补偿，例如贷记前置条件不可恢复地失败、贷记发生前收到明确取消，或在补偿策略下贷记重试耗尽 |
 | `CREDIT_POSTED` | `SUCCEEDED` | 借贷双方已入账，只能重试最终确认 |
 | `COMPENSATING` | `COMPENSATED`, `MANUAL_REVIEW` | 补偿完成或自动补偿失败 |
 | `SUCCEEDED` | 无 | 终态 |
@@ -62,6 +62,8 @@ CREDIT_POSTED -> SUCCEEDED
 | `MANUAL_REVIEW` | 无 | 终态，除非通过人工修复流程产生新的修复交易 |
 
 除上表列出的跳转外，其他状态跳转均为非法跳转。
+
+非法跳转必须被拒绝或作为 no-op 处理，保持当前状态不变，并记录 audit、metric 与明确的错误原因；非法跳转不得被当作幂等成功处理。
 
 ## 非法跳转
 
