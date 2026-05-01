@@ -7,6 +7,7 @@
 - [2026-05-01-financial-consistency-design.md](../docs/superpowers/specs/2026-05-01-financial-consistency-design.md)
 - [2026-05-01-financial-scenario-matrix-design.md](../docs/superpowers/specs/2026-05-01-financial-scenario-matrix-design.md)
 - [2026-05-01-financial-scenario-matrix-expansion-design.md](../docs/superpowers/specs/2026-05-01-financial-scenario-matrix-expansion-design.md)
+- [2026-05-01-payment-recharge-withdraw-design.md](../docs/superpowers/specs/2026-05-01-payment-recharge-withdraw-design.md)
 - [旧笔记索引](./references.md)
 
 ## 当前决策
@@ -56,7 +57,7 @@
 - [01-transfer](./01-transfer/README.md)
   分布式转账：账户、冻结、扣减、入账、流水、幂等、补偿、对账。
 
-- 02-payment-recharge-withdraw
+- [02-payment-recharge-withdraw](./02-payment-recharge-withdraw/README.md)
   充值、提现、支付回调、渠道超时、渠道对账。
 
 - 03-order-payment-inventory
