@@ -10,7 +10,31 @@ services:
     volumes:
       - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pperfshop123"]
+      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -P 3306 -uroot -p$${MYSQL_ROOT_PASSWORD} $${MYSQL_DATABASE} -N -B -e 'SELECT COUNT(*) >= 20000 FROM products' 2>/dev/null | grep -q 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: perfshop-p0-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  downstream:
+    build: ./downstream
+    container_name: perfshop-p0-downstream
+    environment:
+      DOWNSTREAM_PORT: "8081"
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health', timeout=2)"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -25,10 +49,21 @@ services:
       DB_PASSWORD: perfshop123
       DB_NAME: perfshop
       APP_PORT: "8080"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_DB: "0"
+      REDIS_SOCKET_TIMEOUT_SECONDS: "0.25"
+      DOWNSTREAM_URL: http://downstream:8081
+      DOWNSTREAM_TIMEOUT_SECONDS: "0.35"
+      DOWNSTREAM_RETRY_ATTEMPTS: "2"
     ports:
       - "8080:8080"
     depends_on:
       mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      downstream:
         condition: service_healthy
 
   prometheus:
@@ -40,6 +75,7 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     depends_on:
       - app
+      - downstream
 
   grafana:
     image: grafana/grafana:10.4.0
@@ -54,4 +90,3 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:
       - prometheus
-
