@@ -8,6 +8,7 @@
 - [2026-05-01-financial-scenario-matrix-design.md](../docs/superpowers/specs/2026-05-01-financial-scenario-matrix-design.md)
 - [2026-05-01-financial-scenario-matrix-expansion-design.md](../docs/superpowers/specs/2026-05-01-financial-scenario-matrix-expansion-design.md)
 - [2026-05-01-payment-recharge-withdraw-design.md](../docs/superpowers/specs/2026-05-01-payment-recharge-withdraw-design.md)
+- [2026-05-02-order-payment-inventory-design.md](../docs/superpowers/specs/2026-05-02-order-payment-inventory-design.md)
 - [旧笔记索引](./references.md)
 
 ## 当前决策
@@ -60,7 +61,7 @@
 - [02-payment-recharge-withdraw](./02-payment-recharge-withdraw/README.md)
   充值、提现、支付回调、渠道超时、渠道对账。
 
-- 03-order-payment-inventory
+- [03-order-payment-inventory](./03-order-payment-inventory/README.md)
   电商下单、支付、库存、取消、退款、消息最终一致性。
 
 - 04-travel-booking-saga
