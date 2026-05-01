@@ -18,6 +18,7 @@ http_duration_buckets = defaultdict(int)
 http_duration_sum = defaultdict(float)
 http_duration_count = defaultdict(int)
 
+chaos_lock = Lock()
 chaos = {
     "delay_ms": 0,
 }
@@ -47,15 +48,18 @@ def observe_http(method, path, status, seconds):
 
 
 def normalized_path(path):
+    if path in ("/health", "/metrics"):
+        return path
     if path.startswith("/api/recommendations/"):
         return "/api/recommendations/{product_id}"
     if path.startswith("/chaos/"):
         return "/chaos/*"
-    return path
+    return "/unknown"
 
 
 def maybe_delay():
-    delay_ms = chaos["delay_ms"]
+    with chaos_lock:
+        delay_ms = chaos["delay_ms"]
     if delay_ms > 0:
         time.sleep(delay_ms / 1000)
 
@@ -116,11 +120,19 @@ class Handler(BaseHTTPRequestHandler):
         query = parse_qs(parsed.query)
         try:
             if path == "/chaos/delay":
-                delay_ms = int(query.get("delay_ms", ["1000"])[0])
-                chaos["delay_ms"] = max(0, delay_ms)
-                self.send_json(200, {"delay_ms": chaos["delay_ms"]}, trace_id)
+                try:
+                    delay_ms = int(query.get("delay_ms", ["1000"])[0])
+                except ValueError:
+                    status = 400
+                    self.send_json(400, {"error": "invalid delay_ms"}, trace_id)
+                else:
+                    with chaos_lock:
+                        chaos["delay_ms"] = max(0, delay_ms)
+                        current_delay_ms = chaos["delay_ms"]
+                    self.send_json(200, {"delay_ms": current_delay_ms}, trace_id)
             elif path == "/chaos/reset":
-                chaos["delay_ms"] = 0
+                with chaos_lock:
+                    chaos["delay_ms"] = 0
                 self.send_json(200, {"status": "reset"}, trace_id)
             else:
                 status = 404
@@ -141,7 +153,11 @@ class Handler(BaseHTTPRequestHandler):
             })
 
     def handle_recommendations(self, path, trace_id):
-        product_id = int(path.rsplit("/", 1)[1])
+        try:
+            product_id = int(path.rsplit("/", 1)[1])
+        except ValueError:
+            self.send_json(400, {"error": "invalid product_id"}, trace_id)
+            return 400
         recommendations = [
             {"product_id": product_id + 1, "score": 0.93},
             {"product_id": product_id + 2, "score": 0.87},
