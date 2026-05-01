@@ -117,7 +117,7 @@ class Handler(BaseHTTPRequestHandler):
         trace_id = trace_id_from(self.headers)
         parsed = urlparse(self.path)
         path = parsed.path
-        query = parse_qs(parsed.query)
+        query = parse_qs(parsed.query, keep_blank_values=True)
         try:
             if path == "/chaos/delay":
                 try:
