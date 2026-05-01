@@ -90,10 +90,8 @@ def downstream_retry_attempts():
 
 
 def trace_id_from(headers):
-    incoming = headers.get("X-Trace-Id")
-    if incoming is not None:
-        return incoming
-    return uuid.uuid4().hex[:16]
+    incoming = headers.get("X-Trace-Id", "").strip()
+    return incoming or uuid.uuid4().hex[:16]
 
 
 def json_log(payload):
@@ -155,6 +153,13 @@ def observe_downstream_retry(target):
         downstream_retries[target] += 1
 
 
+def histogram_sort_key(item):
+    labels = item[0]
+    bucket = labels[-1]
+    bucket_key = (1, float("inf")) if bucket == "+Inf" else (0, float(bucket))
+    return labels[:-1] + (bucket_key,)
+
+
 def run_query(query_name, sql, params=()):
     started = time.perf_counter()
     conn = connect_db()
@@ -168,9 +173,9 @@ def run_query(query_name, sql, params=()):
 
 
 def redis_call(operation, trace_id, func, *args):
+    started = time.perf_counter()
     if chaos_snapshot()["redis_slow"]:
         time.sleep(REDIS_SLOW_SECONDS)
-    started = time.perf_counter()
     try:
         return func(*args)
     except Exception as exc:
@@ -573,7 +578,7 @@ class Handler(BaseHTTPRequestHandler):
                 "# HELP http_request_duration_seconds HTTP request duration.",
                 "# TYPE http_request_duration_seconds histogram",
             ])
-            for (method, path, bucket), value in sorted(http_duration_buckets.items(), key=lambda x: str(x[0])):
+            for (method, path, bucket), value in sorted(http_duration_buckets.items(), key=histogram_sort_key):
                 lines.append(f'http_request_duration_seconds_bucket{{method="{method}",path="{path}",le="{bucket}"}} {value}')
             for (method, path), value in sorted(http_duration_sum.items()):
                 lines.append(f'http_request_duration_seconds_sum{{method="{method}",path="{path}"}} {value}')
@@ -583,7 +588,7 @@ class Handler(BaseHTTPRequestHandler):
                 "# HELP db_query_duration_seconds Database query duration.",
                 "# TYPE db_query_duration_seconds histogram",
             ])
-            for (query_name, bucket), value in sorted(db_duration_buckets.items(), key=lambda x: str(x[0])):
+            for (query_name, bucket), value in sorted(db_duration_buckets.items(), key=histogram_sort_key):
                 lines.append(f'db_query_duration_seconds_bucket{{query="{query_name}",le="{bucket}"}} {value}')
             for query_name, value in sorted(db_duration_sum.items()):
                 lines.append(f'db_query_duration_seconds_sum{{query="{query_name}"}} {value}')
@@ -593,7 +598,7 @@ class Handler(BaseHTTPRequestHandler):
                 "# HELP redis_operation_duration_seconds Redis operation duration.",
                 "# TYPE redis_operation_duration_seconds histogram",
             ])
-            for (operation, bucket), value in sorted(redis_duration_buckets.items(), key=lambda x: str(x[0])):
+            for (operation, bucket), value in sorted(redis_duration_buckets.items(), key=histogram_sort_key):
                 lines.append(f'redis_operation_duration_seconds_bucket{{operation="{operation}",le="{bucket}"}} {value}')
             for operation, value in sorted(redis_duration_sum.items()):
                 lines.append(f'redis_operation_duration_seconds_sum{{operation="{operation}"}} {value}')
@@ -610,7 +615,7 @@ class Handler(BaseHTTPRequestHandler):
                 "# HELP app_downstream_request_duration_seconds App downstream request duration.",
                 "# TYPE app_downstream_request_duration_seconds histogram",
             ])
-            for (target, bucket), value in sorted(downstream_duration_buckets.items(), key=lambda x: str(x[0])):
+            for (target, bucket), value in sorted(downstream_duration_buckets.items(), key=histogram_sort_key):
                 lines.append(f'app_downstream_request_duration_seconds_bucket{{target="{target}",le="{bucket}"}} {value}')
             for target, value in sorted(downstream_duration_sum.items()):
                 lines.append(f'app_downstream_request_duration_seconds_sum{{target="{target}"}} {value}')
