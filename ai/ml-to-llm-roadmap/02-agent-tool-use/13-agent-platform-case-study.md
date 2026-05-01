@@ -190,4 +190,4 @@ sanitized_trace_link=trace:R1
 
 回到主线可以看：[Agent 与工具调用 README](./README.md)。
 
-Agent topic 在当前阶段已经完成。后续如果继续扩展，可以把同一套平台视角迁移到 multi-agent 协作、coding agent、企业级权限治理和跨团队 Agent marketplace。
+Agent topic 在当前阶段已经完成：高级专题已经覆盖 multi-agent 协作、coding agent 和客服平台案例。后续如果继续扩展，可以把同一套平台视角迁移到企业级权限治理和跨团队 Agent marketplace。
