@@ -32,14 +32,22 @@
 默认栈：
 
 - Java 21
-- Spring Boot / Spring Cloud
+- Spring Boot / Spring Cloud 作为服务开发与治理基础
 - PostgreSQL 或 MySQL
-- Kafka
+- Kafka 作为事件流、Outbox 投递和异步解耦基础
 - Redis
 - Docker / Kubernetes
 - OpenTelemetry + Prometheus + Grafana
 - Outbox / Debezium / CDC
-- Saga Orchestrator；后续对比 Temporal
+- Temporal 作为国际主线的 durable workflow / Saga Orchestrator
+
+框架选型结论：
+
+- 主实现路线采用 `Spring Boot + Kafka + Outbox + Temporal`。
+- 第一阶段允许手写最小 Saga Orchestrator，用来学习状态机、补偿、幂等、重试和恢复的底层机制。
+- 第二阶段引入 Temporal，对比它如何承接 workflow 状态持久化、activity retry、timeout、worker crash recovery 和补偿编排。
+- Seata 不作为主实现框架。它放入模式对比章节，用来理解 AT/TCC/Saga 思想，以及为什么国际金融主线更偏显式业务状态机、Outbox、消息、补偿和对账。
+- Camunda 放入后续对比章节。它更适合 BPMN、审批、人审、合规流程和企业流程自动化；本项目核心是资金一致性与 durable execution，因此 Temporal 优先。
 
 数据库选择不在第一版强制锁死。学习阶段优先让模型、事务边界和故障恢复清楚；实现阶段再根据本机环境和已有笔记选择 PostgreSQL 或 MySQL。
 
@@ -188,7 +196,7 @@ financial-consistency/
 - `02-payment-recharge-withdraw/`：充值、提现、支付回调、渠道差错。
 - `03-order-payment-inventory/`：电商交易链路。
 - `04-travel-booking-saga/`：机票、酒店、租车、保险的组合预订和补偿。
-- `05-patterns/`：Outbox、TCC、Saga、本地消息表、事务消息、CDC、幂等、状态机。
+- `05-patterns/`：Outbox、TCC、Saga、Temporal、Seata、Camunda、本地消息表、事务消息、CDC、幂等、状态机。
 - `06-failure-lab/`：故障注入、异常矩阵、恢复演练。
 - `07-reconciliation/`：对账、轧差、差错处理、人工工单。
 - `08-interview-synthesis/`：面试表达、架构评审话术、常见追问。
