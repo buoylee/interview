@@ -7,7 +7,7 @@
 - 这不是零基础学习入口；先掌握生成控制和基础系统设计，再用本路径冲刺 Agent 面试。
 - RAG 或生成控制只作为前置边界理解，不作为本路径默认复习步骤。
 
-## 90-120 分钟冲刺
+## 90-120 分钟冲刺：基础面试
 
 | 顺序 | 阅读 | 目标 |
 |------|------|------|
@@ -17,6 +17,16 @@
 | 4 | [Agent Evaluation, Safety and Production](../02-agent-tool-use/04-agent-evaluation-safety-production.md) | 建立评估、限流、审计、安全和上线口径 |
 | 5 | [Agent Patterns and Architectures](../02-agent-tool-use/05-agent-patterns-and-architectures.md) | 对比 ReAct、plan-and-execute、router、graph、reflection、multi-agent、memory 和 durable agent |
 | 6 | [Agent Tool Use Cheatsheet](../09-review-notes/02-agent-tool-use-cheatsheet.md) | 压缩成面试答案 |
+
+## 半天到一天：系统设计加深
+
+| 顺序 | 阅读 | 目标 |
+|------|------|------|
+| 1 | [Agent Runtime 工程](../02-agent-tool-use/06-agent-runtime-engineering.md) | 拆解 runtime 模块、执行循环、trace、预算和并发工具控制 |
+| 2 | [Agent、Workflow 与持久化状态](../02-agent-tool-use/07-agent-workflow-and-durable-state.md) | 解释 durable workflow、pause/resume、replay safety 和补偿动作 |
+| 3 | [Agent 记忆系统深水区](../02-agent-tool-use/08-agent-memory-deep-dive.md) | 设计 memory 写入、检索、过期、权限和污染防护策略 |
+| 4 | [Agent 安全深水区](../02-agent-tool-use/10-agent-security-deep-dive.md) | 对比 Agent 与普通 RAG 的安全风险，覆盖工具、权限、注入和审计 |
+| 5 | [Agent Eval 实战](../02-agent-tool-use/11-agent-eval-practice.md) | 设计离线 eval 集、轨迹评估、权限评估和回归测试 |
 
 ## 半天复盘
 
@@ -37,6 +47,11 @@
 - Agent 系统怎么评估、限流、审计和防止失控？
 - 什么时候不该用 Agent？
 - Agent 失败时怎么定位是模型、工具、状态还是权限问题？
+- 如果让你设计一个 Agent runtime，你会有哪些模块？
+- 为什么 durable agent 的核心不是长上下文？
+- Agent memory 怎么设计，怎么防旧记忆污染？
+- Agent 比普通 RAG 多哪些安全风险？
+- 如何设计 Agent 的离线评估集？
 
 ## 可跳过内容
 

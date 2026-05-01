@@ -9,6 +9,26 @@
 3. [状态、记忆与任务规划](./03-state-memory-and-planning.md)
 4. [Agent 评估、安全与生产排查](./04-agent-evaluation-safety-production.md)
 5. [Agent 模式与架构选型](./05-agent-patterns-and-architectures.md)
+6. [Agent Runtime 工程](./06-agent-runtime-engineering.md)
+7. [Agent、Workflow 与持久化状态](./07-agent-workflow-and-durable-state.md)
+8. [Agent 记忆系统深水区](./08-agent-memory-deep-dive.md)
+9. [Agent 安全深水区](./10-agent-security-deep-dive.md)
+10. [Agent Eval 实战](./11-agent-eval-practice.md)
+
+## 分层学习路径
+
+| 层级 | 阅读顺序 | 目标 |
+|------|----------|------|
+| 基础层 | 01 -> 02 -> 03 -> 04 -> 05 | 建立 Agent 边界、工具、状态、评估和模式选型 |
+| 工程层 | 06 -> 07 -> 08 -> 10 -> 11 | 掌握 runtime、durable workflow、memory、安全和 eval 实战 |
+| 高级层 | 09 -> 12 -> 13 | 后续扩展 multi-agent、coding agent 和平台案例 |
+
+## 推荐路径
+
+| 目标 | 路径 |
+|------|------|
+| 面试冲刺 | 01 -> 02 -> 03 -> 05 -> 04 -> 速记 |
+| 系统落地 | 01 -> 02 -> 03 -> 05 -> 06 -> 07 -> 08 -> 10 -> 11 |
 
 ## 学前检查
 
