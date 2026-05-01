@@ -11,9 +11,9 @@ Client
 -> durable fact: RiskApproved
 -> account-service: ReserveDebit
 -> durable fact: DebitReserved
--> account-service: ConsumeFreeze / durable fact: FreezeConsumed or AccountDebited
+-> account-service: ConsumeFreeze / durable fact: FreezeConsumed
 -> ledger-service: PostDebitEntry / durable fact: DebitPosted
--> account-service: CreditReceiver / durable fact: ReceiverCredited or AccountCredited
+-> account-service: CreditReceiver / durable fact: AccountCredited
 -> ledger-service: PostCreditEntry / durable fact: CreditPosted
 -> transaction-orchestrator: MarkSucceeded local transaction writes TransferSucceeded outbox
 -> async outbox publisher: publish TransferSucceeded to Kafka later
@@ -24,14 +24,14 @@ Client
 
 - `account-service` 拥有 operational balance、freeze 和 account movement；`ledger-service` 拥有 immutable accounting entries。
 - account movement 和 ledger posting 是两类独立事实，不能互相替代。
-- `DEBIT_POSTED` 状态迁移要求付款方冻结被消费或产生等价 debit movement，并且 `ledger-service` 完成 `PostDebitEntry`。
-- `CREDIT_POSTED` 状态迁移要求收款方产生 credit movement，并且 `ledger-service` 完成 `PostCreditEntry`。
+- `DEBIT_POSTED` 状态迁移要求付款方冻结被消费，即看到 `FreezeConsumed`，并且 `ledger-service` 完成 `PostDebitEntry`。
+- `CREDIT_POSTED` 状态迁移要求收款方账户入账，即看到 `AccountCredited`，并且 `ledger-service` 完成 `PostCreditEntry`。
 - orchestrator 不能只因为收到 `DebitPosted` 或 `CreditPosted` 就推进状态；它还必须同时看到对应 account movement fact 和 ledger posting fact。
 - Kafka 只负责 topic、partition、保留和投递语义；业务幂等由各服务自己的 inbox/dedup 记录保证。
 
 ### 风控边界
 
-第一个 transfer module 中，`risk-service` 可以先采用同步 command/response：orchestrator 调用 `CheckTransferRisk` 并等待结果，再决定是否进入资金冻结。无论实现是同步响应还是后续事件驱动，都需要持久化或发出耐久事实：`RiskApproved` 或 `RiskRejected`。状态 `RISK_CHECKED` 只表示已经看到 approval fact；rejection fact 应推进到拒绝或终止路径，而不是继续执行 account/ledger 步骤。
+第一个 transfer module 中，`risk-service` 采用同步 command/response：orchestrator 调用 `CheckTransferRisk` 并等待结果，再决定是否进入资金冻结。`TransferRequested` 不驱动风险服务消费；它作为转账创建事实供 reconciliation/audit 等异步消费者使用。无论 approval/rejection 是由 orchestrator 根据同步响应持久化并发出，还是由后续版本中的 risk-service 直接持久化并发出，都需要形成耐久事实：`RiskApproved` 或 `RiskRejected`。状态 `RISK_CHECKED` 只表示已经看到 approval fact；rejection fact 应推进到拒绝或终止路径，而不是继续执行 account/ledger 步骤。
 
 ## Outbox 规则
 
@@ -49,15 +49,13 @@ local business update + outbox insert = one local database transaction
 
 | 事件 | 生产者 | 消费者 | 语义 |
 |---|---|---|---|
-| `TransferRequested` | transaction-orchestrator | risk-service | 转账请求已创建 |
+| `TransferRequested` | transaction-orchestrator | reconciliation-service, audit-service | 转账请求已创建；不作为本模块风控调用入口 |
 | `RiskApproved` | risk-service 或 transaction-orchestrator | transaction-orchestrator | 风控已批准；`RISK_CHECKED` 依赖此事实 |
 | `RiskRejected` | risk-service 或 transaction-orchestrator | transaction-orchestrator | 风控已拒绝；不能继续冻结或入账 |
 | `DebitReserved` | account-service | transaction-orchestrator, reconciliation-service | 付款资金已冻结 |
 | `FreezeConsumed` | account-service | transaction-orchestrator, reconciliation-service | 付款方冻结已被消费 |
-| `AccountDebited` | account-service | transaction-orchestrator, reconciliation-service | 付款方账户已产生 debit movement；可作为 `FreezeConsumed` 的等价或补充事实 |
 | `DebitPosted` | ledger-service | transaction-orchestrator | 借方分录已入账 |
-| `ReceiverCredited` | account-service | transaction-orchestrator, reconciliation-service | 收款方账户已产生 credit movement |
-| `AccountCredited` | account-service | transaction-orchestrator, reconciliation-service | 收款方账户已入账；可作为 `ReceiverCredited` 的同义或规范化事实 |
+| `AccountCredited` | account-service | transaction-orchestrator, reconciliation-service | 收款方账户已入账 |
 | `CreditPosted` | ledger-service | transaction-orchestrator | 贷方分录已入账 |
 | `TransferSucceeded` | transaction-orchestrator | reconciliation-service, notification-service | 转账完成 |
 | `TransferCompensationRequired` | transaction-orchestrator | account-service, ledger-service | 需要补偿 |
@@ -69,8 +67,8 @@ local business update + outbox insert = one local database transaction
 
 - `RISK_CHECKED`：需要 `RiskApproved`。
 - `DEBIT_RESERVED`：需要 `DebitReserved`。
-- `DEBIT_POSTED`：需要 `FreezeConsumed` 或 `AccountDebited`，并且需要 `DebitPosted`。
-- `CREDIT_POSTED`：需要 `ReceiverCredited` 或 `AccountCredited`，并且需要 `CreditPosted`。
+- `DEBIT_POSTED`：需要 `FreezeConsumed`，并且需要 `DebitPosted`。
+- `CREDIT_POSTED`：需要 `AccountCredited`，并且需要 `CreditPosted`。
 - `SUCCEEDED`：orchestrator 在本地事务内完成 `MarkSucceeded` 并写入 `TransferSucceeded` outbox；Kafka 中看到 `TransferSucceeded` 只是异步发布结果，不是该本地事务的一部分。
 
 ## 消息处理原则
