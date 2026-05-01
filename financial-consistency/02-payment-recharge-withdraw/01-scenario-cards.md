@@ -10,7 +10,7 @@
 | --- | --- |
 | 场景边界 | 用户发起充值；系统创建充值单并调用支付渠道；渠道确认成功后，本地给账户入账并生成会计分录；充值最终进入成功、失败、未知或人工处理状态。 |
 | 参与方 | 用户、payment-service、channel-adapter、account-service、ledger-service、reconciliation-service、message-broker。 |
-| 核心状态机 | `CREATED -> CHANNEL_PENDING -> CHANNEL_UNKNOWN -> CHANNEL_SUCCEEDED -> ACCOUNT_CREDITED -> LEDGER_POSTED -> SUCCEEDED`。 |
+| 核心状态机 | 成功路径：`CREATED -> CHANNEL_PENDING -> CHANNEL_UNKNOWN -> CHANNEL_SUCCEEDED -> ACCOUNT_CREDITED -> LEDGER_POSTED -> SUCCEEDED`；失败或差错分支：`CHANNEL_FAILED -> FAILED`，`CHANNEL_UNKNOWN -> MANUAL_REVIEW`，`CHANNEL_SUCCEEDED -> RECONCILIATION_REQUIRED`。 |
 | 正确性不变量 | 同一充值单不能重复入账；成功充值必须同时有渠道成功事实、账户入账流水和贷记分录。 |
 | 关键命令和事件 | `RechargeRequested`、`ChannelPaymentInitiated`、`ChannelPaymentSucceeded`、`RechargeAccountCredited`、`RechargeLedgerPosted`。 |
 | 耐久事实 | 充值单、渠道请求号、渠道交易号、账户流水、会计分录、Outbox 事件。 |
@@ -24,11 +24,11 @@
 | 字段 | 内容 |
 | --- | --- |
 | 场景边界 | 用户发起提现；系统冻结用户可用余额；系统提交出款请求到银行或出款渠道；渠道成功后消耗冻结并记账；渠道失败后释放冻结。 |
-| 参与方 | 用户、payment-service、risk-service、channel-adapter、account-service、ledger-service、reconciliation-service。 |
-| 核心状态机 | `CREATED -> RISK_APPROVED -> FUNDS_RESERVED -> PAYOUT_SUBMITTED -> PAYOUT_UNKNOWN -> PAYOUT_SUCCEEDED -> FREEZE_CONSUMED -> LEDGER_POSTED -> SUCCEEDED`。 |
+| 参与方 | 用户、payment-service、risk-service、channel-adapter、account-service、ledger-service、reconciliation-service、message-broker。 |
+| 核心状态机 | 成功路径：`CREATED -> RISK_APPROVED -> FUNDS_RESERVED -> PAYOUT_SUBMITTED -> PAYOUT_UNKNOWN -> PAYOUT_SUCCEEDED -> FREEZE_CONSUMED -> LEDGER_POSTED -> SUCCEEDED`；失败或释放分支：`PAYOUT_FAILED -> FUNDS_RELEASED -> FAILED`，`PAYOUT_UNKNOWN -> MANUAL_REVIEW`。 |
 | 正确性不变量 | 同一提现单不能重复出款；提现成功必须消耗冻结；提现失败必须释放冻结；不能既释放冻结又确认出款成功。 |
 | 关键命令和事件 | `WithdrawRequested`、`WithdrawRiskApproved`、`WithdrawFundsReserved`、`PayoutSubmitted`、`PayoutSucceeded`、`WithdrawFreezeConsumed`、`WithdrawLedgerPosted`。 |
-| 耐久事实 | 提现单、风控结果、冻结记录、渠道出款请求号、渠道出款流水、冻结消耗流水、借记分录。 |
+| 耐久事实 | 提现单、风控结果、冻结记录、渠道出款请求号、渠道出款流水、冻结消耗流水、借记分录、Outbox 事件。 |
 | 最危险失败点 | 出款请求超时但渠道实际成功；重试造成重复出款；冻结金额长期悬挂；银行成功但本地状态未推进。 |
 | 补偿方式 | 渠道失败释放冻结；渠道成功但本地未推进时补消耗冻结和分录；重复出款进入人工追回或反向入账；长期未知进入人工复核。 |
 | 对账来源 | 银行出款文件、提现单、冻结流水、账户流水、会计分录、差错单。 |
