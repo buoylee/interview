@@ -12,8 +12,13 @@
 6. [Agent Runtime 工程](./06-agent-runtime-engineering.md)
 7. [Agent、Workflow 与持久化状态](./07-agent-workflow-and-durable-state.md)
 8. [Agent 记忆系统深水区](./08-agent-memory-deep-dive.md)
-9. [Agent 安全深水区](./10-agent-security-deep-dive.md)
-10. [Agent Eval 实战](./11-agent-eval-practice.md)
+9. [Multi-Agent 协作机制](./09-multi-agent-coordination.md)
+10. [Agent 安全深水区](./10-agent-security-deep-dive.md)
+11. [Agent Eval 实战](./11-agent-eval-practice.md)
+12. [Coding Agent 架构](./12-coding-agent-architecture.md)
+13. [Agent 平台案例：客服退款/工单系统](./13-agent-platform-case-study.md)
+
+完整专题现在覆盖 Agent 基础边界、工程化落地和高级平台叙事三条主线。
 
 ## 分层学习路径
 
@@ -21,14 +26,14 @@
 |------|----------|------|
 | 基础层 | 01 -> 02 -> 03 -> 04 -> 05 | 建立 Agent 边界、工具、状态、评估和模式选型 |
 | 工程层 | 06 -> 07 -> 08 -> 10 -> 11 | 掌握 runtime、durable workflow、memory、安全和 eval 实战 |
-| 高级层 | 09 -> 12 -> 13 | 后续扩展 multi-agent、coding agent 和平台案例 |
+| 高级层 | 09 -> 12 -> 13 | 掌握多 Agent 协作、coding agent 执行保护和平台级系统设计叙事 |
 
 ## 推荐路径
 
 | 目标 | 路径 |
 |------|------|
 | 面试冲刺 | 01 -> 02 -> 03 -> 05 -> 04 -> 速记 |
-| 系统落地 | 01 -> 02 -> 03 -> 05 -> 06 -> 07 -> 08 -> 10 -> 11 |
+| 系统落地 | 01 -> 02 -> 03 -> 05 -> 06 -> 07 -> 08 -> 10 -> 11 -> 13 |
 
 ## 学前检查
 

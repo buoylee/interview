@@ -28,6 +28,14 @@
 | 4 | [Agent 安全深水区](../02-agent-tool-use/10-agent-security-deep-dive.md) | 对比 Agent 与普通 RAG 的安全风险，覆盖工具、权限、注入和审计 |
 | 5 | [Agent Eval 实战](../02-agent-tool-use/11-agent-eval-practice.md) | 设计离线 eval 集、轨迹评估、权限评估和回归测试 |
 
+## 一天以上：高级专题与项目叙事
+
+| 顺序 | 阅读 | 目标 |
+|------|------|------|
+| 1 | [Multi-Agent 协作机制](../02-agent-tool-use/09-multi-agent-coordination.md) | 说明多 Agent 的角色边界、交接协议、共享状态和冲突裁决 |
+| 2 | [Coding Agent 架构](../02-agent-tool-use/12-coding-agent-architecture.md) | 拆解 coding agent 的上下文选择、patch 生成、验证和用户改动保护 |
+| 3 | [Agent 平台案例：客服退款/工单系统](../02-agent-tool-use/13-agent-platform-case-study.md) | 把 Agent 平台讲成完整系统设计，覆盖业务流程、权限、审计和 eval |
+
 ## 半天复盘
 
 1. 先读系统学习页，按“边界和循环 -> 工具执行 -> 状态规划 -> 生产安全 -> 模式选型”串起来。
@@ -52,6 +60,9 @@
 - Agent memory 怎么设计，怎么防旧记忆污染？
 - Agent 比普通 RAG 多哪些安全风险？
 - 如何设计 Agent 的离线评估集？
+- Multi-agent 怎么设计交接、共享状态和冲突裁决？
+- Coding agent 如何选文件、生成 patch、跑测试和保护用户改动？
+- 如何把客服 Agent 平台讲成完整系统设计？
 
 ## 可跳过内容
 

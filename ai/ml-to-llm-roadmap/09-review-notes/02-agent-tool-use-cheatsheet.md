@@ -38,6 +38,9 @@ ReAct 只是最常见的单 Agent 工具循环，不是 Agent 的全部。长任
 | Memory policy 怎么设计？ | 先分 working/episodic/semantic/profile memory，再定义写入条件、检索范围、过期策略、用户可见性、删除机制和污染回滚。 |
 | Agent security 和 RAG security 有什么不同？ | RAG 主要防检索污染和泄露；Agent 还会执行工具和写操作，所以要防 prompt injection、越权工具调用、confused deputy、权限升级和副作用失控。 |
 | Agent eval set 怎么设计？ | 用真实任务和对抗任务生成 golden/adversarial traces，标注期望工具、参数、权限结果、stop_reason、失败恢复和最终答案。 |
+| Multi-agent coordination 怎么设计？ | 先确认是否真的需要多 Agent，再定义角色边界、handoff contract、共享状态、冲突裁决、预算控制和全链路 trace。 |
+| Coding agent 架构怎么讲？ | 从任务理解、文件选择、上下文压缩、patch 生成、测试验证、用户改动保护和回滚边界讲执行闭环。 |
+| 客服 Agent 平台案例怎么讲？ | 按入口分流、身份校验、订单/退款工具、工单创建、人工升级、权限审计、评估集和生产监控串成完整系统。 |
 
 ## 易混点
 
@@ -56,6 +59,9 @@ ReAct 只是最常见的单 Agent 工具循环，不是 Agent 的全部。长任
 | Memory vs Permission | 以为记住用户信息就能使用 | 记忆写入和读取都要受权限、用途、过期和用户可删除策略约束 |
 | Prompt-only safety vs Policy enforcement | 以为系统提示写清楚就安全 | 高风险动作必须靠 policy engine、工具权限、审批、沙箱和审计执行约束 |
 | Final-answer eval vs Trajectory eval | 以为最终答案正确就通过 | Agent eval 还要检查中间工具、参数、权限、恢复、停止条件和副作用 |
+| Multi-agent vs role-play chat | 以为多个角色提示词就是多 Agent | Multi-agent 要有独立职责、工具/权限边界、交接协议、共享状态和冲突处理 |
+| Coding agent vs code generator | 以为能生成代码就是 coding agent | Coding agent 还要读仓库、定位文件、生成 patch、跑验证、保护用户改动并处理失败恢复 |
+| Platform case study vs prompt demo | 以为展示一个 prompt 流程就是平台案例 | 平台案例要覆盖业务状态机、工具权限、审计、人工升级、eval、监控和运营闭环 |
 
 ## 项目连接
 
@@ -64,6 +70,8 @@ ReAct 只是最常见的单 Agent 工具循环，不是 Agent 的全部。长任
 - 失败恢复：parse/schema failure 可修复或追问，transient tool failure 可限次重试，permission failure 和 unsafe action 应停止或升级。
 - 生产日志：记录 request_id、goal、state snapshot、model/prompt/schema 版本、tool calls、脱敏参数、observations 摘要、policy result、retry count、latency、cost、stop_reason 和 final answer。
 - 模式选型：退款查询可用 graph-constrained agent 固定身份校验和高风险写操作，节点内用 ReAct 调只读工具；复杂研究任务可用 plan-and-execute；多意图平台用 router/supervisor 控制 specialist 权限。
+- Coding agent：把“读代码 -> 选上下文 -> 生成 patch -> 跑测试 -> 汇报 diff”讲成受控执行循环，重点说明不覆盖用户未提交改动。
+- 平台案例：客服退款/工单系统可连接入口分流、订单状态、退款策略、工单 SLA、人工升级、审计日志和轨迹评估。
 - 面试表达：先判断是否需要 Agent，再讲 loop、模式选型、工具权限、状态管理、轨迹评估、安全控制和生产排查。
 
 ## 反向链接
@@ -76,6 +84,9 @@ ReAct 只是最常见的单 Agent 工具循环，不是 Agent 的全部。长任
 - [Agent Runtime 工程](../02-agent-tool-use/06-agent-runtime-engineering.md)
 - [Agent、Workflow 与持久化状态](../02-agent-tool-use/07-agent-workflow-and-durable-state.md)
 - [Agent 记忆系统深水区](../02-agent-tool-use/08-agent-memory-deep-dive.md)
+- [Multi-Agent 协作机制](../02-agent-tool-use/09-multi-agent-coordination.md)
 - [Agent 安全深水区](../02-agent-tool-use/10-agent-security-deep-dive.md)
 - [Agent Eval 实战](../02-agent-tool-use/11-agent-eval-practice.md)
+- [Coding Agent 架构](../02-agent-tool-use/12-coding-agent-architecture.md)
+- [Agent 平台案例：客服退款/工单系统](../02-agent-tool-use/13-agent-platform-case-study.md)
 - [Function Calling 的输出形态](../03-generation-control/03-function-calling-output-shape.md)
