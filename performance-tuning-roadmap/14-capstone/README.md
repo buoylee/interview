@@ -23,6 +23,7 @@
 | 1 | [01-capstone-guide.md](./01-capstone-guide.md) | 演练环境、问题注入、排查记录方式 |
 | 2 | [02-full-cycle-exercise.md](./02-full-cycle-exercise.md) | GC、慢查询、goroutine 泄漏、Redis 大 Key、超时传播 |
 | 3 | [03-self-assessment.md](./03-self-assessment.md) | 20 道场景题、自测评分、薄弱点回补 |
+| 4 | [04-sample-report-p1-mini.md](./04-sample-report-p1-mini.md) | P1-mini 下游超时与 retry storm 的标准答案级报告 |
 
 ---
 
@@ -42,6 +43,8 @@
 ```
 
 如果只看参考答案，不自己写排查记录，训练效果会明显下降。
+
+写第一份报告前，可以先读 [04-sample-report-p1-mini.md](./04-sample-report-p1-mini.md)，理解一份资深面试级报告应该如何组织证据和表达权衡。读完后不要照抄数值，必须替换成自己的实测数据。
 
 ---
 
@@ -101,4 +104,3 @@
 | 网络证据弱 | 8 |
 | 分布式链路弱 | 10 |
 | 不会复盘 | 13 |
-
