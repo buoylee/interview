@@ -2,6 +2,18 @@
 
 > 本阶段目标：把所有阶段串成完整排查能力。不是再学新工具，而是训练从现象到复盘的端到端闭环。
 
+## 面试 Track 毕业标准
+
+同一个 capstone 可以按不同面试目标产出不同材料：
+
+| Track | 必须证明的能力 | 最低产物 |
+|-------|----------------|----------|
+| Backend Senior | 能从服务现象定位到 runtime、数据库或分布式根因，并量化修复效果 | 完整排查报告、profile/slow query/trace 证据、优化前后对比 |
+| SRE / Platform | 能从 SLO 或告警出发完成响应、缓解、容量判断和复盘 | SLO breach 分析、告警或 dashboard 证据、容量估算、复盘记录 |
+| Staff / Tech Lead | 能把单次性能问题上升为系统治理方案 | 性能治理 proposal、容量模型、rollout/rollback 方案、长期 guardrail |
+
+如果只做第 0 轮最小闭环，至少完成 Backend Senior 的最低产物；如果准备 SRE 或 Staff 面试，需要把同一问题扩展到 SLO、容量、发布风险和组织改进。
+
 ---
 
 ## 学习顺序
@@ -42,6 +54,8 @@
 - 修复后能用同一套指标复测
 - 能区分根因、诱因、放大器
 - 自测题达到 L2 或以上
+
+自测题完成后，用 [../SENIOR-RUBRIC.md](../SENIOR-RUBRIC.md) 判断回答是否达到资深或 Staff 标准。
 
 ---
 
