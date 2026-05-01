@@ -4,6 +4,17 @@
 
 > **原则**：系统性与完整性优先，不跳步、不压缩。每个阶段都是下一阶段的前置依赖。每个阶段包含前置条件、能力目标和动手练习。
 
+> **面试目标**：这套路线上可以服务三类目标：资深后端工程师、SRE / 平台工程师、Staff / Tech Lead。所有学习者先完成同一个性能排查核心闭环，再按目标岗位进入不同 track。
+
+### 面试导向入口
+
+| 文件 | 解决的问题 |
+|------|------------|
+| [TRACKS.md](./performance-tuning-roadmap/TRACKS.md) | Backend Senior / SRE / Staff 三条学习路径怎么选 |
+| [INTERVIEW-MATRIX.md](./performance-tuning-roadmap/INTERVIEW-MATRIX.md) | 高频性能面试场景需要哪些能力和证据 |
+| [LAB-CONTRACT.md](./performance-tuning-roadmap/LAB-CONTRACT.md) | 哪些实验当前可运行，哪些属于目标态示例 |
+| [SENIOR-RUBRIC.md](./performance-tuning-roadmap/SENIOR-RUBRIC.md) | 什么样的回答算资深或 Staff 水平 |
+
 ---
 
 ## 如何使用这份路线
@@ -95,7 +106,7 @@ P → 0 → 1 → 2 → 3 → 3.5 → 主语言 4/5/6 → 7 → 8 → 9a → 9b 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────┐
 │                               准备层（环境）                                         │
-│  阶段P 实践环境搭建（Docker Compose 一键环境 + 三语言 Demo 服务）                     │
+│  阶段P 实践环境搭建（P0 最小可运行闭环；P2 再扩展为三语言 PerfShop）                 │
 │       (0.5周)                                                                       │
 └─────────────────────────────────────┬───────────────────────────────────────────────┘
                                       ▼
@@ -186,7 +197,7 @@ P → 0 → 1 → 2 → 3 → 3.5 → 主语言 4/5/6 → 7 → 8 → 9a → 9b 
 
 | 阶段 | 在 PerfShop 上做什么 |
 |------|---------------------|
-| P | 搭建环境，三语言版本都跑起来 |
+| P | 搭建 P0 最小环境，先跑通一个可观测服务 |
 | 3 | 接入 Prometheus + 日志 + Tracing |
 | 3.5 | 用 wrk 对商品查询接口加压 |
 | 4a | 用 async-profiler 找到 Java 版的瓶颈 |
@@ -219,7 +230,7 @@ P → 0 → 1 → 2 → 3 → 3.5 → 主语言 4/5/6 → 7 → 8 → 9a → 9b 
 
 | 阶段 | 文件夹 | 文件数 | 核心内容 |
 |------|--------|--------|---------|
-| **P** | [实践环境搭建](./performance-tuning-roadmap/P-lab-setup/) | 2 | Docker Compose 监控栈 / 三语言 Demo 服务(PerfShop) |
+| **P** | [实践环境搭建](./performance-tuning-roadmap/P-lab-setup/) | 2 | Docker Compose 监控栈 / P0 最小 PerfShop 闭环 |
 
 ### 基础层
 
@@ -356,17 +367,17 @@ P → 0 → 1 → 2 → 3 → 3.5 → 主语言 4/5/6 → 7 → 8 → 9a → 9b 
 
 **前置条件**：Docker 和 Docker Compose 已安装，Java/Go/Python 开发环境就绪。
 
-**学完能做什么**：一条命令拉起 Prometheus + Grafana + Jaeger + Loki，三语言 Demo 服务全部跑通，浏览器打开 Grafana 能看到数据。
+**学完能做什么**：一条命令拉起最小实验环境，至少跑通一个 HTTP 服务、Prometheus 指标和 Grafana 观测入口。完整 Java / Go / Python 三语言 PerfShop 属于 P2 目标态，不是阶段 P 的完成前置。
 
 | 文件 | 内容 |
 |------|------|
 | 01-monitoring-stack.md | Docker Compose 编排 / Prometheus + Grafana + Jaeger + Loki 一键部署 / 端口与访问 / 数据持久化 / 常见问题 |
-| 02-perfshop-demo.md | PerfShop 三语言版本架构 / Java(Spring Boot) + Go(Gin) + Python(FastAPI) / MySQL + Redis + Kafka / 构建与运行 / 验证接口可用 |
+| 02-perfshop-demo.md | PerfShop 作为贯穿项目的目标架构 / P0 单服务闭环 / P1 多组件扩展 / P2 Java + Go + Python 三语言同构目标 |
 
 **动手练习**：
-1. `docker compose up -d` 启动全部服务，确认 Grafana 仪表盘有数据
-2. 用 curl 请求三语言版本的商品查询接口，确认返回正常
-3. 在 Jaeger UI 中找到一条完整的 Trace
+1. `docker compose up -d` 启动 P0 环境，确认 Grafana 或 Prometheus 有数据
+2. 用 curl 请求一个 PerfShop 商品查询接口，确认返回正常
+3. 在后续 P1/P2 阶段再补 Trace、Redis、Kafka 和三语言同构服务
 
 ---
 
