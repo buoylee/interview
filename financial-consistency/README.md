@@ -48,31 +48,29 @@
 
 ## 阶段路线
 
-```text
-01-transfer
+- [01-transfer](./01-transfer/README.md)
   分布式转账：账户、冻结、扣减、入账、流水、幂等、补偿、对账。
 
-02-payment-recharge-withdraw
+- 02-payment-recharge-withdraw
   充值、提现、支付回调、渠道超时、渠道对账。
 
-03-order-payment-inventory
+- 03-order-payment-inventory
   电商下单、支付、库存、取消、退款、消息最终一致性。
 
-04-travel-booking-saga
+- 04-travel-booking-saga
   机票、酒店、租车、保险组合预订，处理外部系统不可控和不可逆动作。
 
-05-patterns
+- 05-patterns
   Outbox、TCC、Saga、Temporal、Seata、Camunda、本地消息表、事务消息、CDC、状态机和幂等模式。
 
-06-verification-lab
+- 06-verification-lab
   不变量、模型验证、属性测试、故障注入、历史检查、恢复演练。
 
-07-reconciliation
+- 07-reconciliation
   准实时对账、日终对账、差错处理、人工补偿。
 
-08-interview-synthesis
+- 08-interview-synthesis
   面试表达、架构评审话术、常见追问。
-```
 
 ## 真实工程约束
 
