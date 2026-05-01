@@ -47,3 +47,10 @@
 - [ZooKeeper 分布式锁](../zookeeper/zk-分布式锁.md)
 - [ZooKeeper ZAB](../zookeeper/zab.md)
 - [etcd 概述](../etcd/概述.md)
+
+## 正确性验证与故障测试
+
+- [AWS 使用形式化方法](https://cacm.acm.org/research/how-amazon-web-services-uses-formal-methods/)
+- [AWS Systems Correctness Practices](https://queue.acm.org/detail.cfm?id=3712057)
+- [Jepsen](https://jepsen.io/)
+- [FoundationDB paper](https://www.foundationdb.org/files/fdb-paper.pdf)
