@@ -10,7 +10,10 @@ import com.interview.financialconsistency.codelab.model.InvariantViolation;
 import com.interview.financialconsistency.codelab.runner.CodeLabRunner;
 import com.interview.financialconsistency.codelab.report.FailureReport;
 import com.interview.financialconsistency.codelab.report.FailureReporter;
+import com.interview.financialconsistency.codelab.verifier.ExternalFactVerifier;
 import com.interview.financialconsistency.codelab.verifier.LedgerConsistencyVerifier;
+import com.interview.financialconsistency.codelab.verifier.ManualRepairVerifier;
+import com.interview.financialconsistency.codelab.verifier.PropagationVerifier;
 import com.interview.financialconsistency.codelab.verifier.StateMachineVerifier;
 
 import java.math.BigDecimal;
@@ -35,6 +38,11 @@ public final class CodeLabSelfTest {
         testLedgerVerifierReportsUnknownSide();
         testStateMachineVerifierReportsMissingEntity();
         testFailureReporterUsesDeterministicNewlines();
+        testExternalFactVerifierRejectsLateSuccessAfterLocalFailure();
+        testPropagationVerifierRejectsCommittedOutboxWithoutPublication();
+        testPropagationVerifierRejectsDuplicateMessageEffect();
+        testManualRepairVerifierRejectsRepairWithoutApprovalAndReview();
+        testManualRepairVerifierRejectsDuplicateRepair();
         System.out.println("SELF_TEST_PASS");
     }
 
@@ -190,6 +198,59 @@ public final class CodeLabSelfTest {
                 + "- posting-1\n";
 
         assertEquals(expected, new FailureReporter().render(report), "report should use deterministic newlines");
+    }
+
+    private static void testExternalFactVerifierRejectsLateSuccessAfterLocalFailure() {
+        History history = History.of(
+                fact("state-1", FactType.LOCAL_STATE, "P1", "state", "FAILED", "entity", "payment:P1"),
+                fact("external-1", FactType.EXTERNAL_RESULT, "P1", "result", "SUCCEEDED", "provider", "card-network"));
+
+        List<InvariantViolation> violations = new ExternalFactVerifier().verify(history);
+
+        assertAnyViolation(violations, "EXTERNAL_SUCCESS_NOT_EXPLAINED_BY_LOCAL_FAILURE",
+                "external success after local failure should violate external fact consistency");
+    }
+
+    private static void testPropagationVerifierRejectsCommittedOutboxWithoutPublication() {
+        History history = History.of(
+                fact("outbox-1", FactType.OUTBOX_RECORD, "T1", "messageId", "M1", "status", "COMMITTED"));
+
+        List<InvariantViolation> violations = new PropagationVerifier().verify(history);
+
+        assertAnyViolation(violations, "OUTBOX_COMMITTED_NOT_PUBLISHED",
+                "committed outbox record should require publication");
+    }
+
+    private static void testPropagationVerifierRejectsDuplicateMessageEffect() {
+        History history = History.of(
+                fact("effect-1", FactType.BUSINESS_EFFECT, "T1", "messageId", "M1", "effectKey", "transfer:T1:debit"),
+                fact("effect-2", FactType.BUSINESS_EFFECT, "T1", "messageId", "M1", "effectKey", "transfer:T1:debit"));
+
+        List<InvariantViolation> violations = new PropagationVerifier().verify(history);
+
+        assertAnyViolation(violations, "MESSAGE_EFFECT_IDEMPOTENT",
+                "duplicate message effect should violate message idempotency");
+    }
+
+    private static void testManualRepairVerifierRejectsRepairWithoutApprovalAndReview() {
+        History history = History.of(
+                fact("repair-1", FactType.MANUAL_REPAIR, "R1", "repairKey", "R1"));
+
+        List<InvariantViolation> violations = new ManualRepairVerifier().verify(history);
+
+        assertAnyViolation(violations, "MANUAL_REPAIR_REQUIRES_APPROVAL_AND_REVIEW",
+                "manual repair should require approval and approved review");
+    }
+
+    private static void testManualRepairVerifierRejectsDuplicateRepair() {
+        History history = History.of(
+                fact("repair-1", FactType.MANUAL_REPAIR, "R1", "repairKey", "R1"),
+                fact("repair-2", FactType.MANUAL_REPAIR, "R1", "repairKey", "R1"));
+
+        List<InvariantViolation> violations = new ManualRepairVerifier().verify(history);
+
+        assertAnyViolation(violations, "MANUAL_REPAIR_IDEMPOTENT",
+                "duplicate manual repair should violate repair idempotency");
     }
 
     private static Command command(String id, String name, String businessKey, String... attrs) {
