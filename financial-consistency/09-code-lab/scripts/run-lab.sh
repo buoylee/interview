@@ -7,7 +7,7 @@ OUT_DIR="$ROOT_DIR/out/main"
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 
-find "$ROOT_DIR/src/main/java" -name '*.java' > "$ROOT_DIR/out-main-sources.txt"
+find "$ROOT_DIR/src/main/java" -name '*.java' | sort > "$ROOT_DIR/out-main-sources.txt"
 
 javac --release 17 -encoding UTF-8 -d "$OUT_DIR" @"$ROOT_DIR/out-main-sources.txt"
 
