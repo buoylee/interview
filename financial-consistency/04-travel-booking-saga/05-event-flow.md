@@ -10,10 +10,10 @@
 
 | 概念 | 命名示例 | 含义 | 处理要求 |
 | --- | --- | --- | --- |
-| 命令 | `QuoteLockRequested`、`BookingCreateRequested`、`FlightTicketRequested`、`RefundSubmitted` | 请求某个 owner 尝试执行动作 | 可以失败、超时、重试；不能作为事实依据 |
-| 事件 | `QuoteLocked`、`BookingCreated`、`FlightTicketed`、`RefundSucceeded` | owner 已经确认并持久化的事实 | 只能追加发布；消费者按事实更新自己的投影或触发后续命令 |
+| 命令 | `QuoteLockRequested`、`BookingCreateRequested`、`FlightTicketRequested`、`SubmitRefund` | 请求某个 owner 尝试执行动作 | 可以失败、超时、重试；不能作为事实依据 |
+| 事件 | `QuoteLocked`、`BookingCreated`、`FlightTicketed`、`RefundSubmitted`、`RefundSucceeded` | owner 已经确认并持久化的事实 | 只能追加发布；消费者按事实更新自己的投影或触发后续命令 |
 
-命令由编排器或业务服务发出，事件由事实 owner 发布。比如 `FlightTicketRequested` 是对供应商适配层的命令，`FlightTicketed` 才是机票已出票的供应商事实；`BookingCreateRequested` 是创建组合订单的命令，`BookingCreated` 才是 `booking-service` 本地订单已经存在的事实。
+命令由编排器或业务服务发出，事件由事实 owner 发布。比如 `FlightTicketRequested` 是对供应商适配层的命令，`FlightTicketed` 才是机票已出票的供应商事实；`BookingCreateRequested` 是创建组合订单的命令，`BookingCreated` 才是 `booking-service` 本地订单已经存在的事实；`SubmitRefund` 是提交退款的命令，`RefundSubmitted` 才是 `refund-service` 已经持久化退款请求和渠道请求号的事实。
 
 ## 事件分类
 
@@ -111,6 +111,7 @@ CoreBookingConfirmed
 CompensationRequired
 -> SupplierCancelRequested
 -> RefundRequired
+-> SubmitRefund
 -> RefundSubmitted
 -> RefundSucceeded
 -> RefundLedgerPosted
@@ -177,7 +178,7 @@ TravelMismatchDetected
 - `CoreBookingConfirmed` 依赖机票和酒店核心项成功。
 - `PaymentCaptured` 依赖合法 capture 条件，不能只依赖供应商单个回调。
 - `BookingConfirmedWithAddonFailures` 依赖核心成功和附加项失败事实。
-- `RefundSubmitted` 依赖 `RefundRequired`。
+- `RefundSubmitted` 依赖 `RefundRequired`，以及 `SubmitRefund` 命令被 `refund-service` 接收并持久化。
 - `RefundLedgerPosted` 依赖可信的 `RefundSucceeded`。
 - `PenaltyPosted` 和 `AdjustmentPosted` 依赖供应商规则、用户确认或人工审批。
 
