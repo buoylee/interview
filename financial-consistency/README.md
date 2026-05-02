@@ -11,6 +11,7 @@
 - [2026-05-02-order-payment-inventory-design.md](../docs/superpowers/specs/2026-05-02-order-payment-inventory-design.md)
 - [2026-05-02-travel-booking-saga-design.md](../docs/superpowers/specs/2026-05-02-travel-booking-saga-design.md)
 - [2026-05-02-financial-consistency-patterns-design.md](../docs/superpowers/specs/2026-05-02-financial-consistency-patterns-design.md)
+- [2026-05-02-financial-consistency-verification-lab-design.md](../docs/superpowers/specs/2026-05-02-financial-consistency-verification-lab-design.md)
 - [旧笔记索引](./references.md)
 
 ## 当前决策
@@ -72,7 +73,7 @@
 - [05-patterns](./05-patterns/README.md)
   Outbox、TCC、Saga、Temporal、Seata、Camunda、本地消息表、事务消息、CDC、状态机和幂等模式。
 
-- 06-verification-lab
+- [06-verification-lab](./06-verification-lab/README.md)
   不变量、模型验证、属性测试、故障注入、历史检查、恢复演练。
 
 - 07-reconciliation
