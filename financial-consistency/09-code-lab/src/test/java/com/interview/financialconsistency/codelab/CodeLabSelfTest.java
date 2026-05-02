@@ -6,7 +6,12 @@ import com.interview.financialconsistency.codelab.model.Fact;
 import com.interview.financialconsistency.codelab.model.FactType;
 import com.interview.financialconsistency.codelab.model.History;
 import com.interview.financialconsistency.codelab.model.HistoryItem;
+import com.interview.financialconsistency.codelab.model.InvariantViolation;
 import com.interview.financialconsistency.codelab.runner.CodeLabRunner;
+import com.interview.financialconsistency.codelab.report.FailureReport;
+import com.interview.financialconsistency.codelab.report.FailureReporter;
+import com.interview.financialconsistency.codelab.verifier.LedgerConsistencyVerifier;
+import com.interview.financialconsistency.codelab.verifier.StateMachineVerifier;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -22,6 +27,10 @@ public final class CodeLabSelfTest {
         testReducedHistoryKeepsSelectedItems();
         testFactAttributesAreDefensiveCopies();
         testModelRejectsNullRequiredFields();
+        testLedgerVerifierRejectsUnbalancedTransfer();
+        testLedgerVerifierRejectsDuplicateBusinessEffect();
+        testStateMachineVerifierRejectsDualTerminalStates();
+        testFailureReporterPrintsViolationDetails();
         System.out.println("SELF_TEST_PASS");
     }
 
@@ -69,6 +78,56 @@ public final class CodeLabSelfTest {
                 "history should reject null items");
     }
 
+    private static void testLedgerVerifierRejectsUnbalancedTransfer() {
+        History history = History.of(
+                moneyFact("posting-1", FactType.LEDGER_POSTING, "T1", new BigDecimal("100.00"), "side", "DEBIT"));
+
+        List<InvariantViolation> violations = new LedgerConsistencyVerifier().verify(history);
+
+        assertEquals(1, violations.size(), "unbalanced transfer should create one violation");
+        assertEquals("LEDGER_BALANCED", violations.get(0).invariant(), "violation should identify ledger balance invariant");
+    }
+
+    private static void testLedgerVerifierRejectsDuplicateBusinessEffect() {
+        History history = History.of(
+                fact("effect-1", FactType.BUSINESS_EFFECT, "T1", "effectKey", "transfer:T1:debit"),
+                fact("effect-2", FactType.BUSINESS_EFFECT, "T1", "effectKey", "transfer:T1:debit"));
+
+        List<InvariantViolation> violations = new LedgerConsistencyVerifier().verify(history);
+
+        assertAnyViolation(violations, "BUSINESS_EFFECT_IDEMPOTENT", "duplicate business effect should violate idempotency");
+    }
+
+    private static void testStateMachineVerifierRejectsDualTerminalStates() {
+        History history = History.of(
+                fact("state-1", FactType.LOCAL_STATE, "P1", "entity", "payment:P1", "state", "SUCCEEDED"),
+                fact("state-2", FactType.LOCAL_STATE, "P1", "entity", "payment:P1", "state", "FAILED"));
+
+        List<InvariantViolation> violations = new StateMachineVerifier().verify(history);
+
+        assertEquals(1, violations.size(), "dual terminal states should create one violation");
+        assertEquals("STATE_MACHINE_SINGLE_TERMINAL", violations.get(0).invariant(), "violation should identify state machine invariant");
+    }
+
+    private static void testFailureReporterPrintsViolationDetails() {
+        History reducedHistory = History.of(
+                fact("posting-1", FactType.LEDGER_POSTING, "T1", "side", "DEBIT"));
+        InvariantViolation violation = new InvariantViolation(
+                "LEDGER_BALANCED",
+                "ledger postings do not balance",
+                "LedgerConsistencyVerifier",
+                "ledger",
+                List.of("posting-1"),
+                reducedHistory);
+        FailureReport report = new FailureReport("core consistency", "unbalanced transfer", "seed-1", false, List.of(violation));
+
+        String rendered = new FailureReporter().render(report);
+
+        assertContains(rendered, "Violated invariant:", "report should include invariant heading");
+        assertContains(rendered, "LedgerConsistencyVerifier", "report should include verifier name");
+        assertContains(rendered, "posting-1", "report should include related fact id");
+    }
+
     private static Command command(String id, String name, String businessKey, String... attrs) {
         return new Command(id, name, businessKey, Instant.EPOCH, attrs(attrs));
     }
@@ -106,6 +165,21 @@ public final class CodeLabSelfTest {
         if (!condition) {
             throw new AssertionError(message);
         }
+    }
+
+    private static void assertContains(String text, String expected, String message) {
+        if (!text.contains(expected)) {
+            throw new AssertionError(message + " expected to contain=" + expected + " actual=" + text);
+        }
+    }
+
+    private static void assertAnyViolation(List<InvariantViolation> violations, String invariant, String message) {
+        for (InvariantViolation violation : violations) {
+            if (violation.invariant().equals(invariant)) {
+                return;
+            }
+        }
+        throw new AssertionError(message + " invariant=" + invariant + " violations=" + violations);
     }
 
     private static void assertThrows(Class<? extends Throwable> expectedType, Runnable action, String message) {
