@@ -15,14 +15,14 @@ public final class OrderHistoryGenerator {
         return List.of(
                 new ExperimentCase(
                         "order-paid-inventory-failed",
-                        "payment succeeds externally while the order aggregate records a local failure",
+                        "payment succeeds externally while inventory records a local failure",
                         History.of(
                                 fact("order-payment-success", FactType.LOCAL_STATE, "P3",
                                         "entity", "payment:P3", "state", "SUCCEEDED"),
-                                fact("order-local-failed", FactType.LOCAL_STATE, "P3",
-                                        "entity", "order:O3", "state", "FAILED"),
                                 fact("order-external-success", FactType.EXTERNAL_RESULT, "P3",
-                                        "provider", "payment-gateway", "result", "SUCCEEDED")),
+                                        "provider", "payment-gateway", "result", "SUCCEEDED"),
+                                fact("order-inventory-failed", FactType.LOCAL_STATE, "P3",
+                                        "entity", "inventory:I3", "state", "FAILED")),
                         false),
                 new ExperimentCase(
                         "tcc-cancel-confirm-race",

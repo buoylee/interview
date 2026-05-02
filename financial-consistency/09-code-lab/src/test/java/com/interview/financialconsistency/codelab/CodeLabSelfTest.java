@@ -56,6 +56,7 @@ public final class CodeLabSelfTest {
         testGeneratorsExposeAtLeastEightCases();
         testGeneratedFailureCasesProduceViolations();
         testGeneratedPassingCasesProduceNoViolations();
+        testOrderPaidInventoryFailedCaseIncludesInventoryFailure();
         System.out.println("SELF_TEST_PASS");
     }
 
@@ -328,13 +329,22 @@ public final class CodeLabSelfTest {
 
     private static void testGeneratedFailureCasesProduceViolations() {
         CompositeVerifier verifier = compositeVerifier();
+        Map<String, Set<String>> expectedInvariants = expectedFailureInvariantsByCaseName();
         for (ExperimentCase experimentCase : generatedCases()) {
             if (experimentCase.expectedToPass()) {
                 continue;
             }
             List<InvariantViolation> violations = verifier.verify(experimentCase.history());
-            assertTrue(!violations.isEmpty(),
-                    "failing generator case should produce at least one violation name=" + experimentCase.name());
+            Set<String> actualInvariants = new LinkedHashSet<>();
+            for (InvariantViolation violation : violations) {
+                actualInvariants.add(violation.invariant());
+            }
+            Set<String> expectedInvariantsForCase = expectedInvariants.get(experimentCase.name());
+            assertTrue(expectedInvariantsForCase != null,
+                    "failing generator case should declare expected invariants name=" + experimentCase.name());
+            assertTrue(actualInvariants.containsAll(expectedInvariantsForCase),
+                    "failing generator case should produce intended invariants name=" + experimentCase.name()
+                            + " expected=" + expectedInvariantsForCase + " actual=" + actualInvariants);
         }
     }
 
@@ -348,6 +358,39 @@ public final class CodeLabSelfTest {
             assertEquals(List.of(), violations,
                     "passing generator case should produce no violations name=" + experimentCase.name());
         }
+    }
+
+    private static void testOrderPaidInventoryFailedCaseIncludesInventoryFailure() {
+        ExperimentCase experimentCase = findGeneratedCase("order-paid-inventory-failed");
+        for (Fact fact : experimentCase.history().facts(FactType.LOCAL_STATE)) {
+            if ("inventory:I3".equals(fact.attr("entity")) && "FAILED".equals(fact.attr("state"))) {
+                return;
+            }
+        }
+        throw new AssertionError("order-paid-inventory-failed should include inventory:I3 FAILED local state");
+    }
+
+    private static Map<String, Set<String>> expectedFailureInvariantsByCaseName() {
+        Map<String, Set<String>> expected = new LinkedHashMap<>();
+        expected.put("transfer-duplicate-request", Set.of("BUSINESS_EFFECT_IDEMPOTENT"));
+        expected.put("transfer-unbalanced-ledger", Set.of("LEDGER_BALANCED"));
+        expected.put("payment-timeout-late-success", Set.of("EXTERNAL_SUCCESS_NOT_EXPLAINED_BY_LOCAL_FAILURE"));
+        expected.put("outbox-committed-not-published", Set.of("OUTBOX_COMMITTED_NOT_PUBLISHED"));
+        expected.put("consumer-duplicate-message-effect", Set.of("MESSAGE_EFFECT_IDEMPOTENT"));
+        expected.put("order-paid-inventory-failed", Set.of("EXTERNAL_SUCCESS_NOT_EXPLAINED_BY_LOCAL_FAILURE"));
+        expected.put("tcc-cancel-confirm-race", Set.of("STATE_MACHINE_SINGLE_TERMINAL"));
+        expected.put("travel-flight-success-hotel-failed", Set.of("EXTERNAL_SUCCESS_NOT_EXPLAINED_BY_LOCAL_FAILURE"));
+        expected.put("manual-repair-duplicate-submit", Set.of("MANUAL_REPAIR_IDEMPOTENT"));
+        return Map.copyOf(expected);
+    }
+
+    private static ExperimentCase findGeneratedCase(String name) {
+        for (ExperimentCase experimentCase : generatedCases()) {
+            if (experimentCase.name().equals(name)) {
+                return experimentCase;
+            }
+        }
+        throw new AssertionError("generated case should exist name=" + name);
     }
 
     private static List<ExperimentCase> generatedCases() {
