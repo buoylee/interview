@@ -342,7 +342,7 @@ public final class CodeLabSelfTest {
             Set<String> expectedInvariantsForCase = expectedInvariants.get(experimentCase.name());
             assertTrue(expectedInvariantsForCase != null,
                     "failing generator case should declare expected invariants name=" + experimentCase.name());
-            assertTrue(actualInvariants.containsAll(expectedInvariantsForCase),
+            assertEquals(expectedInvariantsForCase, actualInvariants,
                     "failing generator case should produce intended invariants name=" + experimentCase.name()
                             + " expected=" + expectedInvariantsForCase + " actual=" + actualInvariants);
         }

@@ -47,12 +47,12 @@ public final class PaymentHistoryGenerator {
                         false),
                 new ExperimentCase(
                         "consumer-duplicate-message-effect",
-                        "consumer applies the same message effect more than once",
+                        "consumer applies multiple business effects from the same delivered message",
                         History.of(
                                 fact("consumer-effect-1", FactType.BUSINESS_EFFECT, "P2",
-                                        "messageId", "M2", "effectKey", "payment:P2:settled"),
+                                        "messageId", "M2", "effectKey", "payment:P2:settled:attempt-1"),
                                 fact("consumer-effect-2", FactType.BUSINESS_EFFECT, "P2",
-                                        "messageId", "M2", "effectKey", "payment:P2:settled")),
+                                        "messageId", "M2", "effectKey", "payment:P2:settled:attempt-2")),
                         false));
     }
 

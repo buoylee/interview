@@ -65,26 +65,23 @@ public final class PropagationVerifier implements ConsistencyVerifier {
     }
 
     private List<InvariantViolation> verifyMessageEffectIdempotency(History history) {
-        Map<MessageEffectKey, List<Fact>> effectsByMessageEffectKey = new LinkedHashMap<>();
+        Map<String, List<Fact>> effectsByMessageId = new LinkedHashMap<>();
         for (Fact fact : history.facts(FactType.BUSINESS_EFFECT)) {
             String messageId = fact.attr("messageId");
-            String effectKey = fact.attr("effectKey");
-            if (messageId == null || messageId.isBlank() || effectKey == null || effectKey.isBlank()) {
+            if (messageId == null || messageId.isBlank()) {
                 continue;
             }
-            MessageEffectKey key = new MessageEffectKey(messageId, effectKey);
-            effectsByMessageEffectKey.computeIfAbsent(key, ignored -> new ArrayList<>()).add(fact);
+            effectsByMessageId.computeIfAbsent(messageId, ignored -> new ArrayList<>()).add(fact);
         }
 
         List<InvariantViolation> violations = new ArrayList<>();
-        for (Map.Entry<MessageEffectKey, List<Fact>> entry : effectsByMessageEffectKey.entrySet()) {
+        for (Map.Entry<String, List<Fact>> entry : effectsByMessageId.entrySet()) {
             if (entry.getValue().size() > 1) {
                 List<String> relatedIds = ids(entry.getValue());
-                MessageEffectKey key = entry.getKey();
                 violations.add(new InvariantViolation(
                         "MESSAGE_EFFECT_IDEMPOTENT",
-                        "messageId=" + key.messageId() + " effectKey=" + key.effectKey()
-                                + " appears " + entry.getValue().size() + " times",
+                        "messageId=" + entry.getKey() + " created " + entry.getValue().size()
+                                + " business effects",
                         name(),
                         "propagation",
                         relatedIds,
@@ -100,8 +97,5 @@ public final class PropagationVerifier implements ConsistencyVerifier {
             ids.add(fact.id());
         }
         return List.copyOf(ids);
-    }
-
-    private record MessageEffectKey(String messageId, String effectKey) {
     }
 }
