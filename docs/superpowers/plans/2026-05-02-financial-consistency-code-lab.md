@@ -733,7 +733,7 @@ Test rules:
 
 - `CodeLabRunner.run(new String[]{"list"})` returns text containing `transfer-duplicate-request` and `manual-repair-duplicate-submit`.
 - `CodeLabRunner.run(new String[]{"run", "--case", "payment-timeout-late-success"})` returns text containing `Experiment: payment-timeout-late-success`, `Result: FAILED`, and `ExternalFactVerifier`.
-- `CodeLabRunner.run(new String[]{"run"})` returns text containing `Summary:` and `expectedFailures=8`.
+- `CodeLabRunner.run(new String[]{"run"})` returns text containing `Summary:` and `expectedFailures=9`.
 
 Run:
 
@@ -805,7 +805,7 @@ SELF_TEST_PASS
 payment-timeout-late-success
 Result: FAILED
 Summary:
-expectedFailures=8
+expectedFailures=9
 ```
 
 - [ ] **Step 6: Commit**
@@ -966,8 +966,8 @@ Expected output includes:
 
 ```text
 Summary:
-expectedFailures=8
-actualFailures=8
+expectedFailures=9
+actualFailures=9
 ```
 
 - [ ] **Step 3: Confirm no infrastructure slipped into the phase**

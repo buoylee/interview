@@ -109,16 +109,9 @@ public final class CodeLabRunner {
         output.append("Summary:").append(NL);
         output.append("total=").append(selectedCases.size()).append(NL);
         output.append("expectedPasses=").append(expectedPasses).append(NL);
-        output.append("expectedFailures=").append(expectedFailuresForSummary(selectedCases, expectedFailures)).append(NL);
+        output.append("expectedFailures=").append(expectedFailures).append(NL);
         output.append("actualFailures=").append(actualFailures).append(NL);
         return output.toString();
-    }
-
-    private static int expectedFailuresForSummary(List<ExperimentCase> selectedCases, int expectedFailures) {
-        if (selectedCases.size() == cases().size()) {
-            return Math.min(expectedFailures, 8);
-        }
-        return expectedFailures;
     }
 
     private static ExperimentCase findCase(String name) {

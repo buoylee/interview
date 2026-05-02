@@ -392,7 +392,8 @@ public final class CodeLabSelfTest {
         String output = CodeLabRunner.run(new String[]{"run"});
 
         assertContains(output, "Summary:", "runner should print summary when running all cases");
-        assertContains(output, "expectedFailures=8", "runner summary should count expected failures");
+        assertContains(output, "expectedFailures=9", "runner summary should count expected failures");
+        assertContains(output, "actualFailures=9", "runner summary should count actual failures");
     }
 
     private static Map<String, Set<String>> expectedFailureInvariantsByCaseName() {
