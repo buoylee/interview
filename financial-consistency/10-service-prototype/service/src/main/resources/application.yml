@@ -2,7 +2,7 @@ spring:
   application:
     name: financial-consistency-service-prototype
   datasource:
-    url: jdbc:mysql://localhost:3307/funds_core?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    url: jdbc:mysql://localhost:${MYSQL_HOST_PORT:3307}/funds_core?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
     username: funds
     password: funds
   flyway:

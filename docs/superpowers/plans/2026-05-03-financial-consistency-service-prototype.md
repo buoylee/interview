@@ -178,15 +178,14 @@ Create `financial-consistency/10-service-prototype/docker-compose.yml`:
 ```yaml
 services:
   mysql:
-    image: mysql:8.4
-    container_name: financial-consistency-mysql
+    image: mysql:8.0
     environment:
       MYSQL_ROOT_PASSWORD: rootpass
       MYSQL_DATABASE: funds_core
       MYSQL_USER: funds
       MYSQL_PASSWORD: funds
     ports:
-      - "3307:3306"
+      - "${MYSQL_HOST_PORT:-3307}:3306"
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-prootpass"]
       interval: 5s
@@ -348,7 +347,7 @@ spring:
   application:
     name: financial-consistency-service-prototype
   datasource:
-    url: jdbc:mysql://localhost:3307/funds_core?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    url: jdbc:mysql://localhost:${MYSQL_HOST_PORT:3307}/funds_core?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
     username: funds
     password: funds
   flyway:
@@ -363,7 +362,7 @@ Create `application-test.yml`:
 ```yaml
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3307/funds_core?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    url: jdbc:mysql://localhost:${MYSQL_HOST_PORT:3307}/funds_core?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
     username: funds
     password: funds
   flyway:
@@ -1432,5 +1431,5 @@ If no files changed, do not create an empty commit.
 - Scope guard: no Kafka, Temporal, payment channel, order inventory, travel Saga, or multi-service deployment is introduced.
 - Verification guard: tests check MySQL rows and verifier output, not only HTTP responses.
 - Naming guard: MySQL is described as fact storage and transaction boundary, not as the consistency verifier.
-- Reproducibility: scripts start Docker MySQL and run Maven tests from the repository root.
+- Reproducibility: scripts start Docker MySQL 8.0 on configurable host port `${MYSQL_HOST_PORT:-3307}` and run Maven tests from the repository root.
 - Documentation basis: Spring Boot 3.5.9 docs were checked before choosing `spring.datasource.*`, Flyway startup migrations, and Spring JDBC test strategy.
