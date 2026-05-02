@@ -5,6 +5,7 @@ import com.interview.financialconsistency.codelab.model.Event;
 import com.interview.financialconsistency.codelab.model.Fact;
 import com.interview.financialconsistency.codelab.model.FactType;
 import com.interview.financialconsistency.codelab.model.History;
+import com.interview.financialconsistency.codelab.model.HistoryItem;
 import com.interview.financialconsistency.codelab.runner.CodeLabRunner;
 
 import java.math.BigDecimal;
@@ -20,6 +21,7 @@ public final class CodeLabSelfTest {
         testHistoryFiltersFacts();
         testReducedHistoryKeepsSelectedItems();
         testFactAttributesAreDefensiveCopies();
+        testModelRejectsNullRequiredFields();
         System.out.println("SELF_TEST_PASS");
     }
 
@@ -50,6 +52,21 @@ public final class CodeLabSelfTest {
         Fact fact = new Fact("fact-1", FactType.LEDGER_POSTING, "T1", Instant.EPOCH, BigDecimal.TEN, attributes);
         attributes.put("side", "CREDIT");
         assertEquals("DEBIT", fact.requireAttr("side"), "fact should copy attributes at construction");
+    }
+
+    private static void testModelRejectsNullRequiredFields() {
+        assertThrows(NullPointerException.class,
+                () -> new Command(null, "CreateTransfer", "T1", Instant.EPOCH, Map.of()),
+                "command should reject null id");
+        assertThrows(NullPointerException.class,
+                () -> new Fact("fact-1", null, "T1", Instant.EPOCH, BigDecimal.ZERO, Map.of()),
+                "fact should reject null type");
+        assertThrows(NullPointerException.class,
+                () -> new Fact("fact-1", FactType.LEDGER_POSTING, null, Instant.EPOCH, BigDecimal.ZERO, Map.of()),
+                "fact should reject null business key");
+        assertThrows(NullPointerException.class,
+                () -> History.of((HistoryItem) null),
+                "history should reject null items");
     }
 
     private static Command command(String id, String name, String businessKey, String... attrs) {
@@ -89,5 +106,17 @@ public final class CodeLabSelfTest {
         if (!condition) {
             throw new AssertionError(message);
         }
+    }
+
+    private static void assertThrows(Class<? extends Throwable> expectedType, Runnable action, String message) {
+        try {
+            action.run();
+        } catch (Throwable actual) {
+            if (expectedType.isInstance(actual)) {
+                return;
+            }
+            throw new AssertionError(message + " expected=" + expectedType.getSimpleName() + " actual=" + actual.getClass().getSimpleName(), actual);
+        }
+        throw new AssertionError(message + " expected=" + expectedType.getSimpleName());
     }
 }

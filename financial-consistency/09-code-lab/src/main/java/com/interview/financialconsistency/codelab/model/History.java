@@ -3,14 +3,17 @@ package com.interview.financialconsistency.codelab.model;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 public record History(List<HistoryItem> items) {
     public History {
+        Objects.requireNonNull(items);
         items = List.copyOf(items);
     }
 
     public static History of(HistoryItem... items) {
+        Objects.requireNonNull(items);
         return new History(List.copyOf(Arrays.asList(items)));
     }
 
