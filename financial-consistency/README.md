@@ -14,6 +14,7 @@
 - [2026-05-02-financial-consistency-verification-lab-design.md](../docs/superpowers/specs/2026-05-02-financial-consistency-verification-lab-design.md)
 - [2026-05-02-financial-consistency-reconciliation-design.md](../docs/superpowers/specs/2026-05-02-financial-consistency-reconciliation-design.md)
 - [2026-05-02-financial-consistency-interview-synthesis-design.md](../docs/superpowers/specs/2026-05-02-financial-consistency-interview-synthesis-design.md)
+- [2026-05-02-financial-consistency-code-lab-design.md](../docs/superpowers/specs/2026-05-02-financial-consistency-code-lab-design.md)
 - [旧笔记索引](./references.md)
 
 ## 当前决策
@@ -83,6 +84,9 @@
 
 - [08-interview-synthesis](./08-interview-synthesis/README.md)
   面试表达、架构评审话术、常见追问。
+
+- [09-code-lab](./09-code-lab/README.md)
+  纯 Java 内存代码实验室：模型、异常历史、一致性判定器、runner 和可解释失败报告。
 
 ## 真实工程约束
 
