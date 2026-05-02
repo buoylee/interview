@@ -1,5 +1,10 @@
 package com.interview.financialconsistency.codelab;
 
+import com.interview.financialconsistency.codelab.generator.ExperimentCase;
+import com.interview.financialconsistency.codelab.generator.OrderHistoryGenerator;
+import com.interview.financialconsistency.codelab.generator.PaymentHistoryGenerator;
+import com.interview.financialconsistency.codelab.generator.TransferHistoryGenerator;
+import com.interview.financialconsistency.codelab.generator.TravelHistoryGenerator;
 import com.interview.financialconsistency.codelab.model.Command;
 import com.interview.financialconsistency.codelab.model.Event;
 import com.interview.financialconsistency.codelab.model.Fact;
@@ -14,6 +19,7 @@ import com.interview.financialconsistency.codelab.verifier.ExternalFactVerifier;
 import com.interview.financialconsistency.codelab.verifier.LedgerConsistencyVerifier;
 import com.interview.financialconsistency.codelab.verifier.ManualRepairVerifier;
 import com.interview.financialconsistency.codelab.verifier.PropagationVerifier;
+import com.interview.financialconsistency.codelab.verifier.CompositeVerifier;
 import com.interview.financialconsistency.codelab.verifier.StateMachineVerifier;
 
 import java.math.BigDecimal;
@@ -47,6 +53,9 @@ public final class CodeLabSelfTest {
         testManualRepairVerifierRejectsDuplicateRepair();
         testManualRepairVerifierReportsRepairMissingRepairKey();
         testManualRepairVerifierReportsEvidenceMissingRepairKey();
+        testGeneratorsExposeAtLeastEightCases();
+        testGeneratedFailureCasesProduceViolations();
+        testGeneratedPassingCasesProduceNoViolations();
         System.out.println("SELF_TEST_PASS");
     }
 
@@ -297,6 +306,66 @@ public final class CodeLabSelfTest {
 
         assertAnyViolation(violations, "MANUAL_REPAIR_EVIDENCE_KEY_REQUIRED",
                 "manual repair evidence should require repairKey");
+    }
+
+    private static void testGeneratorsExposeAtLeastEightCases() {
+        List<ExperimentCase> cases = generatedCases();
+        Set<String> names = new LinkedHashSet<>();
+        for (ExperimentCase experimentCase : cases) {
+            names.add(experimentCase.name());
+        }
+
+        assertTrue(cases.size() >= 8, "generators should expose at least eight experiment cases");
+        assertTrue(names.contains("transfer-duplicate-request"), "transfer duplicate case should exist");
+        assertTrue(names.contains("transfer-unbalanced-ledger"), "transfer unbalanced case should exist");
+        assertTrue(names.contains("payment-timeout-late-success"), "payment late success case should exist");
+        assertTrue(names.contains("outbox-committed-not-published"), "outbox unpublished case should exist");
+        assertTrue(names.contains("consumer-duplicate-message-effect"), "consumer duplicate case should exist");
+        assertTrue(names.contains("tcc-cancel-confirm-race"), "tcc race case should exist");
+        assertTrue(names.contains("travel-flight-success-hotel-failed"), "travel failure case should exist");
+        assertTrue(names.contains("manual-repair-duplicate-submit"), "manual repair duplicate case should exist");
+    }
+
+    private static void testGeneratedFailureCasesProduceViolations() {
+        CompositeVerifier verifier = compositeVerifier();
+        for (ExperimentCase experimentCase : generatedCases()) {
+            if (experimentCase.expectedToPass()) {
+                continue;
+            }
+            List<InvariantViolation> violations = verifier.verify(experimentCase.history());
+            assertTrue(!violations.isEmpty(),
+                    "failing generator case should produce at least one violation name=" + experimentCase.name());
+        }
+    }
+
+    private static void testGeneratedPassingCasesProduceNoViolations() {
+        CompositeVerifier verifier = compositeVerifier();
+        for (ExperimentCase experimentCase : generatedCases()) {
+            if (!experimentCase.expectedToPass()) {
+                continue;
+            }
+            List<InvariantViolation> violations = verifier.verify(experimentCase.history());
+            assertEquals(List.of(), violations,
+                    "passing generator case should produce no violations name=" + experimentCase.name());
+        }
+    }
+
+    private static List<ExperimentCase> generatedCases() {
+        List<ExperimentCase> cases = new ArrayList<>();
+        cases.addAll(new TransferHistoryGenerator().cases());
+        cases.addAll(new PaymentHistoryGenerator().cases());
+        cases.addAll(new OrderHistoryGenerator().cases());
+        cases.addAll(new TravelHistoryGenerator().cases());
+        return List.copyOf(cases);
+    }
+
+    private static CompositeVerifier compositeVerifier() {
+        return new CompositeVerifier(List.of(
+                new LedgerConsistencyVerifier(),
+                new StateMachineVerifier(),
+                new ExternalFactVerifier(),
+                new PropagationVerifier(),
+                new ManualRepairVerifier()));
     }
 
     private static Command command(String id, String name, String businessKey, String... attrs) {
