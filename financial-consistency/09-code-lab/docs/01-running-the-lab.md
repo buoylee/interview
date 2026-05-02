@@ -41,7 +41,7 @@ expectedFailures=9
 actualFailures=9
 ```
 
-这里的 `expectedFailures` 不是脚本失败，而是实验故意构造的不一致历史；`actualFailures` 表示一致性判定器实际发现的不变量违反数量。
+这里的 `expectedFailures` 不是脚本失败，而是实验故意构造的不一致历史；`actualFailures` 表示一致性判定器实际判定为失败的实验数量，也就是至少发现一个不变量违反的用例数。
 
 ## 推荐运行顺序
 
