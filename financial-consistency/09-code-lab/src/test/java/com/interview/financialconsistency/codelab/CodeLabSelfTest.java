@@ -31,6 +31,10 @@ public final class CodeLabSelfTest {
         testLedgerVerifierRejectsDuplicateBusinessEffect();
         testStateMachineVerifierRejectsDualTerminalStates();
         testFailureReporterPrintsViolationDetails();
+        testLedgerVerifierReportsMissingSide();
+        testLedgerVerifierReportsUnknownSide();
+        testStateMachineVerifierReportsMissingEntity();
+        testFailureReporterUsesDeterministicNewlines();
         System.out.println("SELF_TEST_PASS");
     }
 
@@ -126,6 +130,66 @@ public final class CodeLabSelfTest {
         assertContains(rendered, "Violated invariant:", "report should include invariant heading");
         assertContains(rendered, "LedgerConsistencyVerifier", "report should include verifier name");
         assertContains(rendered, "posting-1", "report should include related fact id");
+    }
+
+    private static void testLedgerVerifierReportsMissingSide() {
+        History history = History.of(
+                moneyFact("posting-1", FactType.LEDGER_POSTING, "T1", new BigDecimal("100.00")));
+
+        List<InvariantViolation> violations = new LedgerConsistencyVerifier().verify(history);
+
+        assertEquals(1, violations.size(), "missing ledger side should create one violation");
+        assertEquals("LEDGER_POSTING_SIDE_REQUIRED", violations.get(0).invariant(), "violation should identify missing side");
+    }
+
+    private static void testLedgerVerifierReportsUnknownSide() {
+        History history = History.of(
+                moneyFact("posting-1", FactType.LEDGER_POSTING, "T1", new BigDecimal("100.00"), "side", "HOLD"));
+
+        List<InvariantViolation> violations = new LedgerConsistencyVerifier().verify(history);
+
+        assertEquals(1, violations.size(), "unknown ledger side should create one violation");
+        assertEquals("LEDGER_POSTING_SIDE_KNOWN", violations.get(0).invariant(), "violation should identify unknown side");
+    }
+
+    private static void testStateMachineVerifierReportsMissingEntity() {
+        History history = History.of(
+                fact("state-1", FactType.LOCAL_STATE, "P1", "state", "SUCCEEDED"));
+
+        List<InvariantViolation> violations = new StateMachineVerifier().verify(history);
+
+        assertEquals(1, violations.size(), "missing state entity should create one violation");
+        assertEquals("LOCAL_STATE_ENTITY_REQUIRED", violations.get(0).invariant(), "violation should identify missing entity");
+    }
+
+    private static void testFailureReporterUsesDeterministicNewlines() {
+        History reducedHistory = History.of(
+                fact("posting-1", FactType.LEDGER_POSTING, "T1", "side", "DEBIT"));
+        InvariantViolation violation = new InvariantViolation(
+                "LEDGER_BALANCED",
+                "ledger postings do not balance",
+                "LedgerConsistencyVerifier",
+                "ledger",
+                List.of("posting-1"),
+                reducedHistory);
+        FailureReport report = new FailureReport("core consistency", "unbalanced transfer", "seed-1", false, List.of(violation));
+
+        String expected = ""
+                + "Experiment: core consistency\n"
+                + "Scenario: unbalanced transfer\n"
+                + "Seed: seed-1\n"
+                + "Expected to pass: false\n"
+                + "Result: FAILED\n"
+                + "\n"
+                + "Violated invariant: LEDGER_BALANCED\n"
+                + "Reason: ledger postings do not balance\n"
+                + "Verifier: LedgerConsistencyVerifier\n"
+                + "Boundary: ledger\n"
+                + "Related items: posting-1\n"
+                + "Reduced history:\n"
+                + "- posting-1\n";
+
+        assertEquals(expected, new FailureReporter().render(report), "report should use deterministic newlines");
     }
 
     private static Command command(String id, String name, String businessKey, String... attrs) {

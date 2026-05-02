@@ -29,11 +29,32 @@ public final class LedgerConsistencyVerifier implements ConsistencyVerifier {
 
     private List<InvariantViolation> verifyBalancedLedger(History history) {
         Map<String, List<Fact>> postingsByBusinessKey = new LinkedHashMap<>();
+        List<InvariantViolation> violations = new ArrayList<>();
         for (Fact fact : history.facts(FactType.LEDGER_POSTING)) {
+            String side = fact.attr("side");
+            if (side == null || side.isBlank()) {
+                violations.add(new InvariantViolation(
+                        "LEDGER_POSTING_SIDE_REQUIRED",
+                        "ledger posting is missing side",
+                        name(),
+                        "ledger",
+                        List.of(fact.id()),
+                        history.reduceTo(Set.of(fact.id()))));
+                continue;
+            }
+            if (!"DEBIT".equals(side) && !"CREDIT".equals(side)) {
+                violations.add(new InvariantViolation(
+                        "LEDGER_POSTING_SIDE_KNOWN",
+                        "ledger posting has unknown side " + side,
+                        name(),
+                        "ledger",
+                        List.of(fact.id()),
+                        history.reduceTo(Set.of(fact.id()))));
+                continue;
+            }
             postingsByBusinessKey.computeIfAbsent(fact.businessKey(), ignored -> new ArrayList<>()).add(fact);
         }
 
-        List<InvariantViolation> violations = new ArrayList<>();
         for (Map.Entry<String, List<Fact>> entry : postingsByBusinessKey.entrySet()) {
             BigDecimal signedSum = BigDecimal.ZERO;
             for (Fact posting : entry.getValue()) {
@@ -79,14 +100,14 @@ public final class LedgerConsistencyVerifier implements ConsistencyVerifier {
     }
 
     private BigDecimal signedAmount(Fact posting) {
-        String side = posting.requireAttr("side");
+        String side = posting.attr("side");
         if ("DEBIT".equals(side)) {
             return posting.amount().negate();
         }
         if ("CREDIT".equals(side)) {
             return posting.amount();
         }
-        throw new IllegalArgumentException("Unknown ledger side " + side + " on " + posting.id());
+        throw new IllegalStateException("validated ledger side became invalid on " + posting.id());
     }
 
     private List<String> ids(List<Fact> facts) {

@@ -30,14 +30,26 @@ public final class StateMachineVerifier implements ConsistencyVerifier {
 
     private List<InvariantViolation> verifySingleTerminalState(History history) {
         Map<String, List<Fact>> terminalStatesByEntity = new LinkedHashMap<>();
+        List<InvariantViolation> violations = new ArrayList<>();
         for (Fact fact : history.facts(FactType.LOCAL_STATE)) {
+            String entity = fact.attr("entity");
+            if (entity == null || entity.isBlank()) {
+                violations.add(new InvariantViolation(
+                        "LOCAL_STATE_ENTITY_REQUIRED",
+                        "local state is missing entity",
+                        name(),
+                        "state-machine",
+                        List.of(fact.id()),
+                        history.reduceTo(Set.of(fact.id()))));
+                continue;
+            }
+
             String state = fact.attr("state");
             if (TERMINAL_STATES.contains(state)) {
-                terminalStatesByEntity.computeIfAbsent(fact.requireAttr("entity"), ignored -> new ArrayList<>()).add(fact);
+                terminalStatesByEntity.computeIfAbsent(entity, ignored -> new ArrayList<>()).add(fact);
             }
         }
 
-        List<InvariantViolation> violations = new ArrayList<>();
         for (Map.Entry<String, List<Fact>> entry : terminalStatesByEntity.entrySet()) {
             Set<String> distinctStates = new LinkedHashSet<>();
             for (Fact fact : entry.getValue()) {
