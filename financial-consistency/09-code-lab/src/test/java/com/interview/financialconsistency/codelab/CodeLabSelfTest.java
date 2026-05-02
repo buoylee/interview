@@ -57,6 +57,9 @@ public final class CodeLabSelfTest {
         testGeneratedFailureCasesProduceViolations();
         testGeneratedPassingCasesProduceNoViolations();
         testOrderPaidInventoryFailedCaseIncludesInventoryFailure();
+        testRunnerListsCases();
+        testRunnerRunsOneCase();
+        testRunnerRunsAllCases();
         System.out.println("SELF_TEST_PASS");
     }
 
@@ -368,6 +371,28 @@ public final class CodeLabSelfTest {
             }
         }
         throw new AssertionError("order-paid-inventory-failed should include inventory:I3 FAILED local state");
+    }
+
+    private static void testRunnerListsCases() {
+        String output = CodeLabRunner.run(new String[]{"list"});
+
+        assertContains(output, "transfer-duplicate-request", "runner list should include transfer duplicate case");
+        assertContains(output, "manual-repair-duplicate-submit", "runner list should include manual repair duplicate case");
+    }
+
+    private static void testRunnerRunsOneCase() {
+        String output = CodeLabRunner.run(new String[]{"run", "--case", "payment-timeout-late-success"});
+
+        assertContains(output, "Experiment: payment-timeout-late-success", "runner should render selected experiment");
+        assertContains(output, "Result: FAILED", "runner should report selected failing case");
+        assertContains(output, "ExternalFactVerifier", "runner should include verifier details for selected failing case");
+    }
+
+    private static void testRunnerRunsAllCases() {
+        String output = CodeLabRunner.run(new String[]{"run"});
+
+        assertContains(output, "Summary:", "runner should print summary when running all cases");
+        assertContains(output, "expectedFailures=8", "runner summary should count expected failures");
     }
 
     private static Map<String, Set<String>> expectedFailureInvariantsByCaseName() {

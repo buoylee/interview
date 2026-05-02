@@ -8,19 +8,19 @@ public final class FailureReporter {
 
     public String render(FailureReport report) {
         StringBuilder rendered = new StringBuilder();
-        rendered.append("Experiment: ").append(report.experimentName()).append(NL);
-        rendered.append("Scenario: ").append(report.scenario()).append(NL);
-        rendered.append("Seed: ").append(report.seed()).append(NL);
-        rendered.append("Expected to pass: ").append(report.expectedToPass()).append(NL);
-        rendered.append("Result: ").append(report.violations().isEmpty() ? "PASS" : "FAILED").append(NL);
+        appendLine(rendered, "Experiment: " + report.experimentName());
+        appendLine(rendered, "Scenario: " + report.scenario());
+        appendLine(rendered, "Seed: " + report.seed());
+        appendLine(rendered, "Expected to pass: " + report.expectedToPass());
+        appendLine(rendered, "Result: " + (report.violations().isEmpty() ? "PASS" : "FAILED"));
 
         for (InvariantViolation violation : report.violations()) {
             rendered.append(NL);
-            rendered.append("Violated invariant: ").append(violation.invariant()).append(NL);
-            rendered.append("Reason: ").append(violation.reason()).append(NL);
-            rendered.append("Verifier: ").append(violation.verifier()).append(NL);
-            rendered.append("Boundary: ").append(violation.boundary()).append(NL);
-            rendered.append("Related items: ").append(String.join(", ", violation.relatedItemIds())).append(NL);
+            appendLine(rendered, "Violated invariant: " + violation.invariant());
+            appendLine(rendered, "Reason: " + violation.reason());
+            appendLine(rendered, "Verifier: " + violation.verifier());
+            appendLine(rendered, "Boundary: " + violation.boundary());
+            appendLine(rendered, "Related items: " + String.join(", ", violation.relatedItemIds()));
             rendered.append("Reduced history:");
             for (HistoryItem item : violation.reducedHistory().items()) {
                 rendered.append(NL).append("- ").append(item.id());
@@ -29,5 +29,9 @@ public final class FailureReporter {
         }
 
         return rendered.toString();
+    }
+
+    private void appendLine(StringBuilder rendered, String line) {
+        rendered.append(line).append(NL);
     }
 }
