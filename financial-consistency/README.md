@@ -10,6 +10,7 @@
 - [2026-05-01-payment-recharge-withdraw-design.md](../docs/superpowers/specs/2026-05-01-payment-recharge-withdraw-design.md)
 - [2026-05-02-order-payment-inventory-design.md](../docs/superpowers/specs/2026-05-02-order-payment-inventory-design.md)
 - [2026-05-02-travel-booking-saga-design.md](../docs/superpowers/specs/2026-05-02-travel-booking-saga-design.md)
+- [2026-05-02-financial-consistency-patterns-design.md](../docs/superpowers/specs/2026-05-02-financial-consistency-patterns-design.md)
 - [旧笔记索引](./references.md)
 
 ## 当前决策
@@ -68,7 +69,7 @@
 - [04-travel-booking-saga](./04-travel-booking-saga/README.md)
   机票、酒店、租车、保险组合预订，处理外部系统不可控和不可逆动作。
 
-- 05-patterns
+- [05-patterns](./05-patterns/README.md)
   Outbox、TCC、Saga、Temporal、Seata、Camunda、本地消息表、事务消息、CDC、状态机和幂等模式。
 
 - 06-verification-lab
