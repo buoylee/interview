@@ -40,9 +40,13 @@ public final class CodeLabSelfTest {
         testFailureReporterUsesDeterministicNewlines();
         testExternalFactVerifierRejectsLateSuccessAfterLocalFailure();
         testPropagationVerifierRejectsCommittedOutboxWithoutPublication();
+        testPropagationVerifierReportsCommittedOutboxMissingMessageId();
         testPropagationVerifierRejectsDuplicateMessageEffect();
+        testPropagationVerifierDoesNotCollideMessageEffectKeys();
         testManualRepairVerifierRejectsRepairWithoutApprovalAndReview();
         testManualRepairVerifierRejectsDuplicateRepair();
+        testManualRepairVerifierReportsRepairMissingRepairKey();
+        testManualRepairVerifierReportsEvidenceMissingRepairKey();
         System.out.println("SELF_TEST_PASS");
     }
 
@@ -221,6 +225,16 @@ public final class CodeLabSelfTest {
                 "committed outbox record should require publication");
     }
 
+    private static void testPropagationVerifierReportsCommittedOutboxMissingMessageId() {
+        History history = History.of(
+                fact("outbox-1", FactType.OUTBOX_RECORD, "T1", "status", "COMMITTED"));
+
+        List<InvariantViolation> violations = new PropagationVerifier().verify(history);
+
+        assertAnyViolation(violations, "OUTBOX_MESSAGE_ID_REQUIRED",
+                "committed outbox record should require messageId");
+    }
+
     private static void testPropagationVerifierRejectsDuplicateMessageEffect() {
         History history = History.of(
                 fact("effect-1", FactType.BUSINESS_EFFECT, "T1", "messageId", "M1", "effectKey", "transfer:T1:debit"),
@@ -230,6 +244,17 @@ public final class CodeLabSelfTest {
 
         assertAnyViolation(violations, "MESSAGE_EFFECT_IDEMPOTENT",
                 "duplicate message effect should violate message idempotency");
+    }
+
+    private static void testPropagationVerifierDoesNotCollideMessageEffectKeys() {
+        History history = History.of(
+                fact("effect-1", FactType.BUSINESS_EFFECT, "T1", "messageId", "A:B", "effectKey", "C"),
+                fact("effect-2", FactType.BUSINESS_EFFECT, "T1", "messageId", "A", "effectKey", "B:C"));
+
+        List<InvariantViolation> violations = new PropagationVerifier().verify(history);
+
+        assertNoViolation(violations, "MESSAGE_EFFECT_IDEMPOTENT",
+                "distinct message/effect pairs should not collide");
     }
 
     private static void testManualRepairVerifierRejectsRepairWithoutApprovalAndReview() {
@@ -251,6 +276,27 @@ public final class CodeLabSelfTest {
 
         assertAnyViolation(violations, "MANUAL_REPAIR_IDEMPOTENT",
                 "duplicate manual repair should violate repair idempotency");
+    }
+
+    private static void testManualRepairVerifierReportsRepairMissingRepairKey() {
+        History history = History.of(
+                fact("repair-1", FactType.MANUAL_REPAIR, "R1"));
+
+        List<InvariantViolation> violations = new ManualRepairVerifier().verify(history);
+
+        assertAnyViolation(violations, "MANUAL_REPAIR_KEY_REQUIRED",
+                "manual repair should require repairKey");
+    }
+
+    private static void testManualRepairVerifierReportsEvidenceMissingRepairKey() {
+        History history = History.of(
+                fact("approval-1", FactType.MANUAL_APPROVAL, "R1"),
+                fact("review-1", FactType.MANUAL_REVIEW, "R1", "result", "APPROVED"));
+
+        List<InvariantViolation> violations = new ManualRepairVerifier().verify(history);
+
+        assertAnyViolation(violations, "MANUAL_REPAIR_EVIDENCE_KEY_REQUIRED",
+                "manual repair evidence should require repairKey");
     }
 
     private static Command command(String id, String name, String businessKey, String... attrs) {
@@ -305,6 +351,14 @@ public final class CodeLabSelfTest {
             }
         }
         throw new AssertionError(message + " invariant=" + invariant + " violations=" + violations);
+    }
+
+    private static void assertNoViolation(List<InvariantViolation> violations, String invariant, String message) {
+        for (InvariantViolation violation : violations) {
+            if (violation.invariant().equals(invariant)) {
+                throw new AssertionError(message + " invariant=" + invariant + " violations=" + violations);
+            }
+        }
     }
 
     private static void assertThrows(Class<? extends Throwable> expectedType, Runnable action, String message) {

@@ -38,10 +38,20 @@ public final class PropagationVerifier implements ConsistencyVerifier {
         List<InvariantViolation> violations = new ArrayList<>();
         for (Fact fact : history.facts(FactType.OUTBOX_RECORD)) {
             String messageId = fact.attr("messageId");
-            if (messageId == null || messageId.isBlank()) {
+            if (!"COMMITTED".equals(fact.attr("status"))) {
                 continue;
             }
-            if ("COMMITTED".equals(fact.attr("status")) && !publishedMessageIds.contains(messageId)) {
+            if (messageId == null || messageId.isBlank()) {
+                violations.add(new InvariantViolation(
+                        "OUTBOX_MESSAGE_ID_REQUIRED",
+                        "committed outbox record is missing messageId",
+                        name(),
+                        "propagation",
+                        List.of(fact.id()),
+                        history.reduceTo(Set.of(fact.id()))));
+                continue;
+            }
+            if (!publishedMessageIds.contains(messageId)) {
                 violations.add(new InvariantViolation(
                         "OUTBOX_COMMITTED_NOT_PUBLISHED",
                         "committed outbox messageId=" + messageId + " was not published",
@@ -55,23 +65,26 @@ public final class PropagationVerifier implements ConsistencyVerifier {
     }
 
     private List<InvariantViolation> verifyMessageEffectIdempotency(History history) {
-        Map<String, List<Fact>> effectsByMessageEffectKey = new LinkedHashMap<>();
+        Map<MessageEffectKey, List<Fact>> effectsByMessageEffectKey = new LinkedHashMap<>();
         for (Fact fact : history.facts(FactType.BUSINESS_EFFECT)) {
             String messageId = fact.attr("messageId");
             String effectKey = fact.attr("effectKey");
             if (messageId == null || messageId.isBlank() || effectKey == null || effectKey.isBlank()) {
                 continue;
             }
-            effectsByMessageEffectKey.computeIfAbsent(messageId + ":" + effectKey, ignored -> new ArrayList<>()).add(fact);
+            MessageEffectKey key = new MessageEffectKey(messageId, effectKey);
+            effectsByMessageEffectKey.computeIfAbsent(key, ignored -> new ArrayList<>()).add(fact);
         }
 
         List<InvariantViolation> violations = new ArrayList<>();
-        for (Map.Entry<String, List<Fact>> entry : effectsByMessageEffectKey.entrySet()) {
+        for (Map.Entry<MessageEffectKey, List<Fact>> entry : effectsByMessageEffectKey.entrySet()) {
             if (entry.getValue().size() > 1) {
                 List<String> relatedIds = ids(entry.getValue());
+                MessageEffectKey key = entry.getKey();
                 violations.add(new InvariantViolation(
                         "MESSAGE_EFFECT_IDEMPOTENT",
-                        "message effect key " + entry.getKey() + " appears " + entry.getValue().size() + " times",
+                        "messageId=" + key.messageId() + " effectKey=" + key.effectKey()
+                                + " appears " + entry.getValue().size() + " times",
                         name(),
                         "propagation",
                         relatedIds,
@@ -87,5 +100,8 @@ public final class PropagationVerifier implements ConsistencyVerifier {
             ids.add(fact.id());
         }
         return List.copyOf(ids);
+    }
+
+    private record MessageEffectKey(String messageId, String effectKey) {
     }
 }

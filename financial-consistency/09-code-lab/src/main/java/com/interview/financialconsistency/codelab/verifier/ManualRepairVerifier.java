@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public final class ManualRepairVerifier implements ConsistencyVerifier {
     @Override
@@ -23,10 +24,32 @@ public final class ManualRepairVerifier implements ConsistencyVerifier {
         Map<String, List<Fact>> approvalsByKey = new LinkedHashMap<>();
         Map<String, List<Fact>> reviewsByKey = new LinkedHashMap<>();
         Map<String, List<Fact>> approvedReviewsByKey = new LinkedHashMap<>();
+        List<InvariantViolation> violations = new ArrayList<>();
 
         for (Fact fact : history.facts()) {
+            if (!isManualRepairFact(fact)) {
+                continue;
+            }
+
             String repairKey = fact.attr("repairKey");
             if (repairKey == null || repairKey.isBlank()) {
+                if (fact.type() == FactType.MANUAL_REPAIR) {
+                    violations.add(new InvariantViolation(
+                            "MANUAL_REPAIR_KEY_REQUIRED",
+                            "manual repair is missing repairKey",
+                            name(),
+                            "manual-repair",
+                            List.of(fact.id()),
+                            history.reduceTo(Set.of(fact.id()))));
+                } else {
+                    violations.add(new InvariantViolation(
+                            "MANUAL_REPAIR_EVIDENCE_KEY_REQUIRED",
+                            "manual repair evidence is missing repairKey",
+                            name(),
+                            "manual-repair",
+                            List.of(fact.id()),
+                            history.reduceTo(Set.of(fact.id()))));
+                }
                 continue;
             }
 
@@ -42,7 +65,6 @@ public final class ManualRepairVerifier implements ConsistencyVerifier {
             }
         }
 
-        List<InvariantViolation> violations = new ArrayList<>();
         for (Map.Entry<String, List<Fact>> entry : repairsByKey.entrySet()) {
             String repairKey = entry.getKey();
             List<Fact> approvals = approvalsByKey.getOrDefault(repairKey, List.of());
@@ -75,6 +97,12 @@ public final class ManualRepairVerifier implements ConsistencyVerifier {
             }
         }
         return List.copyOf(violations);
+    }
+
+    private boolean isManualRepairFact(Fact fact) {
+        return fact.type() == FactType.MANUAL_REPAIR
+                || fact.type() == FactType.MANUAL_APPROVAL
+                || fact.type() == FactType.MANUAL_REVIEW;
     }
 
     private List<String> ids(List<Fact> facts) {
