@@ -13,6 +13,7 @@
 - [2026-05-02-financial-consistency-patterns-design.md](../docs/superpowers/specs/2026-05-02-financial-consistency-patterns-design.md)
 - [2026-05-02-financial-consistency-verification-lab-design.md](../docs/superpowers/specs/2026-05-02-financial-consistency-verification-lab-design.md)
 - [2026-05-02-financial-consistency-reconciliation-design.md](../docs/superpowers/specs/2026-05-02-financial-consistency-reconciliation-design.md)
+- [2026-05-02-financial-consistency-interview-synthesis-design.md](../docs/superpowers/specs/2026-05-02-financial-consistency-interview-synthesis-design.md)
 - [旧笔记索引](./references.md)
 
 ## 当前决策
@@ -80,7 +81,7 @@
 - [07-reconciliation](./07-reconciliation/README.md)
   准实时对账、日终对账、差错处理、人工补偿。
 
-- 08-interview-synthesis
+- [08-interview-synthesis](./08-interview-synthesis/README.md)
   面试表达、架构评审话术、常见追问。
 
 ## 真实工程约束
