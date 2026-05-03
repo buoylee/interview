@@ -25,6 +25,7 @@ MySQL rows -> DbFact -> DbHistory -> TransferMysqlVerifier -> DbInvariantViolati
 - 成功转账必须有且只有两条账本分录，一条 `DEBIT`，一条 `CREDIT`，否则报告 `LEDGER_DOUBLE_ENTRY_REQUIRED`。
 - 两条账本分录必须金额一致、币种一致，并且与 `transfer_order` 的金额和币种一致，否则报告 `LEDGER_BALANCED`。
 - 成功转账必须有 `aggregate_type = TRANSFER`、`event_type = TransferSucceeded` 的 Outbox，否则报告 `TRANSFER_OUTBOX_REQUIRED`。
+- 同一笔成功转账只能有一条 `aggregate_type = TRANSFER`、`event_type = TransferSucceeded` 的 Outbox，否则报告 `TRANSFER_OUTBOX_SINGLE_SUCCEEDED_EVENT`。
 - 失败转账不能有账本，否则报告 `FAILED_TRANSFER_HAS_NO_LEDGER`。
 - 任意账本分录都必须引用已成功转账，否则报告 `LEDGER_REQUIRES_SUCCEEDED_TRANSFER`。
 - 同一个幂等键不能对应多个成功业务 ID，否则报告 `IDEMPOTENCY_KEY_SINGLE_SUCCESSFUL_BUSINESS_ID`。

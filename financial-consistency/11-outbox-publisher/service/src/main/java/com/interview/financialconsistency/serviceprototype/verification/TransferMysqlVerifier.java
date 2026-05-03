@@ -16,6 +16,7 @@ public class TransferMysqlVerifier {
     public static final String LEDGER_DOUBLE_ENTRY_REQUIRED = "LEDGER_DOUBLE_ENTRY_REQUIRED";
     public static final String LEDGER_BALANCED = "LEDGER_BALANCED";
     public static final String TRANSFER_OUTBOX_REQUIRED = "TRANSFER_OUTBOX_REQUIRED";
+    public static final String TRANSFER_OUTBOX_SINGLE_SUCCEEDED_EVENT = "TRANSFER_OUTBOX_SINGLE_SUCCEEDED_EVENT";
     public static final String FAILED_TRANSFER_HAS_NO_LEDGER = "FAILED_TRANSFER_HAS_NO_LEDGER";
     public static final String LEDGER_REQUIRES_SUCCEEDED_TRANSFER = "LEDGER_REQUIRES_SUCCEEDED_TRANSFER";
     public static final String IDEMPOTENCY_KEY_SINGLE_SUCCESSFUL_BUSINESS_ID =
@@ -106,14 +107,20 @@ public class TransferMysqlVerifier {
 
     private void verifySuccessfulTransferOutbox(
             List<DbInvariantViolation> violations, DbFact transfer, List<DbFact> outboxMessages) {
-        boolean hasSucceededEvent = outboxMessages.stream()
-                .anyMatch(message -> "TRANSFER".equals(message.attributes().get("aggregate_type"))
-                        && "TransferSucceeded".equals(message.attributes().get("event_type")));
-        if (!hasSucceededEvent) {
+        List<DbFact> succeededEvents = outboxMessages.stream()
+                .filter(this::isTransferSucceededOutbox)
+                .toList();
+        if (succeededEvents.isEmpty()) {
             violations.add(new DbInvariantViolation(
                     TRANSFER_OUTBOX_REQUIRED,
                     "Successful transfer " + transfer.businessId() + " requires a TransferSucceeded outbox message",
                     relatedFactIds(transfer, outboxMessages)));
+        } else if (succeededEvents.size() > 1) {
+            violations.add(new DbInvariantViolation(
+                    TRANSFER_OUTBOX_SINGLE_SUCCEEDED_EVENT,
+                    "Successful transfer " + transfer.businessId()
+                            + " must have exactly one TransferSucceeded outbox message",
+                    relatedFactIds(transfer, succeededEvents)));
         }
     }
 

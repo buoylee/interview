@@ -111,6 +111,19 @@ class TransferMysqlVerifierIntegrationTest {
     }
 
     @Test
+    void verifierFindsDuplicateSucceededOutboxForSuccessfulTransfer() {
+        insertSuccessfulTransfer("T-DUPLICATE-OUTBOX", "REQ-DUPLICATE-OUTBOX", "50.0000");
+        insertLedger("L-DUPLICATE-OUTBOX-1", "T-DUPLICATE-OUTBOX", "A-001", "DEBIT", "USD", "50.0000");
+        insertLedger("L-DUPLICATE-OUTBOX-2", "T-DUPLICATE-OUTBOX", "B-001", "CREDIT", "USD", "50.0000");
+        insertSucceededOutbox("M-DUPLICATE-OUTBOX-1", "T-DUPLICATE-OUTBOX");
+        insertSucceededOutbox("M-DUPLICATE-OUTBOX-2", "T-DUPLICATE-OUTBOX");
+
+        assertThat(verifyExtractedFacts())
+                .extracting(DbInvariantViolation::invariant)
+                .containsExactly("TRANSFER_OUTBOX_SINGLE_SUCCEEDED_EVENT");
+    }
+
+    @Test
     void verifierRequiresTransferOutboxAggregateType() {
         insertSuccessfulTransfer("T-WRONG-OUTBOX-TYPE", "REQ-WRONG-OUTBOX-TYPE", "50.0000");
         insertLedger("L-WRONG-OUTBOX-TYPE-1", "T-WRONG-OUTBOX-TYPE", "A-001", "DEBIT", "USD", "50.0000");

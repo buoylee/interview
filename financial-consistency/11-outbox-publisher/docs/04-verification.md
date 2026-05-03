@@ -5,6 +5,7 @@
 本章新增的核心不变量包括：
 
 - `OUTBOX_PUBLISH_REQUIRED`：`TransferSucceeded` Outbox 如果已经有发布尝试，并且仍停在 `FAILED_RETRYABLE` 或 `PUBLISHING`，必须暴露为需要恢复的发布问题。
+- `TRANSFER_OUTBOX_SINGLE_SUCCEEDED_EVENT`：同一笔成功转账只能有一条 `TRANSFER` 聚合的 `TransferSucceeded` Outbox，避免多个 `message_id` 绕过消费者幂等。
 - `CONSUMER_PROCESSED_PUBLISHED_EVENT`：状态为 `PUBLISHED` 的 Outbox 事件，必须存在配置消费者组的 `consumer_processed_event(PROCESSED)`。
 - `CONSUMER_IDEMPOTENT_PROCESSING`：同一个消费者组内，同一个 `event_id` 不能出现多条成功消费事实。
 
