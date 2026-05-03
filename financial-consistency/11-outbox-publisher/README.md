@@ -18,6 +18,8 @@ bash financial-consistency/11-outbox-publisher/scripts/test-outbox-publisher.sh
 bash financial-consistency/11-outbox-publisher/scripts/run-service.sh
 ```
 
+脚本依赖 Docker、Java 17、Maven 和 `jq`。
+
 服务启动后可以手工触发一次 Outbox 发布：
 
 ```bash

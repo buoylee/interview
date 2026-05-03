@@ -40,3 +40,4 @@ docker compose -f "$ROOT_DIR/docker-compose.yml" exec -T kafka /opt/kafka/bin/ka
   --replication-factor 1
 
 mvn -f "$SERVICE_DIR/pom.xml" test
+bash "$ROOT_DIR/scripts/test-replay-transfer-event.sh"
