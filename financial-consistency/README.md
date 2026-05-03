@@ -15,6 +15,7 @@
 - [2026-05-02-financial-consistency-reconciliation-design.md](../docs/superpowers/specs/2026-05-02-financial-consistency-reconciliation-design.md)
 - [2026-05-02-financial-consistency-interview-synthesis-design.md](../docs/superpowers/specs/2026-05-02-financial-consistency-interview-synthesis-design.md)
 - [2026-05-02-financial-consistency-code-lab-design.md](../docs/superpowers/specs/2026-05-02-financial-consistency-code-lab-design.md)
+- [2026-05-03-financial-consistency-service-prototype-design.md](../docs/superpowers/specs/2026-05-03-financial-consistency-service-prototype-design.md)
 - [旧笔记索引](./references.md)
 
 ## 当前决策
@@ -87,6 +88,9 @@
 
 - [09-code-lab](./09-code-lab/README.md)
   纯 Java 内存代码实验室：模型、异常历史、一致性判定器、runner 和可解释失败报告。
+
+- [10-service-prototype](./10-service-prototype/README.md)
+  Spring Boot + MySQL 内部转账服务原型：本地事务、幂等、双分录账本、Outbox 和数据库事实验证。
 
 ## 真实工程约束
 
