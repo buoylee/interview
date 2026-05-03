@@ -93,6 +93,9 @@
 - [10-service-prototype](./10-service-prototype/README.md)
   Spring Boot + MySQL 内部转账服务原型：本地事务、幂等、双分录账本、Outbox 和数据库事实验证。
 
+- [11-outbox-publisher](./11-outbox-publisher/README.md)
+  Kafka Outbox 发布器和消费者幂等：把已提交的 Outbox 事件可靠发布到 Kafka，并用消费者处理事实验证传播闭环。
+
 ## 真实工程约束
 
 - 所有写接口必须支持幂等。
