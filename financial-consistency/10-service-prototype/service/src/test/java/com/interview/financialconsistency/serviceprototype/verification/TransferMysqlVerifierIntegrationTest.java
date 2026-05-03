@@ -58,6 +58,32 @@ class TransferMysqlVerifierIntegrationTest {
         insertLedger("L-UNBALANCED-2", "T-UNBALANCED", "B-001", "CREDIT", "USD", "49.0000");
         insertSucceededOutbox("M-UNBALANCED", "T-UNBALANCED");
 
+        assertThat(verifyExtractedFacts())
+                .singleElement()
+                .satisfies(violation -> {
+                    assertThat(violation.invariant()).isEqualTo("LEDGER_BALANCED");
+                    assertThat(violation.relatedFactIds())
+                            .contains("ledger_entry:L-UNBALANCED-1", "ledger_entry:L-UNBALANCED-2");
+                });
+    }
+
+    @Test
+    void verifierFindsLedgerRowsWithAmountsDifferentFromTransferAmount() {
+        insertSuccessfulTransfer("T-WRONG-AMOUNT", "REQ-WRONG-AMOUNT", "50.0000");
+        insertLedger("L-WRONG-AMOUNT-1", "T-WRONG-AMOUNT", "A-001", "DEBIT", "USD", "49.0000");
+        insertLedger("L-WRONG-AMOUNT-2", "T-WRONG-AMOUNT", "B-001", "CREDIT", "USD", "49.0000");
+        insertSucceededOutbox("M-WRONG-AMOUNT", "T-WRONG-AMOUNT");
+
+        assertThat(verifyExtractedFacts()).extracting(DbInvariantViolation::invariant).containsExactly("LEDGER_BALANCED");
+    }
+
+    @Test
+    void verifierFindsLedgerRowsWithCurrenciesDifferentFromTransferCurrency() {
+        insertSuccessfulTransfer("T-WRONG-CURRENCY", "REQ-WRONG-CURRENCY", "50.0000");
+        insertLedger("L-WRONG-CURRENCY-1", "T-WRONG-CURRENCY", "A-001", "DEBIT", "EUR", "50.0000");
+        insertLedger("L-WRONG-CURRENCY-2", "T-WRONG-CURRENCY", "B-001", "CREDIT", "EUR", "50.0000");
+        insertSucceededOutbox("M-WRONG-CURRENCY", "T-WRONG-CURRENCY");
+
         assertThat(verifyExtractedFacts()).extracting(DbInvariantViolation::invariant).containsExactly("LEDGER_BALANCED");
     }
 
@@ -84,6 +110,18 @@ class TransferMysqlVerifierIntegrationTest {
     }
 
     @Test
+    void verifierRequiresTransferOutboxAggregateType() {
+        insertSuccessfulTransfer("T-WRONG-OUTBOX-TYPE", "REQ-WRONG-OUTBOX-TYPE", "50.0000");
+        insertLedger("L-WRONG-OUTBOX-TYPE-1", "T-WRONG-OUTBOX-TYPE", "A-001", "DEBIT", "USD", "50.0000");
+        insertLedger("L-WRONG-OUTBOX-TYPE-2", "T-WRONG-OUTBOX-TYPE", "B-001", "CREDIT", "USD", "50.0000");
+        insertOutbox("M-WRONG-OUTBOX-TYPE", "ORDER", "T-WRONG-OUTBOX-TYPE", "TransferSucceeded");
+
+        assertThat(verifyExtractedFacts())
+                .extracting(DbInvariantViolation::invariant)
+                .containsExactly("TRANSFER_OUTBOX_REQUIRED");
+    }
+
+    @Test
     void verifierFindsFailedTransferWithLedgerRows() {
         insertFailedTransfer("T-FAILED-WITH-LEDGER", "REQ-FAILED-WITH-LEDGER", "50.0000");
         insertLedger("L-FAILED-WITH-LEDGER-1", "T-FAILED-WITH-LEDGER", "A-001", "DEBIT", "USD", "50.0000");
@@ -91,7 +129,21 @@ class TransferMysqlVerifierIntegrationTest {
 
         assertThat(verifyExtractedFacts())
                 .extracting(DbInvariantViolation::invariant)
-                .containsExactly("FAILED_TRANSFER_HAS_NO_LEDGER");
+                .containsExactly(
+                        "FAILED_TRANSFER_HAS_NO_LEDGER",
+                        "LEDGER_REQUIRES_SUCCEEDED_TRANSFER",
+                        "LEDGER_REQUIRES_SUCCEEDED_TRANSFER");
+    }
+
+    @Test
+    void verifierFindsLedgerRowsWithoutSucceededTransfer() {
+        insertLedger("L-ORPHAN-1", "T-MISSING", "A-001", "DEBIT", "USD", "50.0000");
+        insertInitiatedTransfer("T-INITIATED-WITH-LEDGER", "REQ-INITIATED-WITH-LEDGER", "50.0000");
+        insertLedger("L-INITIATED-1", "T-INITIATED-WITH-LEDGER", "A-001", "DEBIT", "USD", "50.0000");
+
+        assertThat(verifyExtractedFacts())
+                .extracting(DbInvariantViolation::invariant)
+                .containsExactly("LEDGER_REQUIRES_SUCCEEDED_TRANSFER", "LEDGER_REQUIRES_SUCCEEDED_TRANSFER");
     }
 
     @Test
@@ -168,6 +220,18 @@ class TransferMysqlVerifierIntegrationTest {
                 new BigDecimal(amount));
     }
 
+    private void insertInitiatedTransfer(String transferId, String requestId, String amount) {
+        jdbcTemplate.update(
+                """
+                insert into transfer_order
+                  (transfer_id, request_id, from_account_id, to_account_id, currency, amount, status)
+                values (?, ?, 'A-001', 'B-001', 'USD', ?, 'INITIATED')
+                """,
+                transferId,
+                requestId,
+                new BigDecimal(amount));
+    }
+
     private void insertLedger(
             String entryId, String transferId, String accountId, String direction, String currency, String amount) {
         jdbcTemplate.update(
@@ -185,14 +249,20 @@ class TransferMysqlVerifierIntegrationTest {
     }
 
     private void insertSucceededOutbox(String messageId, String transferId) {
+        insertOutbox(messageId, "TRANSFER", transferId, "TransferSucceeded");
+    }
+
+    private void insertOutbox(String messageId, String aggregateType, String transferId, String eventType) {
         jdbcTemplate.update(
                 """
                 insert into outbox_message
                   (message_id, aggregate_type, aggregate_id, event_type, payload, status)
-                values (?, 'TRANSFER', ?, 'TransferSucceeded', cast(? as json), 'PENDING')
+                values (?, ?, ?, ?, cast(? as json), 'PENDING')
                 """,
                 messageId,
+                aggregateType,
                 transferId,
+                eventType,
                 "{\"transferId\":\"" + transferId + "\"}");
     }
 }
