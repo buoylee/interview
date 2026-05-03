@@ -62,6 +62,17 @@ class TransferMysqlVerifierIntegrationTest {
     }
 
     @Test
+    void verifierFindsSuccessfulTransferWithOnlyOneLedgerRow() {
+        insertSuccessfulTransfer("T-SINGLE-LEDGER", "REQ-SINGLE-LEDGER", "50.0000");
+        insertLedger("L-SINGLE-LEDGER-1", "T-SINGLE-LEDGER", "A-001", "DEBIT", "USD", "50.0000");
+        insertSucceededOutbox("M-SINGLE-LEDGER", "T-SINGLE-LEDGER");
+
+        assertThat(verifyExtractedFacts())
+                .extracting(DbInvariantViolation::invariant)
+                .containsExactly("LEDGER_DOUBLE_ENTRY_REQUIRED");
+    }
+
+    @Test
     void verifierFindsMissingOutboxForSuccessfulTransfer() {
         insertSuccessfulTransfer("T-MISSING-OUTBOX", "REQ-MISSING-OUTBOX", "50.0000");
         insertLedger("L-MISSING-OUTBOX-1", "T-MISSING-OUTBOX", "A-001", "DEBIT", "USD", "50.0000");
@@ -102,8 +113,35 @@ class TransferMysqlVerifierIntegrationTest {
                 .containsExactly("IDEMPOTENCY_KEY_SINGLE_SUCCESSFUL_BUSINESS_ID");
     }
 
+    @Test
+    void extractorUsesTransferBusinessIdentifiersForLedgerAndOutboxFactIds() {
+        insertSuccessfulTransfer("T-FACT-ID", "REQ-FACT-ID", "50.0000");
+        insertLedger("L-FACT-ID-1", "T-FACT-ID", "A-001", "DEBIT", "USD", "50.0000");
+        insertLedger("L-FACT-ID-2", "T-FACT-ID", "B-001", "CREDIT", "USD", "50.0000");
+        insertSucceededOutbox("M-FACT-ID", "T-FACT-ID");
+
+        DbHistory history = factExtractor.extractAll();
+
+        assertThat(facts(history, "ledger_entry"))
+                .extracting(DbFact::factId)
+                .containsExactly("T-FACT-ID", "T-FACT-ID");
+        assertThat(facts(history, "ledger_entry"))
+                .extracting(fact -> fact.attributes().get("entry_id"))
+                .containsExactly("L-FACT-ID-1", "L-FACT-ID-2");
+        assertThat(facts(history, "outbox_message"))
+                .singleElement()
+                .satisfies(fact -> {
+                    assertThat(fact.factId()).isEqualTo("T-FACT-ID");
+                    assertThat(fact.attributes()).containsEntry("message_id", "M-FACT-ID");
+                });
+    }
+
     private List<DbInvariantViolation> verifyExtractedFacts() {
         return verifier.verify(factExtractor.extractAll());
+    }
+
+    private List<DbFact> facts(DbHistory history, String tableName) {
+        return history.facts().stream().filter(fact -> tableName.equals(fact.tableName())).toList();
     }
 
     private void insertSuccessfulTransfer(String transferId, String requestId, String amount) {

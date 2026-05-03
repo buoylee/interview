@@ -48,7 +48,7 @@ public class MysqlFactExtractor {
                         order by entry_id
                         """)
                 .stream()
-                .map(row -> fact("ledger_entry", row, "entry_id", "transfer_id"))
+                .map(row -> fact("ledger_entry", row, "transfer_id", "transfer_id"))
                 .toList();
     }
 
@@ -76,7 +76,7 @@ public class MysqlFactExtractor {
                         order by message_id
                         """)
                 .stream()
-                .map(row -> fact("outbox_message", row, "message_id", "aggregate_id"))
+                .map(row -> fact("outbox_message", row, "aggregate_id", "aggregate_id"))
                 .toList();
     }
 
