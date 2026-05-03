@@ -1,6 +1,9 @@
 package com.interview.financialconsistency.serviceprototype.consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.interview.financialconsistency.serviceprototype.kafka.TransferEventEnvelope;
@@ -10,14 +13,14 @@ import com.interview.financialconsistency.serviceprototype.transfer.TransferResp
 import com.interview.financialconsistency.serviceprototype.transfer.TransferService;
 import java.math.BigDecimal;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest
@@ -30,9 +33,6 @@ class TransferEventConsumerIntegrationTest {
     private OutboxPublisher outboxPublisher;
 
     @Autowired
-    private KafkaTemplate<String, String> kafkaTemplate;
-
-    @Autowired
     private ObjectMapper objectMapper;
 
     @Autowired
@@ -40,6 +40,9 @@ class TransferEventConsumerIntegrationTest {
 
     @Autowired
     private ConsumerProcessedEventRepository repository;
+
+    @Autowired
+    private TransferEventConsumer consumer;
 
     @Value("${app.kafka.transfer-events-topic}")
     private String topic;
@@ -72,19 +75,19 @@ class TransferEventConsumerIntegrationTest {
     }
 
     @Test
-    void duplicatePublishedEventIsProcessedOnlyOnce() throws Exception {
+    void duplicateEventIsAcknowledgedAndStoredOnlyOnce() throws Exception {
         TransferResponse response = createTransfer("consumer-key-2");
         String messageId = messageIdForTransfer(response.transferId());
         String envelopeJson = envelopeJson(messageId);
+        Acknowledgment firstAcknowledgment = mock(Acknowledgment.class);
+        Acknowledgment duplicateAcknowledgment = mock(Acknowledgment.class);
 
-        assertThat(outboxPublisher.publishBatch(10)).isEqualTo(1);
-        awaitProcessedEventCount(messageId, 1);
-
-        kafkaTemplate.send(topic, response.transferId(), envelopeJson).get(10, TimeUnit.SECONDS);
-        kafkaTemplate.send(topic, response.transferId(), envelopeJson).get(10, TimeUnit.SECONDS);
-        Thread.sleep(1500);
+        consumer.consume(new ConsumerRecord<>(topic, 0, 200L, response.transferId(), envelopeJson), firstAcknowledgment);
+        consumer.consume(new ConsumerRecord<>(topic, 0, 201L, response.transferId(), envelopeJson), duplicateAcknowledgment);
 
         assertThat(processedEventCount(messageId)).isEqualTo(1);
+        verify(firstAcknowledgment).acknowledge();
+        verify(duplicateAcknowledgment).acknowledge();
     }
 
     @Test
@@ -102,6 +105,21 @@ class TransferEventConsumerIntegrationTest {
 
         assertThat(processedEventCount(consumerGroup, "message-per-group")).isEqualTo(1);
         assertThat(processedEventCount(consumerGroup + "-other", "message-per-group")).isEqualTo(1);
+    }
+
+    @Test
+    void offsetConflictForDifferentEventThrows() {
+        assertThat(repository.insertProcessed(
+                "message-offset-1", "transfer-offset-1", topic, 0, 300L, consumerGroup))
+                .isTrue();
+
+        assertThatThrownBy(() -> repository.insertProcessed(
+                        "message-offset-2", "transfer-offset-2", topic, 0, 300L, consumerGroup))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Kafka offset already recorded")
+                .hasMessageContaining("topic=" + topic)
+                .hasMessageContaining("partition=0")
+                .hasMessageContaining("offset=300");
     }
 
     private TransferResponse createTransfer(String idempotencyKey) {
