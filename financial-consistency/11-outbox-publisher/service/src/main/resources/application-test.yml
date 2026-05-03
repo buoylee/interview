@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: financial-consistency-outbox-publisher
+  datasource:
+    url: jdbc:mysql://localhost:${MYSQL_HOST_PORT:3308}/funds_core?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    username: funds
+    password: funds
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  kafka:
+    bootstrap-servers: localhost:${KAFKA_HOST_PORT:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
+    consumer:
+      group-id: funds-transfer-event-consumer
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      ack-mode: manual
+      missing-topics-fatal: false
+
+app:
+  kafka:
+    transfer-events-topic: funds.transfer.events
+  outbox:
+    publisher-id: local-publisher
+server:
+  port: 8081
