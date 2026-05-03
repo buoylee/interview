@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -22,6 +23,13 @@ public class TransferMysqlVerifier {
     public static final String OUTBOX_PUBLISH_REQUIRED = "OUTBOX_PUBLISH_REQUIRED";
     public static final String CONSUMER_PROCESSED_PUBLISHED_EVENT = "CONSUMER_PROCESSED_PUBLISHED_EVENT";
     public static final String CONSUMER_IDEMPOTENT_PROCESSING = "CONSUMER_IDEMPOTENT_PROCESSING";
+
+    private final String expectedConsumerGroup;
+
+    public TransferMysqlVerifier(
+            @Value("${spring.kafka.consumer.group-id:funds-transfer-event-consumer}") String expectedConsumerGroup) {
+        this.expectedConsumerGroup = expectedConsumerGroup;
+    }
 
     public List<DbInvariantViolation> verify(DbHistory history) {
         Map<String, List<DbFact>> factsByTable = history.facts().stream()
@@ -173,14 +181,15 @@ public class TransferMysqlVerifier {
 
     private void verifyPublishedEventsConsumed(
             List<DbInvariantViolation> violations, List<DbFact> outboxMessages, List<DbFact> consumerProcessedEvents) {
-        Set<String> processedEventIds = consumerProcessedEvents.stream()
+        Set<String> processedEventsByExpectedGroup = consumerProcessedEvents.stream()
                 .filter(event -> "PROCESSED".equals(event.attributes().get("status")))
-                .map(event -> event.attributes().get("event_id"))
+                .filter(event -> expectedConsumerGroup.equals(event.attributes().get("consumer_group")))
+                .map(event -> eventKey(event.attributes().get("consumer_group"), event.attributes().get("event_id")))
                 .collect(Collectors.toCollection(LinkedHashSet::new));
 
         for (DbFact message : outboxMessages) {
             if ("PUBLISHED".equals(message.attributes().get("status"))
-                    && !processedEventIds.contains(messageId(message))) {
+                    && !processedEventsByExpectedGroup.contains(eventKey(expectedConsumerGroup, messageId(message)))) {
                 violations.add(new DbInvariantViolation(
                         CONSUMER_PROCESSED_PUBLISHED_EVENT,
                         "Published outbox message " + messageId(message) + " requires consumer processing",
@@ -194,7 +203,7 @@ public class TransferMysqlVerifier {
         Map<String, List<DbFact>> processedEventsByGroupAndEvent = consumerProcessedEvents.stream()
                 .filter(event -> "PROCESSED".equals(event.attributes().get("status")))
                 .collect(Collectors.groupingBy(
-                        event -> event.attributes().get("consumer_group") + ":" + event.attributes().get("event_id"),
+                        event -> eventKey(event.attributes().get("consumer_group"), event.attributes().get("event_id")),
                         LinkedHashMap::new,
                         Collectors.toList()));
 
@@ -224,6 +233,10 @@ public class TransferMysqlVerifier {
         return message.attributes().getOrDefault("message_id", message.factId());
     }
 
+    private String eventKey(String consumerGroup, String eventId) {
+        return consumerGroup + ":" + eventId;
+    }
+
     private BigDecimal amount(DbFact ledger) {
         return new BigDecimal(ledger.attributes().get("amount"));
     }
@@ -250,6 +263,10 @@ public class TransferMysqlVerifier {
             case "transfer_order" -> fact.tableName() + ":" + fact.attributes().getOrDefault("transfer_id", fact.factId());
             case "idempotency_record" -> fact.tableName() + ":"
                     + fact.attributes().getOrDefault("idempotency_key", fact.factId());
+            case "consumer_processed_event" -> fact.tableName() + ":"
+                    + eventKey(
+                            fact.attributes().getOrDefault("consumer_group", ""),
+                            fact.attributes().getOrDefault("event_id", fact.factId()));
             case "account" -> fact.tableName() + ":" + fact.attributes().getOrDefault("account_id", fact.factId());
             default -> fact.tableName() + ":" + fact.factId();
         };

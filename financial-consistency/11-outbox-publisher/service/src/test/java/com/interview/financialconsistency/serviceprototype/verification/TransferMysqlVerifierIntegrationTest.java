@@ -15,7 +15,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
-@SpringBootTest
+@SpringBootTest(properties = "spring.kafka.listener.auto-startup=false")
 @ActiveProfiles("test")
 class TransferMysqlVerifierIntegrationTest {
     @Autowired
@@ -194,6 +194,42 @@ class TransferMysqlVerifierIntegrationTest {
     }
 
     @Test
+    void verifierFindsPublishingAttemptStillRequired() {
+        insertSuccessfulTransfer("T-PUBLISHING", "REQ-PUBLISHING", "50.0000");
+        insertLedger("L-PUBLISHING-1", "T-PUBLISHING", "A-001", "DEBIT", "USD", "50.0000");
+        insertLedger("L-PUBLISHING-2", "T-PUBLISHING", "B-001", "CREDIT", "USD", "50.0000");
+        insertSucceededOutbox("M-PUBLISHING", "T-PUBLISHING");
+        markOutboxStatus("M-PUBLISHING", "PUBLISHING", 1);
+
+        assertThat(verifyExtractedFacts())
+                .extracting(DbInvariantViolation::invariant)
+                .containsExactly("OUTBOX_PUBLISH_REQUIRED");
+    }
+
+    @Test
+    void verifierDoesNotRequirePublishBeforeFirstFailedRetryableAttempt() {
+        insertSuccessfulTransfer("T-PUBLISH-RETRY-NO-ATTEMPT", "REQ-PUBLISH-RETRY-NO-ATTEMPT", "50.0000");
+        insertLedger("L-PUBLISH-RETRY-NO-ATTEMPT-1", "T-PUBLISH-RETRY-NO-ATTEMPT", "A-001", "DEBIT", "USD", "50.0000");
+        insertLedger(
+                "L-PUBLISH-RETRY-NO-ATTEMPT-2", "T-PUBLISH-RETRY-NO-ATTEMPT", "B-001", "CREDIT", "USD", "50.0000");
+        insertSucceededOutbox("M-PUBLISH-RETRY-NO-ATTEMPT", "T-PUBLISH-RETRY-NO-ATTEMPT");
+        markOutboxStatus("M-PUBLISH-RETRY-NO-ATTEMPT", "FAILED_RETRYABLE", 0);
+
+        assertThat(verifyExtractedFacts()).isEmpty();
+    }
+
+    @Test
+    void verifierDoesNotRequirePublishBeforeFirstPublishingAttempt() {
+        insertSuccessfulTransfer("T-PUBLISHING-NO-ATTEMPT", "REQ-PUBLISHING-NO-ATTEMPT", "50.0000");
+        insertLedger("L-PUBLISHING-NO-ATTEMPT-1", "T-PUBLISHING-NO-ATTEMPT", "A-001", "DEBIT", "USD", "50.0000");
+        insertLedger("L-PUBLISHING-NO-ATTEMPT-2", "T-PUBLISHING-NO-ATTEMPT", "B-001", "CREDIT", "USD", "50.0000");
+        insertSucceededOutbox("M-PUBLISHING-NO-ATTEMPT", "T-PUBLISHING-NO-ATTEMPT");
+        markOutboxStatus("M-PUBLISHING-NO-ATTEMPT", "PUBLISHING", 0);
+
+        assertThat(verifyExtractedFacts()).isEmpty();
+    }
+
+    @Test
     void verifierFindsDuplicateConsumerProcessingFacts() {
         DbHistory history = new DbHistory(List.of(
                 new DbFact(
@@ -222,6 +258,20 @@ class TransferMysqlVerifierIntegrationTest {
         assertThat(verifier.verify(history))
                 .extracting(DbInvariantViolation::invariant)
                 .containsExactly("CONSUMER_IDEMPOTENT_PROCESSING");
+    }
+
+    @Test
+    void verifierFindsPublishedTransferEventProcessedOnlyByDifferentConsumerGroup() {
+        insertSuccessfulTransfer("T-PUBLISHED-OTHER-GROUP", "REQ-PUBLISHED-OTHER-GROUP", "50.0000");
+        insertLedger("L-PUBLISHED-OTHER-GROUP-1", "T-PUBLISHED-OTHER-GROUP", "A-001", "DEBIT", "USD", "50.0000");
+        insertLedger("L-PUBLISHED-OTHER-GROUP-2", "T-PUBLISHED-OTHER-GROUP", "B-001", "CREDIT", "USD", "50.0000");
+        insertSucceededOutbox("M-PUBLISHED-OTHER-GROUP", "T-PUBLISHED-OTHER-GROUP");
+        markOutboxStatus("M-PUBLISHED-OTHER-GROUP", "PUBLISHED", 1);
+        insertProcessedEvent("M-PUBLISHED-OTHER-GROUP", "T-PUBLISHED-OTHER-GROUP", "other-consumer-group");
+
+        assertThat(verifyExtractedFacts())
+                .extracting(DbInvariantViolation::invariant)
+                .containsExactly("CONSUMER_PROCESSED_PUBLISHED_EVENT");
     }
 
     @Test
@@ -257,6 +307,21 @@ class TransferMysqlVerifierIntegrationTest {
                     assertThat(fact.factId()).isEqualTo("T-FACT-ID");
                     assertThat(fact.attributes()).containsEntry("message_id", "M-FACT-ID");
                 });
+    }
+
+    @Test
+    void extractorUsesConsumerGroupAndEventIdForConsumerProcessedFactId() {
+        insertProcessedEvent("M-CONSUMER-FACT-ID", "T-CONSUMER-FACT-ID", "funds-transfer-event-consumer");
+        insertProcessedEvent("M-CONSUMER-FACT-ID", "T-CONSUMER-FACT-ID", "other-consumer-group");
+
+        DbHistory history = factExtractor.extractAll();
+
+        assertThat(facts(history, "consumer_processed_event"))
+                .extracting(DbFact::factId)
+                .containsExactly("funds-transfer-event-consumer:M-CONSUMER-FACT-ID", "other-consumer-group:M-CONSUMER-FACT-ID");
+        assertThat(facts(history, "consumer_processed_event"))
+                .extracting(DbFact::businessId)
+                .containsExactly("M-CONSUMER-FACT-ID", "M-CONSUMER-FACT-ID");
     }
 
     private List<DbInvariantViolation> verifyExtractedFacts() {
@@ -353,16 +418,21 @@ class TransferMysqlVerifierIntegrationTest {
     }
 
     private void insertProcessedEvent(String eventId, String transferId) {
+        insertProcessedEvent(eventId, transferId, "funds-transfer-event-consumer");
+    }
+
+    private void insertProcessedEvent(String eventId, String transferId, String consumerGroup) {
         jdbcTemplate.update(
                 """
                 insert into consumer_processed_event (
                     event_id, transfer_id, topic, partition_id, offset_value,
                     consumer_group, status, processed_at
                 )
-                values (?, ?, 'funds.transfer.events', 0, 100, 'funds-transfer-event-consumer',
+                values (?, ?, 'funds.transfer.events', 0, 100, ?,
                         'PROCESSED', current_timestamp(6))
                 """,
                 eventId,
-                transferId);
+                transferId,
+                consumerGroup);
     }
 }

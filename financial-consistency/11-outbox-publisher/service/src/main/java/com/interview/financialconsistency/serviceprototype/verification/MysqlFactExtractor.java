@@ -88,10 +88,10 @@ public class MysqlFactExtractor {
                         select event_id, transfer_id, topic, partition_id, offset_value,
                                consumer_group, status, processed_at, failure_reason, created_at, updated_at
                         from consumer_processed_event
-                        order by event_id
+                        order by event_id, consumer_group
                         """)
                 .stream()
-                .map(row -> fact("consumer_processed_event", row, "event_id", "event_id"))
+                .map(this::consumerProcessedEventFact)
                 .toList();
     }
 
@@ -114,6 +114,14 @@ public class MysqlFactExtractor {
         Map<String, String> attributes = new LinkedHashMap<>();
         row.forEach((column, columnValue) -> attributes.put(column, value(columnValue)));
         return new DbFact(tableName, factId, businessId, attributes);
+    }
+
+    private DbFact consumerProcessedEventFact(Map<String, Object> row) {
+        String eventId = value(row.get("event_id"));
+        String consumerGroup = value(row.get("consumer_group"));
+        Map<String, String> attributes = new LinkedHashMap<>();
+        row.forEach((column, columnValue) -> attributes.put(column, value(columnValue)));
+        return new DbFact("consumer_processed_event", consumerGroup + ":" + eventId, eventId, attributes);
     }
 
     private String value(Object value) {
