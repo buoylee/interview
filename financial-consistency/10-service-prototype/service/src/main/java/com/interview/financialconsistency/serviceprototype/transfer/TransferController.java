@@ -1,6 +1,7 @@
 package com.interview.financialconsistency.serviceprototype.transfer;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -56,6 +57,11 @@ public class TransferController {
         }
         if (body.amount() == null || body.amount().compareTo(BigDecimal.ZERO) <= 0) {
             return rejected("Amount must be positive");
+        }
+        try {
+            body.amount().setScale(4, RoundingMode.UNNECESSARY);
+        } catch (ArithmeticException ex) {
+            return rejected("Amount must have exactly four decimal places");
         }
         if (body.currency() == null || !body.currency().matches("[A-Z]{3}")) {
             return rejected("Currency must be a 3-letter code");

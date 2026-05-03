@@ -85,6 +85,15 @@ class TransferControllerIntegrationTest {
     }
 
     @Test
+    void postTransfersReturnsBadRequestForAmountWithTooManyDecimalPlaces() {
+        ResponseEntity<TransferResponse> response = postTransfer("api-key-5", new BigDecimal("25.00001"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().status()).isEqualTo("REJECTED");
+    }
+
+    @Test
     void postTransfersReturnsBadRequestForMalformedCurrency() {
         Map<String, Object> body = Map.of(
                 "fromAccountId", "A-001",
@@ -92,7 +101,7 @@ class TransferControllerIntegrationTest {
                 "currency", "usd",
                 "amount", new BigDecimal("25.0000"));
 
-        ResponseEntity<TransferResponse> response = postTransfer("api-key-5", body);
+        ResponseEntity<TransferResponse> response = postTransfer("api-key-6", body);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).isNotNull();
