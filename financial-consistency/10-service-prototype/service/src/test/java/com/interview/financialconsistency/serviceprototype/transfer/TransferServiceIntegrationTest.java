@@ -9,11 +9,13 @@ import com.interview.financialconsistency.serviceprototype.ledger.LedgerReposito
 import com.interview.financialconsistency.serviceprototype.outbox.OutboxRepository;
 import java.math.BigDecimal;
 import java.util.Map;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest
@@ -39,6 +41,7 @@ class TransferServiceIntegrationTest {
 
     @BeforeEach
     void cleanBusinessTables() {
+        dropCurrencyDriftTrigger();
         jdbcTemplate.update("delete from outbox_message");
         jdbcTemplate.update("delete from ledger_entry");
         jdbcTemplate.update("delete from transfer_order");
@@ -47,6 +50,12 @@ class TransferServiceIntegrationTest {
                 "update account set available_balance = 1000.0000, frozen_balance = 0.0000, version = 0 where account_id = 'A-001'");
         jdbcTemplate.update(
                 "update account set available_balance = 100.0000, frozen_balance = 0.0000, version = 0 where account_id = 'B-001'");
+    }
+
+    @AfterEach
+    void resetTriggerAndAccountCurrency() {
+        dropCurrencyDriftTrigger();
+        jdbcTemplate.update("update account set currency = 'USD' where account_id in ('A-001', 'B-001')");
     }
 
     @Test
@@ -155,6 +164,37 @@ class TransferServiceIntegrationTest {
         assertNoBusinessFactsOrBalanceChanges();
     }
 
+    @Test
+    void lockTimeCurrencyDriftCompletesRejectedIdempotencyAndRetryReturnsStoredResponse() {
+        rootJdbcTemplate().execute(
+                """
+                create trigger drift_account_currency_after_idempotency_insert
+                after insert on idempotency_record
+                for each row
+                update account set currency = 'EUR' where account_id = 'B-001'
+                """);
+        TransferRequest request =
+                new TransferRequest("transfer-key-8", "A-001", "B-001", "USD", new BigDecimal("25.0000"));
+
+        TransferResponse first = transferService.transfer(request);
+
+        assertThat(first.status()).isEqualTo("REJECTED");
+        assertNoBusinessFactsOrBalanceChanges();
+        Map<String, Object> idempotency = idempotencyRepository.findForUpdate("transfer-key-8").orElseThrow();
+        assertThat(idempotency)
+                .containsEntry("status", "REJECTED")
+                .containsEntry("response_code", 409);
+        assertThat((String) idempotency.get("response_body")).contains("\"status\":\"REJECTED\"");
+
+        dropCurrencyDriftTrigger();
+        jdbcTemplate.update("update account set currency = 'USD' where account_id = 'B-001'");
+
+        TransferResponse retry = transferService.transfer(request);
+
+        assertThat(retry).isEqualTo(first);
+        assertNoBusinessFactsOrBalanceChanges();
+    }
+
     private void assertNoBusinessFactsOrBalanceChanges() {
         assertThat(countRows("transfer_order")).isZero();
         assertThat(countRows("ledger_entry")).isZero();
@@ -184,5 +224,19 @@ class TransferServiceIntegrationTest {
                 """,
                 String.class,
                 transferId);
+    }
+
+    private void dropCurrencyDriftTrigger() {
+        rootJdbcTemplate().execute("drop trigger if exists drift_account_currency_after_idempotency_insert");
+    }
+
+    private JdbcTemplate rootJdbcTemplate() {
+        String port = System.getenv().getOrDefault("MYSQL_HOST_PORT", "3307");
+        DriverManagerDataSource dataSource = new DriverManagerDataSource();
+        dataSource.setUrl("jdbc:mysql://localhost:" + port
+                + "/funds_core?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC");
+        dataSource.setUsername("root");
+        dataSource.setPassword("rootpass");
+        return new JdbcTemplate(dataSource);
     }
 }

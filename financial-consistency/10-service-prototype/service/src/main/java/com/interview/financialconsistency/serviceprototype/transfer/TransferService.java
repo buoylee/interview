@@ -78,6 +78,12 @@ public class TransferService {
         AccountRecord fromAccount = accountById(lockedAccounts, request.fromAccountId());
         TransferResponse lockedAccountValidationFailure = validateLockedAccounts(request, lockedAccounts);
         if (lockedAccountValidationFailure != null) {
+            idempotencyRepository.markCompleted(
+                    request.idempotencyKey(),
+                    null,
+                    "REJECTED",
+                    409,
+                    responseBody(lockedAccountValidationFailure));
             return lockedAccountValidationFailure;
         }
 
@@ -190,7 +196,8 @@ public class TransferService {
             return rejected("Idempotency key was already used for a different request");
         }
         String status = (String) record.get("status");
-        if ("SUCCEEDED".equals(status) || "FAILED".equals(status)) {
+        if (("SUCCEEDED".equals(status) || "FAILED".equals(status) || "REJECTED".equals(status))
+                && record.get("response_body") != null) {
             return storedResponse((String) record.get("response_body"));
         }
         return rejected("Request is already processing");
