@@ -66,6 +66,71 @@ input -> optional retrieval/context -> prompt -> model -> decoding -> optional t
 
 这里问题不是“模型坏了”一个笼统结论，而是输出预算和任务要求冲突，导致质量指标下降。
 
+## 排查与修复 Playbook
+
+线上问题不要先猜“是不是模型不行”。按下面顺序处理：
+
+```text
+1. 定义症状: 哪个指标变差，影响哪些用户/任务/时间段
+2. 固定样本: 抽取失败请求，脱敏后形成 replay set
+3. 对比版本: 找出 prompt、模型、参数、schema、guardrail、路由、检索或工具变更
+4. 拆链路: input -> context -> prompt -> model -> decoding -> parser/tool -> guardrail -> infra
+5. 定位根因: 用 trace 证明坏在哪一层
+6. 小修复: 只改一个主要变量，避免同时改 prompt、模型和参数
+7. 回归验证: replay set + regression set 通过后再灰度发布
+```
+
+常见症状可以这样处理：
+
+| 症状 | 先查什么 | 常见修复 |
+|------|----------|----------|
+| 回答变短、漏关键点 | `max_tokens`、摘要 prompt、输出截断、stop sequence | 提高输出预算；在 rubric/prompt 中列必填信息；加 completeness 检查 |
+| factuality 下降 | 是否缺上下文、模型版本变化、用户分布变化、是否要求模型猜测 | 补充可靠上下文；低依据时拒答；加入事实核查或人工复核 |
+| grounding 下降 | 检索片段、引用是否支持结论、context 顺序是否变化 | 调整 retrieval/rerank；减少噪声 chunk；加引用支持检查 |
+| JSON/schema 失败 | schema 是否变更、示例是否冲突、temperature、输出是否被截断 | 使用结构化输出；降低随机性；加 validation retry；简化 schema |
+| 拒答率升高 | safety policy、拒答 prompt、分类器阈值、误拒样本 | 降低误拒阈值；拆分安全拒答和缺信息拒答；补安全替代回答 |
+| 危险输出漏检 | safety classifier 覆盖范围、输出过滤、red team 样本 | 增加高风险分类；加后置验证；把漏检加入 regression set |
+| 延迟升高 | TTFT、总 tokens、排队、检索/工具耗时、重试次数 | 缩短上下文；缓存检索；并行只读工具；设置超时和降级 |
+| 成本暴涨 | 输入 token、输出 token、重试、模型路由、异常用户 | context trimming；限制 top-k；降级小模型；加成本预算和速率限制 |
+| 工具调用错误 | tool schema、参数抽取、权限、超时、幂等、外部 API 变化 | 强校验参数；分类重试；补权限检查；记录 tool observation |
+| RAG 答错 | selected resources、metadata filter、retrieved chunks、rerank、context assembly | 修 resource resolver；修 filter；调 chunk/top-k/rerank；去重压缩上下文 |
+
+修复要尽量绑定到对应层：
+
+```text
+input 问题:
+  加输入分类、长度限制、缺字段追问、恶意输入检测
+
+context/RAG 问题:
+  修 resource scope、metadata filter、chunking、hybrid retrieval、rerank、context order
+
+prompt 问题:
+  明确任务边界、必填项、拒答条件、引用规则，删除冲突示例
+
+model/decoding 问题:
+  固定模型版本，调整 temperature/top_p/max_tokens/stop sequences
+
+parser/schema 问题:
+  使用结构化输出、schema validation、字段级重试和降级路径
+
+guardrail 问题:
+  拆分类别、调整阈值、增加后置验证，把误杀/漏检都加入样本集
+
+infra 问题:
+  查超时、限流、缓存、队列、供应商状态、重试风暴和降级策略
+```
+
+最后用同一批样本验证修复：
+
+```text
+before: 旧版本输出 + 指标
+after: 新版本输出 + 指标
+diff: 哪些样本修好，哪些变差
+release: 小流量灰度，监控同一组指标
+```
+
+没有 replay set 和 trace 的“修复”只能算猜测。
+
 ## 原理层
 
 监控 LLM 应用要同时覆盖工程指标和语义指标。只看 p95 latency 和 error rate，会漏掉大量 HTTP 200 的坏回答；只看人工抽样质量，又会错过成本、拒答率和 schema failure 的系统性变化。
