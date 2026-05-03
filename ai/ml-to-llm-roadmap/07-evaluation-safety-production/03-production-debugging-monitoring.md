@@ -131,6 +131,174 @@ release: 小流量灰度，监控同一组指标
 
 没有 replay set 和 trace 的“修复”只能算猜测。
 
+## 实践演练：摘要漏掉退款原因
+
+只读理论不够。下面这个演练可以直接照着做，用来练习“发现问题 -> 固定样本 -> 定位根因 -> 修复 -> 回归”。
+
+### 背景
+
+你有一个客服对话摘要功能，要求输出：
+
+```text
+用户问题
+处理结论
+退款状态
+退款失败/延迟原因
+下一步动作
+```
+
+发布后用户投诉：摘要变短了，经常漏掉“退款失败原因”。
+
+### Step 1: 准备 replay set
+
+先准备 5 条失败样本，每条只保留必要信息：
+
+```text
+case_id: refund-summary-001
+input:
+  用户: 我的退款怎么还没到账？
+  客服: 查询到订单 A123 的退款被银行拒绝，原因是银行卡已注销。
+  客服: 我们已经创建工单 T88，预计 1 个工作日内重新处理。
+expected_must_include:
+  - 退款被银行拒绝
+  - 原因是银行卡已注销
+  - 已创建工单 T88
+```
+
+每条样本都写 `expected_must_include`，不要只写一个模糊的“摘要要好”。
+
+### Step 2: 跑旧版和新版输出
+
+把同一批样本分别跑旧版和新版，记录：
+
+```text
+case_id
+prompt_version
+model
+max_tokens
+temperature
+output
+missing_fields
+```
+
+示例对比：
+
+| case_id | 版本 | max_tokens | 输出问题 |
+|---------|------|------------|----------|
+| refund-summary-001 | old | 300 | 无缺失 |
+| refund-summary-001 | new | 120 | 漏掉“银行卡已注销” |
+
+这一步的目标不是修复，而是证明问题能复现。
+
+### Step 3: 看 trace，不先改 prompt
+
+每条失败样本至少检查：
+
+```text
+input_tokens
+output_tokens
+finish_reason
+prompt_version
+model_version
+max_tokens
+stop_sequence
+parser_result
+judge_or_human_label
+```
+
+如果看到：
+
+```text
+output_tokens 接近 max_tokens
+finish_reason=length
+```
+
+优先怀疑输出预算不足，而不是模型理解能力下降。
+
+如果看到：
+
+```text
+finish_reason=stop
+但 missing_fields 固定缺退款原因
+```
+
+再看 prompt 是否没有把“退款原因”列为必填。
+
+### Step 4: 一次只改一个变量
+
+不要同时换模型、改 prompt、加 judge、改 max tokens。按顺序试：
+
+```text
+实验 A:
+  只把 max_tokens 从 120 改回 300
+
+实验 B:
+  只在 prompt 里加入：
+  “如果对话中出现退款失败或延迟原因，必须在摘要中写出原因。”
+
+实验 C:
+  只加入后置检查：
+  expected field refund_reason 为空时重试或标记失败
+```
+
+记录每个实验：
+
+```text
+pass_cases
+failed_cases
+new_regressions
+cost_change
+latency_change
+```
+
+### Step 5: 选择最小修复
+
+如果实验 A 修复了大部分样本，说明根因主要是输出预算。修复可以是：
+
+```text
+max_tokens: 120 -> 220
+```
+
+如果实验 B 才修复，说明根因主要是任务约束不清。修复可以是：
+
+```text
+prompt 增加必填字段:
+  refund_status
+  refund_reason
+  next_action
+```
+
+如果 A/B 都不稳定，再加实验 C 的字段级验证。
+
+### Step 6: 固化 regression case
+
+把这批样本加入 regression set：
+
+```text
+case_id
+input
+required_fields
+forbidden_outputs
+expected_behavior
+failure_reason
+```
+
+以后每次改模型、prompt、max tokens 或 schema，都先跑这批样本。只有 replay set 修好且没有新回归，才进入灰度。
+
+### 这个演练练到什么
+
+完成后你应该能说清：
+
+```text
+问题不是“摘要质量差”，而是“退款原因字段缺失”
+缺失能在固定样本复现
+trace 显示新版本 max_tokens 降低，部分输出被截断
+最小修复是恢复输出预算或增加必填字段检查
+修复结果用同一批 replay set 验证
+```
+
+这才是生产排查。没有样本、trace、变量隔离和回归验证，只是在凭感觉调 prompt。
+
 ## 原理层
 
 监控 LLM 应用要同时覆盖工程指标和语义指标。只看 p95 latency 和 error rate，会漏掉大量 HTTP 200 的坏回答；只看人工抽样质量，又会错过成本、拒答率和 schema failure 的系统性变化。
