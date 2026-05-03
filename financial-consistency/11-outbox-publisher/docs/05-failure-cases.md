@@ -8,7 +8,9 @@
 
 ## Send succeeds but mark published fails
 
-如果 Kafka 发送成功，但发布器在把 Outbox 标记为 `PUBLISHED` 前失败，下一次发布可能重放同一条事件。这个重复由消费者幂等吸收：同一个消费者组再次处理同一个 `event_id` 时，会命中 `consumer_processed_event` 的既有事实，然后 ack，不产生第二条成功处理事实。
+如果 Kafka 发送成功后，发布器进程在标记 `PUBLISHED` 之前崩溃，Outbox 行仍停在 `PUBLISHING`。这和 claim 后崩溃一样是 in-doubt 状态；当前发布器不会自动重新 claim stale `PUBLISHING`，必须由 verifier 或运维告警暴露，再由人工或明确恢复流程判断是否重置。
+
+如果发送路径或标记 `PUBLISHED` 的路径抛出异常，并且代码进入 `catch`，发布器会尝试把该行标记为 `FAILED_RETRYABLE`。这类记录后续会被重新 claim 并可能重放同一条事件。重复事件由消费者幂等吸收：同一个消费者组再次处理同一个 `event_id` 时，会命中 `consumer_processed_event` 的既有事实，然后 ack，不产生第二条成功处理事实。
 
 ## Consumer processes but crashes before ack
 
