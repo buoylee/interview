@@ -45,8 +45,15 @@ public class TransferEventConsumer {
 
     private TransferEventEnvelope readEnvelope(ConsumerRecord<String, String> record) {
         try {
-            return objectMapper.readValue(record.value(), TransferEventEnvelope.class);
+            TransferEventEnvelope envelope = objectMapper.readValue(record.value(), TransferEventEnvelope.class);
+            if (envelope == null) {
+                throw invalid("Invalid transfer event envelope", record, null, null);
+            }
+            return envelope;
         } catch (Exception ex) {
+            if (ex instanceof IllegalArgumentException illegalArgumentException) {
+                throw illegalArgumentException;
+            }
             throw invalid("Invalid transfer event envelope", record, null, ex);
         }
     }

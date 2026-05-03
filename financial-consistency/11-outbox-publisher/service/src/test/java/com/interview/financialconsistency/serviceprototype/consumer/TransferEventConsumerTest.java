@@ -34,6 +34,20 @@ class TransferEventConsumerTest {
     }
 
     @Test
+    void nullEnvelopeThrowsWithRecordContextAndDoesNotAck() {
+        Acknowledgment acknowledgment = mock(Acknowledgment.class);
+
+        assertThatThrownBy(() -> consumer.consume(record("null"), acknowledgment))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Invalid transfer event envelope")
+                .hasMessageContaining("topic=funds.transfer.events")
+                .hasMessageContaining("partition=2")
+                .hasMessageContaining("offset=42");
+
+        verifyNoProcessingOrAck(acknowledgment);
+    }
+
+    @Test
     void blankMessageIdThrowsWithRecordContextAndDoesNotAck() {
         Acknowledgment acknowledgment = mock(Acknowledgment.class);
 
