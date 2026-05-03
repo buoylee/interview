@@ -700,3 +700,8 @@ RAG 心智模型
 ```
 
 下一步如果要实现代码，不应该直接上大框架。先用 mini RAG 和一组固定会话样本，把文件选择、检索、注入和 trace 跑通，再决定底层 RetrievalProvider 是 `file_search`、LlamaIndex 还是自建 RAG。
+
+继续看：
+
+- [RAG 文件 Agent 测试用例集](./06-rag-file-agent-test-cases.md)
+- [RAG 文件 Agent 实现路线](./07-implementation-roadmap.md)

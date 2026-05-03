@@ -44,6 +44,8 @@ trace
 3. [Hybrid、Rerank 与调试：从能跑到能排查](./03-hybrid-rerank-debugging.md)
 4. [file_search vs 自建 RAG：托管能力和自管边界](./04-file-search-vs-self-managed-rag.md)
 5. [类 ChatGPT 文件 Agent：文件范围、选择、检索与注入](./05-chatgpt-like-file-agent.md)
+6. [RAG 文件 Agent 测试用例集](./06-rag-file-agent-test-cases.md)
+7. [RAG 文件 Agent 实现路线](./07-implementation-roadmap.md)
 
 ## 阶段产出
 
@@ -54,6 +56,8 @@ trace
 | 调试实验 | 一组故意失败用例 | 能判断失败来自解析、切块、召回、排序、组装还是生成 |
 | file_search 对照 | 一张能力边界表 | 能解释哪些交给 `file_search`，哪些必须自建 |
 | 文件 Agent 教程 | 一条完整 ChatGPT-like 文件会话链路 | 能解释文件范围如何确定、何时检索、何时注入、如何更新 active files |
+| 测试用例集 | 一组可回归的文件 Agent 场景 | 能验证 selected resources、injection mode、trace 是否正确 |
+| 实现路线 | 一个 read-only 文件 Agent MVP 分阶段计划 | 能按阶段实现 Resource Registry、Resolver、RetrievalProvider、ContextAssembler 和 Trace |
 
 ## 和 file_search 的关系
 
@@ -93,6 +97,8 @@ file_search 可以做 RetrievalProvider
 8. Agent Runtime 里文件选择和 RAG 检索是什么关系。
 9. 类 ChatGPT 文件 Agent 如何从当前附件、active files、project/library 里选择资源。
 10. 为什么“选择文件”和“检索 chunks”必须拆成两个阶段。
+11. 如何用固定 regression cases 验证文件选择、注入和 trace。
+12. 第一版 read-only 文件 Agent 应该按什么顺序实现。
 
 ## 连接 Agent Runtime
 
