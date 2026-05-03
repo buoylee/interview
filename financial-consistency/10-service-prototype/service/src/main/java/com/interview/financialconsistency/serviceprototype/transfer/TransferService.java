@@ -63,6 +63,11 @@ public class TransferService {
             return rejected("Amount must have exactly four decimal places");
         }
 
+        TransferResponse accountValidationFailure = validateAccounts(request);
+        if (accountValidationFailure != null) {
+            return accountValidationFailure;
+        }
+
         try {
             idempotencyRepository.insertProcessing(request.idempotencyKey(), requestHash, BUSINESS_TYPE);
         } catch (DuplicateKeyException ex) {
@@ -71,6 +76,10 @@ public class TransferService {
 
         List<AccountRecord> lockedAccounts = lockAccounts(request.fromAccountId(), request.toAccountId());
         AccountRecord fromAccount = accountById(lockedAccounts, request.fromAccountId());
+        TransferResponse lockedAccountValidationFailure = validateLockedAccounts(request, lockedAccounts);
+        if (lockedAccountValidationFailure != null) {
+            return lockedAccountValidationFailure;
+        }
 
         String transferId = "T-" + UUID.randomUUID();
         if (fromAccount.availableBalance().compareTo(amount) < 0) {
@@ -147,6 +156,30 @@ public class TransferService {
         }
         if (request.currency() == null || !request.currency().matches("[A-Z]{3}")) {
             return rejected("Currency must be a 3-letter code");
+        }
+        return null;
+    }
+
+    private TransferResponse validateAccounts(TransferRequest request) {
+        AccountRecord fromAccount = accountRepository.findById(request.fromAccountId()).orElse(null);
+        if (fromAccount == null) {
+            return rejected("Source account does not exist");
+        }
+        AccountRecord toAccount = accountRepository.findById(request.toAccountId()).orElse(null);
+        if (toAccount == null) {
+            return rejected("Target account does not exist");
+        }
+        if (!request.currency().equals(fromAccount.currency()) || !request.currency().equals(toAccount.currency())) {
+            return rejected("Transfer currency must match both accounts");
+        }
+        return null;
+    }
+
+    private TransferResponse validateLockedAccounts(TransferRequest request, List<AccountRecord> lockedAccounts) {
+        AccountRecord fromAccount = accountById(lockedAccounts, request.fromAccountId());
+        AccountRecord toAccount = accountById(lockedAccounts, request.toAccountId());
+        if (!request.currency().equals(fromAccount.currency()) || !request.currency().equals(toAccount.currency())) {
+            return rejected("Transfer currency must match both accounts");
         }
         return null;
     }

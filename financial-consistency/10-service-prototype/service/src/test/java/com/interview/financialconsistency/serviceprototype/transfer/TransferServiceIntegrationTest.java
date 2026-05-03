@@ -128,6 +128,47 @@ class TransferServiceIntegrationTest {
                 .containsEntry("status", "FAILED");
     }
 
+    @Test
+    void currencyMismatchReturnsRejectedWithoutWritingBusinessFacts() {
+        TransferResponse response = transferService.transfer(new TransferRequest(
+                "transfer-key-5", "A-001", "B-001", "EUR", new BigDecimal("25.0000")));
+
+        assertThat(response.status()).isEqualTo("REJECTED");
+        assertNoBusinessFactsOrBalanceChanges();
+    }
+
+    @Test
+    void missingSourceAccountReturnsRejectedWithoutWritingBusinessFacts() {
+        TransferResponse response = transferService.transfer(new TransferRequest(
+                "transfer-key-6", "MISSING-001", "B-001", "USD", new BigDecimal("25.0000")));
+
+        assertThat(response.status()).isEqualTo("REJECTED");
+        assertNoBusinessFactsOrBalanceChanges();
+    }
+
+    @Test
+    void missingTargetAccountReturnsRejectedWithoutWritingBusinessFacts() {
+        TransferResponse response = transferService.transfer(new TransferRequest(
+                "transfer-key-7", "A-001", "MISSING-001", "USD", new BigDecimal("25.0000")));
+
+        assertThat(response.status()).isEqualTo("REJECTED");
+        assertNoBusinessFactsOrBalanceChanges();
+    }
+
+    private void assertNoBusinessFactsOrBalanceChanges() {
+        assertThat(countRows("transfer_order")).isZero();
+        assertThat(countRows("ledger_entry")).isZero();
+        assertThat(countRows("outbox_message")).isZero();
+        assertThat(accountRepository.findById("A-001"))
+                .get()
+                .extracting(AccountRecord::availableBalance)
+                .isEqualTo(new BigDecimal("1000.0000"));
+        assertThat(accountRepository.findById("B-001"))
+                .get()
+                .extracting(AccountRecord::availableBalance)
+                .isEqualTo(new BigDecimal("100.0000"));
+    }
+
     private int countRows(String tableName) {
         Integer count = jdbcTemplate.queryForObject("select count(*) from " + tableName, Integer.class);
         return count == null ? 0 : count;
