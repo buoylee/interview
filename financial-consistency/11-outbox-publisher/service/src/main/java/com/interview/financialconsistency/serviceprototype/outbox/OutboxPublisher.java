@@ -3,6 +3,7 @@ package com.interview.financialconsistency.serviceprototype.outbox;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.interview.financialconsistency.serviceprototype.kafka.TransferEventEnvelope;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -30,18 +31,29 @@ public class OutboxPublisher {
     }
 
     public int publishBatch(int batchSize) {
-        outboxRepository.claimPublishable(batchSize, publisherId);
+        String ownerToken = publisherId + ":" + UUID.randomUUID();
+        outboxRepository.claimPublishable(batchSize, ownerToken);
         int published = 0;
-        for (OutboxMessageRecord message : outboxRepository.findClaimedBy(publisherId)) {
+        for (OutboxMessageRecord message : outboxRepository.findClaimedBy(ownerToken)) {
             try {
                 kafkaTemplate.send(topic, message.aggregateId(), envelopeJson(message)).get(10, TimeUnit.SECONDS);
-                outboxRepository.markPublished(message.messageId());
+                outboxRepository.markPublished(message.messageId(), ownerToken);
                 published++;
             } catch (Exception ex) {
-                outboxRepository.markFailedRetryable(message.messageId(), ex.getMessage());
+                outboxRepository.markFailedRetryable(message.messageId(), ownerToken, failureText(ex));
             }
         }
         return published;
+    }
+
+    private String failureText(Exception ex) {
+        String text = ex.getClass().getName() + ": " + (ex.getMessage() == null ? "" : ex.getMessage());
+        Throwable cause = ex.getCause();
+        if (cause != null) {
+            text += "; cause=" + cause.getClass().getName() + ": "
+                    + (cause.getMessage() == null ? "" : cause.getMessage());
+        }
+        return text;
     }
 
     private String envelopeJson(OutboxMessageRecord message) {

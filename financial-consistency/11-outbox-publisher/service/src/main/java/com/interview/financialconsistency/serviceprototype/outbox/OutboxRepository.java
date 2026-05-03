@@ -47,7 +47,7 @@ public class OutboxRepository {
         return count == null ? 0 : count;
     }
 
-    public int claimPublishable(int batchSize, String publisherId) {
+    public int claimPublishable(int batchSize, String ownerToken) {
         return jdbcTemplate.update(
                 """
                 update outbox_message
@@ -60,11 +60,11 @@ public class OutboxRepository {
                 order by created_at, message_id
                 limit ?
                 """,
-                publisherId,
+                ownerToken,
                 batchSize);
     }
 
-    public List<OutboxMessageRecord> findClaimedBy(String publisherId) {
+    public List<OutboxMessageRecord> findClaimedBy(String ownerToken) {
         return jdbcTemplate.query(
                 """
                 select message_id, aggregate_type, aggregate_id, event_type, payload, status, attempt_count
@@ -81,10 +81,10 @@ public class OutboxRepository {
                         rs.getString("payload"),
                         rs.getString("status"),
                         rs.getInt("attempt_count")),
-                publisherId);
+                ownerToken);
     }
 
-    public void markPublished(String messageId) {
+    public void markPublished(String messageId, String ownerToken) {
         int updated = jdbcTemplate.update(
                 """
                 update outbox_message
@@ -94,14 +94,17 @@ public class OutboxRepository {
                     locked_by = null,
                     last_error = null
                 where message_id = ?
+                  and status = 'PUBLISHING'
+                  and locked_by = ?
                 """,
-                messageId);
+                messageId,
+                ownerToken);
         if (updated != 1) {
             throw new IllegalStateException("Expected to mark one outbox message published but updated " + updated);
         }
     }
 
-    public void markFailedRetryable(String messageId, String error) {
+    public void markFailedRetryable(String messageId, String ownerToken, String error) {
         int updated = jdbcTemplate.update(
                 """
                 update outbox_message
@@ -110,9 +113,12 @@ public class OutboxRepository {
                     locked_by = null,
                     last_error = ?
                 where message_id = ?
+                  and status = 'PUBLISHING'
+                  and locked_by = ?
                 """,
                 error == null ? "" : error.substring(0, Math.min(error.length(), 1024)),
-                messageId);
+                messageId,
+                ownerToken);
         if (updated != 1) {
             throw new IllegalStateException("Expected to mark one outbox message retryable but updated " + updated);
         }

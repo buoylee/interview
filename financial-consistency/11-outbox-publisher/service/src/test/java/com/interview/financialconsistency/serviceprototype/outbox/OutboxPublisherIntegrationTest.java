@@ -1,15 +1,27 @@
 package com.interview.financialconsistency.serviceprototype.outbox;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.interview.financialconsistency.serviceprototype.transfer.TransferRequest;
 import com.interview.financialconsistency.serviceprototype.transfer.TransferResponse;
 import com.interview.financialconsistency.serviceprototype.transfer.TransferService;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.Duration;
+import java.util.List;
+import java.util.Properties;
+import java.util.UUID;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.serialization.StringDeserializer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -25,6 +37,18 @@ class OutboxPublisherIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private OutboxRepository outboxRepository;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Value("${spring.kafka.bootstrap-servers}")
+    private String bootstrapServers;
+
+    @Value("${app.kafka.transfer-events-topic}")
+    private String topic;
 
     @BeforeEach
     void cleanBusinessTables() {
@@ -69,6 +93,64 @@ class OutboxPublisherIntegrationTest {
         assertThat(countRows("ledger_entry")).isEqualTo(2);
     }
 
+    @Test
+    void repositoryClaimFindUsesDistinctOwnerTokens() {
+        insertOutboxMessage("message-owner-1", "transfer-owner-1");
+        insertOutboxMessage("message-owner-2", "transfer-owner-2");
+
+        assertThat(outboxRepository.claimPublishable(1, "local-publisher:owner-a")).isEqualTo(1);
+        assertThat(outboxRepository.claimPublishable(1, "local-publisher:owner-b")).isEqualTo(1);
+
+        List<OutboxMessageRecord> ownerA = outboxRepository.findClaimedBy("local-publisher:owner-a");
+        List<OutboxMessageRecord> ownerB = outboxRepository.findClaimedBy("local-publisher:owner-b");
+
+        assertThat(ownerA).hasSize(1);
+        assertThat(ownerB).hasSize(1);
+        assertThat(ownerA.get(0).messageId()).isNotEqualTo(ownerB.get(0).messageId());
+    }
+
+    @Test
+    void staleOwnerCannotMarkPublishedOrRetryableAfterOwnershipChanged() {
+        insertOutboxMessage("message-stale-owner", "transfer-stale-owner");
+
+        assertThat(outboxRepository.claimPublishable(1, "local-publisher:owner-a")).isEqualTo(1);
+        jdbcTemplate.update(
+                "update outbox_message set locked_by = ? where message_id = ?",
+                "local-publisher:owner-b",
+                "message-stale-owner");
+
+        assertThatThrownBy(() -> outboxRepository.markPublished("message-stale-owner", "local-publisher:owner-a"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("updated 0");
+        assertThat(outboxStatus("message-stale-owner")).isEqualTo("PUBLISHING");
+
+        outboxRepository.markFailedRetryable("message-stale-owner", "local-publisher:owner-b", "boom");
+        assertThat(outboxStatus("message-stale-owner")).isEqualTo("FAILED_RETRYABLE");
+
+        assertThatThrownBy(() -> outboxRepository.markFailedRetryable("message-stale-owner", "local-publisher:owner-b", "late"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("updated 0");
+    }
+
+    @Test
+    void publisherWritesTransferEnvelopeToKafkaTopic() throws Exception {
+        TransferResponse response = transferService.transfer(new TransferRequest(
+                "outbox-publisher-key-3", "A-001", "B-001", "USD", new BigDecimal("25.0000")));
+        String messageId = messageIdForTransfer(response.transferId());
+
+        assertThat(outboxPublisher.publishBatch(10)).isEqualTo(1);
+
+        ConsumerRecord<String, String> record = readRecordForKey(response.transferId());
+        assertThat(record.key()).isEqualTo(response.transferId());
+
+        JsonNode envelope = objectMapper.readTree(record.value());
+        assertThat(envelope.get("messageId").asText()).isEqualTo(messageId);
+        assertThat(envelope.get("aggregateType").asText()).isEqualTo("TRANSFER");
+        assertThat(envelope.get("aggregateId").asText()).isEqualTo(response.transferId());
+        assertThat(envelope.get("eventType").asText()).isEqualTo("TransferSucceeded");
+        assertThat(envelope.get("payload").asText()).contains(response.transferId());
+    }
+
     private String messageIdForTransfer(String transferId) {
         return jdbcTemplate.queryForObject(
                 "select message_id from outbox_message where aggregate_id = ?",
@@ -101,5 +183,36 @@ class OutboxPublisherIntegrationTest {
     private int countRows(String tableName) {
         Integer count = jdbcTemplate.queryForObject("select count(*) from " + tableName, Integer.class);
         return count == null ? 0 : count;
+    }
+
+    private void insertOutboxMessage(String messageId, String transferId) {
+        outboxRepository.insertPending(
+                messageId,
+                "TRANSFER",
+                transferId,
+                "TransferSucceeded",
+                "{\"transferId\":\"" + transferId + "\"}");
+    }
+
+    private ConsumerRecord<String, String> readRecordForKey(String key) {
+        Properties properties = new Properties();
+        properties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        properties.put(ConsumerConfig.GROUP_ID_CONFIG, "outbox-publisher-test-" + UUID.randomUUID());
+        properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        properties.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+
+        try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(properties)) {
+            consumer.subscribe(List.of(topic));
+            long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+            while (System.nanoTime() < deadline) {
+                for (ConsumerRecord<String, String> record : consumer.poll(Duration.ofMillis(250))) {
+                    if (key.equals(record.key())) {
+                        return record;
+                    }
+                }
+            }
+        }
+        throw new AssertionError("Did not find Kafka record with key " + key);
     }
 }
