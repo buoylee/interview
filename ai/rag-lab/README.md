@@ -43,6 +43,7 @@ trace
 2. [从零设计 mini RAG：看清文件、chunk、检索和 prompt](./02-mini-rag-from-scratch.md)
 3. [Hybrid、Rerank 与调试：从能跑到能排查](./03-hybrid-rerank-debugging.md)
 4. [file_search vs 自建 RAG：托管能力和自管边界](./04-file-search-vs-self-managed-rag.md)
+5. [类 ChatGPT 文件 Agent：文件范围、选择、检索与注入](./05-chatgpt-like-file-agent.md)
 
 ## 阶段产出
 
@@ -52,6 +53,7 @@ trace
 | mini RAG | 一个只支持 txt/md 的实验设计 | 能打印每个 chunk、score、最终 prompt |
 | 调试实验 | 一组故意失败用例 | 能判断失败来自解析、切块、召回、排序、组装还是生成 |
 | file_search 对照 | 一张能力边界表 | 能解释哪些交给 `file_search`，哪些必须自建 |
+| 文件 Agent 教程 | 一条完整 ChatGPT-like 文件会话链路 | 能解释文件范围如何确定、何时检索、何时注入、如何更新 active files |
 
 ## 和 file_search 的关系
 
@@ -89,6 +91,8 @@ file_search 可以做 RetrievalProvider
 6. context assembly 为什么不是简单取 top-k。
 7. `file_search` 托管了哪些 RAG 步骤，哪些没托管。
 8. Agent Runtime 里文件选择和 RAG 检索是什么关系。
+9. 类 ChatGPT 文件 Agent 如何从当前附件、active files、project/library 里选择资源。
+10. 为什么“选择文件”和“检索 chunks”必须拆成两个阶段。
 
 ## 连接 Agent Runtime
 

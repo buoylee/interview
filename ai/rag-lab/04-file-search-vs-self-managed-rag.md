@@ -221,3 +221,9 @@ RAG/file_search 再解决：
 ```
 
 如果答案是 yes，底层先用 `file_search` 是务实选择。如果答案是 no，把所有文件丢进 vector store 让工具自己决定，就是生产风险。
+
+## 下一步
+
+理解 `file_search` 和自建 RAG 的边界后，下一步要把它们放回类 ChatGPT 文件 Agent 的完整会话链路里：用户上传文件、runtime 选择文件范围、RAG 或 `file_search` 检索内容、context assembler 注入上下文、trace 更新 active files。
+
+下一篇：[类 ChatGPT 文件 Agent：文件范围、选择、检索与注入](./05-chatgpt-like-file-agent.md)
