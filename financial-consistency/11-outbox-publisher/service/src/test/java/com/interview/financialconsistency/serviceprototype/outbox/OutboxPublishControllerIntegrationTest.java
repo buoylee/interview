@@ -6,12 +6,15 @@ import com.interview.financialconsistency.serviceprototype.transfer.TransferRequ
 import com.interview.financialconsistency.serviceprototype.transfer.TransferResponse;
 import com.interview.financialconsistency.serviceprototype.transfer.TransferService;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -47,10 +50,54 @@ class OutboxPublishControllerIntegrationTest {
                 "outbox-api-key-1", "A-001", "B-001", "USD", new BigDecimal("25.0000")));
         String messageId = messageIdForTransfer(transfer.transferId());
 
-        Map<String, Object> response = restTemplate.postForObject("/outbox/publish-once", null, Map.class);
+        ResponseEntity<Map> response = restTemplate.postForEntity("/outbox/publish-once", null, Map.class);
 
-        assertThat(response).containsEntry("published", 1);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat((Map<String, Object>) response.getBody()).containsEntry("published", 1);
         assertThat(outboxStatus(messageId)).isEqualTo("PUBLISHED");
+        awaitProcessed(messageId);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void publishOnceHonorsExplicitBatchSize() {
+        TransferResponse first = transferService.transfer(new TransferRequest(
+                "outbox-api-key-2", "A-001", "B-001", "USD", new BigDecimal("25.0000")));
+        TransferResponse second = transferService.transfer(new TransferRequest(
+                "outbox-api-key-3", "A-001", "B-001", "USD", new BigDecimal("25.0000")));
+        String firstMessageId = messageIdForTransfer(first.transferId());
+        String secondMessageId = messageIdForTransfer(second.transferId());
+
+        ResponseEntity<Map> response = restTemplate.postForEntity("/outbox/publish-once?batchSize=1", null, Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat((Map<String, Object>) response.getBody()).containsEntry("published", 1);
+        assertThat(countPublished(firstMessageId, secondMessageId)).isEqualTo(1);
+        awaitAnyProcessed(firstMessageId, secondMessageId);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void publishOnceReturnsZeroForEmptyOutbox() {
+        ResponseEntity<Map> response = restTemplate.postForEntity("/outbox/publish-once", null, Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat((Map<String, Object>) response.getBody()).containsEntry("published", 0);
+    }
+
+    @Test
+    void publishOnceRejectsZeroBatchSize() {
+        assertInvalidBatchSize(0);
+    }
+
+    @Test
+    void publishOnceRejectsNegativeBatchSize() {
+        assertInvalidBatchSize(-1);
+    }
+
+    @Test
+    void publishOnceRejectsTooLargeBatchSize() {
+        assertInvalidBatchSize(101);
     }
 
     private String messageIdForTransfer(String transferId) {
@@ -65,5 +112,67 @@ class OutboxPublishControllerIntegrationTest {
                 "select status from outbox_message where message_id = ?",
                 String.class,
                 messageId);
+    }
+
+    private int countPublished(String firstMessageId, String secondMessageId) {
+        Integer count = jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from outbox_message
+                where message_id in (?, ?) and status = 'PUBLISHED'
+                """,
+                Integer.class,
+                firstMessageId,
+                secondMessageId);
+        return count == null ? 0 : count;
+    }
+
+    private void assertInvalidBatchSize(int batchSize) {
+        ResponseEntity<Map> response = restTemplate.postForEntity(
+                "/outbox/publish-once?batchSize=" + batchSize,
+                null,
+                Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    private void awaitProcessed(String messageId) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (processedCount(messageId) > 0) {
+                return;
+            }
+            sleepBriefly();
+        }
+        throw new AssertionError("Timed out waiting for consumer_processed_event " + messageId);
+    }
+
+    private void awaitAnyProcessed(String firstMessageId, String secondMessageId) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (processedCount(firstMessageId) + processedCount(secondMessageId) > 0) {
+                return;
+            }
+            sleepBriefly();
+        }
+        throw new AssertionError(
+                "Timed out waiting for consumer_processed_event " + firstMessageId + " or " + secondMessageId);
+    }
+
+    private int processedCount(String messageId) {
+        Integer count = jdbcTemplate.queryForObject(
+                "select count(*) from consumer_processed_event where event_id = ?",
+                Integer.class,
+                messageId);
+        return count == null ? 0 : count;
+    }
+
+    private void sleepBriefly() {
+        try {
+            Thread.sleep(50);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("Interrupted while waiting for consumer_processed_event", ex);
+        }
     }
 }
