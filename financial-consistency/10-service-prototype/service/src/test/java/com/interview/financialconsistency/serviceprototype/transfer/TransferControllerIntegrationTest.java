@@ -66,16 +66,53 @@ class TransferControllerIntegrationTest {
         assertThat(response.getBody().status()).isEqualTo("REJECTED");
     }
 
+    @Test
+    void postTransfersReturnsBadRequestForMissingFields() {
+        ResponseEntity<TransferResponse> response = postTransfer("api-key-3", Map.of());
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().status()).isEqualTo("REJECTED");
+    }
+
+    @Test
+    void postTransfersReturnsBadRequestForNegativeAmount() {
+        ResponseEntity<TransferResponse> response = postTransfer("api-key-4", new BigDecimal("-1.0000"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().status()).isEqualTo("REJECTED");
+    }
+
+    @Test
+    void postTransfersReturnsBadRequestForMalformedCurrency() {
+        Map<String, Object> body = Map.of(
+                "fromAccountId", "A-001",
+                "toAccountId", "B-001",
+                "currency", "usd",
+                "amount", new BigDecimal("25.0000"));
+
+        ResponseEntity<TransferResponse> response = postTransfer("api-key-5", body);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().status()).isEqualTo("REJECTED");
+    }
+
     private ResponseEntity<TransferResponse> postTransfer(String idempotencyKey, BigDecimal amount) {
-        HttpHeaders headers = new HttpHeaders();
-        if (idempotencyKey != null) {
-            headers.add("Idempotency-Key", idempotencyKey);
-        }
         Map<String, Object> body = Map.of(
                 "fromAccountId", "A-001",
                 "toAccountId", "B-001",
                 "currency", "USD",
                 "amount", amount);
+        return postTransfer(idempotencyKey, body);
+    }
+
+    private ResponseEntity<TransferResponse> postTransfer(String idempotencyKey, Map<String, Object> body) {
+        HttpHeaders headers = new HttpHeaders();
+        if (idempotencyKey != null) {
+            headers.add("Idempotency-Key", idempotencyKey);
+        }
         return restTemplate.postForEntity("/transfers", new HttpEntity<>(body, headers), TransferResponse.class);
     }
 }
