@@ -2,7 +2,9 @@
 
 ## Publisher crashes before send
 
-发布器如果在发送 Kafka 之前崩溃，Outbox 行会停在 `PENDING` 或 `PUBLISHING`。这条记录仍然保留在 MySQL 中，代表事件还没有可靠发布完成。恢复动作是再次运行发布器，让它重新处理可发布记录。
+如果发布器崩溃发生在 claim 之前，Outbox 行仍是 `PENDING`，下一次发布调用可以自然重试。如果之前发送失败并被标记为 `FAILED_RETRYABLE`，下一次发布调用也会重新 claim 并重试。
+
+如果发布器已经把行 claim 成 `PUBLISHING` 后崩溃，这条记录是卡住的 in-doubt 状态。当前发布器只自动 claim `PENDING` 和 `FAILED_RETRYABLE`，不会自动回收 stale `PUBLISHING`。这种状态必须由 verifier 或运维告警暴露，再由人工或明确的恢复流程判断是否重置为可重试状态。
 
 ## Send succeeds but mark published fails
 

@@ -21,14 +21,18 @@ bash financial-consistency/11-outbox-publisher/scripts/run-service.sh
 服务启动后可以手工触发一次 Outbox 发布：
 
 ```bash
-curl -X POST "http://localhost:8080/outbox/publish-once?batchSize=10"
+curl -X POST "http://localhost:8081/outbox/publish-once?batchSize=10"
 ```
 
 `batchSize` 的有效范围是 `1..100`，默认值是 `10`。验证接口是：
 
 ```bash
-curl "http://localhost:8080/verification/violations"
+curl "http://localhost:8081/verification/violations"
 ```
+
+## 文档导航
+
+`docs/01-domain-model.md`、`docs/02-transaction-boundary.md`、`docs/03-outbox-flow.md` 和 `docs/04-verification-from-mysql.md` 是从第 10 章继承并更新的核心模型说明，保留本地事务、Outbox 和 MySQL 事实验证的背景。`docs/01-outbox-publisher.md` 到 `docs/05-failure-cases.md` 是第 11 章新增的 Kafka 发布、消费者幂等、验证和故障边界说明。
 
 ## 发布链路
 
