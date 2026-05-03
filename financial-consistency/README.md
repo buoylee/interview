@@ -16,6 +16,7 @@
 - [2026-05-02-financial-consistency-interview-synthesis-design.md](../docs/superpowers/specs/2026-05-02-financial-consistency-interview-synthesis-design.md)
 - [2026-05-02-financial-consistency-code-lab-design.md](../docs/superpowers/specs/2026-05-02-financial-consistency-code-lab-design.md)
 - [2026-05-03-financial-consistency-service-prototype-design.md](../docs/superpowers/specs/2026-05-03-financial-consistency-service-prototype-design.md)
+- [2026-05-03-financial-consistency-outbox-publisher-design.md](../docs/superpowers/specs/2026-05-03-financial-consistency-outbox-publisher-design.md)
 - [旧笔记索引](./references.md)
 
 ## 当前决策
