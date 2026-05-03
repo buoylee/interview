@@ -32,6 +32,7 @@ class TransferMysqlVerifierIntegrationTest {
 
     @BeforeEach
     void cleanBusinessTables() {
+        jdbcTemplate.update("delete from consumer_processed_event");
         jdbcTemplate.update("delete from outbox_message");
         jdbcTemplate.update("delete from ledger_entry");
         jdbcTemplate.update("delete from transfer_order");
@@ -166,6 +167,76 @@ class TransferMysqlVerifierIntegrationTest {
     }
 
     @Test
+    void verifierFindsPublishedTransferEventWithoutConsumerProcessing() {
+        insertSuccessfulTransfer("T-PUBLISHED-NOT-CONSUMED", "REQ-PUBLISHED-NOT-CONSUMED", "50.0000");
+        insertLedger("L-PUBLISHED-NOT-CONSUMED-1", "T-PUBLISHED-NOT-CONSUMED", "A-001", "DEBIT", "USD", "50.0000");
+        insertLedger(
+                "L-PUBLISHED-NOT-CONSUMED-2", "T-PUBLISHED-NOT-CONSUMED", "B-001", "CREDIT", "USD", "50.0000");
+        insertSucceededOutbox("M-PUBLISHED-NOT-CONSUMED", "T-PUBLISHED-NOT-CONSUMED");
+        markOutboxStatus("M-PUBLISHED-NOT-CONSUMED", "PUBLISHED", 1);
+
+        assertThat(verifyExtractedFacts())
+                .extracting(DbInvariantViolation::invariant)
+                .containsExactly("CONSUMER_PROCESSED_PUBLISHED_EVENT");
+    }
+
+    @Test
+    void verifierFindsPublishAttemptStillRetryable() {
+        insertSuccessfulTransfer("T-PUBLISH-RETRY", "REQ-PUBLISH-RETRY", "50.0000");
+        insertLedger("L-PUBLISH-RETRY-1", "T-PUBLISH-RETRY", "A-001", "DEBIT", "USD", "50.0000");
+        insertLedger("L-PUBLISH-RETRY-2", "T-PUBLISH-RETRY", "B-001", "CREDIT", "USD", "50.0000");
+        insertSucceededOutbox("M-PUBLISH-RETRY", "T-PUBLISH-RETRY");
+        markOutboxStatus("M-PUBLISH-RETRY", "FAILED_RETRYABLE", 1);
+
+        assertThat(verifyExtractedFacts())
+                .extracting(DbInvariantViolation::invariant)
+                .containsExactly("OUTBOX_PUBLISH_REQUIRED");
+    }
+
+    @Test
+    void verifierFindsDuplicateConsumerProcessingFacts() {
+        DbHistory history = new DbHistory(List.of(
+                new DbFact(
+                        "consumer_processed_event",
+                        "row-1",
+                        "M-DUPLICATE-CONSUMED",
+                        Map.of(
+                                "event_id",
+                                "M-DUPLICATE-CONSUMED",
+                                "consumer_group",
+                                "funds-transfer-event-consumer",
+                                "status",
+                                "PROCESSED")),
+                new DbFact(
+                        "consumer_processed_event",
+                        "row-2",
+                        "M-DUPLICATE-CONSUMED",
+                        Map.of(
+                                "event_id",
+                                "M-DUPLICATE-CONSUMED",
+                                "consumer_group",
+                                "funds-transfer-event-consumer",
+                                "status",
+                                "PROCESSED"))));
+
+        assertThat(verifier.verify(history))
+                .extracting(DbInvariantViolation::invariant)
+                .containsExactly("CONSUMER_IDEMPOTENT_PROCESSING");
+    }
+
+    @Test
+    void verifierFindsNoViolationsAfterPublishAndConsume() {
+        insertSuccessfulTransfer("T-PUBLISHED-CONSUMED", "REQ-PUBLISHED-CONSUMED", "50.0000");
+        insertLedger("L-PUBLISHED-CONSUMED-1", "T-PUBLISHED-CONSUMED", "A-001", "DEBIT", "USD", "50.0000");
+        insertLedger("L-PUBLISHED-CONSUMED-2", "T-PUBLISHED-CONSUMED", "B-001", "CREDIT", "USD", "50.0000");
+        insertSucceededOutbox("M-PUBLISHED-CONSUMED", "T-PUBLISHED-CONSUMED");
+        markOutboxStatus("M-PUBLISHED-CONSUMED", "PUBLISHED", 1);
+        insertProcessedEvent("M-PUBLISHED-CONSUMED", "T-PUBLISHED-CONSUMED");
+
+        assertThat(verifyExtractedFacts()).isEmpty();
+    }
+
+    @Test
     void extractorUsesTransferBusinessIdentifiersForLedgerAndOutboxFactIds() {
         insertSuccessfulTransfer("T-FACT-ID", "REQ-FACT-ID", "50.0000");
         insertLedger("L-FACT-ID-1", "T-FACT-ID", "A-001", "DEBIT", "USD", "50.0000");
@@ -264,5 +335,34 @@ class TransferMysqlVerifierIntegrationTest {
                 transferId,
                 eventType,
                 "{\"transferId\":\"" + transferId + "\"}");
+    }
+
+    private void markOutboxStatus(String messageId, String status, int attemptCount) {
+        jdbcTemplate.update(
+                """
+                update outbox_message
+                set status = ?,
+                    attempt_count = ?,
+                    published_at = case when ? = 'PUBLISHED' then current_timestamp(6) else published_at end
+                where message_id = ?
+                """,
+                status,
+                attemptCount,
+                status,
+                messageId);
+    }
+
+    private void insertProcessedEvent(String eventId, String transferId) {
+        jdbcTemplate.update(
+                """
+                insert into consumer_processed_event (
+                    event_id, transfer_id, topic, partition_id, offset_value,
+                    consumer_group, status, processed_at
+                )
+                values (?, ?, 'funds.transfer.events', 0, 100, 'funds-transfer-event-consumer',
+                        'PROCESSED', current_timestamp(6))
+                """,
+                eventId,
+                transferId);
     }
 }

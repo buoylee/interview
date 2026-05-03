@@ -19,6 +19,9 @@ public class TransferMysqlVerifier {
     public static final String LEDGER_REQUIRES_SUCCEEDED_TRANSFER = "LEDGER_REQUIRES_SUCCEEDED_TRANSFER";
     public static final String IDEMPOTENCY_KEY_SINGLE_SUCCESSFUL_BUSINESS_ID =
             "IDEMPOTENCY_KEY_SINGLE_SUCCESSFUL_BUSINESS_ID";
+    public static final String OUTBOX_PUBLISH_REQUIRED = "OUTBOX_PUBLISH_REQUIRED";
+    public static final String CONSUMER_PROCESSED_PUBLISHED_EVENT = "CONSUMER_PROCESSED_PUBLISHED_EVENT";
+    public static final String CONSUMER_IDEMPOTENT_PROCESSING = "CONSUMER_IDEMPOTENT_PROCESSING";
 
     public List<DbInvariantViolation> verify(DbHistory history) {
         Map<String, List<DbFact>> factsByTable = history.facts().stream()
@@ -27,6 +30,7 @@ public class TransferMysqlVerifier {
         List<DbFact> ledgers = factsByTable.getOrDefault("ledger_entry", List.of());
         List<DbFact> outboxMessages = factsByTable.getOrDefault("outbox_message", List.of());
         List<DbFact> idempotencyRecords = factsByTable.getOrDefault("idempotency_record", List.of());
+        List<DbFact> consumerProcessedEvents = factsByTable.getOrDefault("consumer_processed_event", List.of());
 
         Map<String, List<DbFact>> ledgersByTransferId = ledgers.stream()
                 .collect(Collectors.groupingBy(DbFact::businessId, LinkedHashMap::new, Collectors.toList()));
@@ -53,6 +57,9 @@ public class TransferMysqlVerifier {
         }
         verifyLedgersHaveSucceededTransfer(violations, ledgers, transfersById);
         verifyIdempotencyRecords(violations, idempotencyRecords);
+        verifyOutboxPublishing(violations, outboxMessages);
+        verifyPublishedEventsConsumed(violations, outboxMessages, consumerProcessedEvents);
+        verifyConsumerIdempotentProcessing(violations, consumerProcessedEvents);
         return List.copyOf(violations);
     }
 
@@ -147,6 +154,74 @@ public class TransferMysqlVerifier {
                         relatedFactIds));
             }
         }
+    }
+
+    private void verifyOutboxPublishing(List<DbInvariantViolation> violations, List<DbFact> outboxMessages) {
+        for (DbFact message : outboxMessages) {
+            String status = message.attributes().get("status");
+            if (isTransferSucceededOutbox(message)
+                    && ("FAILED_RETRYABLE".equals(status) || "PUBLISHING".equals(status))
+                    && attemptCount(message) > 0) {
+                violations.add(new DbInvariantViolation(
+                        OUTBOX_PUBLISH_REQUIRED,
+                        "TransferSucceeded outbox message " + messageId(message)
+                                + " has a publish attempt that still requires publishing",
+                        List.of(physicalFactId(message))));
+            }
+        }
+    }
+
+    private void verifyPublishedEventsConsumed(
+            List<DbInvariantViolation> violations, List<DbFact> outboxMessages, List<DbFact> consumerProcessedEvents) {
+        Set<String> processedEventIds = consumerProcessedEvents.stream()
+                .filter(event -> "PROCESSED".equals(event.attributes().get("status")))
+                .map(event -> event.attributes().get("event_id"))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        for (DbFact message : outboxMessages) {
+            if ("PUBLISHED".equals(message.attributes().get("status"))
+                    && !processedEventIds.contains(messageId(message))) {
+                violations.add(new DbInvariantViolation(
+                        CONSUMER_PROCESSED_PUBLISHED_EVENT,
+                        "Published outbox message " + messageId(message) + " requires consumer processing",
+                        List.of(physicalFactId(message))));
+            }
+        }
+    }
+
+    private void verifyConsumerIdempotentProcessing(
+            List<DbInvariantViolation> violations, List<DbFact> consumerProcessedEvents) {
+        Map<String, List<DbFact>> processedEventsByGroupAndEvent = consumerProcessedEvents.stream()
+                .filter(event -> "PROCESSED".equals(event.attributes().get("status")))
+                .collect(Collectors.groupingBy(
+                        event -> event.attributes().get("consumer_group") + ":" + event.attributes().get("event_id"),
+                        LinkedHashMap::new,
+                        Collectors.toList()));
+
+        for (Map.Entry<String, List<DbFact>> entry : processedEventsByGroupAndEvent.entrySet()) {
+            if (entry.getValue().size() > 1) {
+                DbFact first = entry.getValue().get(0);
+                violations.add(new DbInvariantViolation(
+                        CONSUMER_IDEMPOTENT_PROCESSING,
+                        "Consumer group " + first.attributes().get("consumer_group") + " processed event "
+                                + first.attributes().get("event_id") + " more than once",
+                        entry.getValue().stream().map(this::physicalFactId).toList()));
+            }
+        }
+    }
+
+    private boolean isTransferSucceededOutbox(DbFact message) {
+        return "TRANSFER".equals(message.attributes().get("aggregate_type"))
+                && "TransferSucceeded".equals(message.attributes().get("event_type"));
+    }
+
+    private int attemptCount(DbFact message) {
+        String attemptCount = message.attributes().get("attempt_count");
+        return attemptCount == null || attemptCount.isBlank() ? 0 : Integer.parseInt(attemptCount);
+    }
+
+    private String messageId(DbFact message) {
+        return message.attributes().getOrDefault("message_id", message.factId());
     }
 
     private BigDecimal amount(DbFact ledger) {

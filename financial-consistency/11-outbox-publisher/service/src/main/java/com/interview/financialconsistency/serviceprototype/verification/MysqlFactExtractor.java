@@ -21,6 +21,7 @@ public class MysqlFactExtractor {
         facts.addAll(extractLedgerEntries());
         facts.addAll(extractIdempotencyRecords());
         facts.addAll(extractOutboxMessages());
+        facts.addAll(extractConsumerProcessedEvents());
         facts.addAll(extractAccounts());
         return new DbHistory(facts);
     }
@@ -77,6 +78,20 @@ public class MysqlFactExtractor {
                         """)
                 .stream()
                 .map(row -> fact("outbox_message", row, "aggregate_id", "aggregate_id"))
+                .toList();
+    }
+
+    private List<DbFact> extractConsumerProcessedEvents() {
+        return jdbcTemplate
+                .queryForList(
+                        """
+                        select event_id, transfer_id, topic, partition_id, offset_value,
+                               consumer_group, status, processed_at, failure_reason, created_at, updated_at
+                        from consumer_processed_event
+                        order by event_id
+                        """)
+                .stream()
+                .map(row -> fact("consumer_processed_event", row, "event_id", "event_id"))
                 .toList();
     }
 
