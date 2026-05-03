@@ -21,7 +21,7 @@ for attempt in {1..90}; do
 done
 
 for attempt in {1..90}; do
-  if docker compose -f "$ROOT_DIR/docker-compose.yml" exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1; then
+  if docker compose -f "$ROOT_DIR/docker-compose.yml" exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list >/dev/null 2>&1; then
     break
   fi
   sleep 1
@@ -32,7 +32,7 @@ for attempt in {1..90}; do
 done
 
 docker compose -f "$ROOT_DIR/docker-compose.yml" exec -T kafka /opt/kafka/bin/kafka-topics.sh \
-  --bootstrap-server localhost:9092 \
+  --bootstrap-server kafka:9092 \
   --create \
   --if-not-exists \
   --topic funds.transfer.events \

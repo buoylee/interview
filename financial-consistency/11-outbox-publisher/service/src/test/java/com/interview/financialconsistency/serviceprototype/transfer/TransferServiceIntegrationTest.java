@@ -231,7 +231,7 @@ class TransferServiceIntegrationTest {
     }
 
     private JdbcTemplate rootJdbcTemplate() {
-        String port = System.getenv().getOrDefault("MYSQL_HOST_PORT", "3307");
+        String port = System.getenv().getOrDefault("MYSQL_HOST_PORT", "3308");
         DriverManagerDataSource dataSource = new DriverManagerDataSource();
         dataSource.setUrl("jdbc:mysql://localhost:" + port
                 + "/funds_core?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC");
