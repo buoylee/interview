@@ -1,0 +1,20 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: funds_core
+      MYSQL_USER: funds
+      MYSQL_PASSWORD: funds
+    ports:
+      - "${MYSQL_HOST_PORT:-3307}:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-prootpass"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - funds-core-mysql-data:/var/lib/mysql
+
+volumes:
+  funds-core-mysql-data:

@@ -15,6 +15,7 @@
 - [2026-05-02-financial-consistency-reconciliation-design.md](../docs/superpowers/specs/2026-05-02-financial-consistency-reconciliation-design.md)
 - [2026-05-02-financial-consistency-interview-synthesis-design.md](../docs/superpowers/specs/2026-05-02-financial-consistency-interview-synthesis-design.md)
 - [2026-05-02-financial-consistency-code-lab-design.md](../docs/superpowers/specs/2026-05-02-financial-consistency-code-lab-design.md)
+- [2026-05-03-financial-consistency-service-prototype-design.md](../docs/superpowers/specs/2026-05-03-financial-consistency-service-prototype-design.md)
 - [旧笔记索引](./references.md)
 
 ## 当前决策
@@ -23,7 +24,7 @@
 - 辅助语言：Go，用于后续压测、故障注入或基础设施工具。
 - 主框架路线：Spring Boot + Kafka + Outbox + Temporal。
 - 对比框架：Seata、Camunda；用于理解取舍，不作为主实现路线。
-- 架构形态：从第一阶段开始就是分布式服务边界，不用单体服务作为主实现。
+- 架构形态：先用单个 Funds Core Service 建立清晰的本地事务边界，再逐步演进到跨服务 Saga、Outbox 发布器和真实分布式服务边界。
 - 起点场景：A 给 B 转账。
 - 最终目标：从转账扩展到充值、提现、支付回调、电商交易、机票酒店组合预订、退款、跨境和多币种结算。
 
@@ -87,6 +88,9 @@
 
 - [09-code-lab](./09-code-lab/README.md)
   纯 Java 内存代码实验室：模型、异常历史、一致性判定器、runner 和可解释失败报告。
+
+- [10-service-prototype](./10-service-prototype/README.md)
+  Spring Boot + MySQL 内部转账服务原型：本地事务、幂等、双分录账本、Outbox 和数据库事实验证。
 
 ## 真实工程约束
 
