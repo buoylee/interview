@@ -46,4 +46,26 @@ class SchemaMigrationTest {
 
         assertThat(accountIds).containsExactlyInAnyOrder("A-001", "B-001");
     }
+
+    @Test
+    void outboxPublisherColumnsAndConsumerTableExist() {
+        assertThat(columnNames("outbox_message"))
+                .contains("locked_at", "locked_by", "last_error");
+        assertThat(columnNames("consumer_processed_event"))
+                .contains("event_id", "transfer_id", "topic", "partition_id",
+                        "offset_value", "consumer_group", "status", "processed_at", "failure_reason");
+    }
+
+    private List<String> columnNames(String tableName) {
+        return jdbcTemplate.queryForList(
+                """
+                select column_name
+                from information_schema.columns
+                where table_schema = database()
+                  and table_name = ?
+                order by ordinal_position
+                """,
+                String.class,
+                tableName);
+    }
 }
