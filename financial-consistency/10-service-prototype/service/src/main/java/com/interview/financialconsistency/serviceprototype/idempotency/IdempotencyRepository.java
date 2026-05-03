@@ -46,7 +46,7 @@ public class IdempotencyRepository {
             String status,
             int responseCode,
             String responseBody) {
-        jdbcTemplate.update(
+        int rowsUpdated = jdbcTemplate.update(
                 """
                 update idempotency_record
                 set business_id = ?,
@@ -60,5 +60,12 @@ public class IdempotencyRepository {
                 responseCode,
                 responseBody,
                 idempotencyKey);
+        if (rowsUpdated != 1) {
+            throw new IllegalStateException(
+                    "Expected to update exactly one idempotency record for idempotencyKey "
+                            + idempotencyKey
+                            + " but updated "
+                            + rowsUpdated);
+        }
     }
 }

@@ -47,7 +47,7 @@ public class AccountRepository {
     }
 
     public void applyBalanceDelta(String accountId, BigDecimal delta) {
-        jdbcTemplate.update(
+        int rowsUpdated = jdbcTemplate.update(
                 """
                 update account
                 set available_balance = available_balance + ?,
@@ -56,5 +56,9 @@ public class AccountRepository {
                 """,
                 delta,
                 accountId);
+        if (rowsUpdated != 1) {
+            throw new IllegalStateException(
+                    "Expected to update exactly one account for accountId " + accountId + " but updated " + rowsUpdated);
+        }
     }
 }

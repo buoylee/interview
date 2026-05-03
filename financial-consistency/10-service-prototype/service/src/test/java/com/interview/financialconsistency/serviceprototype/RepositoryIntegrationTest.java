@@ -1,6 +1,7 @@
 package com.interview.financialconsistency.serviceprototype;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.interview.financialconsistency.serviceprototype.account.AccountRecord;
 import com.interview.financialconsistency.serviceprototype.account.AccountRepository;
@@ -70,6 +71,14 @@ class RepositoryIntegrationTest {
     }
 
     @Test
+    void applyBalanceDeltaRejectsMissingAccount() {
+        assertThatThrownBy(() -> accountRepository.applyBalanceDelta("MISSING-001", new BigDecimal("1.0000")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Expected to update exactly one account")
+                .hasMessageContaining("MISSING-001");
+    }
+
+    @Test
     void repositoriesWriteTransferLedgerIdempotencyAndOutboxFacts() {
         transferRepository.insert(
                 "T-001",
@@ -94,5 +103,14 @@ class RepositoryIntegrationTest {
                 .containsEntry("status", "SUCCEEDED")
                 .containsEntry("response_code", 200);
         assertThat(outboxRepository.countByAggregate("TRANSFER", "T-001")).isEqualTo(1);
+    }
+
+    @Test
+    void markCompletedRejectsMissingIdempotencyKey() {
+        assertThatThrownBy(() -> idempotencyRepository.markCompleted(
+                        "MISSING-KEY", "T-001", "SUCCEEDED", 200, "{\"transferId\":\"T-001\"}"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Expected to update exactly one idempotency record")
+                .hasMessageContaining("MISSING-KEY");
     }
 }
