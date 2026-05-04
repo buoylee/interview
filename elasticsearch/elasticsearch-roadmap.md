@@ -29,6 +29,11 @@
 存储原理      → 集群架构      → 性能调优      → 数据同步      → 生产运维      → 面试串联
 与读写链路      与高可用                         与架构集成        与高级特性
 (1.5周)        (1周)          (1周)           (1周)            (1周)          (持续)
+
+                                                                           ↓
+                                                                        阶段12
+                                                                 资深 ES 与搜索工程
+                                                                 (A/B 双轨，持续加深)
 ```
 
 **总预计时间**：9.5-10.5 周（每天 1-2 小时）
@@ -71,6 +76,7 @@
 | **9** | [数据同步与架构集成](./roadmap/09-data-sync/) | **MySQL↔ES 同步** / 双写 vs MQ vs CDC / Canal/Debezium / 一致性保障 / ES 在系统中的定位 | 阶段7 + 阶段8 |
 | **10** | [生产运维与高级特性](./roadmap/10-production-advanced/) | ILM / 快照恢复 / 滚动升级 / 安全 / ELK 架构 / Suggester / Geo / 向量搜索 / ES 8.x | 阶段8 + 阶段9 |
 | **11** | [面试串联](./roadmap/11-interview/) | ES 原理追问链 / 写入链路 / 查询链路 / 存储结构 / 分片集群 / 生产排查 / 项目叙述 | 全部 |
+| **12** | [资深 ES 与搜索工程](./roadmap/12-senior-es-and-search-engineering/) | A线生产治理 / B线搜索工程 / 容量规划 / 搜索质量 / Lucene执行 / Hybrid Search / 平台治理 / 资深案例 | 阶段1-11 |
 
 ---
 
@@ -1012,6 +1018,14 @@ Primary Shard: 写 Index Buffer + 写 Translog → 返回成功
 - 常见追问及应答策略
 - 如何描述你在 ES 上做的性能优化
 - 如何描述你设计的 MySQL→ES 数据同步方案
+
+---
+
+## 阶段 12：资深 ES 与搜索工程（A/B 双轨，持续加深）
+
+> 阶段 12 不重写前 1-11 章，而是在已有基础上补资深工程师判断力。A 线面向 Java 后端资深工程师，强调生产治理；B 线面向搜索/ES 平台工程师，强调搜索质量、Lucene 执行、Hybrid Search 和平台治理。
+
+入口：[roadmap/12-senior-es-and-search-engineering/](./roadmap/12-senior-es-and-search-engineering/)
 
 ---
 

@@ -892,3 +892,7 @@ ELK 生态：
 
 → 进入阶段 11：面试串联（将所有知识以面试视角重新组织）
 ```
+
+## 资深扩展
+
+如果你要从“知道生产特性”升级到“能负责生产治理”，继续看阶段 12 的 [生产拓扑与 Data Tiers](../12-senior-es-and-search-engineering/02-production-topology-and-data-tiers.md) 和 [故障恢复、RPO/RTO 与 SLO](../12-senior-es-and-search-engineering/03-failure-recovery-and-slo.md)。

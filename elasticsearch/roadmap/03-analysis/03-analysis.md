@@ -1170,3 +1170,7 @@ Normalizer（给 keyword 用的轻量处理）：
 ```
 
 **下一阶段**：阶段 4 Query DSL 深入——你已经知道了 text 字段怎么分词、keyword 字段不分词，现在可以真正理解 match 查询为什么能搜到、term 查询为什么搜不到、bool 查询的 must/filter/should 有什么区别、BM25 打分是怎么算的了。阶段 4 是 ES 使用层面最核心、内容最丰富的一个阶段。
+
+## 资深扩展
+
+如果你要走搜索工程方向，继续看阶段 12 的 [搜索质量与相关性工程](../12-senior-es-and-search-engineering/05-search-relevance-engineering.md)，重点关注同义词治理、query rewrite、召回率和误召回的取舍。

@@ -81,3 +81,7 @@
 - 用 2 分钟讲清楚一次 `match` 查询如何执行。
 - 解释 Doc Values、Fielddata、Segment、translog、routing 的作用。
 - 面对查询慢、写入慢、yellow/red、聚合 OOM，能按症状、证据、机制、修复、验证来回答。
+
+## 资深扩展
+
+如果面试目标提高到资深 Java 后端或搜索平台方向，继续看阶段 12 的 [资深 ES 与搜索工程 A/B 双轨](../12-senior-es-and-search-engineering/README.md)，并用 [资深面试 Case Studies](../12-senior-es-and-search-engineering/09-senior-case-studies.md) 练系统设计叙述。

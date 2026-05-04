@@ -799,3 +799,7 @@ Posting List 压缩：
 ```
 
 **下一阶段**：阶段 7 集群架构与高可用——你现在理解了单个 Shard 内部的存储原理（Segment、Translog、写入链路），接下来从集群视角看：多个 Shard 如何分布在多个节点上？Master 怎么选举？一个节点宕机后分片怎么恢复？脑裂怎么防止？
+
+## 资深扩展
+
+如果你要从“知道 Segment 和倒排索引”继续深入到搜索执行模型，继续看阶段 12 的 [Lucene 查询执行心智模型](../12-senior-es-and-search-engineering/06-lucene-query-execution-deep-dive.md)。

@@ -1267,3 +1267,7 @@ BM25 打分三因子：
 ```
 
 **下一阶段**：阶段 5 聚合深入——搜索找到文档后，如何对结果做统计分析？按品牌分桶计数、求平均价格、算销量百分位……聚合依赖 Doc Values（阶段 2 讲过），通常配合 query 先过滤再聚合（本阶段学的 bool + filter），所以放在阶段 4 之后。
+
+## 资深扩展
+
+如果你要理解搜索质量和查询执行，继续看阶段 12 的 [搜索质量与相关性工程](../12-senior-es-and-search-engineering/05-search-relevance-engineering.md) 和 [Lucene 查询执行心智模型](../12-senior-es-and-search-engineering/06-lucene-query-execution-deep-dive.md)。

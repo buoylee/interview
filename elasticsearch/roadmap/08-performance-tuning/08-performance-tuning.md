@@ -757,3 +757,7 @@ OS 四必配：
 ```
 
 **下一阶段**：阶段 9 数据同步与架构集成——面试几乎必问"数据怎么从 MySQL 同步到 ES"。同步双写、MQ 异步、Canal CDC、Logstash JDBC 各有什么优缺点？如何保证一致性？这是连接 ES 知识和系统架构能力的关键。
+
+## 资深扩展
+
+如果你要把调优升级成系统化排障能力，继续看阶段 12 的 [资深性能诊断 Playbook](../12-senior-es-and-search-engineering/04-performance-diagnostics-playbook.md)。
