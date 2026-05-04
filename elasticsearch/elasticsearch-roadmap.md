@@ -66,11 +66,11 @@
 | **4** | [Query DSL 深入](./roadmap/04-query-dsl/) | 全文 vs 精确 / Bool 组合 / BM25 / Function Score / 深度分页 / filter vs query / **高亮** | 阶段2 + 阶段3 |
 | **5** | [聚合深入](./roadmap/05-aggregations/) | Bucket / Metric / Pipeline / 嵌套聚合 / 近似聚合 / Composite / Doc Values 与 Fielddata | 阶段4 |
 | **6** | [存储原理与读写链路](./roadmap/06-storage-internals/) | Lucene 底层(FST/FOR/Bitmap) / Segment 生命周期 / refresh/flush/translog/merge / NRT / 写入读取全链路 | 阶段1-5 |
-| **7** | [集群架构与高可用](./roadmap/07-cluster/) | 节点角色 / 分片路由 / 选主 / 脑裂 / 一致性模型 / 故障恢复 / 分片分配与再平衡 | 阶段6 |
+| **7** | [集群架构与高可用](./roadmap/07-cluster-architecture/) | 节点角色 / 分片路由 / 选主 / 脑裂 / 一致性模型 / 故障恢复 / 分片分配与再平衡 | 阶段6 |
 | **8** | [性能调优](./roadmap/08-performance-tuning/) | 写入优化 / 查询优化 / JVM 与 GC / OS 调优 / 监控诊断 / 容量规划 | 阶段6 + 阶段7 |
 | **9** | [数据同步与架构集成](./roadmap/09-data-sync/) | **MySQL↔ES 同步** / 双写 vs MQ vs CDC / Canal/Debezium / 一致性保障 / ES 在系统中的定位 | 阶段7 + 阶段8 |
-| **10** | [生产运维与高级特性](./roadmap/10-production/) | ILM / 快照恢复 / 滚动升级 / 安全 / ELK 架构 / Suggester / Geo / 向量搜索 / ES 8.x | 阶段8 + 阶段9 |
-| **11** | [面试串联](./roadmap/11-interview/) | Top 30 高频题 / 系统设计题 / ES vs 其他存储 / 项目叙述 / **常见反模式** | 全部 |
+| **10** | [生产运维与高级特性](./roadmap/10-production-advanced/) | ILM / 快照恢复 / 滚动升级 / 安全 / ELK 架构 / Suggester / Geo / 向量搜索 / ES 8.x | 阶段8 + 阶段9 |
+| **11** | [面试串联](./roadmap/11-interview/) | ES 原理追问链 / 写入链路 / 查询链路 / 存储结构 / 分片集群 / 生产排查 / 项目叙述 | 全部 |
 
 ---
 
@@ -940,7 +940,22 @@ Primary Shard: 写 Index Buffer + 写 Translog → 返回成功
 
 ## 阶段 11：面试串联（持续）
 
-> 将所有知识融会贯通，以面试视角重新组织。
+> 将所有知识融会贯通，以面试视角重新组织。阶段 1-10 负责把 ES 学懂，阶段 11 负责把这些原理讲出来，尤其是写入链路、查询链路、存储结构、分片集群和生产排查这些面试追问链。
+
+### 11.0 原理追问链
+
+新增独立目录：[roadmap/11-interview/](./roadmap/11-interview/)
+
+建议按这个顺序练：
+
+1. `01-internals-question-map.md`：先确认 ES 底层必会问题。
+2. `02-write-path-deep-dive.md`：写入、refresh、flush、translog、segment、merge。
+3. `03-search-path-deep-dive.md`：match 查询、BM25、query/fetch、深度分页。
+4. `04-storage-structures.md`：倒排索引、FST、Posting List、Doc Values、Fielddata。
+5. `05-cluster-and-shard.md`：routing、primary/replica、选主、脑裂、故障恢复。
+6. `06-production-troubleshooting.md`：查询慢、写入慢、heap 高、聚合 OOM、yellow/red、同步延迟。
+
+每个问题按「一句话答案 → 核心链路 → 为什么这样设计 → 常见追问 → 生产场景」来练。
 
 ### 11.1 Top 30 高频面试题
 
