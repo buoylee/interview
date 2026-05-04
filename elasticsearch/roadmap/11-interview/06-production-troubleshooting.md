@@ -94,7 +94,7 @@ MQ lag or CDC lag
 
 - 调整 bulk size 和并发。
 - 批量导入期间调大 refresh_interval，导入后手动 refresh。
-- 写多读少场景降低 replica，导入完成后恢复。
+- 写多读少或可重建索引的受控回填场景，临时降低 replica，导入完成后恢复；这会降低节点故障时的副本冗余和 HA，不能作为常规线上优化。
 - 优化 shard 数和 routing，避免热点。
 - 扩容 data 节点或提升磁盘能力。
 - 上游同步增加幂等和重试，避免乱序覆盖。
@@ -105,7 +105,7 @@ MQ lag or CDC lag
 
 ### 面试表达
 
-我会把写入慢拆成客户端、ES 写入链路、磁盘和上游同步四层。先看 rejected、merge、refresh、IO 和 shard 分布，再决定是调 bulk、refresh_interval、replica，还是处理热点 shard 和上游 lag。
+我会把写入慢拆成客户端、ES 写入链路、磁盘和上游同步四层。先看 rejected、merge、refresh、IO 和 shard 分布，再决定是调 bulk、refresh_interval，还是处理热点 shard 和上游 lag。降低 replica 只适合受控回填、可重建索引或临时容量兜底，因为它会牺牲副本冗余和高可用。
 
 ## 场景 3：heap 使用率高或频繁 GC
 
@@ -128,7 +128,7 @@ heap 高通常和 Fielddata、聚合桶过多、shard/segment 元数据过多、
 ### 证据
 
 ```text
-_nodes/stats/jvm,indices/fielddata,indices/query_cache,indices/request_cache
+_nodes/stats/jvm,indices/fielddata,query_cache,request_cache
 _cat/fielddata
 _cat/shards
 _cat/segments
@@ -225,14 +225,14 @@ GET _cat/allocation?v
 ### 修复选项
 
 - 恢复故障节点。
-- 增加节点或降低 replica 数。
+- 增加节点，或在确认索引可重建、业务可承受冗余下降时临时降低 replica 数；降低副本会削弱节点故障期间的 HA，不应替代容量修复。
 - 释放磁盘空间或扩容磁盘。
 - 修正 allocation filtering。
 - red 且 primary 丢失时从 snapshot 恢复。
 
 ### 验证方式
 
-确认 unassigned shard 归零或符合预期，cluster health 恢复 green/yellow，业务读写恢复。
+确认 unassigned shard 归零或符合预期，cluster health 恢复 green/yellow，业务读写恢复；如果临时降低过 replica，还要确认副本数已按容量计划恢复。
 
 ### 面试表达
 
@@ -246,7 +246,7 @@ MySQL 已更新，但 ES 搜索结果延迟或显示旧数据。
 
 ### 第一轮检查
 
-- 区分 ES refresh 延迟和同步链路延迟。
+- 区分 ES refresh 延迟和同步链路延迟，比如对比 `GET index/_doc/id` 和 `_search` 结果，必要时做一次受控 `_refresh` 验证。
 - 看 MQ/CDC lag。
 - 看消费端失败、重试、死信。
 - 看是否有乱序消息覆盖新版本。
@@ -264,6 +264,9 @@ message event time
 consumer process time
 ES index response time
 document version or updated_at
+GET index/_doc/id vs _search
+_nodes/stats/indices/refresh
+controlled POST index/_refresh check
 MQ lag / CDC lag
 ```
 
@@ -277,11 +280,11 @@ MQ lag / CDC lag
 
 ### 验证方式
 
-检查同步 lag、错单数、校对差异、重试成功率和 ES 文档版本。
+检查同步 lag、错单数、校对差异、重试成功率、ES 文档版本、refresh stats，以及手动 `_refresh` 前后 `_doc` 和 `_search` 是否一致。
 
 ### 面试表达
 
-我会明确 ES 通常不是主库，而是搜索视图。同步一致性的核心是最终一致、幂等、乱序保护、重试死信和定期校对。强一致读不能只依赖 ES。
+我会明确 ES 通常不是主库，而是搜索视图。先用 `GET index/_doc/id`、`_search`、refresh stats 或受控 `_refresh` 判断是 ES 近实时可见性问题，还是同步链路没有写到 ES。同步一致性的核心是最终一致、幂等、乱序保护、重试死信和定期校对。强一致读不能只依赖 ES。
 
 ## 本阶段总结
 
