@@ -128,31 +128,31 @@ query terms
 
 ### 一句话答案
 
-因为 `from + size` 深度分页要求每个 shard 都取出更多候选结果，再由 coordinating node 全局排序和丢弃前面的结果，页数越深，排序、内存和网络成本越高。
+因为 `from + size` 深度分页要求每个 shard 都取出更多候选结果，再由 coordinating node 全局排序和丢弃前面的结果，页数越深，排序、内存和网络成本越高。默认 `index.max_result_window` 是 10000，超过这个窗口还会被 ES 直接拒绝。
 
 ### 核心链路
 
 ```text
-from=10000,size=10
--> each shard collects top 10010
+from=9990,size=10
+-> each shard collects top 10000
 -> coordinating node merges shard results
--> discard first 10000
+-> discard first 9990
 -> return 10 hits
 ```
 
 ### 为什么这样设计
 
-分布式搜索不知道某个 shard 的局部第 10010 名在全局排序中排第几，所以每个 shard 都必须返回足够多的候选结果给 coordinating node 合并。
+分布式搜索不知道某个 shard 的局部第 10000 名在全局排序中排第几，所以每个 shard 都必须返回足够多的候选结果给 coordinating node 合并。
 
 ### 常见追问
 
 **search_after 怎么解决？**
 
-`search_after` 使用上一页最后一条记录的排序值继续向后查，不再从头跳过大量结果，适合用户连续翻页。
+`search_after` 使用上一页最后一条记录的排序值继续向后查，不再从头跳过大量结果。现代稳定深分页通常推荐 PIT + search_after，既保留一致视图，又避免 `from` 深分页的跳过成本。
 
 **scroll 和 PIT 怎么选？**
 
-scroll 适合后台批量遍历和导出；PIT 配合 search_after 适合稳定视图下的深分页；普通用户翻页优先 search_after，不建议用 scroll 承载在线搜索。
+PIT 配合 search_after 是稳定深分页的现代推荐模式。scroll 更偏 legacy 或有边界的后台批量遍历、导出场景，适合可以接受持有 search context 的任务，不应作为在线深分页的默认方案。
 
 ### 生产场景怎么说
 
