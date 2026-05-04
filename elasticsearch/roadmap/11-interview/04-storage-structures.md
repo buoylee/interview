@@ -51,7 +51,7 @@ query term
 -> FST narrows term lookup
 -> Term Dictionary confirms exact term
 -> Posting List returns doc IDs
--> scoring uses frequency, positions, norms and statistics
+-> BM25 uses term frequency, norms and collection statistics
 ```
 
 ### 为什么这样设计
@@ -62,7 +62,7 @@ Term 数量可能很大，不能低效扫描全部 term。FST 以较小内存支
 
 **Posting List 里只有 doc ID 吗？**
 
-不止。还可能包含词频、位置、offset 等信息，具体取决于字段索引配置。这些信息会影响短语查询、高亮和打分。
+不止。Posting List 通常至少有 doc ID，也可能包含词频、positions、offset 等信息，具体取决于字段索引配置。普通 BM25 打分主要依赖词频，再结合 norms 和 collection statistics；positions 主要用于短语和邻近查询，offset 主要用于高亮。
 
 **skip data 是什么？**
 
@@ -120,6 +120,39 @@ text 字段被分词后不再代表原始整体值。若强行对 text 聚合，
 - 阶段 5：聚合
 - 阶段 6：Doc Values
 
+## 补充：Stored Fields 和 `_source` 解决什么问题？
+
+### 一句话答案
+
+Stored Fields 和 `_source` 主要解决“命中文档后怎么取回原始内容”的问题；它们服务于结果返回，不负责 term 检索，也不适合排序和聚合。
+
+### 核心区别
+
+```text
+倒排索引:
+term -> doc IDs, for search
+
+Doc Values:
+doc ID -> field value, for sort/aggregation/script
+
+Stored Fields / _source:
+doc ID -> stored original content, for fetch response
+```
+
+### 为什么这样设计
+
+查询阶段先用倒排索引找候选文档，再按需用 `_source` 或 Stored Fields 取回需要返回的字段。Doc Values 是列式结构，适合批量读取某个字段做计算；Stored Fields 更像按文档取回内容，不是为大规模聚合扫描设计的。
+
+### 常见追问
+
+**`_source` 和 `store: true` 是一回事吗？**
+
+不是。`_source` 保存原始 JSON，默认用于返回、update、reindex 和部分高亮场景；`store: true` 是把某个字段单独作为 Stored Field 存储，适合少数字段需要独立取回的场景，但会增加存储成本。
+
+### 生产场景怎么说
+
+不要为了排序、聚合去读取 `_source` 或 Stored Fields，应该依赖 Doc Values。大文档返回时可以用 `_source` filtering 限制字段，降低 fetch 阶段的 IO 和反序列化开销。
+
 ## Q4：Fielddata 为什么容易造成堆内存压力？
 
 ### 一句话答案
@@ -173,7 +206,7 @@ immutable segment
 
 ### 为什么这样设计
 
-搜索引擎重读多写少和并发读性能。不可变 segment 让读路径简单稳定，把写入和删除的复杂度转移到后台 merge。
+ES 这类搜索引擎通常优先保障读多写少场景下的搜索性能和并发读稳定性。不可变 segment 让读路径简单稳定，把写入和删除的复杂度转移到后台 merge。
 
 ### 常见追问
 
