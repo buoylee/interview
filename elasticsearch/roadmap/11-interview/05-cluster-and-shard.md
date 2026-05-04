@@ -6,21 +6,22 @@
 
 ### 一句话答案
 
-ES 根据 routing 值计算 hash，再对 primary shard 数取模，决定文档属于哪个 primary shard；默认 routing 是文档 `_id`，也可以显式指定。
+ES 根据 routing 值计算 hash，再映射到目标 primary shard；面试中可以把它讲成“hash 后落到某个分片”的简化心智模型，但现代 ES 内部还会经过 `num_routing_shards` 路由空间和 `routing_factor` 映射。
 
 ### 核心链路
 
 ```text
 document id or custom routing
 -> hash(routing)
--> modulo number_of_primary_shards
+-> internal routing space: num_routing_shards
+-> routing_factor maps routing bucket to primary shard
 -> target primary shard
 -> replica copies follow primary
 ```
 
 ### 为什么这样设计
 
-哈希路由能让文档较均匀分布到多个 primary shard，也让同一个 routing 的文档稳定落到同一个 shard。
+哈希路由能让文档较均匀分布到多个 primary shard，也让同一个 routing 的文档稳定落到相同 shard 或 shard 分区。需要注意，partitioned routing 会把同一个 routing 值限制在一个分片集合内，再结合文档 `_id` 做进一步分散，不能简单理解成永远只落一个 shard。
 
 ### 常见追问
 
@@ -42,16 +43,16 @@ document id or custom routing
 
 ### 一句话答案
 
-因为文档路由依赖 `hash(routing) % number_of_primary_shards`，如果 primary shard 数变化，已有文档的 shard 归属会整体改变，因此通常需要新建索引并 reindex。
+因为文档路由依赖 routing hash 到 primary shard 的稳定映射。如果 primary shard 数任意变化，已有文档的 shard 归属可能整体改变，因此通常需要新建索引并 reindex。`hash(routing) % number_of_primary_shards` 适合作为简化心智模型，不应当当成现代 ES 的完整实现。
 
 ### 核心链路
 
 ```text
 old shard count = 5
-hash(id) % 5 -> shard A
+hash(id) -> internal routing bucket -> shard A
 
 new shard count = 8
-hash(id) % 8 -> shard B
+hash(id) -> different routing bucket mapping -> shard B
 ```
 
 ### 为什么这样设计
@@ -62,7 +63,11 @@ hash(id) % 8 -> shard B
 
 **那如何扩容？**
 
-可以增加 replica 提升读吞吐；使用 rollover 新建更多 shard 的新索引；必要时新建目标索引并 reindex；特定场景可以使用 split/shrink，但有前提条件。
+可以增加 replica 提升读吞吐；使用 rollover 新建更多 shard 的新索引；必要时新建目标索引并 reindex，这是任意重塑 shard 数最通用的方式。特定场景可以使用 split/shrink，但限制很多：
+
+- `split` 只能把 primary shard 数增加到由 `index.number_of_routing_shards` 决定的受支持倍数。
+- `shrink` 只能把 primary shard 数减少到源 shard 数的因子。
+- split/shrink 都有操作约束，例如索引需要 read-only、集群通常要 green，并满足分片分配前置条件；shrink 还要求 shard copy 能按要求 colocate 到合适节点。
 
 ### 生产场景怎么说
 
