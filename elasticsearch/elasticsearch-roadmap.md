@@ -1002,7 +1002,7 @@ Primary Shard: 写 Index Buffer + 写 Translog → 返回成功
 | refresh_interval 设为 0 | 每次写入都 refresh，吞吐量极低 | 默认 1s 或按需调大；批量导入时设 -1 |
 | 单索引 shard 设太多 | 空 shard 浪费资源，master 管理压力大 | 单 shard 10-50GB，按需设置 |
 | nested 嵌套层数太深 | 性能断崖式下降 | 尽量用 object，必须 nested 时控制数量 |
-| 不设 `max_result_window` 就深度分页 | from+size 内存爆炸 | 用 search_after / PIT |
+| 不设 `max_result_window` 就深度分页 | from+size 内存爆炸 | 用 search_after；需要一致性时用 PIT + search_after |
 | 忽略 ES 集群 Yellow 状态 | 副本不健康，节点宕机后丢数据 | 定期检查，确保所有 replica 分配 |
 | 同步双写不处理失败 | MySQL 和 ES 数据不一致 | 用 MQ 异步+重试，或 CDC 方案 |
 
@@ -1029,7 +1029,7 @@ Primary Shard: 写 Index Buffer + 写 Translog → 返回成功
 | 分词器（IK/standard） | 了解基本概念 | **补齐 search_analyzer、自定义 Analyzer、同义词** | **3** |
 | DSL 查询 | 已掌握 match/term/bool/phrase/fuzzy | 补齐 function_score、rescore、profile、高亮 | 4 |
 | 打分算法 | 了解 TF-IDF | **补齐 BM25、function_score 自定义打分** | **4** |
-| 深度分页 | 未覆盖 | **scroll / search_after / PIT** | **4** |
+| 深度分页 | 未覆盖 | **scroll、search_after、PIT + search_after** | **4** |
 | 聚合 | 了解 bucket/metric | **补齐 pipeline、近似聚合、composite、Doc Values** | **5** |
 | 写入原理 | 了解 refresh/flush/translog | 补齐 Segment 详细生命周期、translog 持久化策略 | 6 |
 | 读取原理 | 了解 Query Then Fetch | 补齐 DFS Query Then Fetch | 6 |

@@ -46,7 +46,7 @@ _cat/segments
 ### 修复选项
 
 - 改写查询：filter 替代不需要打分的 must，避免前缀过宽的 wildcard。
-- 深分页改成 search_after 或 PIT。
+- 深分页改成 search_after；需要稳定分页视图时用 PIT + search_after，PIT 本身不是 search_after 的替代。
 - 控制返回字段，避免列表页返回大 `_source`。
 - 优化 mapping，给过滤/聚合字段使用 keyword。
 - 调整 shard 和 routing，降低无效 fan-out。
