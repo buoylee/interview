@@ -134,6 +134,8 @@ chunk_size: 500-800 tokens or approximate characters
 overlap: 50-100 tokens or approximate characters
 ```
 
+真实项目不要停在这组初始值；如何用 golden set 和指标调参，见 [Chunking 调参手册](./08-chunking-tuning-playbook.md)。
+
 每个 chunk 保存：
 
 ```text

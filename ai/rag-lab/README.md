@@ -42,10 +42,11 @@ trace
 1. [RAG 心智模型：从文件到可引用上下文](./01-rag-mental-model.md)
 2. [从零设计 mini RAG：看清文件、chunk、检索和 prompt](./02-mini-rag-from-scratch.md)
 3. [Hybrid、Rerank 与调试：从能跑到能排查](./03-hybrid-rerank-debugging.md)
-4. [file_search vs 自建 RAG：托管能力和自管边界](./04-file-search-vs-self-managed-rag.md)
-5. [类 ChatGPT 文件 Agent：文件范围、选择、检索与注入](./05-chatgpt-like-file-agent.md)
-6. [RAG 文件 Agent 测试用例集](./06-rag-file-agent-test-cases.md)
-7. [RAG 文件 Agent 实现路线](./07-implementation-roadmap.md)
+4. [Chunking 调参手册：科学确定 chunk_size 和 overlap](./08-chunking-tuning-playbook.md)
+5. [file_search vs 自建 RAG：托管能力和自管边界](./04-file-search-vs-self-managed-rag.md)
+6. [类 ChatGPT 文件 Agent：文件范围、选择、检索与注入](./05-chatgpt-like-file-agent.md)
+7. [RAG 文件 Agent 测试用例集](./06-rag-file-agent-test-cases.md)
+8. [RAG 文件 Agent 实现路线](./07-implementation-roadmap.md)
 
 ## 阶段产出
 
@@ -54,6 +55,7 @@ trace
 | 心智模型 | 一张 RAG 数据流图和 ID 关系表 | 能说清 `resource_id`、`file_id`、`chunk_id` 的区别 |
 | mini RAG | 一个只支持 txt/md 的实验设计 | 能打印每个 chunk、score、最终 prompt |
 | 调试实验 | 一组故意失败用例 | 能判断失败来自解析、切块、召回、排序、组装还是生成 |
+| Chunking 调参 | 一套 chunk 参数实验矩阵 | 能用 golden set、retrieval 指标、answer 指标和成本选择 `chunk_size` / `overlap` |
 | file_search 对照 | 一张能力边界表 | 能解释哪些交给 `file_search`，哪些必须自建 |
 | 文件 Agent 教程 | 一条完整 ChatGPT-like 文件会话链路 | 能解释文件范围如何确定、何时检索、何时注入、如何更新 active files |
 | 测试用例集 | 一组可回归的文件 Agent 场景 | 能验证 selected resources、injection mode、trace 是否正确 |
@@ -98,7 +100,8 @@ file_search 可以做 RetrievalProvider
 9. 类 ChatGPT 文件 Agent 如何从当前附件、active files、project/library 里选择资源。
 10. 为什么“选择文件”和“检索 chunks”必须拆成两个阶段。
 11. 如何用固定 regression cases 验证文件选择、注入和 trace。
-12. 第一版 read-only 文件 Agent 应该按什么顺序实现。
+12. 如何用 golden set、retrieval 指标、answer 指标和成本实验确定 `chunk_size` / `overlap`。
+13. 第一版 read-only 文件 Agent 应该按什么顺序实现。
 
 ## 连接 Agent Runtime
 
