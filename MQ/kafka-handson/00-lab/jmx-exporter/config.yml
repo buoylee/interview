@@ -1,0 +1,42 @@
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+
+rules:
+  # Broker request metrics (per request type: Produce, Fetch, Metadata, ...)
+  - pattern: "kafka.network<type=RequestMetrics, name=(RequestsPerSec|TotalTimeMs|LocalTimeMs|RequestQueueTimeMs|ResponseSendTimeMs), request=(\\w+)><>(Count|Mean|50thPercentile|99thPercentile|999thPercentile)"
+    name: "kafka_network_request_$1_$3"
+    labels:
+      request: "$2"
+
+  # Replica manager — the heart of replication observability
+  - pattern: "kafka.server<type=ReplicaManager, name=(UnderReplicatedPartitions|UnderMinIsrPartitionCount|AtMinIsrPartitionCount|OfflineReplicaCount|PartitionCount|LeaderCount|IsrShrinksPerSec|IsrExpandsPerSec)><>(Value|Count|OneMinuteRate)"
+    name: "kafka_server_replicamanager_$1_$2"
+
+  # Controller (KRaft active controller)
+  - pattern: "kafka.controller<type=KafkaController, name=(ActiveControllerCount|OfflinePartitionsCount|GlobalTopicCount|GlobalPartitionCount|MetadataErrorCount)><>Value"
+    name: "kafka_controller_$1"
+
+  # Log size per topic-partition
+  - pattern: "kafka.log<type=Log, name=(Size|NumLogSegments|LogStartOffset|LogEndOffset), topic=(.+), partition=(\\d+)><>Value"
+    name: "kafka_log_$1"
+    labels:
+      topic: "$2"
+      partition: "$3"
+
+  # BytesIn/BytesOut per topic
+  - pattern: "kafka.server<type=BrokerTopicMetrics, name=(BytesInPerSec|BytesOutPerSec|MessagesInPerSec|TotalProduceRequestsPerSec|TotalFetchRequestsPerSec)><>(Count|OneMinuteRate)"
+    name: "kafka_server_brokertopic_$1_$2"
+
+  - pattern: "kafka.server<type=BrokerTopicMetrics, name=(BytesInPerSec|BytesOutPerSec|MessagesInPerSec), topic=(.+)><>(Count|OneMinuteRate)"
+    name: "kafka_server_brokertopic_$1_$3"
+    labels:
+      topic: "$2"
+
+  # JVM
+  - pattern: "java.lang<type=Memory><HeapMemoryUsage>(used|committed|max)"
+    name: "jvm_memory_heap_$1_bytes"
+
+  - pattern: "java.lang<type=GarbageCollector, name=(.+)><>(CollectionCount|CollectionTime)"
+    name: "jvm_gc_$2"
+    labels:
+      gc: "$1"
