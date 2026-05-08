@@ -1,0 +1,70 @@
+{
+  "title": "Kafka Overview (handson)",
+  "uid": "kafka-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": {"from": "now-15m", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "title": "Under-Replicated Partitions",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "targets": [
+        {"expr": "kafka_server_replicamanager_underreplicatedpartitions_value", "legendFormat": "broker {{broker}}"}
+      ]
+    },
+    {
+      "id": 2,
+      "title": "ISR Shrinks / sec",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "targets": [
+        {"expr": "rate(kafka_server_replicamanager_isrshrinkspersec_count[1m])", "legendFormat": "broker {{broker}}"}
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Leader Count per Broker",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+      "targets": [
+        {"expr": "kafka_server_replicamanager_leadercount_value", "legendFormat": "broker {{broker}}"}
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Active Controller",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+      "targets": [
+        {"expr": "kafka_controller_activecontrollercount", "legendFormat": "broker {{broker}}"}
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Bytes In / sec",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+      "targets": [
+        {"expr": "rate(kafka_server_brokertopic_bytesinpersec_count[1m])", "legendFormat": "broker {{broker}}"}
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Produce Request p99 latency (ms)",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "Prometheus"},
+      "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+      "targets": [
+        {"expr": "kafka_network_request_totaltimems_99thpercentile{request=\"Produce\"}", "legendFormat": "broker {{broker}}"}
+      ]
+    }
+  ]
+}
