@@ -1,1 +1,5 @@
-[]
+[
+  {"name": "broker-1", "listen": "0.0.0.0:21092", "upstream": "kafka-1:9092", "enabled": true},
+  {"name": "broker-2", "listen": "0.0.0.0:22092", "upstream": "kafka-2:9092", "enabled": true},
+  {"name": "broker-3", "listen": "0.0.0.0:23092", "upstream": "kafka-3:9092", "enabled": true}
+]
