@@ -1,0 +1,26 @@
+name: mysql-handson
+
+services:
+  mysql-primary:
+    image: mysql:8.0.36
+    container_name: mysql-primary
+    command:
+      - --defaults-extra-file=/etc/mysql/conf.d/primary.cnf
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: sbtest
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./my.cnf/primary.cnf:/etc/mysql/conf.d/primary.cnf:ro
+      - ./init:/docker-entrypoint-initdb.d:ro
+      - mysql-primary-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+
+volumes:
+  mysql-primary-data:
