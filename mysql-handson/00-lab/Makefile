@@ -29,3 +29,22 @@ logs:
 
 mysql:
 	docker compose exec -it mysql-primary mysql -uroot -proot sbtest
+
+.PHONY: load load-clean
+
+# Usage: make load ROWS=1000000
+load:
+	docker compose --profile load up -d sysbench
+	docker compose exec sysbench sysbench oltp_read_write \
+	  --db-driver=mysql \
+	  --mysql-host=mysql-primary --mysql-port=3306 \
+	  --mysql-user=root --mysql-password=root --mysql-db=sbtest \
+	  --tables=1 --table-size=$${ROWS:-100000} \
+	  prepare
+
+load-clean:
+	docker compose exec sysbench sysbench oltp_read_write \
+	  --db-driver=mysql \
+	  --mysql-host=mysql-primary --mysql-port=3306 \
+	  --mysql-user=root --mysql-password=root --mysql-db=sbtest \
+	  --tables=1 cleanup

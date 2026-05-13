@@ -22,5 +22,15 @@ services:
       retries: 20
       start_period: 30s
 
+  sysbench:
+    image: severalnines/sysbench:latest
+    platform: linux/amd64
+    container_name: sysbench
+    profiles: ["load"]
+    depends_on:
+      mysql-primary:
+        condition: service_healthy
+    entrypoint: ["sleep", "infinity"]
+
 volumes:
   mysql-primary-data:
