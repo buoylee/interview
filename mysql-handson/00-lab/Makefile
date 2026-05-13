@@ -59,3 +59,32 @@ up-obs:
 
 down-obs:
 	docker compose --profile obs stop
+
+.PHONY: up-replica mysql-replica replica-setup replica-status
+
+up-replica:
+	docker compose --profile replica up -d
+	@echo "Waiting for replica to be healthy..."
+	@until [ "$$(docker inspect -f '{{.State.Health.Status}}' mysql-replica 2>/dev/null)" = "healthy" ]; do sleep 2; done
+
+mysql-replica:
+	docker compose exec -it mysql-replica mysql -uroot -proot
+
+# Run once after up-replica to wire replication via GTID auto-position.
+replica-setup:
+	docker compose exec mysql-replica mysql -uroot -proot -e "\
+	  STOP REPLICA; \
+	  RESET REPLICA ALL; \
+	  CHANGE REPLICATION SOURCE TO \
+	    SOURCE_HOST='toxiproxy', \
+	    SOURCE_PORT=3316, \
+	    SOURCE_USER='repl', \
+	    SOURCE_PASSWORD='repl', \
+	    SOURCE_AUTO_POSITION=1, \
+	    GET_SOURCE_PUBLIC_KEY=1; \
+	  START REPLICA;"
+	@sleep 2
+	@$(MAKE) replica-status
+
+replica-status:
+	docker compose exec mysql-replica mysql -uroot -proot -e "SHOW REPLICA STATUS\G" | grep -E "Replica_(IO|SQL)_Running|Seconds_Behind|Last_.*Error"

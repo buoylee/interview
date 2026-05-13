@@ -73,5 +73,29 @@ services:
     ports:
       - "3000:3000"
 
+  mysql-replica:
+    image: mysql:8.0.36
+    container_name: mysql-replica
+    profiles: ["replica"]
+    command:
+      - --defaults-extra-file=/etc/mysql/conf.d/replica.cnf
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    depends_on:
+      mysql-primary:
+        condition: service_healthy
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./my.cnf/replica.cnf:/etc/mysql/conf.d/replica.cnf:ro
+      - mysql-replica-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+
 volumes:
   mysql-primary-data:
+  mysql-replica-data:

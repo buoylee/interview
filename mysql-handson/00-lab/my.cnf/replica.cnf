@@ -1,0 +1,18 @@
+[mysqld]
+server-id = 2
+log_bin = mysql-bin
+binlog_format = ROW
+gtid_mode = ON
+enforce_gtid_consistency = ON
+relay_log = mysql-relay
+read_only = ON
+
+innodb_buffer_pool_size = 256M
+
+slow_query_log = ON
+slow_query_log_file = /var/lib/mysql/slow.log
+long_query_time = 0.1
+
+performance_schema = ON
+default_authentication_plugin = mysql_native_password
+character_set_server = utf8mb4
