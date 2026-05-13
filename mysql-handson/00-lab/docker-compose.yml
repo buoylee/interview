@@ -73,6 +73,17 @@ services:
     ports:
       - "3000:3000"
 
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.7.0
+    container_name: toxiproxy
+    profiles: ["replica"]
+    command: ["-host=0.0.0.0", "-config=/config/config.json"]
+    volumes:
+      - ./toxiproxy/config.json:/config/config.json:ro
+    ports:
+      - "8474:8474"
+      - "3316:3316"
+
   mysql-replica:
     image: mysql:8.0.36
     container_name: mysql-replica

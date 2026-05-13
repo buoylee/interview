@@ -1,0 +1,8 @@
+[
+  {
+    "name": "mysql-primary-for-replica",
+    "listen": "0.0.0.0:3316",
+    "upstream": "mysql-primary:3306",
+    "enabled": true
+  }
+]

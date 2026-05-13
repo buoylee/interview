@@ -88,3 +88,16 @@ replica-setup:
 
 replica-status:
 	docker compose exec mysql-replica mysql -uroot -proot -e "SHOW REPLICA STATUS\G" | grep -E "Replica_(IO|SQL)_Running|Seconds_Behind|Last_.*Error"
+
+.PHONY: chaos-replica-lag chaos-replica-cut chaos-restore
+
+# Inject latency on primary->replica connection. Usage: make chaos-replica-lag MS=500
+chaos-replica-lag:
+	docker compose exec toxiproxy /toxiproxy-cli toxic add -t latency -a latency=$${MS:-500} -n lag mysql-primary-for-replica
+
+chaos-replica-cut:
+	docker compose exec toxiproxy /toxiproxy-cli toxic add -t timeout -a timeout=0 -n cut mysql-primary-for-replica
+
+chaos-restore:
+	-docker compose exec toxiproxy /toxiproxy-cli toxic remove -n lag mysql-primary-for-replica
+	-docker compose exec toxiproxy /toxiproxy-cli toxic remove -n cut mysql-primary-for-replica
