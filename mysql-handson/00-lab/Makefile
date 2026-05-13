@@ -101,3 +101,31 @@ chaos-replica-cut:
 chaos-restore:
 	-docker compose exec toxiproxy /toxiproxy-cli toxic remove -n lag mysql-primary-for-replica
 	-docker compose exec toxiproxy /toxiproxy-cli toxic remove -n cut mysql-primary-for-replica
+
+.PHONY: explain slow general-log-on general-log-off innodb-status pfs-top processlist
+
+# Usage: make explain SQL="select * from sbtest1 where k=42"
+explain:
+	@docker compose exec mysql-primary mysql -uroot -proot sbtest -e "EXPLAIN FORMAT=TREE $(SQL); SET optimizer_trace='enabled=on'; $(SQL); SELECT TRACE FROM information_schema.optimizer_trace\G; SET optimizer_trace='enabled=off';"
+
+slow:
+	docker compose exec mysql-primary tail -f /var/lib/mysql/slow.log
+
+general-log-on:
+	docker compose exec mysql-primary mysql -uroot -proot -e "SET GLOBAL general_log_file='/var/lib/mysql/general.log'; SET GLOBAL general_log=ON;"
+
+general-log-off:
+	docker compose exec mysql-primary mysql -uroot -proot -e "SET GLOBAL general_log=OFF;"
+
+innodb-status:
+	docker compose exec mysql-primary mysql -uroot -proot -e "SHOW ENGINE INNODB STATUS\G"
+
+pfs-top:
+	docker compose exec mysql-primary mysql -uroot -proot -e "\
+	  SELECT DIGEST_TEXT, COUNT_STAR, AVG_TIMER_WAIT/1e9 AS avg_ms, SUM_ROWS_EXAMINED \
+	  FROM performance_schema.events_statements_summary_by_digest \
+	  WHERE SCHEMA_NAME='sbtest' \
+	  ORDER BY SUM_TIMER_WAIT DESC LIMIT 10\G"
+
+processlist:
+	docker compose exec mysql-primary mysql -uroot -proot -e "SHOW PROCESSLIST;"
