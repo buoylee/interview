@@ -129,3 +129,9 @@ pfs-top:
 
 processlist:
 	docker compose exec mysql-primary mysql -uroot -proot -e "SHOW PROCESSLIST;"
+
+.PHONY: up-ui
+
+up-ui:
+	docker compose --profile ui up -d
+	@echo "Adminer: http://localhost:8080 (server=mysql-primary user=root pass=root db=sbtest)"

@@ -73,6 +73,16 @@ services:
     ports:
       - "3000:3000"
 
+  adminer:
+    image: adminer:4.8.1
+    container_name: adminer
+    profiles: ["ui"]
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql-primary:
+        condition: service_healthy
+
   toxiproxy:
     image: ghcr.io/shopify/toxiproxy:2.7.0
     container_name: toxiproxy
