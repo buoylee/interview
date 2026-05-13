@@ -1,0 +1,25 @@
+[mysqld]
+server-id = 1
+log_bin = mysql-bin
+binlog_format = ROW
+gtid_mode = ON
+enforce_gtid_consistency = ON
+
+# Buffer pool deliberately small so eviction is observable
+innodb_buffer_pool_size = 256M
+innodb_flush_log_at_trx_commit = 1
+innodb_print_all_deadlocks = ON
+innodb_status_output = ON
+
+# Slow query / performance schema
+slow_query_log = ON
+slow_query_log_file = /var/lib/mysql/slow.log
+long_query_time = 0.1
+log_queries_not_using_indexes = ON
+
+performance_schema = ON
+
+# Misc
+default_authentication_plugin = mysql_native_password
+character_set_server = utf8mb4
+collation_server = utf8mb4_0900_ai_ci
