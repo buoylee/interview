@@ -48,3 +48,14 @@ load-clean:
 	  --mysql-host=mysql-primary --mysql-port=3306 \
 	  --mysql-user=root --mysql-password=root --mysql-db=sbtest \
 	  --tables=1 cleanup
+
+.PHONY: up-obs down-obs
+
+up-obs:
+	docker compose --profile obs up -d
+	@echo "Grafana: http://localhost:3000 (anonymous viewer)"
+	@echo "Prometheus: http://localhost:9090"
+	@echo "Exporter: http://localhost:9104/metrics"
+
+down-obs:
+	docker compose --profile obs stop
