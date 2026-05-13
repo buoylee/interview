@@ -65,14 +65,38 @@
 
 ## 4. 日常开发应用
 
-> 写完 Scenarios 02-05 之后补。重点：建表时怎么定主键、怎么定联合索引顺序、什么时候加覆盖索引、不要让 ORM 自动生成奇怪的 SQL。
+**建表时**
+- 主键用自增 BIGINT（不要选 UUID 当主键 —— 随机插入导致页分裂频繁。详见 Scenario 01 的「为什么主键有序很重要」备注）
+- 二级索引宁少勿多：每个二级索引在写入时都要维护，且占空间
+- 联合索引顺序按 §3.3 两条原则定
+
+**写 SQL 时**
+- 写完每条非纯主键查询，本能反应是 `EXPLAIN` 一下（`make explain SQL="..."` 一键）
+- 等值条件 + 比较条件混用时，**等值列优先**放索引前列
+- WHERE 里不要对索引列做函数 / 类型转换（参考 §3.7）
+- LIMIT 深翻页（`LIMIT 100000, 20`）改成 **延迟关联**：先在覆盖索引上拿到主键再回表
+- 不要在 ORM 上盲信 — Hibernate / GORM / Sequelize 生成的 SQL 经常多 SELECT 字段、缺索引提示。打开 query log（`make general-log-on`）抓一次实际跑的 SQL 比对
 
 ## 5. 调优实战
 
-> 写完 Scenarios 02-05 之后补。case：
-> - 拿到一条慢 SQL，先看 explain 的 type/key/rows/Extra 四列
-> - 怀疑索引没走，用 optimizer_trace 看成本估算
-> - 改不动 SQL 时，怎么加 hint（force index / use index / 8.0 的 optimizer hint）
+**Case A：「这条 SQL 上线后慢了，看不出原因」**
+
+1. `make slow` tail 慢查日志，找到 SQL
+2. `make explain SQL="..."` 看 type / key / rows / Extra
+3. 看到 `type=ALL` 或 `Using filesort` / `Using temporary` —— 99% 是索引缺失或没走
+4. 如果走了索引但 rows 远大于实际返回行数 → 走了「不对的」索引；用 `force index` 试更优的
+5. 都没问题但还是慢 → 看 `make innodb-status` 是否在等锁
+
+**Case B：「联合索引有 5 列，新来的同事看不懂顺序怎么定」**
+
+1. 列出所有用到这个索引的查询（grep 代码 + general log）
+2. 每条查询写出 WHERE 列 + 是 = 还是 范围
+3. 按「等值优先 + 高区分度优先 + 高频优先」三轴排序
+4. 索引列超过 4-5 列就要警惕：可能是查询本身该拆，不是索引该长
+
+**Case C：「explain 看起来 OK，但生产某次跑了 30s」**
+
+→ 多半是数据分布偏斜（city='Taipei' 占 80% 数据时，优化器估算「这条 WHERE 能减 5%」就走错了）。用 `optimizer_trace` 找成本估算，必要时跑 `ANALYZE TABLE` 更新统计或用 hint 强制。
 
 ## 6. 面试高频考点
 
