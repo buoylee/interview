@@ -47,8 +47,8 @@
 | 01-gmp-scheduler | ✅ 完成 | GMP 内核(G/M/P、三队列、work-stealing、为什么要 P) |
 | 02-preemption | ✅ 完成 | 抢占(样章·已认可调子) |
 | 03-netpoller-blocking | ✅ 完成 | netpoller(网络不阻塞 M) + P 交接(文件/cgo) + time.Sleep 实现 |
-| 04-goroutine | ⬜ 待写 | goroutine 实战 |
-| 05-channel-select | ⬜ 待写 | channel/select |
+| 04-goroutine | ✅ 完成 | 创建成本/可增长栈/泄漏排查/循环变量捕获 |
+| 05-channel-select | ✅ 完成 | hchan 底层/无缓冲vs有缓冲/close 语义/select/nil channel |
 | 06-sync-memory-model | ⬜ 待写 | sync/内存模型 |
 | 07-context | ⬜ 待写 | context |
 | 08-patterns | ⬜ 待写 | 并发模式 |
