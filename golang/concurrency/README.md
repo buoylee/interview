@@ -44,7 +44,7 @@
 | 设计 spec | ✅ 完成 | `docs/superpowers/specs/2026-05-30-go-concurrency-design.md` |
 | 骨架 + 进度地图 | ✅ 完成 | 本文件 |
 | 00-execution-model | ✅ 完成 | 并发地基 + 三方对照(Java/asyncio/goroutine) |
-| 01-gmp-scheduler | ⬜ 待写 | GMP 内核 |
+| 01-gmp-scheduler | ✅ 完成 | GMP 内核(G/M/P、三队列、work-stealing、为什么要 P) |
 | 02-preemption | ✅ 完成 | 抢占(样章·已认可调子) |
 | 03-netpoller-blocking | ⬜ 待写 | netpoller + 阻塞处理 |
 | 04-goroutine | ⬜ 待写 | goroutine 实战 |
