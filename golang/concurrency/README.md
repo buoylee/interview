@@ -17,7 +17,7 @@
 ## 容易忘时先看这里
 
 - [抢占怎么实现：无停止点也能让出 CPU](02-preemption/README.md) — sysmon → SIGURG → asyncPreempt 这条链，面试白板题。
-- （后续补）GMP 一图流、channel 底层、goroutine vs asyncio 深题卡。
+- [面试卡总入口](99-interview-cards/README.md) — 速答表(背诵) + 深题卡(GMP/抢占/goroutine vs thread/channel 底层/泄漏)。
 
 ## 章节地图
 
@@ -53,7 +53,7 @@
 | 07-context | ✅ 完成 | 取消树/超时穿透/防泄漏/传播惯例/Value 慎用 |
 | 08-patterns | ✅ 完成 | worker pool/fan-in-out/pipeline/errgroup/限流/重试/优雅关闭 |
 | 09-pitfalls-tuning | ✅ 完成 | 四类故障×四类工具/反模式清单/GOMAXPROCS 容器坑/GC 交互 |
-| 99-interview-cards | ⬜ 待写 | 面试卡 |
+| 99-interview-cards | ✅ 完成 | 速答表(40+条) + 5 张深题卡 |
 
 ## 关联已有笔记（复用不重复）
 
