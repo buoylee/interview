@@ -46,7 +46,7 @@
 | 00-execution-model | ✅ 完成 | 并发地基 + 三方对照(Java/asyncio/goroutine) |
 | 01-gmp-scheduler | ✅ 完成 | GMP 内核(G/M/P、三队列、work-stealing、为什么要 P) |
 | 02-preemption | ✅ 完成 | 抢占(样章·已认可调子) |
-| 03-netpoller-blocking | ⬜ 待写 | netpoller + 阻塞处理 |
+| 03-netpoller-blocking | ✅ 完成 | netpoller(网络不阻塞 M) + P 交接(文件/cgo) + time.Sleep 实现 |
 | 04-goroutine | ⬜ 待写 | goroutine 实战 |
 | 05-channel-select | ⬜ 待写 | channel/select |
 | 06-sync-memory-model | ⬜ 待写 | sync/内存模型 |
