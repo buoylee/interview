@@ -49,8 +49,8 @@
 | 03-netpoller-blocking | ✅ 完成 | netpoller(网络不阻塞 M) + P 交接(文件/cgo) + time.Sleep 实现 |
 | 04-goroutine | ✅ 完成 | 创建成本/可增长栈/泄漏排查/循环变量捕获 |
 | 05-channel-select | ✅ 完成 | hchan 底层/无缓冲vs有缓冲/close 语义/select/nil channel |
-| 06-sync-memory-model | ⬜ 待写 | sync/内存模型 |
-| 07-context | ⬜ 待写 | context |
+| 06-sync-memory-model | ✅ 完成 | atomic/Mutex(不可重入)/happens-before/data race/-race |
+| 07-context | ✅ 完成 | 取消树/超时穿透/防泄漏/传播惯例/Value 慎用 |
 | 08-patterns | ⬜ 待写 | 并发模式 |
 | 09-pitfalls-tuning | ⬜ 待写 | 陷阱调优 |
 | 99-interview-cards | ⬜ 待写 | 面试卡 |
