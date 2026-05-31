@@ -94,7 +94,20 @@
 | Java 吃 CPU 的线程怎么定位代码? | `top -H` 取 TID → `printf '%x'` 转十六进制 → jstack 里按 `nid` 找栈 |
 | 第一分钟敲什么? | uptime/dmesg/vmstat/mpstat/pidstat/iostat/free/ss/top |
 
-*(08–10 章的速答条目随章补充)*
+### systemd 与服务(`08`)
+
+| 问题 | 一句话答 |
+|------|----------|
+| systemd 是什么? | 现代 Linux 的 PID 1,系统+服务管理器,取代 SysV init |
+| `enable` vs `start`? | start=立即启动(本次);enable=设开机自启(建 symlink),两者独立 |
+| 改了 `.service` 不生效? | 忘了 `systemctl daemon-reload` |
+| 怎么做崩溃自愈? | `Restart=on-failure` + `[Install] WantedBy=multi-user.target` |
+| `systemctl stop` 怎么停的? | 先 SIGTERM,等 `TimeoutStopSec` 再 SIGKILL(接 03) |
+| 怎么限制服务资源? | 每服务一个 cgroup:`MemoryMax`/`CPUQuota`/`LimitNOFILE`/`TasksMax` |
+| 服务日志怎么看? | `journalctl -u <svc> -f`;stdout/stderr 默认进 journald |
+| 服务起不来怎么查? | `systemctl status` + `journalctl -u <svc> -n 50` |
+
+*(09–10 章的速答条目随章补充)*
 
 ---
 
@@ -357,4 +370,23 @@
 
 ---
 
-*(08 起每章续补:systemd、容器视角 …)*
+### 卡 08-A:怎么把你的程序做成一个生产级的后台服务?为什么不用 `nohup &`?
+
+**30 秒口头答**
+> 写一个 systemd `.service`:`ExecStart` 指定前台启动命令,`Restart=on-failure` 实现崩溃自愈,`User=` 指定运行用户,`MemoryMax`/`LimitNOFILE` 限资源,`[Install] WantedBy=multi-user.target` 配开机自启;然后 `daemon-reload` + `enable --now`。不用 `nohup &` 是因为它机器重启就没了、崩了不会拉起、日志要自己管、资源也不受控——而这些 systemd 全包了。
+
+**展开**
+- 自愈靠 `Restart`,优雅关闭靠 systemd 先发 SIGTERM 等 `TimeoutStopSec`(接 03),日志自动进 journald(接 07),资源限制就是给服务建 cgroup(接 04/05)。
+- `ExecStart` 要让程序**前台运行**(`Type=simple`);自己 daemonize 的老程序才用 `Type=forking`+`PIDFile`。
+
+**追问预案**
+- *Q:`enable` 了为什么没启动?* → enable 只设开机自启,要立即跑得 `start` 或 `enable --now`。
+- *Q:服务起不来第一步看什么?* → `systemctl status` 看失败原因,再 `journalctl -u <svc> -n 50` 看报错,常是路径/权限/端口/依赖。
+- *Q:和 K8s 什么关系?* → K8s 像「分布式 systemd」:拉起、守护、健康检查、资源 limits、滚动,概念一一对应。
+
+**踩坑/数据点**
+> 改了 unit 文件不 `daemon-reload` 直接 restart,跑的还是旧配置——排查半天发现配置「没生效」的头号原因。
+
+---
+
+*(09–10 章续补:容器底层、shell 脚本 …)*
