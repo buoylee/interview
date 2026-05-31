@@ -57,7 +57,20 @@
 | 有空间却报 No space left? | inode 耗尽,`df -i` 看(海量小文件) |
 | 缓冲 IO vs 直接 IO? | 缓冲走 page cache 快不保证落盘;`O_DIRECT` 绕过 cache(DB 自管缓存) |
 
-*(02、06–10 章的速答条目随章补充)*
+### 网络模型(`06`)
+
+| 问题 | 一句话答 |
+|------|----------|
+| 一条 TCP 连接由什么唯一确定? | 四元组(本地IP:端口, 对端IP:端口);内核用一个 socket fd 表示 |
+| 大量 TIME_WAIT 要紧吗? | 出现在主动关闭方,通常无害(60s 自消),除非客户端端口耗尽 |
+| 大量 CLOSE_WAIT 说明什么? | 被动关闭方应用没 `close()`,代码 bug;不会自消 |
+| TIME_WAIT vs CLOSE_WAIT? | 前者主动方/协议正常/会自消;后者被动方/没close/不自消 |
+| refused vs timeout? | refused=端口没监听回RST;timeout=包没回应(防火墙DROP/不可达) |
+| 全连接队列满怎么看? | `ss -lnt` 的 Recv-Q 接近 Send-Q;调 `somaxconn`+backlog |
+| 连不上服务怎么排查? | DNS(dig)→主机(ping)→端口(nc/curl)→监听(ss -lnt)→抓包(tcpdump) |
+| 临时端口范围在哪看? | `net.ipv4.ip_local_port_range`(默认约 32768–60999) |
+
+*(02、07–10 章的速答条目随章补充)*
 
 ---
 
@@ -233,4 +246,38 @@
 
 ---
 
-*(06 起每章续补:TIME_WAIT 堆积、机器 load 高怎么查 …)*
+### 卡 06-A:机器上一堆 `TIME_WAIT`,有问题吗?要怎么处理?
+
+**30 秒口头答**
+> 大概率没问题。TIME_WAIT 出现在主动关闭连接的一方,是协议保证「最后的 ACK 送达 + 旧包消散」的正常机制,持续约 60 秒后自动消失。只有一种情况要管:客户端用固定源 IP 对固定目标发起海量短连接,本地临时端口被 TIME_WAIT 占满导致端口耗尽。处理上,根治是用长连接/连接池减少建连;客户端侧端口紧张可以开 `tcp_tw_reuse`,但绝不要用 `tcp_tw_recycle`(NAT 下会丢连接,新内核已移除)。
+
+**追问预案**
+- *Q:为什么要等 2×MSL?* → 一是确保对端没收到最后 ACK 时能重发 FIN 被响应,二是让旧连接迷途包消散,避免污染相同四元组的新连接。
+- *Q:TIME_WAIT 在服务端还是客户端?* → 在主动关闭方。HTTP/1.0 或服务端主动断时在服务端;短连接客户端主动断时在客户端。
+- *Q:`tcp_tw_reuse` 为什么安全而 `recycle` 不安全?* → reuse 仅用于本端**发起**新连接时复用,有时间戳保护;recycle 对所有连接按源 IP 记时间戳,NAT 后多客户端共享 IP 会被误丢。
+
+**踩坑/数据点**
+> 监控里 TIME_WAIT 几万个常被误报为故障;真正该盯的是「客户端是否报 `Cannot assign requested address`」(端口耗尽)。
+
+---
+
+### 卡 06-B:一堆 `CLOSE_WAIT` 怎么回事?和 TIME_WAIT 有什么区别?
+
+**30 秒口头答**
+> CLOSE_WAIT 出现在被动关闭方:对端已经发来 FIN、本端内核也 ACK 了,但**本端应用迟迟没有调用 `close()`**,连接就卡在 CLOSE_WAIT,不会自己消失。所以大量 CLOSE_WAIT 基本可以断定是代码 bug——漏关连接、连接池没回收。它和 TIME_WAIT 正好相反:TIME_WAIT 在主动方、是协议正常机制会自消;CLOSE_WAIT 在被动方、是应用没尽责不会自消。
+
+**展开**
+- 危害:每个 CLOSE_WAIT 占一个 fd 和一条连接,堆积会同时引发 `Too many open files`(接 `05`)。
+- 定位:`sudo ss -tanp state close-wait` 直接看到是哪个进程、哪个 fd。
+
+**追问预案**
+- *Q:常见代码原因?* → HTTP client 没消费/关闭 response body、DB 连接没归还池、Go 漏 `defer resp.Body.Close()`、Java 没关 `Connection`/`Stream`。
+- *Q:为什么 CLOSE_WAIT 不会自动超时?* → 它在等应用 `close()`,内核无法替应用决定何时关;只能靠改代码或重启进程。
+- *Q:和 fd 耗尽的关系?* → CLOSE_WAIT 是 fd 泄漏的一种典型来源,两个现象常同时出现。
+
+**踩坑/数据点**
+> 口诀:**TIME_WAIT 是协议在等,CLOSE_WAIT 是你在欠。** 看到一堆 CLOSE_WAIT,先翻代码找漏 `close` 的地方,而不是调内核参数。
+
+---
+
+*(07 起每章续补:机器 load 高怎么系统排查、容器视角 …)*
