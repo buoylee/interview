@@ -23,15 +23,15 @@
 |---|------|-----------|------|
 | [00](./00-lab/) | **lab 沙箱** | 在 Mac 上起一个能反复折腾的真 Linux VM | 前置 |
 | [01](./01-mental-model-and-shell/) | **世界观 + shell 原理** | 命令怎么被执行、管道/重定向/fd 0·1·2 的本质 | on-ramp |
-| 02 | **文件系统 + 权限** | FHS、inode/软硬链接、rwx/suid/umask、`/proc` `/sys` | on-ramp |
-| 03 | **进程模型** ⭐ | fork/exec、状态 R/S/D/Z、信号、僵尸/孤儿、会话与控制终端 | 核心 |
-| 04 | **内存模型** ⭐ | 虚拟内存/page cache、RSS vs VSZ、OOM killer、swap | 核心 |
-| 05 | **I/O 与文件** ⭐ | fd、缓冲/直接 I/O、fsync、iostat 指标、**fd 耗尽** | 核心 |
-| 06 | **网络模型** ⭐ | socket、TCP 状态机、端口耗尽、DNS、tcpdump 入门 | 核心 |
-| 07 | **排查方法论与工具箱** ⭐⭐ | 把 03–06 串起来:负载→CPU→内存→IO→网络 系统化排查 | 高潮 |
-| 08 | **systemd 与服务管理** | unit/service、systemctl/journalctl、开机自启、资源限制 | 工程化 |
-| 09 | **容器底层(Linux 视角)** | namespaces/cgroups/overlayfs:「容器只是受限的进程」 | 工程化 |
-| 10 | **Shell 脚本 + 文本三件套** | 够用的 bash、grep/sed/awk、一键排查脚本 | 工具 |
+| [02](./02-filesystem-and-permissions/) | **文件系统 + 权限** | FHS、inode/软硬链接、rwx/suid/umask、`/proc` `/sys` | on-ramp |
+| [03](./03-process-model/) | **进程模型** ⭐ | fork/exec、状态 R/S/D/Z、信号、僵尸/孤儿、会话与控制终端 | 核心 |
+| [04](./04-memory-model/) | **内存模型** ⭐ | 虚拟内存/page cache、RSS vs VSZ、OOM killer、swap | 核心 |
+| [05](./05-io-and-files/) | **I/O 与文件** ⭐ | fd、缓冲/直接 I/O、fsync、iostat 指标、**fd 耗尽** | 核心 |
+| [06](./06-networking/) | **网络模型** ⭐ | socket、TCP 状态机、端口耗尽、DNS、tcpdump 入门 | 核心 |
+| [07](./07-troubleshooting-playbook/) | **排查方法论与工具箱** ⭐⭐ | 把 03–06 串起来:负载→CPU→内存→IO→网络 系统化排查 | 高潮 |
+| [08](./08-systemd-and-services/) | **systemd 与服务管理** | unit/service、systemctl/journalctl、开机自启、资源限制 | 工程化 |
+| [09](./09-containers-from-linux/) | **容器底层(Linux 视角)** | namespaces/cgroups/overlayfs:「容器只是受限的进程」 | 工程化 |
+| [10](./10-shell-scripting/) | **Shell 脚本 + 文本三件套** | 够用的 bash、grep/sed/awk、一键排查脚本 | 工具 |
 | [99](./99-interview-cards/) | **面试卡** | 速答表 + 场景化深题卡 | 面试 |
 
 **学习节奏**:`03–07` 是核心必学(也是面试重灾区);`01–02` 是 on-ramp;`08–10` 工程化拓展。建议**核心先打通,拓展后补**。
