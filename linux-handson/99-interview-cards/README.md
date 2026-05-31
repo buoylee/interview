@@ -107,7 +107,19 @@
 | 服务日志怎么看? | `journalctl -u <svc> -f`;stdout/stderr 默认进 journald |
 | 服务起不来怎么查? | `systemctl status` + `journalctl -u <svc> -n 50` |
 
-*(09–10 章的速答条目随章补充)*
+### 容器底层(`09`)
+
+| 问题 | 一句话答 |
+|------|----------|
+| 容器和虚拟机区别? | 容器共享宿主机内核、namespace+cgroup 进程级隔离、秒启;VM 各有内核、硬件级隔离 |
+| 容器底层基石? | namespace(隔离看到什么)+ cgroup(限用多少)+ overlayfs(分层/写时复制) |
+| 容器里 `free` 为何看宿主机? | 传统工具读宿主机 `/proc`;真实限制在 cgroup `memory.max` |
+| 容器 PID 1 的坑? | 信号陷阱(没 handler 的信号被忽略→SIGTERM 失效)+ 不回收僵尸;用 `--init`/tini |
+| 容器 root 是宿主 root 吗? | 不开 user namespace 时是,有提权风险 |
+| 怎么在宿主机排查容器进程? | `docker inspect` 拿真实 PID,`strace`/`lsof` 直接用,`nsenter` 进其 namespace |
+| K8s limits / OOMKilled 本质? | cgroup 资源限制 / cgroup 内存 OOM(exit 137) |
+
+*(10 章的速答条目随章补充)*
 
 ---
 
@@ -389,4 +401,34 @@
 
 ---
 
-*(09–10 章续补:容器底层、shell 脚本 …)*
+### 卡 09-A:用一两句话讲清「容器是什么」,以及它和虚拟机的区别。
+
+**30 秒口头答**
+> 容器本质就是一个被特殊安排的普通 Linux 进程:用 namespace 隔离它能看到什么(进程、网络、挂载、主机名),用 cgroup 限制它能用多少(CPU、内存、PID 数),用 overlayfs 给它一个分层、写时复制的文件系统。它和宿主机共享同一个内核,没有 Guest OS,所以启动是毫秒级、开销几乎等于跑个进程。虚拟机则各有独立内核、靠 Hypervisor 做硬件级隔离,重得多。
+
+**追问预案**
+- *Q:既然共享内核,隔离性够吗?* → 比 VM 弱,内核漏洞可能逃逸;安全敏感场景用非 root + drop caps + seccomp,或上 Kata/gVisor 这类「带轻 VM 的容器」。
+- *Q:为什么容器里 `free`/`top` 不准?* → 它们读宿主机 `/proc`,容器的真实限制在 cgroup;要看 `/sys/fs/cgroup/memory.max`。
+- *Q:镜像为什么能共享、容器为什么轻?* → overlayfs 只读层可被多个容器共享,只有可写层是各自的、且写时复制。
+
+**踩坑/数据点**
+> 「容器是轻量 VM」是最常见的错误心智模型;正确的是「容器是被隔离和限制的进程」——一旦这么想,前面所有进程/内存/IO/网络排查技能在容器里都直接复用。
+
+---
+
+### 卡 09-B:容器里 PID 1 是你的应用会有什么问题?怎么解决?
+
+**30 秒口头答**
+> 两个问题。一是信号陷阱:内核对 PID 1 特殊对待,没注册 handler 的信号会被直接忽略,所以应用当 PID 1 又没处理 SIGTERM 时,`docker stop` 或 K8s 删 Pod 发来的 SIGTERM 被忽略,白白等满宽限期才被 SIGKILL 强杀,优雅关闭失效、可能丢请求。二是僵尸回收:PID 1 要负责收养并 wait 孤儿进程,应用通常不干这事,会导致僵尸堆积。解决办法是用 tini/dumb-init 当 PID 1(`docker run --init`),它会正确转发信号并回收僵尸。
+
+**追问预案**
+- *Q:为什么内核要忽略 PID 1 的无 handler 信号?* → 防止 init 被意外信号杀死导致系统崩溃,是一种保护机制。
+- *Q:K8s 里怎么体现?* → `terminationGracePeriodSeconds`(默认 30s)就是 SIGTERM 到 SIGKILL 的等待窗口;PID 1 不处理 SIGTERM 就会白等满这段时间。
+- *Q:除了 --init 还能怎么办?* → 让应用作为 PID 1 时显式注册 SIGTERM handler 并处理子进程回收,或用支持信号转发的启动器/entrypoint。
+
+**踩坑/数据点**
+> 现象:滚动发布偶发 5xx/连接 reset,Pod 删除总要等满 30s——典型的 PID 1 没接 SIGTERM,加 `--init` 或修 entrypoint 即可。
+
+---
+
+*(10 章续补:shell 脚本与文本处理 …)*
