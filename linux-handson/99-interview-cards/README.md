@@ -33,7 +33,19 @@
 | Linux 线程和进程区别? | 都是 `task`(`clone` 创建);线程共享地址空间+fd 表,进程不共享 |
 | 怎么看进程卡在哪? | `ps -eo pid,stat,wchan,comm`,`wchan` 是它睡的内核函数 |
 
-*(02、04–10 章的速答条目随章补充)*
+### 内存模型(`04`)
+
+| 问题 | 一句话答 |
+|------|----------|
+| VSZ / RSS / PSS 区别? | VSZ=映射的虚拟空间(虚);RSS=实占物理页(含共享库重复计);PSS=共享按比例分摊 |
+| `free` 看哪列判断内存够不够? | 看 `available`(=free + 可回收 cache),不是 `free` |
+| page cache 占满内存是问题吗? | 不是,空闲内存当缓存、应用要时可立即回收 |
+| OOM killer 怎么选进程? | 按 `oom_score`(占用 + `oom_score_adj`)挑一个杀;被杀 exit 137 |
+| 容器 OOMKilled 但宿主机内存充足? | cgroup 限制小于实际用量;传统工具/老运行时读宿主机内存没感知 cgroup |
+| VSZ 2G、RSS 200M 正常吗? | 正常,按需分页:申请虚拟地址≠占物理内存,写到才缺页分配 |
+| swap 频繁意味着什么? | thrashing,性能雪崩;`vmstat` 看 `si`/`so` 持续>0 |
+
+*(02、05–10 章的速答条目随章补充)*
 
 ---
 
@@ -136,4 +148,39 @@
 
 ---
 
-*(04 起每章续补:内存涨了怎么定位泄漏、TIME_WAIT 堆积、机器 load 高怎么查、容器 OOM 但宿主机内存还多 …)*
+### 卡 04-A:容器被 `OOMKilled`(exit 137),但宿主机内存还很充足,为什么?
+
+**30 秒口头答**
+> 容器的内存上限由 cgroup 控制,和宿主机总内存是两回事。被杀是因为进程用量超过了 cgroup 的限制,触发 cgroup 级 OOM——这时宿主机可能还剩很多内存。最常见的诱因是运行时没感知 cgroup:老版本 JVM/Node 读宿主机的总内存来决定堆大小,在容器里就会把堆设得远超 cgroup 限制,必然 OOM。
+
+**展开**
+- exit 137 = 128 + 9(SIGKILL),是被 OOM killer 强杀的标志。
+- 容器里 `free`/`/proc/meminfo` 读的是宿主机,会误导;要看 `/sys/fs/cgroup/memory.max` 和 `memory.current`。
+- RSS = 逻辑内存(堆)+ 一堆额外开销,所以「设了 `-Xmx512m` 还 OOM」很常见。
+
+**追问预案**
+- *Q:JVM 怎么修?* → `-XX:MaxRAMPercentage=75`(JDK 10+ 默认已感知 cgroup),别再用读宿主机的老参数。Node 用 `--max-old-space-size`,Go 用 `GOMEMLIMIT`。
+- *Q:`-Xmx512m` 了为什么还超?* → 堆只是一部分,RSS 还含 Metaspace、线程栈(线程多很可观)、堆外 DirectBuffer、JIT 缓存。
+- *Q:怎么确认是 cgroup OOM 还是宿主机 OOM?* → `dmesg` 看 OOM 记录里有没有 `memory cgroup out of memory`;看容器 `memory.events` 的 `oom_kill` 计数。
+
+**踩坑/数据点**
+> 排查顺序:`kubectl describe pod` 看 `Reason: OOMKilled` + exit 137 → 看运行时堆参数是否感知 cgroup → 看是否堆外内存(RSS 涨但堆没涨)。
+
+---
+
+### 卡 04-B:`free` 显示可用内存只剩几百 M 了,要紧吗?怎么判断内存是否真的紧张?
+
+**30 秒口头答**
+> 大概率不要紧。Linux 会主动把空闲内存拿去做 page cache,所以 `free` 那一列(完全没用的)很小是常态。判断内存够不够要看 `available` 那一列——它等于 free 加上可回收的 cache,才是真正还能给应用用的量。再配合 `vmstat` 看 `si`/`so` 有没有在 swap。
+
+**追问预案**
+- *Q:cache 和应用抢内存时谁让步?* → cache 可回收,应用要内存时内核会回收干净页(脏页先刷盘),所以 cache 不算「占用」。
+- *Q:那什么时候才算真紧张?* → `available` 持续很低 + `si`/`so` 持续非 0(在 swap)+ 出现 OOM 记录。
+- *Q:buff 和 cache 区别?* → buffers 偏块设备元数据缓冲,cached 偏文件页缓存;现在合并显示为 buff/cache,日常不必细分。
+
+**踩坑/数据点**
+> 监控告警别用「free 内存低于阈值」,会一直误报;要用 `MemAvailable`(`/proc/meminfo`)做指标。
+
+---
+
+*(05 起每章续补:TIME_WAIT 堆积、机器 load 高怎么查、fd 耗尽 …)*
