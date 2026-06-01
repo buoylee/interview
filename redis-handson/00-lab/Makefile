@@ -87,14 +87,14 @@ cli-cluster:
 	docker compose exec -it redis-node-1 redis-cli -c
 
 down-cluster:
-	docker compose --profile cluster down
+	docker compose rm -sf redis-node-1 redis-node-2 redis-node-3 redis-node-4 redis-node-5 redis-node-6 toxiproxy
 
 up-obs:
 	docker compose --profile obs up -d
 	@echo "Grafana: http://localhost:3000  Prometheus: http://localhost:9090  exporter: :9121"
 
 down-obs:
-	docker compose --profile obs stop
+	docker compose rm -sf redis_exporter prometheus grafana
 
 # Usage: make chaos-lag MS=500 (在 cluster 节点间注入延迟,需先建 toxiproxy 代理 — 见 10/11 章 scenario)
 chaos-lag:
@@ -114,7 +114,7 @@ up-sentinel:
 	@echo "1 master + 2 replicas + 3 sentinels up."
 
 down-sentinel:
-	docker compose --profile sentinel down
+	docker compose rm -sf redis-m redis-r1 redis-r2 redis-sn-1 redis-sn-2 redis-sn-3 toxiproxy
 
 sentinel-status:
 	docker compose exec redis-sn-1 redis-cli -p 26379 sentinel master mymaster
@@ -124,4 +124,4 @@ up-ui:
 	docker compose --profile ui up -d
 	@echo "RedisInsight: http://localhost:5540 (add db host=redis port=6379)"
 down-ui:
-	docker compose --profile ui stop
+	docker compose rm -sf redisinsight
