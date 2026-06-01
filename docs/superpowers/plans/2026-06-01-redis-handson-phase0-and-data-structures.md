@@ -133,10 +133,15 @@ git commit -m "redis-handson: 00-lab 单机 compose"
 
 - [ ] **Step 1: 写 conf**
 
+> ⚠️ Redis 配置文件**不支持行内注释**(`directive value # comment` 会把 `#` 后当参数 → `FATAL CONFIG FILE ERROR`)。注释必须独立成行。
+
 ```conf
+# Redis 配置不支持行内注释,注释必须独立成行。
+
 # ---- 网络 ----
 bind 0.0.0.0
-protected-mode no            # lab 内网,12 章安全 scenario 再开
+# protected-mode 关:lab 内网用;12 章安全 scenario 再开
+protected-mode no
 port 6379
 
 # ---- 内存 / 淘汰(04 章 scenario 会改 policy)----
@@ -148,8 +153,8 @@ appendonly yes
 appendfsync everysec
 save 60 1000
 
-# ---- 慢查询(12 章)----
-slowlog-log-slower-than 10000   # 10ms
+# ---- 慢查询(12 章):阈值 10ms(单位微秒)----
+slowlog-log-slower-than 10000
 slowlog-max-len 128
 
 # ---- 延迟监控(12 章 LATENCY DOCTOR)----

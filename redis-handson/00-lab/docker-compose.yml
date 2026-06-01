@@ -1,0 +1,18 @@
+# 默认只起单机 redis;cluster / sentinel / obs / ui 在后续 task 以 profile 追加。
+services:
+  redis:
+    image: redis:7.4
+    container_name: redis
+    command: ["redis-server", "/etc/redis/redis.conf"]
+    ports: ["6379:6379"]
+    volumes:
+      - ./conf/redis.conf:/etc/redis/redis.conf:ro
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  redis-data:
