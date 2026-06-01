@@ -28,3 +28,9 @@ logs:
 
 cli:
 	docker compose exec -it redis redis-cli
+
+.PHONY: load
+# Usage: make load N=100000
+load:
+	docker compose cp init/gen-keys.sh redis:/tmp/gen-keys.sh
+	docker compose exec -e N=$${N:-100000} redis sh /tmp/gen-keys.sh
