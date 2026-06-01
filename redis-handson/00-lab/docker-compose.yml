@@ -70,5 +70,29 @@ services:
     profiles: ["obs"]
     ports: ["3000:3000"]
 
+  # ---- sentinel profile: 1 主 2 从 + 3 哨兵(均无 container_name)----
+  redis-m:
+    image: redis:7.4
+    command: ["redis-server", "--appendonly", "yes"]
+    profiles: ["sentinel"]
+  redis-r1: &sreplica
+    image: redis:7.4
+    command: ["redis-server", "--replicaof", "redis-m", "6379"]
+    profiles: ["sentinel"]
+    depends_on: ["redis-m"]
+  redis-r2:
+    <<: *sreplica
+  redis-sn-1: &sentinel
+    image: redis:7.4
+    # sentinel 会改写自身配置,拷贝只读模板到容器本地可写副本再运行,避免 3 哨兵共享一个文件
+    entrypoint: ["sh", "-c", "cp /etc/redis/sentinel.tmpl /tmp/sentinel.conf && exec redis-sentinel /tmp/sentinel.conf"]
+    volumes: ["./conf/sentinel.conf:/etc/redis/sentinel.tmpl:ro"]
+    profiles: ["sentinel"]
+    depends_on: ["redis-m"]
+  redis-sn-2:
+    <<: *sentinel
+  redis-sn-3:
+    <<: *sentinel
+
 volumes:
   redis-data:

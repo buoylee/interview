@@ -106,3 +106,15 @@ chaos-cut:
 chaos-restore:
 	-docker compose exec toxiproxy /toxiproxy-cli toxic remove -n lag node-link
 	-docker compose exec toxiproxy /toxiproxy-cli toxic remove -n cut node-link
+
+.PHONY: up-sentinel down-sentinel sentinel-status
+
+up-sentinel:
+	docker compose --profile sentinel up -d
+	@echo "1 master + 2 replicas + 3 sentinels up."
+
+down-sentinel:
+	docker compose --profile sentinel down
+
+sentinel-status:
+	docker compose exec redis-sn-1 redis-cli -p 26379 sentinel master mymaster

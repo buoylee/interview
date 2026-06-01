@@ -545,6 +545,10 @@ git commit -m "redis-handson: cluster(3主3从)+ toxiproxy + obs 栈(profile)"
 - [ ] **Step 1: sentinel.conf**
 
 ```conf
+# 只读模板。容器启动时拷到本地可写副本再运行(见 compose entrypoint),
+# 因为 sentinel 会改写自己的配置文件,3 个哨兵不能共享同一可写文件。
+port 26379
+protected-mode no
 sentinel resolve-hostnames yes
 sentinel monitor mymaster redis-m 6379 2
 sentinel down-after-milliseconds mymaster 5000
@@ -555,37 +559,32 @@ sentinel parallel-syncs mymaster 1
 - [ ] **Step 2: 追加 compose sentinel services**
 
 ```yaml
-  # ---- sentinel profile: 1 主 2 从 + 3 哨兵 ----
+  # ---- sentinel profile: 1 主 2 从 + 3 哨兵(均无 container_name)----
   redis-m:
     image: redis:7.4
-    container_name: redis-m
     command: ["redis-server", "--appendonly", "yes"]
     profiles: ["sentinel"]
-  redis-r1: &replica
+  redis-r1: &sreplica
     image: redis:7.4
-    container_name: redis-r1
     command: ["redis-server", "--replicaof", "redis-m", "6379"]
     profiles: ["sentinel"]
     depends_on: ["redis-m"]
   redis-r2:
-    <<: *replica
-    container_name: redis-r2
+    <<: *sreplica
   redis-sn-1: &sentinel
     image: redis:7.4
-    container_name: redis-sn-1
-    command: ["redis-sentinel", "/etc/redis/sentinel.conf"]
-    volumes: ["./conf/sentinel.conf:/etc/redis/sentinel.conf"]
+    # sentinel 会改写自身配置 → 拷只读模板到容器本地可写副本再运行,避免 3 哨兵共享一个文件互相覆盖
+    entrypoint: ["sh", "-c", "cp /etc/redis/sentinel.tmpl /tmp/sentinel.conf && exec redis-sentinel /tmp/sentinel.conf"]
+    volumes: ["./conf/sentinel.conf:/etc/redis/sentinel.tmpl:ro"]
     profiles: ["sentinel"]
     depends_on: ["redis-m"]
   redis-sn-2:
     <<: *sentinel
-    container_name: redis-sn-2
   redis-sn-3:
     <<: *sentinel
-    container_name: redis-sn-3
 ```
 
-> 注:sentinel 会写自己的 conf,volume 不能用 `:ro`。每个哨兵共用同一份初始 conf,启动后各自改写。
+> 注:sentinel 启动后会改写自己的配置文件。**3 个哨兵不能共享同一个可写挂载文件**(会互相覆盖),所以挂只读模板 `sentinel.tmpl`,entrypoint 各自拷到容器本地 `/tmp/sentinel.conf` 再运行。redis-sentinel 默认监听 26379。
 
 - [ ] **Step 3: 追加 Makefile**
 
