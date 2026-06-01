@@ -14,5 +14,61 @@ services:
       timeout: 3s
       retries: 10
 
+  # ---- cluster profile: 6 节点 ----
+  redis-node-1: &cnode
+    image: redis:7.4
+    command: ["redis-server", "/etc/redis/redis.conf"]
+    volumes: ["./conf/redis-cluster.conf:/etc/redis/redis.conf:ro"]
+    profiles: ["cluster"]
+    container_name: redis-node-1
+    ports: ["7001:6379"]
+  redis-node-2:
+    <<: *cnode
+    container_name: redis-node-2
+    ports: ["7002:6379"]
+  redis-node-3:
+    <<: *cnode
+    container_name: redis-node-3
+    ports: ["7003:6379"]
+  redis-node-4:
+    <<: *cnode
+    container_name: redis-node-4
+    ports: ["7004:6379"]
+  redis-node-5:
+    <<: *cnode
+    container_name: redis-node-5
+    ports: ["7005:6379"]
+  redis-node-6:
+    <<: *cnode
+    container_name: redis-node-6
+    ports: ["7006:6379"]
+
+  # ---- chaos ----
+  # 注:profile 内的可选服务不设 container_name,避免与机器上其他项目的同名容器冲突;
+  #     Makefile 一律用 compose 的 service 名(toxiproxy / prometheus …)访问,不依赖 container_name。
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.9.0
+    profiles: ["cluster", "sentinel"]
+    ports: ["8474:8474"]
+
+  # ---- obs profile ----
+  redis_exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    command: ["--redis.addr=redis://redis:6379"]
+    profiles: ["obs"]
+    ports: ["9121:9121"]
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes: ["./prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+    profiles: ["obs"]
+    ports: ["9090:9090"]
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    profiles: ["obs"]
+    ports: ["3000:3000"]
+
 volumes:
   redis-data:

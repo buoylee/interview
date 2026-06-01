@@ -71,3 +71,38 @@ bench:
 monitor:
 	@echo "MONITOR 会显示所有命令,勿在生产用。Ctrl-C 退出。"
 	docker compose exec -it redis redis-cli MONITOR
+
+.PHONY: up-cluster cluster-init cli-cluster down-cluster up-obs down-obs chaos-lag chaos-cut chaos-restore
+
+up-cluster:
+	docker compose --profile cluster up -d
+	@echo "6 nodes up on :7001-7006. Run 'make cluster-init' once."
+
+cluster-init:
+	docker compose cp cluster/create-cluster.sh redis-node-1:/tmp/create-cluster.sh
+	docker compose exec redis-node-1 sh /tmp/create-cluster.sh
+	@echo "cluster created (3 masters + 3 replicas)."
+
+cli-cluster:
+	docker compose exec -it redis-node-1 redis-cli -c
+
+down-cluster:
+	docker compose --profile cluster down
+
+up-obs:
+	docker compose --profile obs up -d
+	@echo "Grafana: http://localhost:3000  Prometheus: http://localhost:9090  exporter: :9121"
+
+down-obs:
+	docker compose --profile obs stop
+
+# Usage: make chaos-lag MS=500 (在 cluster 节点间注入延迟,需先建 toxiproxy 代理 — 见 10/11 章 scenario)
+chaos-lag:
+	docker compose exec toxiproxy /toxiproxy-cli toxic add -t latency -a latency=$${MS:-500} -n lag node-link || true
+
+chaos-cut:
+	docker compose exec toxiproxy /toxiproxy-cli toxic add -t timeout -a timeout=0 -n cut node-link || true
+
+chaos-restore:
+	-docker compose exec toxiproxy /toxiproxy-cli toxic remove -n lag node-link
+	-docker compose exec toxiproxy /toxiproxy-cli toxic remove -n cut node-link

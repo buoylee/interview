@@ -446,28 +446,26 @@ scrape_configs:
     ports: ["7006:6379"]
 
   # ---- chaos ----
+  # 注:profile 内可选服务不设 container_name,避免与机器上其他项目的同名容器冲突(toxiproxy 尤其常见)。
+  #     Makefile 一律用 compose service 名访问,不依赖 container_name。
   toxiproxy:
     image: ghcr.io/shopify/toxiproxy:2.9.0
-    container_name: toxiproxy
     profiles: ["cluster", "sentinel"]
     ports: ["8474:8474"]
 
   # ---- obs profile ----
   redis_exporter:
     image: oliver006/redis_exporter:v1.62.0
-    container_name: redis_exporter
     command: ["--redis.addr=redis://redis:6379"]
     profiles: ["obs"]
     ports: ["9121:9121"]
   prometheus:
     image: prom/prometheus:v2.54.1
-    container_name: prometheus
     volumes: ["./prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
     profiles: ["obs"]
     ports: ["9090:9090"]
   grafana:
     image: grafana/grafana:11.2.0
-    container_name: grafana
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
