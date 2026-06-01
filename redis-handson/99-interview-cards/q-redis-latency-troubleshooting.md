@@ -16,8 +16,8 @@ Redis 单线程,变慢=有东西卡住了事件循环。**出事三件套**:`--b
 
 ## 易踩的坑（实测）
 
-- **别用 `DEBUG SLEEP` 自测延迟监控**:它是合成阻塞,**不计入 `LATENCY`**;只有真实重命令/fork/AOF 等事件才被记录。[sc03](../12-production-ops/scenarios/03-slowlog-and-latency.md)
-- `latency-monitor-threshold` 默认 100ms,几 ms 的命令抓不到 —— 排查时调低。
+- **`latency-monitor-threshold` 默认 100ms 偏高**:几 ms 的慢命令(如 `KEYS *` ~4.5ms)根本不进 `LATENCY` —— 排查时先调低阈值。[sc03](../12-production-ops/scenarios/03-slowlog-and-latency.md)
+- **`DEBUG` 默认被禁**(`enable-debug-command no`):生产上不能直接 `DEBUG SLEEP` 现场测;开启 + 调低阈值后,`DEBUG SLEEP` 与真实重命令都会记为 `command` 事件。
 - `SLOWLOG` 阈值 `slowlog-log-slower-than`（微秒);线上别设太低否则日志爆。
 
 ## 易追问的延伸

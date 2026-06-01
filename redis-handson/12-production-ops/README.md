@@ -27,7 +27,7 @@
 ### 3.4 延迟毛刺归因
 - `LATENCY DOCTOR`（人话诊断）、`LATENCY LATEST`、`LATENCY HISTORY <event>`、`LATENCY RESET`；开关靠 `latency-monitor-threshold <ms>`。
 - 常见延迟源:**fork**（bgsave / AOF rewrite，大实例 fork 慢）、**AOF fsync**（`appendfsync always` 每次刷盘）、**THP**（透明大页，建议关）、**swap**（内存不足换出，致命）、大 key、慢命令。
-- ⚠️ 实测发现:**`DEBUG SLEEP` 不会被 LATENCY 监控记录**（它是合成阻塞，不计入命令延迟采样）；只有**真实重命令**（全量 LRANGE/HGETALL 等）才记为 `command` 事件（sc03）。
+- ⚠️ 两个实测坑（sc03）:(1) `latency-monitor-threshold` **默认 100ms 偏高**,几 ms 的慢命令(如 `KEYS *` ~4.5ms)根本不进 LATENCY,排查要先调低阈值;(2) `DEBUG` 命令**默认被禁**(`enable-debug-command no`),别指望生产上 `DEBUG SLEEP` 现场测(本 lab 特意开启)。开启 + 调低阈值后,`DEBUG SLEEP` 和真实重命令都会记为 `command` 事件。
 
 ### 3.5 连接与安全
 - **连接池**:客户端复用连接，别每请求新建（建连有 TCP+认证开销）；`maxclients` 限上限；`CLIENT LIST`/`CLIENT KILL` 查杀。

@@ -175,6 +175,9 @@ io-threads 1
 
 # ---- 键空间通知(03/09 章)----
 notify-keyspace-events ""
+
+# ---- 开启 DEBUG 命令(仅 lab:01 阻塞演示 / 延迟监控等需要;默认 no)----
+enable-debug-command yes
 ```
 
 - [ ] **Step 2: Commit**

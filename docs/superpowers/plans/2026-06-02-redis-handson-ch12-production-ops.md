@@ -29,7 +29,8 @@ redis-handson/99-interview-cards/
 
 - **sc01 大key**:`bighash` = hashtable / 2786544B(2.78MB)/ 50000 字段;`HGETALL bighash` 延迟 4ms(单线程阻塞);拆成 500 个 100 字段分片 → 每片 **listpack** → 合计 **895584B(0.87MB,降到 ~1/3)**。`--bigkeys` 能定位到它。
 - **sc02 热key**:`maxmemory-policy allkeys-lfu` 下偏斜访问,`OBJECT FREQ hot:A=38`(LFU 对数计数,非真实次数)、`hot:B=9`;`--hotkeys` 列出 hot:A(38)/hot:B(9)。
-- **sc03 慢命令/延迟**:`slowlog-log-slower-than` 降到 1000µs 后,`KEYS *`(10万 key)耗 **4537µs** 进 SLOWLOG;`latency-monitor-threshold` 降到 1ms 后,全量 `LRANGE`/`HGETALL` 等**真实重命令**被 `LATENCY` 记为 `command` 事件(3-4ms);**`DEBUG SLEEP` 不计入** latency 监控(合成阻塞,反直觉落差)。
+- **sc03 慢命令/延迟**:`slowlog-log-slower-than` 降到 1000µs 后,`KEYS *`(10万 key)耗 **~4.7ms** 进 SLOWLOG;`LATENCY` 把超阈值命令记为 `command` 事件——阈值 50ms 时 `DEBUG SLEEP 0.2` 留 200ms 记录,但**默认阈值 100ms 会滤掉几 ms 的命令**(KEYS* 4.5ms 抓不到)。两个坑:`enable-debug-command` 默认 `no`(DEBUG 被禁,本 lab 开启);默认阈值偏高要调低。
+  > 注:lab 的 `redis.conf` 已加 `enable-debug-command yes`(01 阻塞演示、延迟监控等需要)。
 
 ## Tasks
 
