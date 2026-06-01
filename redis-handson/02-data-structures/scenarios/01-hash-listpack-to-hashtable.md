@@ -37,21 +37,27 @@ R del h3; for i in $(seq 1 200); do R hset h3 f$i v$i >/dev/null; done; R object
 for i in $(seq 2 200); do R hdel h3 f$i >/dev/null; done; echo "hlen=$(R hlen h3)"; R object encoding h3
 ```
 
-## 实机告诉我（跑完当天填）
+## 实机告诉我（2026-06-01，Redis 7.4.9 实跑）
 
 ```
-<贴每步 OBJECT ENCODING 输出>
+step1: h(128 fields)            -> listpack
+step2: h(129 fields)            -> hashtable
+step3: h2(1 field, 65B value)   -> hashtable
+step4: h3(200 fields)           -> hashtable
+       h3 hdel 至 hlen=1        -> hashtable   （未退回）
 ```
 
 观察到的关键事实：
 
-- ...
+- 字段数 **128 仍是 listpack，第 129 个才翻转** —— 阈值是「> 128」，即 `> hash-max-listpack-entries`，等于 128 不触发。
+- **value 长度是独立触发条件**：只有 1 个字段，但 value 65 字节（> 64）就直接 hashtable，跟字段数无关。两个条件**任一**满足即升级。
+- 升到 hashtable 后，`hdel` 删到只剩 1 个字段，编码**仍是 hashtable，没有退回 listpack**。
 
 ## ⚠️ 预期 vs 实机落差
 
-- 我以为：……
-- 实际：……
-- 我学到：……
+- 我以为：可能加到第 128 个就转（差一）；删回很小也许会退回 listpack。
+- 实际：是「**严格大于** 128」才转（128 仍 listpack）；value > 64B 是平行的第二触发条件；**转换单向不可逆**，删到 1 个字段也不退回。
+- 我学到：(1) 阈值是「>」不是「≥」，背的时候别记成「最多 128」要记「超过 128」。(2) 控内存要同时盯**字段数和 value 大小**两条线。(3) 单向不回退是刻意设计——避免在阈值附近增删反复转换抖动；所以一个曾经很大的 hash 即使瘦下来，也回不到省内存的 listpack，要省内存得 `del` 重建。
 
 ## 连到的面试卡
 
