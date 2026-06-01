@@ -94,5 +94,11 @@ services:
   redis-sn-3:
     <<: *sentinel
 
+  # ---- ui profile: RedisInsight 官方 GUI ----
+  redisinsight:
+    image: redis/redisinsight:2.58
+    profiles: ["ui"]
+    ports: ["5540:5540"]
+
 volumes:
   redis-data:

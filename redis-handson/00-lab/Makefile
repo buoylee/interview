@@ -118,3 +118,10 @@ down-sentinel:
 
 sentinel-status:
 	docker compose exec redis-sn-1 redis-cli -p 26379 sentinel master mymaster
+
+.PHONY: up-ui down-ui
+up-ui:
+	docker compose --profile ui up -d
+	@echo "RedisInsight: http://localhost:5540 (add db host=redis port=6379)"
+down-ui:
+	docker compose --profile ui stop
