@@ -209,6 +209,7 @@ vmstat 1 3; echo ---; free -m; echo ---; ss -s
 → 这正是「OS 定位资源/进程 → 语言 profiler 定位代码」的标准接力。各语言 profiling 实操见 `performance-tuning-roadmap/04a/05a/06a-*-profiling`。
 
 **延伸指针**:
+- 把本章方法论拿去**反复演练**(按需造真故障、走完整事故流程)→ [`11 · 故障注入实验室`](../11-fault-injection-lab/)
 - 方法论(USE / RED / 性能定律)→ `performance-tuning-roadmap/01-methodology/`
 - 各类 Linux 工具系统教程 → `performance-tuning-roadmap/02-linux-tools/`(含 `05-tracing-profiling`、`06-ebpf-bcc-bpftrace`)
 - 压测建基线、找拐点 → `performance-tuning-roadmap/07-load-testing/`

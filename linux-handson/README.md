@@ -32,9 +32,10 @@
 | [08](./08-systemd-and-services/) | **systemd 与服务管理** | unit/service、systemctl/journalctl、开机自启、资源限制 | 工程化 |
 | [09](./09-containers-from-linux/) | **容器底层(Linux 视角)** | namespaces/cgroups/overlayfs:「容器只是受限的进程」 | 工程化 |
 | [10](./10-shell-scripting/) | **Shell 脚本 + 文本三件套** | 够用的 bash、grep/sed/awk、一键排查脚本 | 工具 |
+| [11](./11-fault-injection-lab/) | **故障注入实验室(道场)** ⭐⭐ | 按需造真故障、走完整事故流程,补「大厂真实经验」 | 演练 |
 | [99](./99-interview-cards/) | **面试卡** | 速答表 + 场景化深题卡 | 面试 |
 
-**学习节奏**:`03–07` 是核心必学(也是面试重灾区);`01–02` 是 on-ramp;`08–10` 工程化拓展。建议**核心先打通,拓展后补**。
+**学习节奏**:`03–07` 是核心必学(也是面试重灾区);`01–02` 是 on-ramp;`08–10` 工程化拓展;[`11`](./11-fault-injection-lab/) 是配合 `03–07` 的演练道场,学完核心随时回来刷。建议**核心先打通,拓展后补**。
 
 ---
 
