@@ -52,6 +52,17 @@ ss -tanp | grep 26379 | wc -l
 ```
 连接数不高(就 5 条),但应用一堆线程**卡在"等连接"**——Java 看 `jstack` 会是一片 `WAITING` 在连接池的 `getConnection`;Go 是 goroutine 阻塞在 `Pool.Get`。**关键:卡的不是 CPU、不是带宽,是"拿不到连接"。**
 
+更进一步,在 Linux 层直接看「每个线程在等什么」——会发现线程**分成两拨**(`wchan` 名随内核略有出入):
+```bash
+APP=$(pgrep -f pool_client.py | head -1)        # 脚本跑得快,放循环里连敲几次抓现场
+ps -L -p "$APP" -o tid,stat,wchan:24 2>/dev/null | sort -k3
+```
+- **≈ 池大小那几个**:`wchan` 类似 `sk_wait_data` → 卡在**等下游 socket**(经典的 `read` 不返回)。
+- **其余一大批**:`wchan` 类似 `futex_*` → 卡在**等"借一个连接"**。
+
+> 破案关键:多数受害线程**根本没在做网络 IO**,而是在等一个「连接名额」——只盯 `read` 会漏掉它们。生产里这对应一个监控指标:连接池 `active`(顶格)+ `pending`(高),如 HikariCP 的 `hikaricp_connections_active / pending`。**先看这个指标,比翻日志快得多。**
+> 这类「间歇 / 高负载才复现 / 日志刷太快」的故障到底怎么抓(指标 + 触发式抓取 + 实验室复现),专门一篇:[`../catching-intermittent-faults.md`](../catching-intermittent-faults.md)。
+
 ### ③ 根因
 下游每次占用一条连接 200ms,池只有 5 条 → 池的吞吐上限 = 5 / 0.2s = **25 req/s**。请求速率一超过它,就排队、越积越久。**根因是"慢依赖 × 有限池",不是池本身太小。**
 
