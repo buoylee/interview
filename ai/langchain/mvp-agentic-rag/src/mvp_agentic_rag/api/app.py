@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import Depends, FastAPI, Request, Response
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
@@ -54,5 +54,20 @@ def create_app(deps: AppDeps) -> FastAPI:
                 break
         return ChatResponse(response=answer, citations=result.get("citations", []),
                             request_id=request.state.request_id)
+
+    @app.post("/chat/stream")
+    async def chat_stream(req: ChatRequest, request: Request, _: None = Depends(require_api_key)):
+        config = {"configurable": {"thread_id": req.thread_id}, "callbacks": deps.callbacks}
+        inp = {"messages": [HumanMessage(content=req.message)],
+               "next": "", "citations": [], "step_budget": 6}
+
+        async def event_stream():
+            async for chunk, _meta in deps.graph.astream(inp, config, stream_mode="messages"):
+                content = getattr(chunk, "content", "")
+                if content:
+                    yield f"data: {content}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
 
     return app
