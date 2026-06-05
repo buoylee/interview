@@ -423,7 +423,6 @@ git commit -m "mvp-agentic-rag: Plan1 Task3 embedding 工厂"
 - [ ] **Step 1: 写 `tests/conftest.py`**
 
 ```python
-import psycopg
 import pytest
 from langchain_core.embeddings import DeterministicFakeEmbedding
 from testcontainers.postgres import PostgresContainer

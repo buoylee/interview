@@ -1,4 +1,3 @@
-import psycopg
 import pytest
 from langchain_core.embeddings import DeterministicFakeEmbedding
 from testcontainers.postgres import PostgresContainer
