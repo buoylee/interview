@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-REFUSAL_MARKERS = ("依据不足", "无法", "抱歉", "没有找到")
+REFUSAL_MARKERS = ("依据不足", "未找到足够依据")
 
 
 def check_must_include(answer: str, must_include: list[str]) -> bool:
@@ -14,7 +14,7 @@ def check_route(actual_route: str, expected_route: str | None) -> bool:
 def check_citations(citations: list[dict], expected_docs: list[str] | None) -> bool:
     if not expected_docs:
         return True
-    got = {c.get("doc_id") for c in citations}
+    got = {c.get("doc_id") for c in citations if c}
     return all(d in got for d in expected_docs)
 
 
@@ -32,4 +32,9 @@ class CaseResult:
 
     @property
     def passed(self) -> bool:
-        return all([self.must_include_ok, self.route_ok, self.citation_ok, self.refusal_ok])
+        return (
+            self.must_include_ok
+            and self.route_ok
+            and self.citation_ok
+            and self.refusal_ok
+        )
