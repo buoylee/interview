@@ -1,4 +1,4 @@
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import StructuredTool, tool
 
 from mvp_agentic_rag.retrieval.types import RetrievedChunk
 
@@ -26,3 +26,10 @@ def make_retrieve_kb_tool(retriever) -> StructuredTool:
             "当问题需要依据内部文档回答时调用。"
         ),
     )
+
+
+@tool
+def web_search(query: str) -> str:
+    """当问题超出企业知识库范围、需要外部/实时信息时,搜索网络。"""
+    # MVP 占位实现:接入真实搜索 API(Tavily/DuckDuckGo)时替换这里。
+    return f"[web_search 占位结果] 关于「{query}」的外部信息暂未接入真实搜索。"
