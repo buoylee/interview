@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import Depends, FastAPI, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
@@ -54,6 +54,8 @@ def create_app(deps: AppDeps) -> FastAPI:
             if isinstance(m, AIMessage):
                 answer = str(m.content)
                 break
+        if not answer:
+            raise HTTPException(status_code=500, detail="no AI response generated")
         return ChatResponse(response=answer, citations=result.get("citations", []),
                             request_id=request.state.request_id)
 
@@ -92,6 +94,8 @@ def create_app(deps: AppDeps) -> FastAPI:
             if isinstance(m, AIMessage):
                 answer = str(m.content)
                 break
+        if not answer:
+            raise HTTPException(status_code=500, detail="no AI response generated")
         return ChatResponse(response=answer, citations=result.get("citations", []),
                             request_id=request.state.request_id)
 

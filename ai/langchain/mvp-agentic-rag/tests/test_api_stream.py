@@ -11,7 +11,9 @@ class StreamStubGraph:
 def _client():
     from mvp_agentic_rag.api.deps import AppDeps
     from mvp_agentic_rag.api.app import create_app
+    import mvp_agentic_rag.core.config as cfg
 
+    cfg.get_settings.cache_clear()
     return TestClient(create_app(AppDeps(graph=StreamStubGraph(), db=object(), callbacks=[])))
 
 
@@ -23,3 +25,18 @@ def test_chat_stream_yields_sse_tokens():
     assert "data: Hello" in body
     assert "data:  world" in body
     assert "data: [DONE]" in body
+
+
+def test_chat_stream_requires_api_key_when_configured(monkeypatch):
+    monkeypatch.setenv("APP_API_KEY", "secret")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@h:5432/d")
+    import mvp_agentic_rag.core.config as cfg
+    cfg.get_settings.cache_clear()
+
+    client = _client()
+    # 缺 key → 401
+    assert client.post("/chat/stream", json={"message": "x"}).status_code == 401
+    # 带正确 key → 200
+    ok = client.post("/chat/stream", json={"message": "x"}, headers={"X-API-Key": "secret"})
+    assert ok.status_code == 200
+    cfg.get_settings.cache_clear()

@@ -22,7 +22,9 @@ class ThreadStubGraph:
 def _client(graph):
     from mvp_agentic_rag.api.deps import AppDeps
     from mvp_agentic_rag.api.app import create_app
+    import mvp_agentic_rag.core.config as cfg
 
+    cfg.get_settings.cache_clear()
     return TestClient(create_app(AppDeps(graph=graph, db=object(), callbacks=[])))
 
 
@@ -40,3 +42,18 @@ def test_resume_continues_run():
     assert r.json()["response"] == "resumed"
     # 传入的是 Command(resume="approved")
     assert getattr(graph.resumed_with, "resume", None) == "approved"
+
+
+def test_get_thread_requires_api_key_when_configured(monkeypatch):
+    monkeypatch.setenv("APP_API_KEY", "secret")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@h:5432/d")
+    import mvp_agentic_rag.core.config as cfg
+    cfg.get_settings.cache_clear()
+
+    client = _client(ThreadStubGraph())
+    # 缺 key → 401
+    assert client.get("/threads/t1").status_code == 401
+    # 带正确 key → 200
+    ok = client.get("/threads/t1", headers={"X-API-Key": "secret"})
+    assert ok.status_code == 200
+    cfg.get_settings.cache_clear()

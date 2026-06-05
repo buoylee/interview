@@ -1,3 +1,4 @@
+import hmac
 from dataclasses import dataclass, field
 
 from fastapi import Header, HTTPException
@@ -15,5 +16,5 @@ class AppDeps:
 def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
     """APP_API_KEY 留空=开发模式不校验;设置后要求请求头 X-API-Key 匹配。"""
     expected = get_settings().app_api_key
-    if expected and x_api_key != expected:
+    if expected and (x_api_key is None or not hmac.compare_digest(x_api_key, expected)):
         raise HTTPException(status_code=401, detail="invalid or missing X-API-Key")
