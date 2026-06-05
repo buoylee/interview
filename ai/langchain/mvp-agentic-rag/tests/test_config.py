@@ -24,3 +24,18 @@ def test_settings_overrides_knobs(monkeypatch):
     s = Settings()
 
     assert s.top_k_dense == 3
+
+
+def test_get_embeddings_uses_config(monkeypatch):
+    monkeypatch.setenv("EMBEDDING_BASE_URL", "http://x/v1")
+    monkeypatch.setenv("EMBEDDING_API_KEY", "secret")
+    monkeypatch.setenv("EMBEDDING_MODEL", "my-embed")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@h:5432/d")
+
+    from mvp_agentic_rag.core.config import Settings
+    from mvp_agentic_rag.core.llm import get_embeddings
+
+    emb = get_embeddings(Settings())
+
+    assert emb.model == "my-embed"
+    assert str(emb.openai_api_base) == "http://x/v1"
