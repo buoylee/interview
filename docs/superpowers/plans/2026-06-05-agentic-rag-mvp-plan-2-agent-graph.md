@@ -567,6 +567,19 @@ def test_not_relevant_triggers_rewrite_then_succeeds():
     assert out["answer"] == "HPA scales pods [1]"
 
 
+def test_not_grounded_then_rewrite_succeeds():
+    # 接地失败 → 改写重试 → 第二轮接地成功(覆盖 grounding 重试成功子路径)
+    retriever = StubRetriever()
+    rewriter = StubRewriter()
+    app = _build(ScriptedGrader([True, True]), ScriptedGrounder([False, True]),
+                 rewriter=rewriter, retriever=retriever, max_rewrites=1)
+    out = app.invoke({"query": "q", "rewrites": 0})
+    assert rewriter.calls == 1
+    assert retriever.calls == 2
+    assert out["answer"] == "HPA scales pods [1]"
+    assert out["grounded"] is True
+
+
 def test_not_grounded_no_budget_hedges():
     app = _build(ScriptedGrader([True]), ScriptedGrounder([False]), max_rewrites=0)
     out = app.invoke({"query": "q", "rewrites": 0})
