@@ -761,3 +761,15 @@ git commit -m "mvp-agentic-rag: Plan4 Task8 README 收口(quickstart + 12 章覆
 - §七 复用概念文档(链接不重写):Task 7 各篇链接 ✅
 - 暂不覆盖:ragas 的 hermetic 断言(需真 judge,live-only)、Grafana 面板、OTel、CI workflow 文件本身(eval 退出码已就绪,接入 CI 由用户的 CI 平台决定)。
 - 已知风险点(执行期按红灯微调并记 concern):`uv add --optional eval ragas` 解析(ragas 依赖较重)、cli.py `graph.stream(stream_mode="updates")` 的 update 结构(node 名提取)、`get_state().values` 结构(Plan 2 已验证)。
+
+## 实现期 review 修正记录(committed 代码与上文逐字片段的差异)
+
+执行 + review 发现并已修正(均合入,75 测试全绿):
+
+- **拒答标记收窄**:`checks.py` 的 `REFUSAL_MARKERS` 从 `("依据不足","无法","抱歉","没有找到")` 收窄为 `("依据不足","未找到足够依据")` —— 通用词 `无法/抱歉/没有找到` 会让正常答案被误判为拒答(影响 live eval);收窄后仍能命中系统的 hedge 措辞。
+- **健壮性**:`CaseResult.passed` 用显式 `and` 链(替 `all([...])`);`check_citations` 对 citations 里的 `None` 元素加 `if c` 守卫。
+- **去死 import**:`dataset.py` 去掉未用的 `field`;`cli.py` 去掉未用的 `import sys`。
+- **ragas 实测 0.4.3**:`uv add --optional eval ragas` 成功解析(装入 venv,注册为 `[eval]` 可选 extra);`ragas_eval.py` lazy import,未装也能 import 模块。
+- **阈值说明**:`cli.py` live 灰度门 0.5(真实 LLM 更难)与 hermetic CI-gate 0.9(`test_eval_runner`)是两个门,已在 cli 注释里说明。
+- **文档修正**:`debugging-playbook.md` 示例类名 `Grader`→`LLMDocGrader`;`ARCHITECTURE.md` 图里 supervisor 措辞改为「写 next 经 add_conditional_edges 路由(等价 Command(goto=...))」以匹配实现。
+- **链接深度**:`docs/interview-qa/` 到仓库根为 4 层(`../../../../`);文档用 repo-root-relative 路径文本,12 个概念链接均验证存在。
