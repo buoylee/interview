@@ -1,6 +1,7 @@
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 
+from mvp_agentic_rag.agent.human_review import human_review_node
 from mvp_agentic_rag.agent.state import AgentState
 
 
@@ -33,9 +34,12 @@ def build_agent_graph(supervisor_node, kb_rag_runnable, web_runnable, checkpoint
     g.add_node("supervisor", supervisor_node)
     g.add_node("kb_rag", kb_rag_node)
     g.add_node("web", web_node)
+    g.add_node("human_review", human_review_node)
     g.add_edge(START, "supervisor")
     g.add_conditional_edges("supervisor", route,
-                            {"kb_rag": "kb_rag", "web": "web", "FINISH": END})
+                            {"kb_rag": "kb_rag", "web": "web",
+                             "human_review": "human_review", "FINISH": END})
     g.add_edge("kb_rag", "supervisor")
     g.add_edge("web", "supervisor")
+    g.add_edge("human_review", "supervisor")
     return g.compile(checkpointer=checkpointer)
