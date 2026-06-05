@@ -5,9 +5,11 @@ from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
+from langgraph.types import Command
+
 import mvp_agentic_rag.obs.metrics  # noqa: F401 — registers Prometheus metrics on import
 from mvp_agentic_rag.api.deps import AppDeps, require_api_key
-from mvp_agentic_rag.api.schemas import ChatRequest, ChatResponse
+from mvp_agentic_rag.api.schemas import ChatRequest, ChatResponse, ResumeRequest
 
 
 def create_app(deps: AppDeps) -> FastAPI:
@@ -69,5 +71,28 @@ def create_app(deps: AppDeps) -> FastAPI:
             yield "data: [DONE]\n\n"
 
         return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+    @app.get("/threads/{thread_id}")
+    async def get_thread(thread_id: str, _: None = Depends(require_api_key)):
+        config = {"configurable": {"thread_id": thread_id}}
+        snapshot = deps.graph.get_state(config)
+        messages = [
+            {"type": m.__class__.__name__, "content": str(getattr(m, "content", ""))}
+            for m in snapshot.values.get("messages", [])
+        ]
+        return {"thread_id": thread_id, "messages": messages}
+
+    @app.post("/threads/{thread_id}/resume", response_model=ChatResponse)
+    async def resume_thread(thread_id: str, req: ResumeRequest, request: Request,
+                            _: None = Depends(require_api_key)):
+        config = {"configurable": {"thread_id": thread_id}, "callbacks": deps.callbacks}
+        result = deps.graph.invoke(Command(resume=req.decision), config)
+        answer = ""
+        for m in reversed(result.get("messages", [])):
+            if isinstance(m, AIMessage):
+                answer = str(m.content)
+                break
+        return ChatResponse(response=answer, citations=result.get("citations", []),
+                            request_id=request.state.request_id)
 
     return app
