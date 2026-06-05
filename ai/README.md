@@ -14,15 +14,21 @@ ai/
 │   ├── build-guide.md         # 学习版: 从零手撸，理解原理 (Phase 1-6)
 │   └── production-guide.md    # 生产版: 多模型、可靠、安全、可持续使用
 │
-└── agent-platform/             # 企业 Agent 平台工程方案
-    ├── agent-local-vs-cloud-selection.md # 本地/云上选型与主流工具调研
-    └── cloud-agent-architecture.md       # 云上 Agent 最终落地架构
+├── agent-platform/             # 企业 Agent 平台工程方案
+│   ├── agent-local-vs-cloud-selection.md # 本地/云上选型与主流工具调研
+│   └── cloud-agent-architecture.md       # 云上 Agent 最终落地架构
+│
+└── a2a-protocol/               # A2A(Agent2Agent)协议 实战自学
+    ├── README.md               # 现状/心智模型/MCP 关系/框架接入/面试卡片
+    ├── hello_server.py         # 最小 A2A 服务端骨架(v1.0)
+    └── hello_client.py         # 最小 A2A 客户端骨架(v1.0)
 ```
 
 ## 补充主题
 
 - `openai-claude-chat-completion-接口整理.md` — OpenAI / Claude 的接口选型、三段最小示例和官方链接索引
 - `agent-platform/` — Agent 平台选型、云上架构、安全治理、RAG、工具网关、评测与发布方案
+- `a2a-protocol/` — A2A 协议(agent↔agent 互通的事实标准)上手:Java/Go 对照心智模型、最小可跑 demo、A2A vs MCP、框架接入、面试卡片
 
 ## 学习顺序
 
