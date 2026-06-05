@@ -15,5 +15,16 @@ services:
       timeout: 5s
       retries: 10
 
+  app:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://rag:rag@postgres:5432/rag
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   pgdata:

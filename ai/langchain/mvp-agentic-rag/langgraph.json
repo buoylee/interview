@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "agent": "./src/mvp_agentic_rag/lg_entry.py:graph"
+  },
+  "env": ".env"
+}
