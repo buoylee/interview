@@ -915,7 +915,7 @@ Expected: FAIL —`No module named 'mvp_agentic_rag.retrieval.dense'`。
 - [ ] **Step 4: 写实现 `src/mvp_agentic_rag/retrieval/types.py`**
 
 ```python
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -1091,7 +1091,6 @@ def test_rrf_rewards_items_high_in_multiple_lists():
 
     # a 和 b 都在两路靠前,应排在只出现一次的 c/d 之前
     assert set(order[:2]) == {"a", "b"}
-    assert order[0] == "a" or order[0] == "b"
 
 
 def test_rrf_single_list_preserves_order():
@@ -1246,7 +1245,6 @@ def test_hybrid_returns_relevant_chunk(seeded):
         dense=DenseRetriever(db=db, embeddings=emb),
         sparse=SparseRetriever(db=db, fts_config="simple"),
         reranker=IdentityReranker(),
-        db=db,
         top_k_dense=10,
         top_k_sparse=10,
         rrf_k=60,
@@ -1268,7 +1266,6 @@ Expected: FAIL —`No module named 'mvp_agentic_rag.retrieval.hybrid'`。
 - [ ] **Step 3: 写实现 `src/mvp_agentic_rag/retrieval/hybrid.py`**
 
 ```python
-from mvp_agentic_rag.core.db import Database
 from mvp_agentic_rag.retrieval.dense import DenseRetriever
 from mvp_agentic_rag.retrieval.fusion import reciprocal_rank_fusion
 from mvp_agentic_rag.retrieval.rerank import Reranker
@@ -1282,7 +1279,6 @@ class HybridRetriever:
         dense: DenseRetriever,
         sparse: SparseRetriever,
         reranker: Reranker,
-        db: Database,
         top_k_dense: int,
         top_k_sparse: int,
         rrf_k: int,
@@ -1291,7 +1287,6 @@ class HybridRetriever:
         self.dense = dense
         self.sparse = sparse
         self.reranker = reranker
-        self.db = db
         self.top_k_dense = top_k_dense
         self.top_k_sparse = top_k_sparse
         self.rrf_k = rrf_k
@@ -1459,7 +1454,6 @@ def build_hybrid_retriever(
         dense=DenseRetriever(db=db, embeddings=embeddings),
         sparse=SparseRetriever(db=db, fts_config=s.fts_config),
         reranker=IdentityReranker(),
-        db=db,
         top_k_dense=s.top_k_dense,
         top_k_sparse=s.top_k_sparse,
         rrf_k=s.rrf_k,
