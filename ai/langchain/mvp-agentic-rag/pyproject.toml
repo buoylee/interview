@@ -1,0 +1,33 @@
+[project]
+name = "mvp-agentic-rag"
+version = "0.1.0"
+description = "企业知识库 Agentic RAG 助手(LangGraph 生产级 MVP)"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "psycopg[binary,pool]>=3.2",
+    "pgvector>=0.3.6",
+    "langchain-core>=0.3",
+    "langchain-openai>=0.2",
+    "langchain-text-splitters>=0.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "testcontainers[postgres]>=4.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mvp_agentic_rag"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+testpaths = ["tests"]
