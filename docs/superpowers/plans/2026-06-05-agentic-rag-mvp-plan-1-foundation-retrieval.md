@@ -562,7 +562,9 @@ class Database:
             ON kb_chunks USING GIN (tsv);
         """
         with self.connect() as conn:
-            conn.execute(ddl)
+            # ddl 仅插值 self.embed_dim(来自校验过的 Settings 的 int,非用户输入),
+            # 无注入风险;f-string 是 str 而非 LiteralString,故显式忽略类型告警。
+            conn.execute(ddl)  # type: ignore[arg-type]
             conn.commit()
 
     def close(self) -> None:
