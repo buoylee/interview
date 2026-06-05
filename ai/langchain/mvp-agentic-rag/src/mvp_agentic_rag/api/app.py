@@ -1,11 +1,13 @@
 import uuid
 
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
+from langchain_core.messages import AIMessage, HumanMessage
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 import mvp_agentic_rag.obs.metrics  # noqa: F401 — registers Prometheus metrics on import
-from mvp_agentic_rag.api.deps import AppDeps
+from mvp_agentic_rag.api.deps import AppDeps, require_api_key
+from mvp_agentic_rag.api.schemas import ChatRequest, ChatResponse
 
 
 def create_app(deps: AppDeps) -> FastAPI:
@@ -36,5 +38,21 @@ def create_app(deps: AppDeps) -> FastAPI:
     @app.get("/metrics")
     async def metrics():
         return PlainTextResponse(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+    @app.post("/chat", response_model=ChatResponse)
+    async def chat(req: ChatRequest, request: Request, _: None = Depends(require_api_key)):
+        config = {"configurable": {"thread_id": req.thread_id}, "callbacks": deps.callbacks}
+        result = deps.graph.invoke(
+            {"messages": [HumanMessage(content=req.message)],
+             "next": "", "citations": [], "step_budget": 6},
+            config,
+        )
+        answer = ""
+        for m in reversed(result.get("messages", [])):
+            if isinstance(m, AIMessage):
+                answer = str(m.content)
+                break
+        return ChatResponse(response=answer, citations=result.get("citations", []),
+                            request_id=request.state.request_id)
 
     return app
