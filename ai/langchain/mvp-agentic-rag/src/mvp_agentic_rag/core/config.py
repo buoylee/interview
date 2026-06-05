@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o-mini"
     llm_model_fallback: str = "gpt-4o-mini"
 
+    # 可观测
+    obs_backend: str = "none"          # none | langfuse | langsmith
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_host: str = "http://localhost:3000"
+    # 鉴权(留空=开发模式不校验)
+    app_api_key: str = ""
+
     # Postgres
     database_url: str = "postgresql://rag:rag@localhost:5433/rag"
 
