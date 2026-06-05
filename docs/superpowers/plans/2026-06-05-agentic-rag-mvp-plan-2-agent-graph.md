@@ -905,11 +905,14 @@ def test_route_to_web():
 
 def test_budget_forces_finish():
     # step_budget=1:supervisor 第一次路由后预算归零,kb_rag 跑一次后第二次进 supervisor 即 FINISH
-    app = _build(SeqRouter(["kb_rag", "kb_rag", "kb_rag"]), InMemorySaver())
+    router = SeqRouter(["kb_rag", "kb_rag", "kb_rag"])
+    app = _build(router, InMemorySaver())
     out = app.invoke({"messages": [HumanMessage(content="q")],
                       "next": "", "citations": [], "step_budget": 1}, _config("t3"))
     # 不应无限循环;能正常结束
     assert any("HPA scales pods" in m.content for m in out["messages"])
+    # 终止是预算护栏触发的:预算归零后 supervisor 直接 FINISH,不再问 router
+    assert router.calls == 1
 ```
 
 - [ ] **Step 2: 运行测试,确认失败**
@@ -927,10 +930,11 @@ from mvp_agentic_rag.agent.state import AgentState
 
 
 def _last_human_text(messages) -> str:
+    # message.content 可能是 str 或多模态 list;本 MVP 只取文本,统一强制成 str。
     for m in reversed(messages):
         if isinstance(m, HumanMessage):
-            return m.content
-    return messages[-1].content if messages else ""
+            return str(m.content)
+    return str(messages[-1].content) if messages else ""
 
 
 def build_agent_graph(supervisor_node, kb_rag_runnable, web_runnable, checkpointer):

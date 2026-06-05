@@ -6,10 +6,11 @@ from mvp_agentic_rag.agent.state import AgentState
 
 
 def _last_human_text(messages) -> str:
+    # message.content 可能是 str 或多模态 list;本 MVP 只取文本,统一强制成 str。
     for m in reversed(messages):
         if isinstance(m, HumanMessage):
-            return m.content
-    return messages[-1].content if messages else ""
+            return str(m.content)
+    return str(messages[-1].content) if messages else ""
 
 
 def build_agent_graph(supervisor_node, kb_rag_runnable, web_runnable, checkpointer):

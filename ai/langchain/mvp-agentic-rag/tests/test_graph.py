@@ -63,8 +63,11 @@ def test_route_to_web():
 
 def test_budget_forces_finish():
     # step_budget=1:supervisor 第一次路由后预算归零,kb_rag 跑一次后第二次进 supervisor 即 FINISH
-    app = _build(SeqRouter(["kb_rag", "kb_rag", "kb_rag"]), InMemorySaver())
+    router = SeqRouter(["kb_rag", "kb_rag", "kb_rag"])
+    app = _build(router, InMemorySaver())
     out = app.invoke({"messages": [HumanMessage(content="q")],
                       "next": "", "citations": [], "step_budget": 1}, _config("t3"))
     # 不应无限循环;能正常结束
     assert any("HPA scales pods" in m.content for m in out["messages"])
+    # 终止是预算护栏触发的:预算归零后 supervisor 直接 FINISH,不再问 router
+    assert router.calls == 1
