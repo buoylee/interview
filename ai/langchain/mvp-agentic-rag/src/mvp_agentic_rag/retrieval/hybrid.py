@@ -1,4 +1,3 @@
-from mvp_agentic_rag.core.db import Database
 from mvp_agentic_rag.retrieval.dense import DenseRetriever
 from mvp_agentic_rag.retrieval.fusion import reciprocal_rank_fusion
 from mvp_agentic_rag.retrieval.rerank import Reranker
@@ -12,7 +11,6 @@ class HybridRetriever:
         dense: DenseRetriever,
         sparse: SparseRetriever,
         reranker: Reranker,
-        db: Database,
         top_k_dense: int,
         top_k_sparse: int,
         rrf_k: int,
@@ -21,7 +19,6 @@ class HybridRetriever:
         self.dense = dense
         self.sparse = sparse
         self.reranker = reranker
-        self.db = db
         self.top_k_dense = top_k_dense
         self.top_k_sparse = top_k_sparse
         self.rrf_k = rrf_k

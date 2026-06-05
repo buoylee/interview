@@ -30,7 +30,6 @@ def test_hybrid_returns_relevant_chunk(seeded):
         dense=DenseRetriever(db=db, embeddings=emb),
         sparse=SparseRetriever(db=db, fts_config="simple"),
         reranker=IdentityReranker(),
-        db=db,
         top_k_dense=10,
         top_k_sparse=10,
         rrf_k=60,
