@@ -1053,3 +1053,15 @@ git commit -m "mvp-agentic-rag: Plan3 Task9 生产入口 main + langgraph.json +
 - 鉴权(API key,真实 OIDC 超纲):Task 5 ✅
 - 暂不覆盖(留 Plan 4):ragas eval、面试文档层、Grafana 面板、OTel、真实 Langfuse/LLM 端到端断言、SSE 仅推 generate 节点的过滤(当前推所有消息块,留作细化)。
 - 已知风险点(执行期按红灯微调并记 concern):`prometheus_client` 读取计数 API、langfuse v3 `CallbackHandler()` 无连接时构造、`RunnableWithFallbacks.fallbacks` 属性名、langgraph.json `graph` 期望工厂还是已编译图、SSE TestClient 缓冲读取。
+
+## 实现期 review 修正记录(committed 代码与上文逐字片段的差异)
+
+执行时实测 + review 发现并已修正(均已合入,测试全绿):
+
+- **langfuse 是 v4.7.1**(非 v3):`from langfuse.langchain import CallbackHandler` 仍可用(v4 类名 `LangchainCallbackHandler`),但 **v4 的 langchain 集成需要顶层 `langchain` 包**(项目原本只有 langchain-core)→ 追加 `uv add langchain`;`obs/backends.py` 的 `_make_langfuse_handler` 用 try/except 优雅降级(装不上/构造失败→返回 None 跳过);`OBS_BACKEND=langfuse` 实测返回 2 个回调。
+- **`app.py` 顶部 `import mvp_agentic_rag.obs.metrics`**(noqa F401):模块级指标单例需在 `/metrics` 服务前注册。
+- **常量时间鉴权**:`require_api_key` 用 `hmac.compare_digest`(而非 `!=`),防计时侧信道。
+- **空答案守卫**:`/chat` 与 `/threads/{id}/resume` 在无 AIMessage 时 `raise HTTPException(500)`,不返回静默空 200。
+- **补充鉴权测试**:`/chat/stream`、`/threads/{id}` 各加一条「设了 APP_API_KEY 时缺 key→401」测试。
+- **韧性 fallback 接线**:`agent/factory.py` 把 `get_chat_model_with_fallback` 接到**纯 .invoke 的组件(生成/改写)**;结构化输出组件(路由/评分/接地)保持普通 chat —— 因为 `with_fallbacks` 返回的 `RunnableWithFallbacks` 没有 `.with_structured_output`,naive 接会崩。给结构化调用加 fallback 需在 `with_structured_output` 之后包,留作后续。
+- **lg_entry.py** 暴露 `graph = _build`(可调用工厂);若 LangGraph Server 版本要求已编译图实例,改 `graph = _build()`(`langgraph up` 时才连库)。
