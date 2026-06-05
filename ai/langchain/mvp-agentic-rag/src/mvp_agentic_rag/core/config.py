@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     embed_dim: int = 1536
 
+    # Chat LLM(OpenAI 兼容)
+    llm_base_url: str = "https://api.openai.com/v1"
+    llm_api_key: str = ""
+    llm_model: str = "gpt-4o-mini"
+    llm_model_fallback: str = "gpt-4o-mini"
+
     # Postgres
     database_url: str = "postgresql://rag:rag@localhost:5433/rag"
 
