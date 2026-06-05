@@ -1,4 +1,4 @@
-.PHONY: install up down db-init ingest test serve
+.PHONY: install up down db-init ingest test serve eval
 
 install:
 	uv sync --extra dev
@@ -20,3 +20,6 @@ test:
 
 serve:
 	uv run uvicorn mvp_agentic_rag.main:build_app --factory --reload --port 8000
+
+eval:
+	uv run python -m mvp_agentic_rag.eval.cli
