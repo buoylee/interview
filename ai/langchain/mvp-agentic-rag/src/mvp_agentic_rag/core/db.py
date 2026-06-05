@@ -9,6 +9,7 @@ class Database:
     def __init__(self, conninfo: str, embed_dim: int):
         self.conninfo = conninfo
         self.embed_dim = embed_dim
+        self._ensure_extension()
         self.pool = ConnectionPool(
             conninfo,
             min_size=1,
@@ -17,10 +18,13 @@ class Database:
             open=True,
         )
 
+    def _ensure_extension(self) -> None:
+        with psycopg.connect(self.conninfo) as conn:
+            conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            conn.commit()
+
     @staticmethod
     def _configure(conn: psycopg.Connection) -> None:
-        conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
-        conn.commit()
         register_vector(conn)
 
     def connect(self):

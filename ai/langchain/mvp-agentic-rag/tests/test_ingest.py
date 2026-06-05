@@ -37,7 +37,8 @@ def test_ingest_is_idempotent(clean_db, fake_embeddings, tmp_path):
     )
 
     first = pipe.ingest_directory(str(tmp_path))
-    pipe.ingest_directory(str(tmp_path))  # 再来一次
+    second = pipe.ingest_directory(str(tmp_path))  # 再来一次
+    assert second == 0
 
     with clean_db.connect() as conn:
         count = conn.execute("SELECT count(*) FROM kb_chunks").fetchone()[0]
