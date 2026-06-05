@@ -1,5 +1,4 @@
 import json
-import sys
 from pathlib import Path
 
 from langgraph.checkpoint.memory import InMemorySaver
@@ -56,7 +55,9 @@ def main() -> int:
     print(f"eval done: pass_rate={report.pass_rate:.2%} ({report.passed_count}/{len(cases)})")
     print(f"reports written to {OUT_DIR}/report.json|md")
     db.close()
-    return 0 if report.pass_rate >= 0.5 else 1  # 灰度门:低于阈值退出码非 0
+    # 灰度门:真实 LLM 跑(比 hermetic stub 难)用较软的 0.5 阈值;
+    # hermetic CI-gate(test_eval_runner)用严格的 0.9。低于阈值退出码非 0,可接 CI。
+    return 0 if report.pass_rate >= 0.5 else 1
 
 
 if __name__ == "__main__":

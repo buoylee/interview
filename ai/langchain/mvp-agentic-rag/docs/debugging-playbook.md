@@ -117,7 +117,7 @@ trace → grade span → output → relevant=False, reasoning=...
 ```
 
 - 看 grader 的 reasoning:是 chunks 真的不相关,还是 grader 误判?
-- 验证:`uv run python -c "from mvp_agentic_rag.agent.components import Grader; ..."`(临时脚本)直接调 grader 测单个 chunk。
+- 验证:`uv run python -c "from mvp_agentic_rag.agent.components import LLMDocGrader; ..."`(临时脚本)直接调 grader 测单个 chunk。
 - 调整方向:降低 grader 的相关性阈值;或改进 chunk_size(太小导致语义碎片)。
 
 **Step 3: 验证修复**

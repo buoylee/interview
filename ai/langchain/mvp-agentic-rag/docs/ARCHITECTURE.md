@@ -21,7 +21,7 @@
   ingest CLI                  FastAPI                    LangGraph 顶层 supervisor 图
 ┌──────────────┐  upsert   ┌──────────────┐  /chat      ┌─────────────────────────────────────┐
 │ load → split │──────────▶│   API 层      │ /chat/stream│  supervisor                          │
-│ → embed      │           │   SSE 流式    │────────────▶│    ↓ Command(goto=...)               │
+│ → embed      │           │   SSE 流式    │────────────▶│    ↓ supervisor 写 next,经 add_conditional_edges 路由(等价于 Command(goto=...))│
 │ content_hash │           │   request_id  │             │  ┌──────────┐   ┌──────────────────┐ │
 │  幂等去重     │           │   API key 鉴权│             │  │  kb_rag  │   │   web_agent      │ │
 └──────────────┘           └──────┬───────┘             │  │  子图    │   │ create_react_    │ │
