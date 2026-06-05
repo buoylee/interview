@@ -525,6 +525,7 @@ class Database:
     def __init__(self, conninfo: str, embed_dim: int):
         self.conninfo = conninfo
         self.embed_dim = embed_dim
+        self._ensure_extension()  # 建池前用独立连接建好扩展,避免 _configure 并发竞态
         self.pool = ConnectionPool(
             conninfo,
             min_size=1,
@@ -533,10 +534,14 @@ class Database:
             open=True,
         )
 
+    def _ensure_extension(self) -> None:
+        with psycopg.connect(self.conninfo) as conn:
+            conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            conn.commit()
+
     @staticmethod
     def _configure(conn: psycopg.Connection) -> None:
-        conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
-        conn.commit()
+        # vector 类型已由 _ensure_extension 保证存在,这里只注册适配器
         register_vector(conn)
 
     def connect(self):
@@ -765,7 +770,8 @@ def test_ingest_is_idempotent(clean_db, fake_embeddings, tmp_path):
     )
 
     first = pipe.ingest_directory(str(tmp_path))
-    pipe.ingest_directory(str(tmp_path))  # 再来一次
+    second = pipe.ingest_directory(str(tmp_path))  # 再来一次
+    assert second == 0  # 第二次没有新增
 
     with clean_db.connect() as conn:
         count = conn.execute("SELECT count(*) FROM kb_chunks").fetchone()[0]
