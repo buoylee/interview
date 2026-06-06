@@ -180,6 +180,27 @@ Python 3.13 引入了实验性的 **free-threaded 模式**（PEP 703），能编
 
 ---
 
+### 3.7 精确说法：不能并行的是「Python 字节码」
+
+把这句话背准，很多追问就不会绕晕：
+
+```text
+Thread A 执行 Python 字节码 + Thread B 执行 Python 字节码
+=> 普通 CPython 下不能同时并行
+
+Thread A 阻塞 I/O / sleep / 等锁 / native 代码释放 GIL
+Thread B 执行 Python 字节码
+=> 可以同时推进
+```
+
+阻塞 I/O 时，Thread A 通常已经进入系统调用并被内核挂起，不占 CPU；但网络/磁盘/驱动/内核仍在推进 I/O，Thread B 可以拿到 GIL 继续执行 Python 字节码。更精确地说，这是 **I/O 与 Python 计算重叠**。如果 Thread A 正在执行已释放 GIL 的 kernel/native 代码，同时 Thread B 在另一个核心执行字节码，那也可能是真 CPU 并行。
+
+所以「Python 单进程完全不能利用多核」是不准确的；准确说法是：**普通 CPython 单进程不能靠纯 Python 多线程 CPU 计算正常吃满多核**。多进程、释放 GIL 的 native 库、以及 Python 3.13+ free-threaded 构建是例外路径。
+
+复习这组边界见：[线程 / I/O / event loop 面试卡](../99-interview-cards/q-thread-io-event-loop.md)。
+
+---
+
 ## 4. 日常开发应用：三大武器与选型
 
 GIL 锁的是「同一进程内的线程」，于是 Python 给了你三套武器去绕它/利用它：

@@ -192,6 +192,34 @@ task.cancel()                      # 在 work 的下一个 await 点抛 Cancelle
 
 ---
 
+### 3.7 coroutine / Task / event loop 和 Java 的类比边界
+
+可以用 Java 类比，但别把 `Task` 当成 `Thread`：
+
+```text
+Java:
+  Runnable / Callable  -> Thread / ExecutorService -> OS thread
+
+asyncio:
+  coroutine            -> Task + event loop         -> OS thread
+```
+
+- `coroutine`：可暂停/可恢复的函数执行状态，粗略像一个「能 `await` 的 Runnable/Callable」。
+- `Task`：把 coroutine 注册到 event loop 的调度包装，更像 `Future` + 调度句柄。
+- `event loop`：真正运行在某个 OS 线程里的调度循环，负责恢复 Task、等待 I/O/timer。
+
+事件循环恢复协程的简化过程：
+
+```text
+Task 恢复 coroutine
+  -> coroutine 一直跑到下一个 await / return / exception
+  -> 遇到 await 时挂起，等待某个 Future/I/O/timer
+  -> Future 完成后 Task 回到 ready queue
+  -> event loop 下次再恢复它
+```
+
+所以 `asyncio.Task` 默认不是系统线程，也不会被 OS 单独调度；多个 Task 通常在同一个 event loop 线程里协作式切换。完整复习见：[线程 / I/O / event loop 面试卡](../99-interview-cards/q-thread-io-event-loop.md)。
+
 ## 4. 日常开发应用
 
 - **什么时候用 asyncio**：I/O 密集 + 高并发（大量网络请求、高并发 Web 服务、爬虫、代理、WebSocket 长连接）。

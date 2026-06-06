@@ -13,6 +13,11 @@
 3. **想答面试题**：去 `99-interview-cards/` 找卡，每张卡链回章节做证据。
 4. **想跑代码**：章节里的片段标了 `# 需要: pip install xxx`，直接复制到 `.py` 跑。
 
+## 容易忘时先看这里
+
+- [线程 / I/O / event loop：谁是系统线程，谁在并行](99-interview-cards/q-thread-io-event-loop.md) — 专门复习 Java Thread、Go goroutine、Python Thread、GIL、阻塞 I/O、coroutine、Task、event loop 的边界。
+- [GIL 是什么 / 为什么 / 何时释放](99-interview-cards/q-gil.md) — 专门复习「不能并行」到底不能的是哪一层。
+
 ## 章节地图
 
 | 章节 | 主题 | 一句话 |

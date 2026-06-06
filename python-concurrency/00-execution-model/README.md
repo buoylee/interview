@@ -250,6 +250,27 @@ while 还有任务:
 
 ---
 
+#### C.5 线程 / I/O / event loop 的边界速记
+
+这几个词最容易搅在一起，复习时按层拆：
+
+```text
+Python Thread      = 通常是真 OS 线程；跑 Python 字节码前要抢 GIL
+用户态/内核态       = 同一个 OS 线程执行时的 CPU 权限状态，不是两种线程
+阻塞 I/O           = 当前线程进入 syscall；数据没好时被内核挂起，不占 CPU
+event loop         = 跑在某个 OS 线程里的 while 调度循环
+coroutine / Task   = event loop 管理的用户态任务，不是 OS 线程
+```
+
+所以可以精确回答：
+
+- Python 多线程「不能并行」指的是：普通 CPython 下多个线程不能同时执行 Python 字节码。
+- 一个线程释放 GIL 去等 I/O，另一个线程执行字节码，二者可以重叠推进。
+- 如果释放 GIL 的线程正在 kernel/native 代码里占 CPU，同时另一个线程在另一个核上跑字节码，这也可能是真 CPU 并行。
+- asyncio 的 Task 不等于 Java Thread；更像「coroutine + Future 调度句柄」，由 event loop 在线程内恢复。
+
+完整复习卡见：[线程 / I/O / event loop：谁是系统线程，谁在并行](../99-interview-cards/q-thread-io-event-loop.md)。
+
 ## 4. 日常开发应用：有了这层视角，很多结论变成「显然」
 
 - **「同步阻塞会卡死事件循环」**（第 05 章）：因为事件循环是 B.4 那个单线程 while；阻塞 syscall 不释放控制权回 while，整个循环停转。一看 B.4 就懂，不用背。
