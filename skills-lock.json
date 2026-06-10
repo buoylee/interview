@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "english-sentence-decoder": {
+      "source": "buoylee/buoy-skills",
+      "sourceType": "github",
+      "skillPath": "skills/english-sentence-decoder/SKILL.md",
+      "computedHash": "a80b6f9cd0cd7eb971935c3b701fc3c3b3bd5d0a8d8ff4e45212d3f92e647c69"
+    }
+  }
+}
