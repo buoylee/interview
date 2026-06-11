@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **执行状态(2026-06-11):** Task A/B/C 已完成并通过事实审计(修正:3 处语料事实错误、5 条脆弱 must_include、check_must_include 改大小写不敏感、ragas 指标名对齐);真实 `make eval` 报告与 judge 校准数字待用户 key。另:月 4 的可写部分(微调 runbook + prepare_kb_data.py,45 条 SFT 样本已生成)也已随本批完成,见 `ai/fine-tuning/runbook-qlora-kb-assistant.md`。
+
 **Goal:** 把 MVP eval 的「可写地基」铺好:知识库语料从 11 行扩到能支撑真实评估的规模、golden set 从 4 条扩到 20+ 条、07/01 评估文档补上工具对比 + 可直接使用的完整 judge prompt。真实跑分(`make eval` 报告、judge 校准数字)仍属月 3 主线,待用户 key,本计划不含。
 
 **Architecture:** GoldenCase schema(`eval/dataset.py`)与确定性检查(`eval/checks.py`:must_include/route/citations/refusal,拒答标记 `依据不足`/`未找到足够依据`)已存在且不动;新 case 必须与扩充后语料严格对齐(must_include 的词必须是正确答案必然包含的、expected_citation_docs 必须真实存在)。语料是事实性技术文档,内容必须正确——这是面试作品,错误事实是硬伤。

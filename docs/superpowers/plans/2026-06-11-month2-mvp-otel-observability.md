@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **执行状态(2026-06-11):** 全部 6 个任务已完成并通过 review(含 review 后修复:chain 运行跟踪、取消泄漏清扫、线程锁);仅「Langfuse UI 真实 span 树验证」待用户环境,见 07/03 锚点的〔待实测〕。
+
 **Goal:** 给 MVP 的可观测层新增 `otel` 后端:LangChain callback 三边界(LLM 调用/工具/检索)翻译成 OTel GenAI 语义约定 span,OTLP 导出到 Langfuse(或任意 OTLP 后端),保留 `OBS_BACKEND` 一键切换;并把「OTel 三边界」实战锚点回填进 roadmap 07/03 监控篇。
 
 **Architecture:** 不引入 OpenInference/OpenLLMetry 自动 instrument(那是文档里提的现成替代),手写 `OTelTraceCallback(BaseCallbackHandler)`——用 LangChain 回调的 `run_id/parent_run_id` 映射 span 父子树,与 lab 手动埋点形成「同一套语义约定,两种接入方式」的对照。exporter 注入式设计(同 lab):tests 用 InMemorySpanExporter 全 hermetic;真实运行时 Langfuse OTLP 或控制台回退。现有 langfuse/langsmith 后端不动。
