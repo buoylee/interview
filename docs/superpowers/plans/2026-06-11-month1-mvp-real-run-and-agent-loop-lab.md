@@ -20,7 +20,7 @@
 
 - `ai/langchain/mvp-agentic-rag/.env`:`LLM_*` 与 `EMBEDDING_*` 填真实 OpenAI 兼容 key(参考 `.env.example`)。
 - Docker 可用;自托管 Langfuse 见 Task 1 Step 1(首次需注册并建项目拿 pk/sk)。
-- 无 key 时:Task 2-6 照常可做(全 hermetic);Task 1、7、8 阻塞,顺延即可。
+- 无 key 时:Task 2-7 照常可做(全 hermetic);Task 1、8 阻塞(Task 9 的数字部分、Task 10 依赖 8),顺延即可。
 
 ## 文件结构(本计划产出 / 修改)
 
