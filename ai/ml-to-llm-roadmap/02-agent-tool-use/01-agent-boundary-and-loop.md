@@ -129,6 +129,6 @@ Agent 也不是 RAG。RAG 解决外部知识证据接入；Agent 可以把检索
 这一篇讲的 agent loop,我在两个地方各实现过一遍:
 
 - **裸写版**:[ai/agent-loop-lab](../../agent-loop-lab/) —— 不用框架,112 行 `loop.py` 写出完整循环(tool-call 回填、错误回喂恢复、max_turns 兜底),外加自写 MCP server/client 两端和 OTel GenAI 语义约定埋点。真实运行数字见 [run-log](../../agent-loop-lab/notes/run-log.md)〔LLM 相关数字待实测回填〕;离线实测:MCP 每次调用冷启动约 0.2-0.3s,进程内 search_docs < 0.5ms。
-- **框架版**:[mvp-agentic-rag](../../langchain/mvp-agentic-rag/) —— LangGraph supervisor + CRAG 子图 + PostgresSaver,同一个功能切片 258 行(不含 API/可观测层)。比裸 loop 多付的是 4 次额外 LLM 调用:路由、文档评分、查询改写、grounding 检查(`agent/components.py`)。端到端延迟对照见 [首跑 runlog](../../langchain/mvp-agentic-rag/docs/runlog-2026-06-first-real-run.md)〔待实测〕。
+- **框架版**:[mvp-agentic-rag](../../langchain/mvp-agentic-rag/) —— LangGraph supervisor + CRAG 子图 + PostgresSaver,同一个功能切片 258 行(不含 API/可观测层)。比裸 loop 多付最少 3 次额外 LLM 调用(路由、文档评分、grounding 检查),触发查询改写时 4-5 次(`agent/components.py`)。端到端延迟对照见 [首跑 runlog](../../langchain/mvp-agentic-rag/docs/runlog-2026-06-first-real-run.md)〔待实测〕。
 - **对照结论**:[裸 loop vs LangGraph](../../agent-loop-lab/notes/01-loop-vs-langgraph.md) —— 框架买的是 checkpoint、HITL、流式这些生产能力,不是循环本身。
 - **面试 30 秒**:agent 本质 = while 循环里「模型要工具 → 执行 → 结果回填(role=tool)→ 再问」,终止条件是模型不再要工具,max_turns 兜底防死循环;工具报错不终止循环,错误文本回喂给模型自行恢复。我手写过这个循环(112 行),也用 LangGraph 实现过带持久化和人工审批的版本,选型权衡见对照笔记。
