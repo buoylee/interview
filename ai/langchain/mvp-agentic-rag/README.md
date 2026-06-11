@@ -45,9 +45,12 @@ make test             # hermetic 全量测试（不联网、不需 key）
 OBS_BACKEND=none        # 关闭 trace（测试 / 离线）
 OBS_BACKEND=langfuse    # 默认：Langfuse 自托管（docker 本地，数据不出内网）
 OBS_BACKEND=langsmith   # 切 LangSmith（需 LANGSMITH_API_KEY，trace 上云）
+OBS_BACKEND=otel        # OTel GenAI 语义约定 span,OTLP 导出(默认打到 Langfuse 的 /api/public/otel)
 ```
 
 切换只改一个 env 变量，无需修改代码（callback 工厂在 `obs/` 注入）。
+
+`otel` 后端是手写的 `OTelTraceCallback`(`obs/otel.py`):把 LangChain 回调的边界翻译成 OTel span——chain(图节点,负责把树接起来)、LLM 调用(GenAI 语义约定 `gen_ai.*`,挂 token 数)、工具、检索;`run_id/parent_run_id` 映射成 span 父子树,带取消泄漏清扫。OTLP 出口指向哪个后端只由 env 决定——Langfuse、Phoenix、Jaeger、Datadog 都收 OTLP,换后端零代码改动。与 [agent-loop-lab](../../agent-loop-lab/) 的手动埋点是同一套语义约定的两种接入方式;现成替代品是 OpenInference/OpenLLMetry 的 LangChain instrumentor。
 
 ---
 
