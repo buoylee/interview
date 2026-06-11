@@ -22,6 +22,8 @@ def call_mcp_tool(tool_name: str, arguments: dict) -> str:
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 result = await session.call_tool(tool_name, arguments)
+                # 注意:MCP 的 isError 标志在这里被拍平成纯文本——server 工具内抛异常时
+                # FastMCP 返回 isError=True + 错误文本,本 lab 统一靠 "ERROR" 前缀约定识别
                 return "\n".join(
                     block.text for block in result.content if getattr(block, "text", None)
                 )

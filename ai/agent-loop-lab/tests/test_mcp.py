@@ -16,6 +16,11 @@ def test_read_doc_missing_file_lists_available():
     assert out.startswith("ERROR") and "postgres.md" in out
 
 
+def test_read_doc_rejects_loopback_traversal():
+    out = call_mcp_tool("read_doc", {"filename": "../sample_docs/postgres.md"})
+    assert out.startswith("ERROR")
+
+
 def test_read_doc_toolspec():
     assert READ_DOC.name == "read_doc"
     assert READ_DOC.parameters["required"] == ["filename"]
