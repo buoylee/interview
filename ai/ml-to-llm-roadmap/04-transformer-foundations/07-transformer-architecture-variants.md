@@ -148,6 +148,18 @@ Decoder-only 对通用 LLM 友好，核心原因不是“Encoder 没用”，而
 
 因此 Decoder-only 成为现代通用 LLM 的主流，不代表 Encoder-only 或 Encoder-Decoder 过时；它只是最适合大规模通用生成这个目标。
 
+### 追问：Encoder-Decoder 更复杂、还"包含"了 Decoder，为什么反而输了？
+
+这个直觉有两个前提不成立：
+
+**1. "包含"不成立。** 同样的参数预算，Enc-Dec 要切成两半（一半 Encoder、一半 Decoder），而 Decoder-only 把全部参数放进一个统一的栈。且 Enc-Dec 的 Decoder 每层都焊死了 cross-attention，离开 Encoder 输出无法独立运行——它不是"免费附赠的 GPT"。
+
+**2. "更复杂 = 更强"不成立。** Enc-Dec 把一个假设硬编码进结构：输入和输出是两段边界清晰的不同序列。这对翻译成立，对多轮对话是灾难——上一轮的回答（target）在下一轮变成历史（source），token 要从 Decoder 侧搬到 Encoder 侧整个重新编码；每来一轮边界移动一次，前面的计算全部作废。Decoder-only 只需把新内容 append 到序列尾部，前文 KV cache 原封不动复用（增量计算 vs 每轮全量重算）。
+
+还有一个胜负手是**训练数据的形状**：互联网数据是连续文本流，没人标好哪段是 source 哪段是 target。Next-token prediction 零摩擦地直接吃原始数据，每个 token 都是训练信号。GPT-3 进一步证明：规模够大后，翻译、摘要这些"本该属于 Enc-Dec 的任务"会以 in-context learning 的形式涌现——结构硬编码的能力，被规模学出来了（bitter lesson 的标准剧本）。
+
+更准确的视角是反过来：**Decoder-only 把 encode 和 decode 合并成了同一个动作**。Prompt 部分的 token 在每一层互相 attend，照样在做深度编码，只是用 causal mask、并与生成共享同一套参数。它没有丢掉理解能力，只是拒绝预设"理解和生成是两个分开的阶段"。
+
 ## 和 LLM 应用的连接
 
 - RAG embedding 和 rerank 常常更接近 Encoder-only 用法，因为目标是理解和比较文本。
@@ -172,6 +184,7 @@ Decoder-only 对通用 LLM 友好，核心原因不是“Encoder 没用”，而
 4. GPT 为什么可以把检索文档和用户问题放进同一个 prompt？
 5. 三种架构的输入输出形式分别是什么？
 6. 为什么现代通用 LLM 多采用 Decoder-only？
+7. "Encoder-Decoder 包含了 Decoder，所以更强"这个说法错在哪？多轮对话场景下 Enc-Dec 的工程代价是什么？
 
 ## 深入参考
 

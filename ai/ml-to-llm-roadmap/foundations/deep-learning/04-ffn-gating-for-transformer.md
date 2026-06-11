@@ -2,7 +2,7 @@
 
 ## 这篇解决什么问题
 
-这篇解决 Transformer Block 里 FFN 为什么存在，以及 GELU、GLU、SwiGLU 这几类激活和门控到底在做什么。
+这篇解决 Transformer Block 里 FFN（Feed-Forward Network，前馈网络）为什么存在，以及 GELU、GLU、SwiGLU 这几类激活和门控到底在做什么。
 
 先记住分工：
 
@@ -37,6 +37,14 @@ Attention 的工作是把相关 token 的信息聚合过来。但聚合之后，
 这就是 FFN 的工作。它不是 Attention 的附属品，而是每个 token 的独立加工层。
 
 ## 核心概念
+
+### 先说清楚：FFN 就是最普通的两层全连接网络
+
+FFN 的全称是 **Feed-Forward Network（前馈网络）**，它不是 Transformer 发明的新东西——就是最朴素的那种神经网络：**一层线性变换 → 一个激活函数 → 再一层线性变换**（正好对应下面公式里的 `W_up`、`activation`、`W_down`）。
+
+“前馈（feed-forward）”指的是信息只从输入一路往前流到输出，中间不绕回、不喂给自己——这正是它和“会把输出回头再喂进来”的 RNN 的区别。所以 FFN 没有任何玄机，本质就是最基础的 MLP（多层感知机 / 全连接网络）。
+
+放进 Transformer 也还是这三步，只是给它派了个明确的活：在 Attention 把上下文聚合进来之后，对每个 token 自己的向量再做一轮非线性加工。下面把这三步拆开看。
 
 标准 FFN 是 position-wise / 逐位置的：同一套 FFN 会独立应用到每个 token 的向量上。可以写成：
 
@@ -109,7 +117,8 @@ token 表示
 | 误区 | 修正 |
 |------|------|
 | Attention 才是 Transformer 的全部 | Attention 负责 token 间通信，FFN 负责每个 token 内部加工 |
-| FFN 只是一个普通 MLP，没必要理解 | FFN 通常占大量参数和计算，直接影响模型表达能力 |
+| FFN 是 Transformer 发明的新结构 | 它就是最基础的两层全连接网络（前馈网络 / MLP），Transformer 只是给它派了“逐 token 加工”的活 |
+| 结构简单的 FFN 不重要，可以跳过 | 结构上确实就是两层 MLP，但它占了大量参数和计算，直接决定模型表达力，不能因为简单就跳过 |
 | GELU 是硬阈值函数 | GELU 是 smooth activation，不是 hard cutoff |
 | gate 就是 if/else 开关 | SwiGLU gate 是连续乘法调节，不是 if/else |
 | gate 一定是 0 到 1 的概率 | SwiGLU gate 不一定限制在 0-1 |
@@ -117,12 +126,13 @@ token 表示
 
 ## 自测
 
-1. 为什么可以说 `Attention = token 之间交换信息`，而 `FFN = 每个 token 独立加工信息`？
-2. 标准 FFN 公式 `FFN(x) = W_down * activation(W_up * x)` 里的 `W_up` 和 `W_down` 分别负责什么？
-3. GELU 为什么是 smooth activation，而不是 hard cutoff？
-4. GLU/SwiGLU 里的信息分支和 gate 分支分别做什么？
-5. 为什么说 SwiGLU gate 是连续乘法，不是 if/else，也不一定限制在 0-1？
-6. `W_gate`、`W_up`、`W_down` 为什么不是 Attention 里的 K/V？
+1. FFN 的全称是什么？为什么说它本质上就是你早就学过的最普通的两层全连接网络（MLP）？“前馈”二字是什么意思？
+2. 为什么可以说 `Attention = token 之间交换信息`，而 `FFN = 每个 token 独立加工信息`？
+3. 标准 FFN 公式 `FFN(x) = W_down * activation(W_up * x)` 里的 `W_up` 和 `W_down` 分别负责什么？
+4. GELU 为什么是 smooth activation，而不是 hard cutoff？
+5. GLU/SwiGLU 里的信息分支和 gate 分支分别做什么？
+6. 为什么说 SwiGLU gate 是连续乘法，不是 if/else，也不一定限制在 0-1？
+7. `W_gate`、`W_up`、`W_down` 为什么不是 Attention 里的 K/V？
 
 ## 回到主线
 
