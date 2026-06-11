@@ -11,4 +11,5 @@ def tracing():
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
-    return provider.get_tracer("test"), exporter
+    yield provider.get_tracer("test"), exporter
+    provider.shutdown()
