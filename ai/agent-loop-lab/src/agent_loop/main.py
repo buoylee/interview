@@ -23,18 +23,19 @@ def main() -> None:
     client = OpenAI(base_url=settings.llm_base_url, api_key=settings.llm_api_key)
 
     start = time.perf_counter()
-    result = run_agent(
-        client, settings.llm_model, [SEARCH_DOCS, READ_DOC], args.question, tracer,
-        max_turns=args.max_turns,
-    )
-    elapsed = time.perf_counter() - start
-
-    print(result.final_text)
-    print(
-        f"\n--- turns={result.turns} tools={result.tool_calls} "
-        f"tokens={result.input_tokens}+{result.output_tokens} latency={elapsed:.2f}s"
-    )
-    provider.shutdown()  # 刷 BatchSpanProcessor,不调用会丢 trace
+    try:
+        result = run_agent(
+            client, settings.llm_model, [SEARCH_DOCS, READ_DOC], args.question, tracer,
+            max_turns=args.max_turns,
+        )
+        elapsed = time.perf_counter() - start
+        print(result.final_text)
+        print(
+            f"\n--- turns={result.turns} tools={result.tool_calls} "
+            f"tokens={result.input_tokens}+{result.output_tokens} latency={elapsed:.2f}s"
+        )
+    finally:
+        provider.shutdown()  # 异常也要刷 BatchSpanProcessor——失败的 trace 更值得看
 
 
 if __name__ == "__main__":
