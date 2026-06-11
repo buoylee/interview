@@ -123,7 +123,7 @@ LLM-as-Judge 解决的是规模问题：人工无法每天评审大量输出，j
 | 工具 | 解决什么 | 什么时候选 | 代价 |
 |------|----------|------------|------|
 | 自建确定性 checks（MVP 的 `checks.py` 就是这一类） | 规则能写清的维度：必含关键词（大小写不敏感子串）、路由是否正确、引用是否命中期望文档、该拒答时是否拒答 | 永远先做。零依赖、毫秒级、结果完全可复现，是 CI 质量门的第一层 | 只能覆盖“能写成规则”的维度；语义质量（对不对、有没有据、有没有用）测不了 |
-| ragas | RAG 三元组的语义评分：faithfulness（答案是否忠于检索内容）、answer relevance（答案是否切题）、context relevance（检索内容是否切题），由 LLM judge 驱动 | 已经有 RAG 流水线、想量化“幻觉率”这类语义维度时；MVP 已接成可选依赖 | 每次评估都要调 LLM——有成本、有延迟、分数有抖动；指标本身也需要校准 |
+| ragas | RAG 三元组的语义评分：faithfulness（答案是否忠于检索内容）、answer_relevancy（答案是否切题）、context_precision（检索内容是否切题且排序靠前），由 LLM judge 驱动（指标名与 MVP `ragas_eval.py` 实际导入一致） | 已经有 RAG 流水线、想量化“幻觉率”这类语义维度时；MVP 已接成可选依赖 | 每次评估都要调 LLM——有成本、有延迟、分数有抖动；指标本身也需要校准 |
 | deepeval | pytest 风格的断言式 eval：把 LLM 指标写成单元测试，内置 G-Eval、幻觉、相关性等指标 | 团队已用 pytest 管测试、想让 eval 直接跑进现有测试框架和 CI 时 | 引入一层框架抽象；LLM 指标部分同样依赖 judge 调用，成本与抖动逃不掉 |
 | promptfoo | YAML 配置驱动的 prompt 对比与 CLI 回归：同一批用例横向比较多个 prompt / 模型的输出 | 主要矛盾是“选 prompt、选模型”而不是评整条业务流水线时；上手快，适合迭代期做 A/B | 配置式表达力有限，复杂 agent 流程（多步路由、引用结构校验）塞进 YAML 会很别扭 |
 | LangSmith / Langfuse | 平台型：datasets 集中管理、annotation queue 人工标注协作、生产 trace 与 eval 结果关联回放 | 团队需要协作标注、想把线上真实流量回流成评估样本时；LangSmith 上云托管，Langfuse 可自托管 | 引入平台依赖（自托管则要自己运维）；平台不替你定义 rubric，评分逻辑仍然是你自己的活 |
