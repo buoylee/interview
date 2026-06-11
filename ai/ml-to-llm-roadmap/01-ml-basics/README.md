@@ -12,6 +12,7 @@
 
 | 文件 | 主题 | 预计时间 | 后续关联 |
 |------|------|---------|---------|
+| [00-ai-ml-dl-llm-map.md](./00-ai-ml-dl-llm-map.md) | 全景地图：AI/ML/DL/LLM 层级关系 | 1 小时 | 面试送分题 + 全程定位锚点 |
 | [01-core-concepts.md](./01-core-concepts.md) | 核心框架 | Day 1-3 | 贯穿所有 ML/DL/LLM |
 | [02-classic-algorithms.md](./02-classic-algorithms.md) | 经典算法 | Day 4-7 | 理解模型演进脉络 |
 | [03-evaluation-tuning.md](./03-evaluation-tuning.md) | 模型评估 & 调优 | Day 8-10 | 模型选择、正则化 |
@@ -30,6 +31,7 @@
 
 | 你想补强 | 再回来看 |
 | --- | --- |
+| AI/ML/深度学习/LLM 到底什么层级关系 | [全景地图](./00-ai-ml-dl-llm-map.md) |
 | 模型、特征、损失、优化、训练/测试划分这些共同语言 | [核心框架](./01-core-concepts.md) |
 | 传统模型如何从人工特征走向学习表示 | [经典算法](./02-classic-algorithms.md) |
 | 评估、调参、过拟合、泛化这些工程判断 | [模型评估 & 调优](./03-evaluation-tuning.md) |
