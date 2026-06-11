@@ -30,6 +30,8 @@ def test_tool_call_then_final_answer(tracing):
     # 工具结果以 role=tool 回填进了第二次请求
     second_messages = client.calls[1]["messages"]
     assert {"role": "tool", "tool_call_id": "call_1", "content": "echo:hi"} in second_messages
+    # 请求侧:工具 schema 每轮都随请求发送
+    assert client.calls[0]["tools"][0]["function"]["name"] == "echo"
 
 
 def test_tool_exception_fed_back_as_error_message(tracing):
@@ -61,7 +63,9 @@ def test_spans_follow_genai_conventions(tracing):
     tracer, exporter = tracing
     client = FakeChatClient([tool_call_response("echo", {"text": "hi"}), final_response("done")])
     run_agent(client, "gpt-test", [ECHO], "问题", tracer)
-    spans = {s.name: s for s in exporter.get_finished_spans()}
+    finished = exporter.get_finished_spans()
+    assert len(finished) == 4  # invoke_agent + 2×chat + 1×execute_tool
+    spans = {s.name: s for s in finished}
     assert set(spans) == {"invoke_agent doc-qa", "chat gpt-test", "execute_tool echo"}
     agent = spans["invoke_agent doc-qa"].attributes
     assert agent["gen_ai.operation.name"] == "invoke_agent"

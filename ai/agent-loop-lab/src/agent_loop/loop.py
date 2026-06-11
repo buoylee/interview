@@ -89,7 +89,11 @@ def run_agent(client, model: str, tools: list[ToolSpec], user_input: str, tracer
                 result.tool_calls.append(name)
                 with tracer.start_as_current_span(
                     f"execute_tool {name}",
-                    attributes={"gen_ai.operation.name": "execute_tool", "gen_ai.tool.name": name},
+                    attributes={
+                        "gen_ai.operation.name": "execute_tool",
+                        "gen_ai.tool.name": name,
+                        "gen_ai.tool.call.id": tc.id,
+                    },
                 ) as tool_span:
                     try:
                         args = json.loads(tc.function.arguments or "{}")
@@ -97,10 +101,12 @@ def run_agent(client, model: str, tools: list[ToolSpec], user_input: str, tracer
                             output = tool_map[name].handler(**args)
                         else:
                             output = f"ERROR: 未知工具 {name}"
+                            tool_span.set_status(Status(StatusCode.ERROR, output))
                     except Exception as exc:  # 工具失败不终止循环:错误回喂给模型自行恢复
                         output = f"ERROR: {exc}"
                         tool_span.set_status(Status(StatusCode.ERROR, str(exc)))
-                messages.append({"role": "tool", "tool_call_id": tc.id, "content": output})
+                messages.append({"role": "tool", "tool_call_id": tc.id, "content": str(output)})
 
+        agent_span.set_attribute("agent.turns", max_turns)
         agent_span.set_status(Status(StatusCode.ERROR, "max turns exceeded"))
         raise MaxTurnsExceeded(f"agent 在 {max_turns} 轮内未产出最终答案")

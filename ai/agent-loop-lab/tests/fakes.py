@@ -31,5 +31,6 @@ class FakeChatClient:
         )
 
     def _create(self, **kwargs):
-        self.calls.append(kwargs)
+        # messages 列表会被 run_agent 持续 mutate,这里按调用时刻快照
+        self.calls.append({**kwargs, "messages": [dict(m) for m in kwargs["messages"]]})
         return self._scripted.pop(0)
