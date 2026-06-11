@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     llm_model_fallback: str = "gpt-4o-mini"
 
     # 可观测
-    obs_backend: str = "none"          # none | langfuse | langsmith
+    obs_backend: str = "none"          # none | langfuse | langsmith | otel
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
     langfuse_host: str = "http://localhost:3000"
