@@ -107,3 +107,14 @@ MVP Plan 3 的可观测实现从「Langfuse callback 接线」升级为:
 
 - MVP Plan 2-4 的实现计划已存在(`docs/superpowers/plans/2026-06-05-agentic-rag-mvp-plan-{2,3,4}-*.md`),本 spec 不重做,仅对 Plan 3 施加决策 1 的修正(写 plan 阶段更新该文件或以增补说明执行)。
 - 需要新写 plan 的部分:裸循环实验(决策 2)、微调实操(决策 3)、文档回填(决策 4,可并入各月主线 plan 的收尾步骤)、月 5 部署实验(可选,届时再计划)。
+
+## 九、勘误与排期重排(2026-06-11,写月 1 计划时发现)
+
+核对 git 历史发现:**MVP Plan 2-4 的代码已于 2026-06-05 全部实现并合回 main**(supervisor/CRAG 图、FastAPI + Langfuse callback 可观测、eval 闭环代码齐全),本 spec 第五节排期中「做完 Plan 2-4」的前提过时。但 **MVP 从未用真实 key 跑过**:`eval/reports/` 为空、golden set 仅 4 条、可观测无 OTel——「缺真数字」的核心判断不变,目标、决策、验收标准(第六节)全部维持。月度主线重排为:
+
+| 月 | 主线 |
+|----|------|
+| 1 | MVP 首次真实跑通(真 key + 自托管 Langfuse,拿到第一批真数字)+ 裸循环实验(决策 2)+ 02 模块锚点回填 |
+| 2 | MVP 可观测 OTel 化(决策 1,改造现有 obs 层)+ 07/03 监控篇锚点回填 |
+| 3 | golden set 扩充 + eval 真报告 + judge 校准 → 回填 07(核心交付,不变) |
+| 4-6 | 与原排期相同(微调 → 可选部署 → 叙事串联) |
