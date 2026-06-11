@@ -37,7 +37,7 @@ pgvector 支持 ivfflat 和 hnsw 两种索引……(来源:postgres.md)
 |------|------|
 | `src/agent_loop/loop.py` | agent 循环本体(112 行,面试可背骨架):显式 while + messages list + OTel 三层 span |
 | `src/agent_loop/mcp_server.py` | MCP server 端:FastMCP 注册 `read_doc` 工具,读 `sample_docs/` |
-| `src/agent_loop/mcp_client.py` | MCP client 端:每次 `call_mcp_tool` spawn 子进程 + `initialize` 握手(实测冷启动 202–225 ms) |
+| `src/agent_loop/mcp_client.py` | MCP client 端:每次 `call_mcp_tool` spawn 子进程 + `initialize` 握手(实测冷启动约 0.2–0.3 s,波动明显) |
 | `src/agent_loop/tools.py` | `ToolSpec` 结构体 + `search_docs`(关键词打分,< 0.5 ms 进程内) |
 | `src/agent_loop/otel.py` | OTel 初始化:控制台 / OTLP 两端;GenAI 语义约定 span 属性 |
 | `src/agent_loop/config.py` | pydantic-settings 配置 + Langfuse OTLP endpoint 拼装 |
