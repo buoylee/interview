@@ -125,3 +125,34 @@ def test_backend_none_has_no_otel_callback():
     s = _settings(obs_backend="none")
     callbacks = get_observability_callbacks(s)
     assert not any(type(c).__name__ == "OTelTraceCallback" for c in callbacks)
+
+
+def test_chain_run_stitches_llm_and_tool_under_one_root(otel_cb):
+    """真实 LangGraph 拓扑:llm/tool 的 parent 是 chain 节点,不再各自成根。"""
+    cb, exporter = otel_cb
+    chain_id, llm_id, tool_id = uuid4(), uuid4(), uuid4()
+    cb.on_chain_start({"name": "kb_rag"}, {}, run_id=chain_id, parent_run_id=None)
+    cb.on_chat_model_start({}, [], run_id=llm_id, parent_run_id=chain_id,
+                           invocation_params={"model_name": "m"})
+    cb.on_llm_end(_llm_result(), run_id=llm_id)
+    cb.on_tool_start({"name": "retrieve_kb"}, "q", run_id=tool_id, parent_run_id=chain_id)
+    cb.on_tool_end("ok", run_id=tool_id)
+    cb.on_chain_end({}, run_id=chain_id)
+    spans = {s.name: s for s in exporter.get_finished_spans()}
+    chain = spans["chain kb_rag"]
+    assert chain.parent is None
+    assert spans["chat m"].parent.span_id == chain.context.span_id
+    assert spans["execute_tool retrieve_kb"].parent.span_id == chain.context.span_id
+
+
+def test_abandoned_span_swept_on_next_start(otel_cb):
+    cb, exporter = otel_cb
+    stale_id = uuid4()
+    cb.on_tool_start({"name": "zombie"}, "x", run_id=stale_id, parent_run_id=None)
+    span, _ = cb._spans[stale_id]
+    cb._spans[stale_id] = (span, -10_000.0)  # 伪造久远的 started_at
+    cb.on_tool_start({"name": "fresh"}, "y", run_id=uuid4(), parent_run_id=None)
+    finished = {s.name: s for s in exporter.get_finished_spans()}
+    from opentelemetry.trace import StatusCode
+    assert finished["execute_tool zombie"].status.status_code == StatusCode.ERROR
+    assert stale_id not in cb._spans

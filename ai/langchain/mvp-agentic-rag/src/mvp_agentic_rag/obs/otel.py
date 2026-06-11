@@ -7,10 +7,15 @@ lab 在自己的循环里手动开 span;这里把框架回调翻译成 span。
 import atexit
 import base64
 import logging
+import threading
+import time
+from uuid import UUID
 
+from langchain_core.callbacks import BaseCallbackHandler
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from opentelemetry.trace import Span, Status, StatusCode, set_span_in_context
 
 from mvp_agentic_rag.core.config import Settings
 
@@ -29,7 +34,10 @@ def langfuse_otlp_config(settings: Settings) -> tuple[str, dict[str, str]] | Non
 
 
 def build_tracer(settings: Settings, exporter=None):
-    """返回 tracer。exporter 可注入(测试);provider 注册 atexit 刷缓冲。"""
+    """返回 tracer。exporter 可注入(测试);provider 注册 atexit 刷缓冲。
+
+    每进程调用一次(MVP 在 app 启动时构建一次 callbacks);重复调用会注册多个 provider/atexit 钩子。
+    """
     if exporter is None:
         otlp = langfuse_otlp_config(settings)
         if otlp is not None:
@@ -44,10 +52,6 @@ def build_tracer(settings: Settings, exporter=None):
     provider.add_span_processor(BatchSpanProcessor(exporter))
     atexit.register(provider.shutdown)
     return provider.get_tracer("mvp_agentic_rag.obs")
-
-
-from langchain_core.callbacks import BaseCallbackHandler
-from opentelemetry.trace import Status, StatusCode, set_span_in_context
 
 
 def _extract_usage(response) -> tuple[int, int]:
@@ -68,27 +72,55 @@ class OTelTraceCallback(BaseCallbackHandler):
 
     run_id → span 表;parent_run_id 在表里就挂为父 span,否则做根。
     回调缺 start(框架异常路径)时 end 是 no-op,不影响主流程。
+    /chat/stream 取消可能跳过 end 回调;_sweep_abandoned 在下次 _start 时清扫。
     """
 
     raise_error = False
 
+    # 流式取消时 end 回调可能永远不触发;超过此秒数的 span 视为已放弃
+    _ABANDON_AFTER_S: float = 600.0
+
     def __init__(self, tracer) -> None:
         self._tracer = tracer
-        self._spans: dict = {}
+        self._spans: dict[UUID, tuple[Span, float]] = {}
+        self._lock = threading.Lock()
 
     # ---- 内部 ----
     def _start(self, run_id, parent_run_id, name: str, attributes: dict) -> None:
-        parent = self._spans.get(parent_run_id)
-        ctx = set_span_in_context(parent) if parent is not None else None
-        self._spans[run_id] = self._tracer.start_span(name, context=ctx, attributes=attributes)
+        now = time.monotonic()
+        with self._lock:
+            self._sweep_abandoned(now)
+            entry = self._spans.get(parent_run_id)
+            ctx = set_span_in_context(entry[0]) if entry is not None else None
+            self._spans[run_id] = (self._tracer.start_span(name, context=ctx, attributes=attributes), now)
 
     def _end(self, run_id, error=None) -> None:
-        span = self._spans.pop(run_id, None)
-        if span is None:
+        with self._lock:
+            entry = self._spans.pop(run_id, None)
+        if entry is None:
             return
+        span = entry[0]
         if error is not None:
             span.set_status(Status(StatusCode.ERROR, str(error)))
         span.end()
+
+    def _sweep_abandoned(self, now: float) -> None:  # 调用方持锁
+        stale = [rid for rid, (_, t0) in self._spans.items() if now - t0 > self._ABANDON_AFTER_S]
+        for rid in stale:
+            span, _ = self._spans.pop(rid)
+            span.set_status(Status(StatusCode.ERROR, "abandoned: end callback never fired"))
+            span.end()
+
+    # ---- chain 边界(LangGraph 节点/RunnableSequence;不发 gen_ai 操作,只为接住父子树)----
+    def on_chain_start(self, serialized, inputs, *, run_id, parent_run_id=None, **kwargs):
+        name = kwargs.get("name") or (serialized or {}).get("name") or "chain"
+        self._start(run_id, parent_run_id, f"chain {name}", {"langchain.run.type": "chain"})
+
+    def on_chain_end(self, outputs, *, run_id, **kwargs):
+        self._end(run_id)
+
+    def on_chain_error(self, error, *, run_id, **kwargs):
+        self._end(run_id, error)
 
     # ---- LLM 边界 ----
     def on_chat_model_start(self, serialized, messages, *, run_id, parent_run_id=None, **kwargs):
@@ -102,8 +134,10 @@ class OTelTraceCallback(BaseCallbackHandler):
         self.on_chat_model_start(serialized, [], run_id=run_id, parent_run_id=parent_run_id, **kwargs)
 
     def on_llm_end(self, response, *, run_id, **kwargs):
-        span = self._spans.get(run_id)
-        if span is not None:
+        with self._lock:
+            entry = self._spans.get(run_id)
+        if entry is not None:
+            span = entry[0]
             input_tokens, output_tokens = _extract_usage(response)
             if input_tokens:
                 span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
@@ -131,9 +165,10 @@ class OTelTraceCallback(BaseCallbackHandler):
         self._start(run_id, parent_run_id, "retrieve kb", {"gen_ai.operation.name": "retrieve"})
 
     def on_retriever_end(self, documents, *, run_id, **kwargs):
-        span = self._spans.get(run_id)
-        if span is not None:
-            span.set_attribute("retrieval.documents.count", len(documents))
+        with self._lock:
+            entry = self._spans.get(run_id)
+        if entry is not None:
+            entry[0].set_attribute("retrieval.documents.count", len(documents))
         self._end(run_id)
 
     def on_retriever_error(self, error, *, run_id, **kwargs):
