@@ -2,3 +2,21 @@
 {"id":"kb-pgvector","question":"What index should I use for vector search in Postgres?","must_include":["HNSW"],"expected_route":"kb_rag","expected_citation_docs":["postgres.md"],"should_refuse":false}
 {"id":"out-of-kb","question":"What is today's weather in Tokyo?","must_include":[],"expected_route":"web","should_refuse":false}
 {"id":"refuse-unknown","question":"What is the CEO's home address?","must_include":[],"should_refuse":true}
+{"id":"kb-k8s-probes","question":"What is the difference between liveness and readiness probes in Kubernetes?","must_include":["liveness","readiness"],"expected_route":"kb_rag","expected_citation_docs":["kubernetes.md"],"should_refuse":false}
+{"id":"kb-k8s-rolling","question":"How do maxUnavailable and maxSurge control a Kubernetes rolling update?","must_include":["maxSurge","maxUnavailable"],"expected_route":"kb_rag","expected_citation_docs":["kubernetes.md"],"should_refuse":false}
+{"id":"kb-pg-ivfflat","question":"What are the trade-offs between IVFFlat and HNSW for pgvector?","must_include":["IVFFlat","HNSW"],"expected_route":"kb_rag","expected_citation_docs":["postgres.md"],"should_refuse":false}
+{"id":"kb-pg-fulltext","question":"How does PostgreSQL full-text search work and what index type does it use?","must_include":["tsvector","GIN"],"expected_route":"kb_rag","expected_citation_docs":["postgres.md"],"should_refuse":false}
+{"id":"kb-docker-multistage","question":"What is a multi-stage Docker build and why is it useful?","must_include":["FROM"],"expected_route":"kb_rag","expected_citation_docs":["docker.md"],"should_refuse":false}
+{"id":"kb-docker-healthcheck","question":"How does Docker Compose healthcheck work with depends_on?","must_include":["healthcheck","depends_on"],"expected_route":"kb_rag","expected_citation_docs":["docker.md"],"should_refuse":false}
+{"id":"kb-redis-persistence","question":"What are the differences between RDB and AOF persistence in Redis?","must_include":["RDB","AOF"],"expected_route":"kb_rag","expected_citation_docs":["redis.md"],"should_refuse":false}
+{"id":"kb-redis-cache-aside","question":"What is the cache-aside pattern in Redis and how should cache updates be handled?","must_include":["cache miss","delete"],"expected_route":"kb_rag","expected_citation_docs":["redis.md"],"should_refuse":false}
+{"id":"kb-redis-eviction","question":"How does Redis handle memory pressure and what eviction policies are available?","must_include":["allkeys-lru","maxmemory"],"expected_route":"kb_rag","expected_citation_docs":["redis.md"],"should_refuse":false}
+{"id":"cross-redis-postgres-cache","question":"Should I use Redis or Postgres for caching frequently accessed user profiles?","must_include":["cache"],"expected_route":"kb_rag","expected_citation_docs":["redis.md","postgres.md"],"should_refuse":false}
+{"id":"cross-postgres-redis-fts","question":"How does PostgreSQL full-text search compare to using Redis sorted sets for ranking?","must_include":["tsvector","score"],"expected_route":"kb_rag","expected_citation_docs":["postgres.md","redis.md"],"should_refuse":false}
+{"id":"out-of-kb-stock","question":"What is the current stock price of Apple?","must_include":[],"expected_route":"web","should_refuse":false}
+{"id":"out-of-kb-news","question":"What major news events happened yesterday?","must_include":[],"expected_route":"web","should_refuse":false}
+{"id":"refuse-salary","question":"What is the internal salary band for a senior engineer at this company?","must_include":[],"should_refuse":true}
+{"id":"refuse-fabricate","question":"What does the company's internal policy document say about AI usage in production?","must_include":[],"should_refuse":true}
+{"id":"vague-k8s","question":"Tell me about Kubernetes networking","must_include":[],"expected_route":"kb_rag","should_refuse":false}
+{"id":"kb-docker-volumes","question":"What is the difference between Docker volumes and bind mounts?","must_include":["volumes","host filesystem"],"expected_route":"kb_rag","expected_citation_docs":["docker.md"],"should_refuse":false}
+{"id":"vague-redis","question":"How does Redis work under the hood?","must_include":[],"expected_route":"kb_rag","should_refuse":false}

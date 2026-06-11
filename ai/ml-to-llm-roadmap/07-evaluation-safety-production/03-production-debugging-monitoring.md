@@ -348,4 +348,16 @@ Optional retrieval/context 和 optional tool/output parser 之所以标成可选
 
 ## 回到主线
 
-到这里，你已经能把评估、安全和生产排查连起来：用 eval 判断质量，用 Guardrails 控制风险，用监控和 regression set 定位并防止回归。后续系统设计和项目叙事会继续使用这些概念，把“不确定的模型行为”纳入可解释的工程方案。
+到这里，你已经能把评估、安全和生产排查连起来：用 eval 判断质量，用 Guardrails 控制风险，用监控和 regression set 定位并防止回归。后续系统设计和项目叙事会继续使用这些概念，把”不确定的模型行为”纳入可解释的工程方案。
+
+## 实战锚点(2026-06,亲手实现)
+
+这一篇讲的 trace/监控,我在两套实现里各落地过一遍,同一套 OTel GenAI 语义约定(`gen_ai.*`):
+
+- **手动埋点版**:[agent-loop-lab](../../agent-loop-lab/) —— 在自己写的 agent 循环里手动开三类 span:`invoke_agent`(根)→ `chat {model}`(挂 `gen_ai.usage.*` token 数)→ `execute_tool {name}`(挂 `gen_ai.tool.call.id`,失败置 ERROR status)。OTLP 导出到自托管 Langfuse(`{host}/api/public/otel`,Basic auth)。
+- **框架翻译版**:[mvp-agentic-rag 的 `obs/otel.py`](../../langchain/mvp-agentic-rag/src/mvp_agentic_rag/obs/otel.py) —— 不碰业务代码,把 LangChain 回调翻译成同样的 span:chain(图节点,把树接起来)+ LLM/工具/检索三边界;`run_id/parent_run_id` 映射父子树,附带取消泄漏清扫和线程锁。`OBS_BACKEND=otel` 一键启用,与 langfuse callback / LangSmith 后端并存可切。
+- **三边界**指:模型调用(token/延迟/模型名)、工具调用(名字/错误)、检索(命中文档数)。无论用不用框架,trace 都打在这三个边界上——这是排查「质量/延迟/成本突变」时从症状定位到组件的最小坐标系。
+- **一个 review 抓出来的真实教训**:第一版 callback 只跟踪了三边界、没跟踪 chain 运行——但真实 LangGraph 里 LLM/工具的 `parent_run_id` 指向图节点(chain),结果每个 span 都成了孤儿根节点,一次请求在 Langfuse 里会碎成 5-8 条单 span trace。教训:**做 trace 必须先搞清楚框架的运行树拓扑,不能只埋自己关心的边界**。
+- **换后端零代码**:OTLP 是中立协议,Langfuse/Phoenix/Jaeger/Datadog 都收;我项目里默认自托管 Langfuse,数据不出内网。
+- **面试 30 秒**:「可观测我不绑定框架。三边界打 span、遵循 OTel GenAI 语义约定、OTLP 出口后端可换。我手写过 span 埋点,也写过把 LangChain 回调翻译成 OTel span 的 callback——两边在 Langfuse 里长一个样。」
+- 〔待实测:真实 trace 树截图与单请求 span 数/延迟分布,跑通月 1 Task 1/8 后回填〕

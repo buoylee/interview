@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **执行状态(2026-06-11):** Task 2-7、9、10 及 Task 8 的代码部分(main.py)已完成并通过双重 review(分支 agent-loop-lab);**Task 1 与 Task 8 的真实运行待用户环境**(Docker + 自托管 Langfuse 注册 + 两份 .env),跑完后回填 run-log/runlog 的〔待实测〕数字。
+
 **Goal:** 第一次用真实 key 跑通 MVP 拿到第一批真实数字(runlog),并手写一个不依赖任何框架的 agent loop(裸 OpenAI SDK + MCP 工具 + OTel 手动 span,trace 进自托管 Langfuse),最后把「裸 loop vs LangGraph」对比和真实数字回填到 02 模块文档。
 
 **Architecture:** lab 是独立 uv 小项目 `ai/agent-loop-lab/`,复用 MVP 的 `LLM_*`/`LANGFUSE_*` env 约定和 `sample_docs` 语料。agent loop 是一个纯函数 `run_agent(client, model, tools, user_input, tracer)`——LLM 客户端、工具表、tracer 全部注入,测试用 FakeChatClient + InMemorySpanExporter 全 hermetic。两个工具复刻 MVP kb 路由的薄切片:`search_docs`(进程内关键词检索)+ `read_doc`(走 MCP stdio,自己写 server 和 client 两端)。OTel span 遵循 GenAI 语义约定(`gen_ai.*`),OTLP HTTP 导出到 Langfuse。
@@ -20,7 +22,7 @@
 
 - `ai/langchain/mvp-agentic-rag/.env`:`LLM_*` 与 `EMBEDDING_*` 填真实 OpenAI 兼容 key(参考 `.env.example`)。
 - Docker 可用;自托管 Langfuse 见 Task 1 Step 1(首次需注册并建项目拿 pk/sk)。
-- 无 key 时:Task 2-6 照常可做(全 hermetic);Task 1、7、8 阻塞,顺延即可。
+- 无 key 时:Task 2-7 照常可做(全 hermetic);Task 1、8 阻塞(Task 9 的数字部分、Task 10 依赖 8),顺延即可。
 
 ## 文件结构(本计划产出 / 修改)
 
