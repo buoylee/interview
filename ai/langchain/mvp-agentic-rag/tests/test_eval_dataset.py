@@ -30,7 +30,7 @@ def test_must_include_terms_appear_in_cited_docs():
             continue
         corpus = "".join((SAMPLE_DOCS / d).read_text(encoding="utf-8") for d in case.expected_citation_docs)
         for term in case.must_include:
-            assert term in corpus, f"{case.id}: must_include '{term}' 不在引用文档中"
+            assert term.lower() in corpus.lower(), f"{case.id}: must_include '{term}' 不在引用文档中"
 
 
 def test_refusal_cases_have_no_kb_expectations():

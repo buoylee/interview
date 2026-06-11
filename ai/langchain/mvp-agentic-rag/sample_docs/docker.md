@@ -18,7 +18,7 @@ A common pattern is a builder stage that runs go build or npm run build, and a f
 
 ## Docker Networks
 
-Docker creates a virtual network for containers and provides several network driver types. The bridge driver (default) creates an isolated virtual network on the host. Containers on the same bridge network can communicate using their container names as DNS hostnames — Docker's embedded DNS resolver maps container names to their IP addresses automatically. Containers on different bridge networks cannot communicate unless explicitly connected.
+Docker creates a virtual network for containers and provides several network driver types. The bridge driver (default) creates an isolated virtual network on the host. Automatic container-name DNS resolution only works on user-defined bridge networks — Docker's embedded DNS resolver maps container names to their IP addresses on those networks. The default bridge network (created automatically when Docker starts) does NOT support container-name DNS; containers on it can only reach each other by IP address. Containers on different bridge networks cannot communicate unless explicitly connected.
 
 The host driver removes network isolation and gives the container direct access to the host's network stack. There is no port mapping; the container binds directly to host ports. Host networking offers lower latency and avoids NAT overhead, but the container shares the host's port namespace and is unsuitable for multi-container setups where port conflicts would occur.
 

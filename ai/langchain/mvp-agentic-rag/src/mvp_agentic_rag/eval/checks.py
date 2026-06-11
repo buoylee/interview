@@ -4,7 +4,8 @@ REFUSAL_MARKERS = ("依据不足", "未找到足够依据")
 
 
 def check_must_include(answer: str, must_include: list[str]) -> bool:
-    return all(s in answer for s in must_include)
+    answer_lower = answer.lower()
+    return all(s.lower() in answer_lower for s in must_include)
 
 
 def check_route(actual_route: str, expected_route: str | None) -> bool:

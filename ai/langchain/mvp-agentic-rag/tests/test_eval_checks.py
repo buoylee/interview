@@ -6,6 +6,8 @@ from mvp_agentic_rag.eval.checks import (
 def test_must_include():
     assert check_must_include("HPA scales pods by CPU", ["HPA", "CPU"]) is True
     assert check_must_include("HPA scales pods", ["HPA", "CPU"]) is False
+    # case-insensitive contract: uppercase term should match lowercase answer
+    assert check_must_include("we use hnsw index", ["HNSW"]) is True
 
 
 def test_route():

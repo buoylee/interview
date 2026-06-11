@@ -8,7 +8,7 @@ Redis provides several native data types, each optimized for specific access pat
 
 Strings are the simplest type — a key maps to a byte sequence. Strings support atomic increment/decrement operations (INCR, INCRBY), making them a natural fit for counters, rate limiters, and distributed locks (via SET key value NX PX ttl).
 
-Lists are ordered sequences of strings, implemented as linked lists. LPUSH/RPUSH add to either end; LPOP/RPOP remove from either end. Lists are commonly used as queues (producer pushes to RPUSH, consumer pops from LPOP) and for maintaining bounded activity logs with LTRIM.
+Lists are ordered sequences of strings, implemented as linked lists (modern Redis uses quicklist — listpack nodes — for efficiency, and plain listpack for small lists). LPUSH/RPUSH add to either end; LPOP/RPOP remove from either end. Lists are commonly used as queues (producer pushes to RPUSH, consumer pops from LPOP) and for maintaining bounded activity logs with LTRIM.
 
 Hashes map field-value pairs under a single key, similar to a struct. They are space-efficient when a key has many fields and are commonly used to store user profiles or session state where individual fields need to be updated independently.
 
