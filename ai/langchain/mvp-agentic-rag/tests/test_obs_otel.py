@@ -110,3 +110,18 @@ def test_orphan_end_is_noop(otel_cb):
     cb, exporter = otel_cb
     cb.on_llm_end(_llm_result(), run_id=uuid4())  # 没有对应 start,不得抛异常
     assert exporter.get_finished_spans() == ()
+
+
+from mvp_agentic_rag.obs.backends import get_observability_callbacks
+
+
+def test_backend_otel_appends_otel_callback():
+    s = _settings(langfuse_public_key="", langfuse_secret_key="")  # 无 key→控制台 exporter,无网络
+    callbacks = get_observability_callbacks(s)
+    assert any(type(c).__name__ == "OTelTraceCallback" for c in callbacks)
+
+
+def test_backend_none_has_no_otel_callback():
+    s = _settings(obs_backend="none")
+    callbacks = get_observability_callbacks(s)
+    assert not any(type(c).__name__ == "OTelTraceCallback" for c in callbacks)

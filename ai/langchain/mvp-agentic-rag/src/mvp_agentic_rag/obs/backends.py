@@ -38,4 +38,8 @@ def get_observability_callbacks(settings: Settings | None = None) -> list:
             callbacks.append(handler)
     elif backend == "langsmith":
         os.environ["LANGSMITH_TRACING"] = "true"  # 其余 LANGSMITH_API_KEY/PROJECT 由 .env 提供
+    elif backend == "otel":
+        from mvp_agentic_rag.obs.otel import OTelTraceCallback, build_tracer
+
+        callbacks.append(OTelTraceCallback(build_tracer(s)))
     return callbacks
