@@ -186,6 +186,25 @@ Decoder-only 对通用 LLM 友好，核心原因不是“Encoder 没用”，而
 6. 为什么现代通用 LLM 多采用 Decoder-only？
 7. "Encoder-Decoder 包含了 Decoder，所以更强"这个说法错在哪？多轮对话场景下 Enc-Dec 的工程代价是什么？
 
+<details>
+<summary>参考答案（先自己答，再展开对照）</summary>
+
+1. embedding/rerank 的目标是"读懂输入、输出可比较的表示或判断"，不是从左到右写新文本。BERT 的双向注意力让每个 token 同时看左右上下文，MLM 训练目标也推动它学上下文理解，正好匹配这个任务形状。
+
+2. MLM 在序列中间挖洞、利用左右两边上下文填洞（理解型）；CLM 只看左边前缀、预测下一个 token（生成型）。MLM 每个样本只有约 15% 位置产生训练信号，CLM 每个位置都产生。
+
+3. T5 把任务统一成 text-to-text，结构上 Encoder 读 source、Decoder 生成 target、cross-attention 连接两者——正好匹配"输入和输出是两段边界清晰的不同序列"的任务（翻译、摘要、结构化转换）。
+
+4. 因为 Decoder-only 不区分 source/target：检索文档、用户问题、历史对话都拼成同一条 prefix，masked self-attention 直接在同一序列里读取它们，不需要单独的 Encoder 和 cross-attention。
+
+5. Encoder-only：`文本 → 上下文表示`；Encoder-Decoder：`source 文本 → encoder 表示 → target 文本`；Decoder-only：`prefix → 下一个 token → 下一个 token → …`。
+
+6. 训练和推理统一成"给定 prefix 预测下一个 token"一种形式：原始互联网文本可直接当训练数据（每个 token 都是信号）、推理接口统一、RAG/Agent/function calling 都可表达为"加上下文继续生成"。
+
+7. 两个前提错误：(a) 同样参数预算下 Enc-Dec 要切成两半，且它的 Decoder 焊死了 cross-attention、离开 Encoder 不能独立运行，所以不是"包含"；(b) 更复杂意味着焊死了"输入输出是两段不同序列"的假设。多轮对话下，上一轮的 target 下一轮变成 source，token 要搬到 Encoder 侧整个重新编码，每轮边界移动、前面计算全部作废；Decoder-only 只需 append 新内容，KV cache 原样复用。
+
+</details>
+
 ## 深入参考
 
 本篇已经覆盖主线需要的三种架构范式。读完后，如果你想看更压缩的模型对比和预训练目标，可以再读这些补充参考：

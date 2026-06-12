@@ -188,8 +188,35 @@ llm = init_chat_model("gpt-4o", model_provider="openai", temperature=0.7)
 >
 > A: 两者都控制生成的随机性，但机制不同：
 > - **temperature**: 调整概率分布的 "锐度"。低 temperature 让高概率 token 更突出 (更确定)，高 temperature 让分布更平坦 (更随机)。
-> - **top_p (nucleus sampling)**: 只从累积概率前 p% 的 token 中采样。top_p=0.1 意味着只考虑占前 10% 概率的 token。
+> - **top_p (核采样 / nucleus sampling)**: **动态截断候选集** —— 把所有 token 按概率从高到低排序，从头累加概率，一旦累计值第一次 ≥ p 就停下，只在这批 token（叫 "核"/nucleus）里采样，剩下的长尾全部丢弃。
 > - **最佳实践**: 只调一个，不要同时调两个 (OpenAI 官方建议)。代码/结构化输出用 temperature=0，对话用 0.7，创意写作用 0.9-1.0。
+
+**top_p 具体怎么算**（以 `top_p=0.9` 为例）
+
+假设某一步模型预测下一个 token 的概率分布如下（先按概率从高到低排好）：
+
+| token | 概率 | 从高到低累计 |
+|-------|------|------------|
+| `the`  | 0.50 | 0.50 |
+| `a`    | 0.20 | 0.70 |
+| `one`  | 0.15 | 0.85 |
+| `this` | 0.10 | **0.95** ← 累计首次 ≥ 0.9，到此为止 |
+| ~~`that`~~ | ~~0.05~~ | ~~1.00~~（被丢弃） |
+
+四个步骤：
+
+1. **排序**：把全部 token 按概率降序排列
+2. **累加**：从概率最高的开始往下逐个加
+3. **截断**：累计概率第一次 ≥ p（=0.9）时停止，并纳入当前这个 token → 候选集 = `{the, a, one, this}`，`that` 及更靠后的全部扔掉
+4. **归一化 + 采样**：把这 4 个的概率重新缩放到和为 1（`0.50/0.95, 0.20/0.95, ...`），再按缩放后的概率随机抽一个
+
+> **关键点：top_p 是"动态"截断，候选集大小随分布形状自适应**
+> - 模型很笃定时（某个 token 概率独大），核很小 → 接近确定性
+> - 模型很犹豫时（概率很平摊），核很大 → 更随机
+>
+> 这正是它和 `top_k` 的根本区别：`top_k` 永远固定取前 k 个，不管分布长什么样；`top_p` 会根据分布自动调候选集大小。
+
+> **澄清一个常见误读**：`top_p=0.1` **不是**"取概率最高的 10% 那些 token"，而是"从最高往下累计到 0.1 为止的那几个 token"。在上面的例子里，光 `the` 一个就有 0.50 ≥ 0.1，所以候选集只剩 `{the}` —— 几乎是确定性输出。**结论：top_p 越小越确定，越大越随机。**
 
 ---
 
@@ -347,8 +374,9 @@ response = llm.invoke([message])
 重复相同输入时，避免重复调用 LLM，节省成本。
 
 ```python
-from langchain.globals import set_llm_cache
-from langchain_community.cache import InMemoryCache, SQLiteCache
+from langchain_core.globals import set_llm_cache   # v1.x：从 langchain_core.globals 导入（旧的 langchain.globals 已移除）
+from langchain_core.caches import InMemoryCache     # InMemoryCache 已迁到 langchain_core.caches
+from langchain_community.cache import SQLiteCache    # SQLiteCache 仍在 langchain_community
 
 # 内存缓存 (开发用)
 set_llm_cache(InMemoryCache())
