@@ -289,7 +289,7 @@ if result["parsing_error"]:
 ### 6.2 重试策略
 
 ```python
-from langchain.output_parsers import RetryOutputParser
+from langchain_classic.output_parsers import RetryOutputParser  # v1.x：迁到 langchain_classic（旧的 langchain.output_parsers 已移除）
 
 # 解析失败时，把错误信息 + 原始输出发回 LLM 让它修正
 retry_parser = RetryOutputParser.from_llm(

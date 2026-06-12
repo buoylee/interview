@@ -73,7 +73,9 @@ result = agent.invoke(
 
 > **Q: interrupt() 和 Checkpointing 有什么关系？**
 >
-> A: interrupt() **依赖** Checkpointing。当调用 interrupt() 时，LangGraph 将当前 State 保存到 Checkpointer，然后停止执行。恢复时，从 Checkpointer 恢复 State，继续执行。**没有 Checkpointer 就不能用 interrupt()**。
+> A: interrupt() **依赖** Checkpointing 才能完成「暂停 → 恢复」闭环。调用 interrupt() 时，LangGraph 将当前 State 保存到 Checkpointer 并停止；恢复时从 Checkpointer 取回 State，用 `Command(resume=...)` 继续执行。
+>
+> **精确地说**（实测 langgraph 1.x）：没有 Checkpointer，interrupt() **仍会暂停**（节点后续代码不执行、结果带 `__interrupt__`），但你**无法** `Command(resume=...)` 恢复、也**无法** `get_state()` 查看——HITL 闭环走不通。所以生产环境里 interrupt 必须配 Checkpointer。
 
 ---
 

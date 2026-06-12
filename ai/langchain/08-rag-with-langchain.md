@@ -85,7 +85,7 @@ docs = loader.load()
 ### 3.1 RecursiveCharacterTextSplitter (推荐默认)
 
 ```python
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter  # v1.x：独立包 langchain_text_splitters（旧的 langchain.text_splitter 已移除）
 
 splitter = RecursiveCharacterTextSplitter(
     chunk_size=500,       # 每个块最多 500 字符
@@ -103,7 +103,7 @@ print(f"原始 {len(docs)} 个文档 → 分成 {len(chunks)} 个块")
 ### 3.2 按 Token 分块
 
 ```python
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter  # v1.x：独立包 langchain_text_splitters（旧的 langchain.text_splitter 已移除）
 
 splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
     encoding_name="cl100k_base",  # OpenAI 的编码器

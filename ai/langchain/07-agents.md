@@ -53,6 +53,8 @@ Agent (智能体): 动态流程  用户输入 → LLM 决策循环 → 结果
 
 ### 2.1 create_react_agent() — 最常用
 
+> **⚠️ 版本说明（v1.x）**：`from langgraph.prebuilt import create_react_agent` 仍可用但**已弃用**（`LangGraphDeprecatedSinceV10`）。官方现在推荐 `from langchain.agents import create_agent`——签名有变：`prompt=` → `system_prompt=`，内部 LLM 节点名从 `agent` 改为 `model`。本章为对照旧代码仍用 `create_react_agent` 讲解，迁移时换成 `create_agent` 即可。
+
 ```python
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool

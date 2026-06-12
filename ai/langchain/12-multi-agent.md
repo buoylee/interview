@@ -55,6 +55,8 @@
 
 ### 2.2 实现
 
+> **⚠️ v1.x**：`create_react_agent` 已弃用，迁移到 `from langchain.agents import create_agent`（详见第 7 章 §2.1）。下方代码仍用旧 API 讲解多 Agent 编排逻辑。
+
 ```python
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool

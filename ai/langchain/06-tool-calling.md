@@ -62,7 +62,8 @@ def get_weather(city: str) -> str:
 
 # 查看生成的工具信息
 print(get_weather.name)          # "get_weather"
-print(get_weather.description)   # "查询指定城市的实时天气。"
+print(get_weather.description)   # 注意：默认是整个 docstring（含下面的 Args 块），不只是首行！
+# 想让 description 只取首行摘要、并把 Args 拆进各参数的 description，用 @tool(parse_docstring=True)
 print(get_weather.args_schema.model_json_schema())
 # {"properties": {"city": {"type": "string"}}, "required": ["city"]}
 ```
@@ -332,15 +333,19 @@ def generate_chart(data: str) -> tuple[str, dict]:
 ### 6.2 错误处理
 
 ```python
-@tool(handle_tool_error=True)
+from langgraph.prebuilt import ToolNode
+
+@tool
 def risky_tool(input: str) -> str:
     """可能失败的工具"""
     if not input:
         raise ValueError("输入不能为空")
     return f"处理: {input}"
 
-# handle_tool_error=True 时，异常会被捕获并作为错误消息返回给 LLM
-# LLM 可以看到错误并决定是否重试或换个方式
+# v1.x：错误处理在 ToolNode 层配置（@tool 不再接受 handle_tool_error 参数）
+# handle_tool_errors=True 时，工具抛的异常会被捕获、作为 ToolMessage 错误内容返回给 LLM，
+# LLM 看到错误后可决定重试或换个方式
+tool_node = ToolNode([risky_tool], handle_tool_errors=True)
 ```
 
 ### 6.3 工具的 Description 设计原则
