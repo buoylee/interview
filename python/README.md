@@ -35,6 +35,10 @@
 | 14 | [标准库与生态地图](14-stdlib-and-ecosystem.md) | collections/itertools/pathlib/logging… + 生态地图 |
 | 15 | [CPython 内部与性能心智](15-cpython-internals-performance.md) | 字节码、引用计数 + 分代 GC、为什么慢、性能惯用法 |
 | 16 | [Python 风格与惯用法](16-pythonic-idioms.md) | PEP 8/20、地道写法、反模式、全书陷阱总览 |
+| 17 | [文件 I/O 与序列化](17-io-and-serialization.md) | open/编码/文本二进制、csv、json、pickle + 反序列化安全 |
+| 18 | [安全基础](18-security.md) | eval/exec、pickle、注入、secrets/hashlib/hmac、随机性 |
+| 19 | [实战骨架](19-production-skeleton.md) | 项目结构、配置/密钥、生产 logging、错误边界、12-factor |
+| 20 | [编码面试工具箱](20-coding-interview-toolkit.md) | heapq/bisect/deque、sorted(key=)、复杂度、切片技巧 |
 | 99 | [面试卡](99-interview-cards.md) | 各章高频题汇总 + 猜输出 drill 合集 |
 
 ## 与仓库其他目录的关系

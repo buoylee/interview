@@ -388,3 +388,15 @@ python/
 **Placeholder scan:** 各任务 must-cover/必含示例为具体条目与具体示例(非 "TODO/适当处理");通用流程把机械步骤抽出一次(DRY),内容清单逐任务给全。
 
 **一致性:** 文件名在文件结构、各任务、README、Task 20 中保持一致(`NN-name.md`);旧笔记吸收去向(05/10/13/14)与 spec 第 7 节一致;验证脚本命名 `/tmp/ch<NN>_check.py` 统一。
+
+---
+
+## 增补(2026-06-14):缺口补全 P0 + P1
+
+交付后按五条标准(资深深度/流畅性/系统性/过渡实战/面试)复盘,补四章 + 散点折入。沿用通用流程 A–E。
+
+- **Task 21 / 第17章 文件 I/O 与序列化** `17-io-and-serialization.md`:open 文本vs二进制/编码、流式读写、`csv`、`json` 深化、`pickle` 机制 + 反序列化安全(交叉引用 18)。
+- **Task 22 / 第18章 安全基础** `18-security.md`:`eval`/`exec` 危险、pickle 反序列化、注入面、`secrets`/`hashlib`/`hmac`、`random` vs `secrets`、输入校验(呼应第08章 assert)。
+- **Task 23 / 第19章 实战骨架** `19-production-skeleton.md`:src 项目结构、配置与密钥(`os.environ`/`pydantic-settings`/`.env`)、生产 `logging` 配置、错误边界、12-factor;补"过渡实战"最弱项。
+- **Task 24 / 第20章 编码面试工具箱** `20-coding-interview-toolkit.md`:`heapq`/`bisect`/`deque`/`Counter` 算法用法、`sorted(key=)`/`@total_ordering`/`operator`、复杂度速查、切片/字符串技巧。
+- **Task 25 / P1 散点折入**:`weakref`/`functools.cached_property`→15;`@total_ordering`/`operator`→16;`contextvars`→13;`enum` 深化(`auto`/`IntEnum`/`Flag`)、f-string 格式规约→02/05;README 已加 17–20。
