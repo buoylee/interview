@@ -92,6 +92,37 @@ print(sys.getsizeof(Normal().__dict__)) # 296 —— 这块开销 slotted 实例
 
 CPython 还有专门的小对象分配器 **pymalloc**:向操作系统大块申请内存(arena),再切成小块复用,避免频繁 `malloc`/`free` 的开销。这是底层细节,知道"CPython 有自己的内存池、不是每个小对象都直接找 OS 要"即可。
 
+### `weakref`:不增加引用计数的引用
+
+普通引用会让对象的 refcount +1、阻止回收。**弱引用(`weakref`)** 指向对象但**不增加引用计数**,对象该回收就回收——用于缓存、观察者、避免循环引用导致的内存滞留:
+
+```python
+import weakref
+class Big: pass
+b = Big()
+r = weakref.ref(b)
+r() is b          # True —— 对象还在,r() 取回它
+del b
+r() is None       # True —— 对象已被回收,弱引用自动失效
+```
+
+典型用途:`weakref.WeakValueDictionary` 做"对象还活着才缓存"的缓存(不会因为缓存本身把对象钉在内存里)。
+
+### `functools.cached_property`:惰性计算一次
+
+把"贵的计算"包成属性,**首次访问才算、之后缓存在实例上**:
+
+```python
+from functools import cached_property
+class Report:
+    @cached_property
+    def summary(self):
+        ...           # 只在第一次访问 self.summary 时执行,结果存进实例 __dict__
+        return result
+```
+
+适合"实例生命周期内不变、但算起来贵"的派生值;注意它把结果存进实例 `__dict__`,所以**和 `__slots__` 不兼容**。
+
 ## 四、为什么 Python 慢,慢在哪
 
 诚实面对:**纯 Python 计算比 C/Java/Go 慢一两个数量级**。原因:

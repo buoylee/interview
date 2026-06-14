@@ -67,6 +67,13 @@ asyncio.run(main())
 - 没有线程切换、没有抢占——只在 `await` 处主动让出。所以协程之间不会在语句中间被打断,竞态比多线程少;但**一个协程里写了阻塞调用(没 await 的耗时操作),会卡住整个事件循环**。
 - **着色(coloring)传染**:`await` 只能在 `async` 函数里用;要 await 一个函数,它得是 async;于是 async 会沿调用链向上蔓延。这是 asyncio 最大的工程成本——不能把一个同步代码库"局部改异步"。
 
+> **`contextvars`**:协程里没有"线程局部变量"(`threading.local` 不适用),要传递请求级上下文(如 request-id、trace-id)用 `contextvars.ContextVar`——它在 asyncio 任务间正确隔离/传播。
+> ```python
+> import contextvars
+> req_id = contextvars.ContextVar("req_id", default="none")
+> req_id.set("abc123"); req_id.get()   # 'abc123',各任务各自一份
+> ```
+
 ## 四、`concurrent.futures`:统一的高层接口
 
 不想直接摆弄 thread/process,用 `concurrent.futures` 的执行器,换一个类名就能在"线程池/进程池"之间切:

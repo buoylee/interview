@@ -240,6 +240,25 @@ print(Color.RED, Color.RED.value)   # Color.RED 1
 
 选型:简单不可变记录 → `namedtuple`;有默认值/方法/要可变 → `dataclass`;有限取值集合 → `Enum`。
 
+`Enum` 的几个进阶变体:
+
+```python
+from enum import Enum, auto, IntEnum, Flag
+class Color(Enum):
+    RED = auto(); GREEN = auto(); BLUE = auto()   # auto() 自动赋 1,2,3,不用手写值
+
+class Status(IntEnum):           # 同时是 int:可与数字比较/运算
+    OK = 200; NOTFOUND = 404
+Status.OK == 200                 # True;Status.OK + 1 == 201
+
+class Perm(Flag):                # 位标志:可用 | 组合、in 判断
+    R = auto(); W = auto(); X = auto()
+rw = Perm.R | Perm.W
+Perm.R in rw                     # True;Perm.X in rw 为 False
+```
+
+`IntEnum` 用于需要和整数互通的场景(如 HTTP 状态码),`Flag` 用于权限位这类可组合标志。
+
 ## Java/Go 对照框
 
 | | Java | Python |
