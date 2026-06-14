@@ -194,6 +194,50 @@ result2 = agent.invoke(
 > (3) **Token 预算** — 当消息总 token 超过阈值时触发压缩
 > (4) **RAG 检索** — 将旧对话存入向量数据库，需要时检索
 
+### 3.4 记忆机制演进史(高频面试题）
+
+> 面试官常问：「LangChain 的记忆机制是怎么演进的？为什么要改？」考的不是 API 名字，而是你**懂不懂这次重新设计的动机**。
+
+**先记住一句话**：新版**不是**旧版套一层壳，而是**推倒重做**。LangGraph 的 Checkpointer 跟旧版 `BaseMemory` 没有继承关系、机制完全不同——旧版只存「消息」，新版存的是**整个 graph State 的快照**。但背后「把对话状态存下来、下次再注入回去」的核心思想一脉相承。
+
+> 类比 Java：`java.util.Date` / `Calendar` → `java.time`(JSR-310）。后者是另起炉灶的重新设计，不是前者的子类；但你仍该知道 `Calendar` 存在——老项目到处是它，面试官也爱问「为什么要有 java.time」。
+
+#### 三代演进
+
+| | Gen1 旧 Memory | Gen2 过渡桥 | Gen3 现在(本章讲的） |
+|---|---|---|---|
+| 代表 API | `ConversationBufferMemory` `ConversationChain` | `RunnableWithMessageHistory` + `ChatMessageHistory` | LangGraph **Checkpointer** + **Store** |
+| 绑定对象 | 死绑 `Chain` | 绑任意 LCEL Runnable | 绑 graph State |
+| 存什么 | 只存 messages | 只存 messages | 整个 State 快照 |
+| 会话 key | `memory_key`(隐式） | `session_id` | `thread_id`(短期）/ namespace(长期） |
+| 当前状态 | **已 deprecated** | 还能用、但官方推 Gen3 | 官方主推 |
+
+**为什么要改(这是得分点）**：旧版 Memory 有四个痛点——
+1. **死绑 Chain**，组合性差，没法塞进 LCEL 管道；
+2. **多用户并发**时 per-session 记忆难管理；
+3. 状态是**隐式 in-place 修改**，难 debug / 难观测；
+4. **只能存消息**，存不了复杂工作流的中间状态。
+
+LangGraph 用「**显式 State + Reducer + 持久化(Checkpointer）**」一次性解决了这四点。
+
+#### 旧版「档位」→ 新版「原语」
+
+理解这点最关键：旧版给你几个**固定档位的自动挡**(预制 Memory class）；新版给你**离合+油门(原语）**，让你自己组合任意策略。所以新版是旧版的**超集**——旧版会的它全做得到，还更灵活。
+
+| 旧版固定 class | 新版怎么做(本章已涉及） |
+|---|---|
+| `ConversationBufferWindowMemory(k=N)` | 在 node 里 `trim_messages` / 切片 |
+| `ConversationSummaryMemory` | 一个摘要 node，把旧消息压成 SystemMessage |
+| `ConversationTokenBufferMemory` | token 预算检查(见 §3.3、第11章) |
+| `VectorStoreRetrieverMemory` | RAG 检索 node + Store |
+
+> **Q: 还有必要学旧版 Memory 吗？**
+>
+> A: **学「故事」，不学「API」**。
+> (1) ❌ 不要背 class 名 / 参数，更不要用它写新代码——已 deprecated，写了反而扣分；
+> (2) ✅ 要能讲清楚「旧版长怎样 → 4 个痛点 → 为什么换成 LangGraph → 旧策略如何映射成新原语」；
+> (3) ✅ `RunnableWithMessageHistory` 知道它是**过渡桥**就好(老 Chain 迁到 LCEL 时的记忆方案），不用深学。
+
 ---
 
 ## 四、Agent 的流式输出
