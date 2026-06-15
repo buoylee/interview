@@ -78,6 +78,8 @@ docs = loader.load()
 >
 > A: `load()` 一次性加载所有文档到内存，适合小文件；`lazy_load()` 返回迭代器，逐个文档处理，**大文件/大目录必须用 lazy_load()** 避免 OOM。
 
+> 📖 **深入**：`DocumentLoader` 只是把各种格式统一成 `Document` 的**薄包装层**。文档解析本身(PDF 文字层 vs 扫描件、表格逆向重建、OCR vs 视觉大模型、各格式选型与本地/API 取舍)是一门独立学问,见 [文档解析与提取 — 面试笔记](../document-parsing/文档解析-面试笔记.md)。
+
 ---
 
 ## 三、TextSplitter — 文档分块
@@ -193,6 +195,39 @@ vectorstore = FAISS.load_local("./faiss_index", OpenAIEmbeddings())
 ```
 
 ### 5.3 转为 Retriever
+
+#### 先搞清楚: Retriever 是什么
+
+**Retriever 是一个接口(抽象),契约只有一条: 吃一个 query 字符串, 吐一组 `Document`。**
+
+```python
+docs: list[Document] = retriever.invoke("什么是 RAG?")
+```
+
+类比 Java, 它就是个 `interface Retriever { List<Document> invoke(String query); }`。**背后用什么实现它不在乎**——可以是向量库、BM25 关键词检索、Web 搜索, 甚至查 SQL。这就是为什么本章第七节那一堆 `MultiQueryRetriever / EnsembleRetriever / ParentDocumentRetriever` 能随意替换: 它们都实现同一个接口, 对你的 chain 来说长得一模一样。
+
+#### VectorStore 和 Retriever 的关系
+
+- **`VectorStore`** = 真正存向量的库, 功能多(增删改查、带分数搜索、MMR…)
+- **`Retriever`** = 在它外面套的一层**最小统一接口**(只剩 `invoke(query) → docs`)
+- **`as_retriever()`** = 「把这个胖库, 包成那个瘦接口」
+
+**为什么要包一层?** 因为 LCEL 管道只认 `Runnable`(`invoke` 进、`invoke` 出)。`VectorStore` 接口太胖塞不进管道, 削成 `Retriever` 这个标准形状才能接进 `retriever | format_docs | ...`。
+
+#### Retriever vs Tool (面试爱问)
+
+两者都是「给 LLM 补充外部信息」, 但**决策权和时机不同**:
+
+| | Retriever | Tool |
+|---|---|---|
+| 谁决定要不要用 | **你**(写死在 chain 里, 每次必检索) | **LLM**(自己判断要不要调、调哪个) |
+| 在流程里的位置 | LLM **之前**(先检索, 结果塞进 prompt) | LLM **之中/之后**(LLM 先开口要, 你再执行) |
+| 典型形态 | RAG 的固定一步 | Agent 手里的一件武器 |
+| 接口契约 | `str → list[Document]` | `结构化参数 → 任意结果` |
+
+一句话: **Retriever 是「我替 LLM 提前查好资料」, Tool 是「LLM 自己说它要查, 我照办」**。RAG 用前者, Agent 用后者, Agentic RAG 把检索也包成 Tool 交给 LLM 决定。
+
+#### 用法
 
 ```python
 # VectorStore → Retriever (在 LCEL 链中使用)
