@@ -33,7 +33,8 @@
 - `src/utils/systemPrompt.ts` / `buildEffectiveSystemPrompt()`：有效 system prompt precedence，处理 override、coordinator、agent-specific、custom、default、append prompt。
 - `src/utils/queryContext.ts` / `fetchSystemPromptParts()`：query 前的上下文构造入口之一，并行获取 default system prompt、user context、system context。
 - `src/query.ts` / `appendSystemContext()` 调用点：`query()` 将 `systemContext` 追加到实际发送给模型的 `fullSystemPrompt`。
-- `src/services/api/claude.ts` / `toolToAPISchema()`：把 resolved tool pool 转换成模型可见 tool schema；`hasPendingMcpServers` 主要用于保留 ToolSearch 发现能力。
+- `src/utils/api.ts` / `toolToAPISchema()`：把 resolved tool pool 转换成模型可见 tool schema。
+- `src/services/api/claude.ts` / `toolSchemas` 构造处：构建模型请求时过滤工具并调用 `toolToAPISchema()`；`hasPendingMcpServers` 主要用于保留 ToolSearch 发现能力。
 - `src/utils/attachments.ts` / `getQueuedCommandAttachments()`：把 queued command/task notification 转为模型可见 attachment。
 - `src/utils/attachments.ts` / `getAgentPendingMessageAttachments()`：把 pending subagent/coordinator messages 转为 meta queued command attachment。
 - `src/Tool.ts` / `ToolUseContext`：runtime-only state 与请求相关 options 的集合，区分模型可见 context 和运行时控制状态。
