@@ -56,7 +56,7 @@
 - `src/query.ts:1380` / `toolUpdates`：统一消费 `StreamingToolExecutor.getRemainingResults()` 或 `runTools()` 的工具结果。
 - `src/query.ts:1384` / tool update loop：把工具 message yield 出去，并 normalize 成下一轮 user `tool_result`。
 - `src/query.ts:1437` / tool summary extraction：用 `tool_use.id` 匹配 `tool_result.tool_use_id`。
-- `src/query.ts:1515` / next-turn boundary：工具完成后再拼接 assistant/tool result/attachments，避免 interleave 非法消息。
+- `src/query.ts:1535` / next-turn boundary：工具完成后再拼接 assistant/tool result/attachments，避免 interleave 非法消息。
 - `src/services/api/claude.ts:709` / `queryModelWithoutStreaming()`：非流式 fallback / non-streaming 消费完整 generator 后返回 assistant message。
 - `src/services/api/claude.ts:752` / `queryModelWithStreaming()`：对 query loop 暴露 `StreamEvent | AssistantMessage | SystemAPIErrorMessage`。
 - `src/services/api/claude.ts:1120` / `queryModel()` request preparation：tool search、filtered tools、beta headers、schema 构建的起点。
