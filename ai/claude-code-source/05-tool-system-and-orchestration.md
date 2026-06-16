@@ -4,7 +4,7 @@
 
 Claude Code 的工具系统可以理解成一套 runtime contract。每个 `Tool` 不只是一个函数，而是同时定义了模型看到什么、运行时如何校验、权限如何判断、是否允许并发、如何执行、结果如何映射回 API、以及 UI 如何渲染。`Tools` 是当前 turn 可用工具集合；API 请求前，`toolToAPISchema()` 把这些工具转成模型可见的 schema；模型返回 `tool_use` 后，runtime 再通过 `findToolByName()` 找回真实工具，经过 validation、permission、hooks 和 `call()`，最终生成 user `tool_result` message。
 
-编排层有两条路径。传统路径是模型响应完成后，`runTools()` 按并发安全性分批执行工具：可并发的读类工具一起跑，非并发工具独占顺序执行。流式路径是 `StreamingToolExecutor` 在 assistant message 刚流出时就开始排队执行工具，但仍然保证输出为标准 `tool_result`。两条路径都维护 `toolUseID` 到 `tool_result.tool_use_id` 的映射，确保下一轮模型能把每个观察结果对应回原始 `tool_use`。
+编排层有两条路径。传统路径是模型响应完成后，`runTools()` 按 `isConcurrencySafe(parsedInput)` 分批执行工具：被判定为 concurrency-safe 的工具调用可以一起跑，非并发安全的工具调用独占顺序执行。流式路径是 `StreamingToolExecutor` 在 assistant message 刚流出时就开始排队执行工具，但仍然保证输出为标准 `tool_result`。两条路径都维护 `toolUseID` 到 `tool_result.tool_use_id` 的映射，确保下一轮模型能把每个观察结果对应回原始 `tool_use`。
 
 ## 这一章解决什么问题
 
@@ -46,7 +46,7 @@ runtime 世界认识完整 `Tool`。当模型输出 `tool_use`，runtime 拿 `na
 
 单个工具调用由 `runToolUse()` 和 `checkPermissionsAndCallTool()` 承担。流程是：按名称查找工具；查不到就返回 is_error 的 `tool_result`；检查 abort；解析 input schema；运行工具自己的 value validation；执行 PreToolUse hooks；解析 hook permission decision；调用统一 permission 决策；如果拒绝，返回 is_error `tool_result`；如果允许，调用 `tool.call()`，接收 progress，并把结果映射成 `tool_result`。这个过程还会记录 telemetry、处理 structured output、PostToolUse hooks 和错误包装。
 
-流式编排由 `StreamingToolExecutor` 完成。它的输入不是完整的 `toolUseBlocks` 数组，而是随着 assistant message 到达逐个 `addTool(block, assistantMessage)`。它为每个工具维护 `queued`、`executing`、`completed`、`yielded` 状态，并用 `canExecuteTool()` 保证非并发工具独占，可并发工具可以与其他可并发工具一起跑。`getCompletedResults()` 可以在模型仍在流时产出已完成结果；`getRemainingResults()` 在模型结束后等待所有未完成工具。
+流式编排由 `StreamingToolExecutor` 完成。它的输入不是完整的 `toolUseBlocks` 数组，而是随着 assistant message 到达逐个 `addTool(block, assistantMessage)`。它为每个工具维护 `queued`、`executing`、`completed`、`yielded` 状态，并用 `canExecuteTool()` 保证非并发安全工具独占，被判定为 concurrency-safe 的工具可以与其他并发安全工具一起跑。`getCompletedResults()` 可以在模型仍在流时产出已完成结果；`getRemainingResults()` 在模型结束后等待所有未完成工具。
 
 工具结果重新进入模型由 `query()` 统一完成，不由工具自己调用模型。无论结果来自 `runTools()` 还是 `StreamingToolExecutor`，`query()` 都会 yield message 给上层，再用 `normalizeMessagesForAPI()` 把它转成 API user message，追加到 `toolResults`。下一轮 state 使用 `messagesForQuery`、`assistantMessages`、`toolResults` 和 attachments 构造，因此模型看到的是完整的“我调用了工具，用户返回了工具结果”的对话历史。
 
@@ -143,7 +143,7 @@ schema 生成在 API 边界集中处理，能把 prompt caching、tool search、
 
 `tool_use.id` 到 `tool_result.tool_use_id` 的显式配对看起来啰嗦，但它让多工具并发、失败补偿、中断恢复都可解释。即使结果乱序完成，runtime 也能用 id 把观察结果还给正确调用。
 
-普通 `runTools()` 更简单，适合在完整 assistant response 后批量执行；`StreamingToolExecutor` 更复杂，需要管理 queue、progress、discard、synthetic errors 和 sibling abort，但能显著减少“模型写完工具输入后还要等整段响应结束”的空窗。
+普通 `runTools()` 更简单，适合在模型这一轮采样结束后批量执行；`StreamingToolExecutor` 更复杂，需要管理 queue、progress、discard、synthetic errors 和 sibling abort，但能显著减少“模型写完工具输入后还要等整段响应结束”的空窗。
 
 失败通过 `tool_result` 返回给模型，而不是直接抛出终止整轮，是 agent 系统的重要设计。模型需要观察失败、修正参数、选择替代工具；只有 runtime 自身不可恢复的 API/bug 才应该走 assistant API error。
 

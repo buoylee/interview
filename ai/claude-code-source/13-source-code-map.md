@@ -47,7 +47,7 @@
 - `src/query.ts:659` / `deps.callModel()` loop：模型 streaming 输出进入 runtime 的消费点。
 - `src/query.ts:727` / streaming fallback reset：fallback 发生后清空 assistant/tool 状态。
 - `src/query.ts:733` / `streamingToolExecutor.discard()`：丢弃失败 streaming attempt 的工具结果，避免 orphan `tool_result`。
-- `src/query.ts:827` / `assistantMessages.push(message)`：完整 assistant message 被纳入 durable transcript 的位置。
+- `src/query.ts:827` / `assistantMessages.push(message)`：完成 content block 对应的 assistant message 被纳入 durable transcript 的位置。
 - `src/query.ts:829` / `msgToolUseBlocks`：从 assistant content 中提取 `tool_use`。
 - `src/query.ts:842` / `streamingToolExecutor.addTool()`：流式路径在模型响应期间提前启动工具。
 - `src/query.ts:851` / `getCompletedResults()`：模型仍在 streaming 时取出已完成工具结果。
@@ -64,6 +64,8 @@
 - `src/services/api/claude.ts:1260` / `normalizeMessagesForAPI()`：API 请求前规范化 transcript。
 - `src/services/api/claude.ts:1292` / `ensureToolResultPairing()`：请求边界修复 `tool_use` / `tool_result` 配对。
 - `src/services/api/claude.ts:1930` / stream part loop：消费 Anthropic stream，处理 stall、TTFT、`message_start`、content block events。
+- `src/services/api/claude.ts:2171` / `content_block_stop`：把单个完成 content block normalize 成 assistant message 并 yield。
+- `src/services/api/claude.ts:2229` / `message_delta`：把真实 usage 和 stop reason 回写到最近 yield 的 assistant message。
 - `src/utils/messages.ts:2930` / `handleMessageFromStream()`：UI 层根据 stream event 更新 responding、thinking、tool-input、tool-use 状态。
 
 ## Tool System
