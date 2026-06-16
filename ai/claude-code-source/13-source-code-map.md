@@ -109,19 +109,35 @@
 
 ## Permission / Sandbox
 
-- `src/utils/permissions/permissionSetup.ts`：权限初始化和策略设置入口。
-- `src/tools/BashTool/`：Bash 工具相关实现，适合观察命令执行、权限校验和沙箱约束如何落到具体工具。
+- `src/utils/permissions/permissionSetup.ts:872` / `initializeToolPermissionContext()`：权限上下文初始化入口，合并 CLI allow/deny/base tools、settings/policy/session 规则、额外目录、bypass/auto 可用性和危险权限检测结果。
+- `src/types/permissions.ts:28` / `InternalPermissionMode` 与 `src/types/permissions.ts:29` / `PermissionMode`：权限模式类型锚点，覆盖 default/plan/auto/bypass/dontAsk/acceptEdits 等运行时分支。
+- `src/Tool.ts:123` / `ToolPermissionContext`：工具权限上下文，保存 mode、alwaysAllowRules、alwaysDenyRules、alwaysAskRules、additionalWorkingDirectories 等状态。
+- `src/hooks/useCanUseTool.tsx:27` / `CanUseToolFn`：交互式 runtime 的 permission gate，接收 tool、input、context、assistant message 和 tool_use id。
+- `src/utils/permissions/permissions.ts:473` / `hasPermissionsToUseTool()`：通用权限裁决入口，处理 allow 后的 denial tracking、dontAsk 转 deny、auto classifier 等逻辑。
+- `src/utils/permissions/permissions.ts:1158` / `hasPermissionsToUseToolInner()`：核心顺序锚点，先 deny，再 ask，再工具 `checkPermissions()`，再 bypass/allow/passthrough。
+- `src/utils/permissions/permissionSetup.ts:379` / `findOverlyBroadBashPermissions()`：识别 `Bash(*)` 等过宽 shell allow 规则。
+- `src/utils/permissions/permissionSetup.ts:472` / `removeDangerousPermissions()`：把危险 allow 规则从可更新来源移除，用于 auto mode 的 dangerous permission cleanup。
+- `src/tools/BashTool/shouldUseSandbox.ts:130` / `shouldUseSandbox()`：Bash sandbox 决策入口，检查 sandbox enablement、`dangerouslyDisableSandbox`、policy 和 excluded commands。
+- `src/utils/sandbox/sandbox-adapter.ts` / `SandboxManager`：sandbox 能力、policy 和失败注释的适配层。
 
 ## Shell / File Editing
 
 Shell 与文件编辑会在工具章节里展开。源码定位时先从这些具体工具目录进入，再回看 `src/Tool.ts` 的统一接口：
 
-- `src/tools/BashTool/`：命令执行入口，适合看 shell effect、权限和沙箱如何结合。
-- `src/tools/FileReadTool/`：文件读取工具入口，适合看读文件结果如何回填给模型。
-- `src/tools/FileEditTool/`：文件编辑工具入口，适合看局部修改、校验和结果描述。
-- `src/tools/FileWriteTool/`：文件写入工具入口，适合看创建/覆盖文件的执行边界。
-- `src/tools/GrepTool/`：文本搜索工具入口，适合看搜索参数、输出裁剪和 tool_result 表达。
-- `src/tools/GlobTool/`：文件匹配工具入口，适合看路径发现如何作为模型观察结果。
+- `src/tools/BashTool/BashTool.tsx:223` / Bash input schema：`command`、`timeout`、`description`、`run_in_background`、`dangerouslyDisableSandbox` 和内部 `_simulatedSedEdit` 的边界。
+- `src/tools/BashTool/BashTool.tsx:420` / `BashTool`：Bash 工具定义，覆盖 read-only 判断、permission matcher、schema、权限、执行和 output mapping。
+- `src/tools/BashTool/bashPermissions.ts:161` / `getSimpleCommandPrefix()`：从 shell command 生成 approval suggestion prefix 的规则。
+- `src/tools/BashTool/bashPermissions.ts:364` / `bashPermissionRule`：Bash permission rule 解析入口。
+- `src/tools/BashTool/bashPermissions.ts:1663` / `bashToolHasPermission()`：Bash 内容级权限判断，串起命令安全、规则匹配和建议。
+- `src/tools/BashTool/bashCommandHelpers.ts:181` / `checkCommandOperatorPermissions()`：复合命令、分段命令和 shell operator 的权限处理。
+- `src/utils/bash/ast.ts:381` / `parseForSecurity()`：tree-sitter shell 解析入口，返回 simple / too-complex / parse-unavailable。
+- `src/tools/FileReadTool/FileReadTool.ts:337` / `FileReadTool`：Read 工具定义，关注 read permission、token/size 限制、PDF/image/notebook/text 映射和 `readFileState`。
+- `src/tools/GlobTool/GlobTool.ts:57` / `GlobTool`：Glob 路径发现工具。
+- `src/tools/GrepTool/GrepTool.ts:160` / `GrepTool`：Grep 文本搜索工具，关注忽略规则、裁剪和 read permission。
+- `src/tools/FileEditTool/FileEditTool.ts:86` / `FileEditTool`：Edit 工具定义，关注 old_string/new_string 校验、mtime 防护、patch 生成和写入。
+- `src/tools/FileWriteTool/FileWriteTool.ts:94` / `FileWriteTool`：Write 工具定义，关注 create/overwrite、read-before-write、防 stale write 和整文件 diff。
+- `src/components/permissions/FileWritePermissionRequest/FileWritePermissionRequest.tsx:15` / `ideDiffSupport`：Write 权限 UI 的 diff/review 集成。
+- `src/bridge/sessionRunner.ts:70` / `TOOL_VERBS`：Read、Write、Edit、MultiEdit、Bash 的用户可见动作动词映射。
 
 ## Session / Compaction / Resume
 
