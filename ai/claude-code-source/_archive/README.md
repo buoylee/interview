@@ -6,8 +6,9 @@
 
 ## 旧文档
 
+- [旧版顶层 README](./README-old-entry.md)
 - [01 - Subagent 心智模型](./01-subagent-mental-model.md)
-- [01 - Subagent 后台执行与通信机制](./01-subagent-background-and-communication.md)
+- [01 - Subagent 后台执行与通信机制（旧迁移索引）](./01-subagent-background-and-communication.md)
 - [02 - Subagent 后台生命周期](./02-subagent-background-lifecycle.md)
 - [03 - Agent 间通信协议](./03-agent-communication-protocol.md)
 - [04 - 取消、继续与恢复](./04-cancel-resume-and-abort.md)
