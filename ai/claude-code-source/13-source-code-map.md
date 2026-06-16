@@ -41,14 +41,69 @@
 
 ## Model Streaming
 
-Model streaming 当前先从 `src/query.ts` 和 `src/services/api/claude.ts` 两个入口看起：前者负责消费 stream 并把 assistant message / tool_use 分流进 runtime，后者靠近 Claude API 调用边界。更细的 stream event 符号放到 model streaming 章节展开。
+- `src/query.ts` / `query()`：主 stream consumer；关注 `deps.callModel()` 如何 yield stream event、assistant message、tool result。
+- `src/query.ts:557` / `toolUseBlocks`：本轮 assistant `tool_use` block 的收集队列。
+- `src/query.ts:562` / `useStreamingToolExecution` + `StreamingToolExecutor`：是否启用流式工具执行，以及执行器初始化位置。
+- `src/query.ts:659` / `deps.callModel()` loop：模型 streaming 输出进入 runtime 的消费点。
+- `src/query.ts:727` / streaming fallback reset：fallback 发生后清空 assistant/tool 状态。
+- `src/query.ts:733` / `streamingToolExecutor.discard()`：丢弃失败 streaming attempt 的工具结果，避免 orphan `tool_result`。
+- `src/query.ts:827` / `assistantMessages.push(message)`：完整 assistant message 被纳入 durable transcript 的位置。
+- `src/query.ts:829` / `msgToolUseBlocks`：从 assistant content 中提取 `tool_use`。
+- `src/query.ts:842` / `streamingToolExecutor.addTool()`：流式路径在模型响应期间提前启动工具。
+- `src/query.ts:851` / `getCompletedResults()`：模型仍在 streaming 时取出已完成工具结果。
+- `src/query.ts:980` / query error handling：模型流异常时为已出现的 `tool_use` 补 missing result。
+- `src/query.ts:1012` / streaming abort handling：中断后继续消费 executor，生成 synthetic `tool_result`。
+- `src/query.ts:1380` / `toolUpdates`：统一消费 `StreamingToolExecutor.getRemainingResults()` 或 `runTools()` 的工具结果。
+- `src/query.ts:1384` / tool update loop：把工具 message yield 出去，并 normalize 成下一轮 user `tool_result`。
+- `src/query.ts:1437` / tool summary extraction：用 `tool_use.id` 匹配 `tool_result.tool_use_id`。
+- `src/query.ts:1515` / next-turn boundary：工具完成后再拼接 assistant/tool result/attachments，避免 interleave 非法消息。
+- `src/services/api/claude.ts:709` / `queryModelWithoutStreaming()`：非流式 fallback / non-streaming 消费完整 generator 后返回 assistant message。
+- `src/services/api/claude.ts:752` / `queryModelWithStreaming()`：对 query loop 暴露 `StreamEvent | AssistantMessage | SystemAPIErrorMessage`。
+- `src/services/api/claude.ts:1120` / `queryModel()` request preparation：tool search、filtered tools、beta headers、schema 构建的起点。
+- `src/services/api/claude.ts:1235` / `toolSchemas`：调用 `toolToAPISchema()` 生成模型可见 tools。
+- `src/services/api/claude.ts:1260` / `normalizeMessagesForAPI()`：API 请求前规范化 transcript。
+- `src/services/api/claude.ts:1292` / `ensureToolResultPairing()`：请求边界修复 `tool_use` / `tool_result` 配对。
+- `src/services/api/claude.ts:1930` / stream part loop：消费 Anthropic stream，处理 stall、TTFT、`message_start`、content block events。
+- `src/utils/messages.ts:2930` / `handleMessageFromStream()`：UI 层根据 stream event 更新 responding、thinking、tool-input、tool-use 状态。
 
 ## Tool System
 
-- `src/Tool.ts`：工具抽象定义，适合先看 tool 的接口边界和执行约定。
+- `src/Tool.ts:158` / `ToolUseContext`：工具执行时的 runtime-only 上下文，包含 tools、AbortController、AppState、permission、UI setters 和 in-progress ids。
+- `src/Tool.ts:358` / `findToolByName()`：按 primary name 或 alias 查找工具。
+- `src/Tool.ts:362` / `Tool`：工具 runtime contract；看 name、schema、prompt、permission、call、render、result mapping。
+- `src/Tool.ts:379` / `Tool.call()`：工具副作用执行入口的统一签名。
+- `src/Tool.ts:500` / `Tool.checkPermissions()`：工具级权限判断入口。
+- `src/Tool.ts:518` / `Tool.prompt()`：生成模型可见 tool description。
+- `src/Tool.ts:557` / `mapToolResultToToolResultBlockParam()`：把内部结果映射成 API `tool_result` block。
 - `src/tools.ts`：工具注册/聚合入口，适合看 runtime 暴露给模型的工具集合。
-- `src/services/tools/toolOrchestration.ts`：工具编排逻辑，关注 `tool_use` 如何被 runtime 接管。
-- `src/services/tools/StreamingToolExecutor.ts`：流式工具执行器，适合看执行过程、结果产出和中断/状态更新如何配合。
+- `src/utils/api.ts:119` / `toolToAPISchema()`：把 `Tool` 转成模型请求里的 API schema。
+- `src/utils/api.ts:147` / tool schema cache key：包含 `inputJSONSchema`，避免 StructuredOutput / MCP schema 混用。
+- `src/utils/api.ts:157` / input schema selection：优先直接使用 `inputJSONSchema`，否则由 Zod 转 JSON Schema。
+- `src/utils/api.ts:169` / API schema base：生成 `name`、`description`、`input_schema`。
+- `src/utils/api.ts:194` / `eager_input_streaming`：fine-grained tool streaming 的 per-tool API 字段。
+- `src/services/tools/toolOrchestration.ts:19` / `runTools()`：普通工具编排入口。
+- `src/services/tools/toolOrchestration.ts:91` / `partitionToolCalls()`：按 `isConcurrencySafe()` 切分并发 batch 和串行 batch。
+- `src/services/tools/toolOrchestration.ts:118` / `runToolsSerially()`：非并发工具按顺序执行。
+- `src/services/tools/toolOrchestration.ts:152` / `runToolsConcurrently()`：并发安全工具通过 `all()` 并行执行，受最大并发限制。
+- `src/services/tools/toolOrchestration.ts:179` / `markToolUseAsComplete()`：删除 in-progress set 中的 `toolUseID`。
+- `src/services/tools/toolExecution.ts:337` / `runToolUse()`：单个 `tool_use` 的 runtime 执行入口。
+- `src/services/tools/toolExecution.ts:345` / tool lookup：先在模型可见 tools 中找，再兼容 alias fallback。
+- `src/services/tools/toolExecution.ts:397` / unknown tool result：找不到工具时生成 is_error `tool_result`。
+- `src/services/tools/toolExecution.ts:443` / aborted tool result：abort 时生成取消类 `tool_result`。
+- `src/services/tools/toolExecution.ts:455` / `streamedCheckPermissionsAndCallTool()`：把 permission/call/progress 包成 async iterable。
+- `src/services/tools/toolExecution.ts:599` / `checkPermissionsAndCallTool()`：schema validation、value validation、hooks、permission、call、result mapping 主流程。
+- `src/services/tools/toolExecution.ts:624` / input validation error：Zod 失败转 is_error `tool_result`。
+- `src/services/tools/toolExecution.ts:800` / PreToolUse hooks：工具执行前 hook 入口。
+- `src/services/tools/toolExecution.ts:921` / permission decision：统一处理 hook/canUseTool/classifier 决策。
+- `src/services/tools/toolExecution.ts:1207` / `tool.call()`：真正执行工具，并注入 `toolUseId` 到 context。
+- `src/services/tools/toolExecution.ts:1292` / `mapToolResultToToolResultBlockParam()`：工具成功后生成 API result block。
+- `src/services/tools/StreamingToolExecutor.ts:40` / `StreamingToolExecutor`：流式工具执行器，适合看执行过程、结果产出和中断/状态更新如何配合。
+- `src/services/tools/StreamingToolExecutor.ts:76` / `addTool()`：接收 stream 中新出现的 `tool_use`。
+- `src/services/tools/StreamingToolExecutor.ts:129` / `canExecuteTool()`：根据当前 executing tools 和 `isConcurrencySafe` 决定是否能启动。
+- `src/services/tools/StreamingToolExecutor.ts:153` / `createSyntheticErrorMessage()`：为 sibling error、user interrupt、streaming fallback 生成 synthetic `tool_result`。
+- `src/services/tools/StreamingToolExecutor.ts:265` / `executeTool()`：启动工具、设置 in-progress、收集结果和 context modifiers。
+- `src/services/tools/StreamingToolExecutor.ts:412` / `getCompletedResults()`：非阻塞产出 progress 和已完成结果，并调用 `markToolUseAsComplete()`。
+- `src/services/tools/StreamingToolExecutor.ts:453` / `getRemainingResults()`：等待所有未完成工具并产出剩余结果。
 
 ## Permission / Sandbox
 
