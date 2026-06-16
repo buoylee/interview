@@ -29,7 +29,7 @@ Claude Code 不是“带命令行界面的聊天机器人”，而是一个 codi
 3. 驱动 query loop：模型流式输出，runtime 解析 assistant message、`tool_use` 和最终回答。
 4. 管理本地效果：工具执行前经过权限与沙箱，执行后把 `tool_result` 写回消息流，继续下一轮。
 
-这也是后续章节的组织方式。`01` 到 `07` 讲主执行链路，`08` 到 `11` 讲会话状态、压缩、恢复、中断和 subagent，`12` 以后补 MCP/plugin/bridge 与源码地图。
+这也是后续章节的组织方式。`01` 到 `07` 讲主执行链路，`08` 到 `11` 讲会话状态、压缩、恢复、中断和 subagent，`12` 开始进入 MCP/plugin/bridge 与源码地图。
 
 ## 核心闭环
 
@@ -83,9 +83,10 @@ flowchart TD
   J --> C
   F -- "no" --> K["Assistant Response"]
   C --> L["Session History / Compaction"]
+  L --> C
 ```
 
-这张图里最重要的是回边：`tool_result` 会重新进入 prompt/context assembly，而不是在工具执行后直接结束。Coding agent 的智能来自多轮闭环：每次工具执行都让模型获得新的观察结果，然后继续规划下一步。
+这张图里最重要的是回边：`tool_result` 会重新进入 prompt/context assembly，而不是在工具执行后直接结束。Session history / compaction 也不是挂在旁边的输出；transcript 会被持续写入，会话变长后压缩成摘要，再作为下一轮 prompt/context 的一部分回到循环。Coding agent 的智能来自多轮闭环：每次工具执行和历史更新都让模型获得新的观察结果，然后继续规划下一步。
 
 ## 学习路线
 

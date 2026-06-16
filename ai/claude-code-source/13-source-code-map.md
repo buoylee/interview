@@ -29,7 +29,7 @@
 
 ## Model Streaming
 
-后续章节会补充 model stream 的具体消费路径。阅读时重点关注 `src/query.ts` 中 assistant message、增量事件和工具调用事件的分流方式。
+Model streaming 当前先从 `src/query.ts` 和 `src/services/api/claude.ts` 两个入口看起：前者负责消费 stream 并把 assistant message / tool_use 分流进 runtime，后者靠近 Claude API 调用边界。更细的 stream event 符号放到 model streaming 章节展开。
 
 ## Tool System
 
@@ -45,7 +45,14 @@
 
 ## Shell / File Editing
 
-Shell 与文件编辑会在工具章节里展开。源码定位时先从 `src/tools/BashTool/` 和具体 file editing tool 目录进入，再回看 `src/Tool.ts` 的统一接口。
+Shell 与文件编辑会在工具章节里展开。源码定位时先从这些具体工具目录进入，再回看 `src/Tool.ts` 的统一接口：
+
+- `src/tools/BashTool/`：命令执行入口，适合看 shell effect、权限和沙箱如何结合。
+- `src/tools/FileReadTool/`：文件读取工具入口，适合看读文件结果如何回填给模型。
+- `src/tools/FileEditTool/`：文件编辑工具入口，适合看局部修改、校验和结果描述。
+- `src/tools/FileWriteTool/`：文件写入工具入口，适合看创建/覆盖文件的执行边界。
+- `src/tools/GrepTool/`：文本搜索工具入口，适合看搜索参数、输出裁剪和 tool_result 表达。
+- `src/tools/GlobTool/`：文件匹配工具入口，适合看路径发现如何作为模型观察结果。
 
 ## Session / Compaction / Resume
 

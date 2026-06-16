@@ -26,6 +26,8 @@ input -> prompt/context -> query loop -> model stream -> tool_use -> tool execut
 
 建议从 `00` 一直读到 `14`。前半部分建立主循环和工具执行模型，后半部分再看 session、interrupt、subagent、MCP/plugin 以及面试表达。
 
+当前分支正在按章节逐步重写。现阶段 `00` 和 `13` 的初始源码地图可以先用来建立大图与定位入口；其他章节在对应任务合入前，可能还只是目录结构或简短提纲。
+
 - [00 - Coding Agent 总览](./00-coding-agent-big-picture.md)
 - [01 - Runtime Entry](./01-runtime-entry.md)
 - [02 - Query Loop](./02-query-loop.md)
