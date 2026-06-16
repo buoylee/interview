@@ -12,20 +12,29 @@
 
 ## Runtime Entry
 
-- `src/main.tsx`：CLI / runtime 的主入口之一，负责把进程启动、配置和顶层 UI/runtime 串起来。
-- `src/screens/REPL.tsx`：交互式输入入口，理解用户输入如何进入后续 query loop 的关键文件。
+- `src/main.tsx` / `run()`：CLI / runtime 的主入口之一，负责 Commander command setup、顶层 flags、模式分流、system prompt 文件选项、模型/权限/MCP/session 参数处理。
+- `src/main.tsx` / `getInputPrompt()`：stdin 与命令行 prompt 的合流点；text 模式拼接 stdin，`stream-json` 模式保留 stdin stream。
+- `src/screens/REPL.tsx` / `REPL()`：交互式输入入口和 runtime 容器，持有 messages、AbortController、工具 UI 状态和 `ToolUseContext` 构造逻辑。
+- `src/screens/REPL.tsx` / `onQuery()`、`onQueryImpl()`：交互式输入进入 `query()` 的直接调用点。
+- `src/utils/handlePromptSubmit.ts` / `executeUserInput()`：queued command 或 prompt 输入转 `newMessages`，再触发 REPL 的 `onQuery()`。
+- `src/QueryEngine.ts` / `QueryEngine.submitMessage()`：print/SDK/headless 模式的输入处理、prompt/context 组装和 `query()` 调用入口。
 
 ## Query Loop
 
-- `src/query.ts`：主 query loop 的核心锚点，关注 messages 如何送入模型、stream 如何被消费、tool_result 如何进入下一轮。
+- `src/query.ts` / `query()`：主 query loop 的核心锚点，关注 messages 如何送入模型、stream 如何被消费、tool_result 如何进入下一轮。
+- `src/query.ts` / `useStreamingToolExecution`：是否使用流式工具执行的分支。
+- `src/query.ts` / `toolUpdates`：统一消费 `StreamingToolExecutor.getRemainingResults()` 或 `runTools()` 的工具结果。
 - `src/query/deps.ts`：query loop 的依赖集合，适合观察 runtime 如何把外部服务、工具、状态和配置注入主循环。
+- `src/services/tools/StreamingToolExecutor.ts` / `StreamingToolExecutor`：流式工具执行器，适合看并发控制、结果缓冲、中断和 `ToolUseContext` 更新。
 
 ## Prompt / Context
 
-- `src/constants/prompts.ts`：系统提示词和基础行为约束的主要来源。
-- `src/utils/systemPrompt.ts`：系统 prompt 的组装逻辑，适合看静态规则如何变成实际请求上下文。
-- `src/utils/queryContext.ts`：query 前的上下文构造入口之一，连接项目状态、会话状态和模型请求。
-- `src/utils/attachments.ts`：附件进入上下文的处理逻辑，解释非纯文本输入如何被纳入 messages。
+- `src/constants/prompts.ts` / `getSystemPrompt()`：系统提示词和基础行为约束的主要来源，包含 cwd/env、memory、tool guidance、MCP instructions 和输出风格等 sections。
+- `src/utils/systemPrompt.ts` / `buildEffectiveSystemPrompt()`：有效 system prompt precedence，处理 override、coordinator、agent-specific、custom、default、append prompt。
+- `src/utils/queryContext.ts` / `fetchSystemPromptParts()`：query 前的上下文构造入口之一，并行获取 default system prompt、user context、system context。
+- `src/utils/attachments.ts` / `getQueuedCommandAttachments()`：把 queued command/task notification 转为模型可见 attachment。
+- `src/utils/attachments.ts` / `getAgentPendingMessageAttachments()`：把 pending subagent/coordinator messages 转为 meta queued command attachment。
+- `src/Tool.ts` / `ToolUseContext`：runtime-only state 与请求相关 options 的集合，区分模型可见 context 和运行时控制状态。
 
 ## Model Streaming
 
