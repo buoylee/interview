@@ -282,14 +282,90 @@ result2 = agent.invoke(
 from langgraph.checkpoint.sqlite import SqliteSaver
 checkpointer = SqliteSaver.from_conn_string("checkpoints.db")
 
-# PostgreSQL (适合分布式)
+# PostgreSQL (适合分布式 / 生产默认)
 from langgraph.checkpoint.postgres import PostgresSaver
 checkpointer = PostgresSaver.from_conn_string(
     "postgresql://user:pass@localhost:5432/mydb"
 )
+# 第一次用要先建表(跑 migration),作为部署步骤或启动时执行一次
+checkpointer.setup()
 ```
 
+**Checkpointer 不止关系型**。LangGraph 的存储是可插拔的：
+
+| Checkpointer | 场景 |
+|---|---|
+| `MemorySaver` | 开发/测试，进程内，重启即丢 |
+| `SqliteSaver` | 单机、嵌入式 |
+| **`PostgresSaver`** | **官方力推的生产默认**（LangSmith / LangGraph Platform 自己也用它） |
+| Redis / MongoDB | 社区实现 |
+
+### 4.3.1 黑箱里是什么 — Postgres 的真实 Schema
+
+`PostgresSaver.setup()` 实际建出 **4 张表**。理解它们，`from_conn_string` 这行就不再是黑箱：
+
+```sql
+-- ① 迁移版本号(就一行,记 schema 版本,类似 flyway/alembic)
+CREATE TABLE checkpoint_migrations (v INTEGER PRIMARY KEY);
+
+-- ② 主表:一行 = 一个 superstep 后的快照
+CREATE TABLE checkpoints (
+    thread_id            TEXT NOT NULL,            -- 哪个会话(你传的 thread_id)
+    checkpoint_ns        TEXT NOT NULL DEFAULT '', -- 命名空间,子图(subgraph)用
+    checkpoint_id        TEXT NOT NULL,            -- ULID! 按时间字典序可排
+    parent_checkpoint_id TEXT,                     -- 上一个快照 → 串成链(时间旅行靠它)
+    type                 TEXT,
+    checkpoint           JSONB NOT NULL,           -- 快照「骨架」:每个 channel 指向哪个 version
+    metadata             JSONB NOT NULL DEFAULT '{}',
+    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
+);
+
+-- ③ 真正的状态值放这(按 channel + version 存),和主表分开
+CREATE TABLE checkpoint_blobs (
+    thread_id     TEXT NOT NULL,
+    checkpoint_ns TEXT NOT NULL DEFAULT '',
+    channel       TEXT NOT NULL,   -- 哪个 state 字段,如 "messages"
+    version       TEXT NOT NULL,   -- 该字段的版本号
+    type          TEXT NOT NULL,
+    blob          BYTEA,           -- 序列化后的值(二进制)
+    PRIMARY KEY (thread_id, checkpoint_ns, channel, version)
+);
+
+-- ④ 一个 superstep 内、还没合并成正式快照的「半成品写入」
+CREATE TABLE checkpoint_writes (
+    thread_id     TEXT NOT NULL,
+    checkpoint_ns TEXT NOT NULL DEFAULT '',
+    checkpoint_id TEXT NOT NULL,
+    task_id       TEXT NOT NULL,   -- 哪个节点/任务产生的
+    idx           INTEGER NOT NULL,
+    channel       TEXT NOT NULL,
+    type          TEXT,
+    blob          BYTEA NOT NULL,
+    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)
+);
+```
+
+**三个设计为什么这么定，是面试值钱的部分：**
+
+1. **主表与 blob 表分开 = 写时共享去重(copy-on-write)。**
+   你的 `messages` channel 在第 1、2、3 个 checkpoint 里大部分内容重复。若每个快照整存一份会爆炸式膨胀。所以 `checkpoint_blobs` 按 `(channel, version)` 存值，**值不变就不产生新行**；主表只存「每个 channel 指向哪个 version」的指针映射。只有变了的 channel 才写新 blob。
+
+2. **`checkpoint_id` 用 ULID = 时间戳前缀 + 随机，字典序 ≈ 时间序。**
+   - 取最新快照：`ORDER BY checkpoint_id DESC LIMIT 1`，无需额外时间列
+   - 取历史 / 回放：`ORDER BY checkpoint_id` + `parent_checkpoint_id` 串成链
+
+3. **`checkpoint_writes`「半成品」表 = 崩溃恢复(durable execution)。**
+   一个 superstep 里多个节点并行写，可能写到一半进程挂了。LangGraph 先把每个节点的写入落到 `checkpoint_writes`，全部完成后才合并成正式 `checkpoints` 行。重启时若有 pending writes 就**接着算**，而非从头重跑——这就是「durable execution」落到表上的样子。
+
+> 注：官方文档页给的是简化概念版（只画 `checkpoints` + `writes`，把状态值直接塞进 `checkpoint` 列）；实际代码拆成上面 4 张，关键差别就是把状态值抽到 `checkpoint_blobs` 做去重。
+
+> **Q: LangGraph 的 Checkpointer 为什么默认推荐 Postgres，是因为需要关系型的 JOIN/外键吗？**
+>
+> A: 不是。它的访问模式是纯 KV / 文档型——全是按复合主键点查 + 按 `thread_id` 列出排序，**没有一个 JOIN、没有外键**。选 Postgres 是因为：① **JSONB** 能直接存半结构化的 `checkpoint`/`metadata` 还能按字段查；② **事务**能把 4 张表的写入(主表 + 多个 blob + writes)原子地一起提交；③ Postgres 够普及够稳，团队通常已有运维，不必为 Agent 再引新中间件。所以它对存储的真实需求是「KV + JSON + 事务 + 自托管」，关系能力反而用不上。
+
 ### 4.4 时间旅行
+
+> 时间旅行能成立，底层就是 4.3.1 里那条 `parent_checkpoint_id` 链 + ULID 可排序：`get_state_history()` 顺着链回放,`update_state()` 从任意历史节点分叉。
 
 ```python
 # 获取某个 thread 的所有历史状态
@@ -426,6 +502,8 @@ graph.add_edge("merge", END)
 - [ ] 解释 State、Node、Edge 三者的关系
 - [ ] 说明 Reducer (如 add_messages) 的作用和必要性
 - [ ] 比较 Graph API 和 Functional API
+- [ ] 说明 PostgresSaver 落库的 4 张表，以及主表/blob 表分开(COW 去重)、ULID、writes 表(崩溃恢复)各解决什么
+- [ ] 回答「Checkpointer 为什么默认 Postgres，是因为要 JOIN 吗」
 
 ---
 
