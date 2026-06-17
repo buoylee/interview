@@ -6,22 +6,7 @@
 
 ## 总览：LangChain 生态全景
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      LangChain 生态系统                          │
-│                                                                 │
-│  langchain-core        核心抽象 (LCEL、Messages、Runnables)       │
-│  langchain             高层框架 (Chains、Agents、预构建模板)        │
-│  langchain-community   第三方集成 (向量数据库、检索器、工具)          │
-│  langgraph             底层编排引擎 (状态图、持久化、流式)            │
-│  langsmith             可观测性平台 (追踪、评估、调试)               │
-│                                                                 │
-│  关系: LangChain Agent 底层用 LangGraph 实现                      │
-│        LangGraph 可独立使用，也可搭配 LangChain 组件               │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### LangChain vs LangGraph
+> 📖 **完整的生态全景、LangChain 与 LangGraph 的分层关系、一堆包到底装哪个、以及「LCEL vs LangGraph」≠「LangChain vs LangGraph」这些地基问题,见 [第0章：LangChain 与 LangGraph — 生态全景与关系](00-langchain-vs-langgraph.md)（建议先读)。** 这里只放一张速查表。
 
 | 维度 | LangChain | LangGraph |
 |------|-----------|-----------|
@@ -30,6 +15,7 @@
 | **核心能力** | Models、Prompts、Tools、Retrievers、LCEL 管道 | State、Nodes、Edges、条件分支、循环 |
 | **适合场景** | 快速原型、简单链式调用、80% 常见场景 | 复杂工作流、多 Agent、Human-in-the-loop |
 | **学习顺序** | ✅ 先学 | ⏩ 后学 |
+| **关系** | 同一家公司的**分层**,非竞品;LangChain 的 agent 底层用 LangGraph 实现 | 可独立使用,也可搭配 LangChain 组件 |
 
 ---
 

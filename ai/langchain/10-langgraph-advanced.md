@@ -275,32 +275,118 @@ graph.add_edge("reflect", "generate")
 
 ### 4.4 Plan-and-Execute
 
+> 概念、家族对比、「Plan-and-Execute 到底有没有 replan」三层坑，见 [07 章 §5.3 / §5.7](07-agents.md)。本节只补一件事：在 LangGraph 里 **planner / executor / 条件边到底怎么连成一个循环**。
+
+**思路(一句话)**：planner 一次性列出完整步骤清单 → executor 用代码从清单里取**一步**、交给一个 ReAct 子 agent 跑 → 条件边检查「清单跑完没」→ 没跑完就**回到 executor** 跑下一步，跑完就去 summarize 收尾。
+
+和 4.3 Reflection 一样是个循环，区别在于：这里的循环由**代码里的 `current_step` 计数器**驱动(执行顺序在 planner 那一步就定死了)，而不是每步让 LLM 重新决定。
+
+#### Step 1：Schema、State 和节点函数
+
 ```python
+from typing import Literal
+from pydantic import BaseModel, Field
+
+class PlanSchema(BaseModel):                      # ← planner 的结构化输出
+    steps: list[str] = Field(description="完成任务的有序步骤清单")
+
 class PlanState(TypedDict):
     messages: Annotated[list, add_messages]
-    plan: list[str]
-    current_step: int
-    results: list[str]
+    plan: list[str]            # planner 写入的步骤清单
+    current_step: int          # 代码用它当游标，逐步推进
+    results: list[str]         # 每步的执行结果
 
 def planner(state: PlanState):
+    """① 一次性把任务拆成有序步骤清单"""
     plan = llm.with_structured_output(PlanSchema).invoke(
         "为以下任务制定执行计划: " + state["messages"][-1].content
     )
-    return {"plan": plan.steps, "current_step": 0}
+    return {"plan": plan.steps, "current_step": 0, "results": []}
 
 def executor(state: PlanState):
+    """② 取出第 current_step 步，交给 ReAct 子 agent 执行，游标 +1"""
     step = state["plan"][state["current_step"]]
-    result = agent_executor.invoke(step)
+    result = agent_executor.invoke({"messages": [("human", step)]})
     return {
-        "results": state["results"] + [result],
+        "results": state["results"] + [result["messages"][-1].content],
         "current_step": state["current_step"] + 1,
     }
 
-def is_done(state: PlanState):
+def summarize(state: PlanState):
+    """④ 所有步骤跑完，汇总结果给用户"""
+    summary = llm.invoke("根据以下执行结果回答用户:\n" + "\n".join(state["results"]))
+    return {"messages": [summary]}
+
+def is_done(state: PlanState) -> Literal["executor", "summarize"]:
+    """③ 条件路由：清单跑完没？跑完去 summarize，没跑完回 executor"""
     if state["current_step"] >= len(state["plan"]):
         return "summarize"
     return "executor"
 ```
+
+先交代三个之前凭空出现的依赖：
+- **`PlanSchema`** —— planner 的结构化输出 schema(上面已补)。`with_structured_output` 强制 LLM 返回 `{steps: [...]}`，这样 `plan.steps` 才是干净的 `list[str]`。
+- **`agent_executor`** —— 上一章的 ReAct 子 agent(`create_react_agent(llm, tools)`)。executor 节点把**单个步骤**当成一句话喂给它，它自己带工具把这一步跑完。**Plan-and-Execute = 外层代码循环 + 内层 ReAct 干活**，这层嵌套是关键。
+- **`summarize`** —— 收尾节点(上面已补)。原代码里 `is_done` 返回了 `"summarize"` 却没有这个节点，图会编译失败。
+
+#### Step 2：把节点串成图(你问的「如何串起来」)
+
+```python
+graph = StateGraph(PlanState)
+graph.add_node("planner", planner)
+graph.add_node("executor", executor)
+graph.add_node("summarize", summarize)
+
+graph.add_edge(START, "planner")                 # 入口 → 规划
+graph.add_edge("planner", "executor")            # 规划完 → 执行第一步
+graph.add_conditional_edges(                      # ← 循环的关键：executor 之后岔路
+    "executor", is_done, ["executor", "summarize"]
+)
+graph.add_edge("summarize", END)                 # 收尾 → 结束
+
+app = graph.compile()
+```
+
+关键就是那条 **`add_conditional_edges("executor", is_done, ...)`**：每次 executor 跑完一步，都由 `is_done` 决定是**回到自己**(跑下一步)还是**去 summarize**(收尾)。这条「指回自己」的条件边，就是循环的本体。
+
+```
+START → planner → executor ──is_done──▶ summarize → END
+                     ▲          │
+                     └──────────┘
+                  还有步骤没跑完，回到 executor
+```
+
+#### 进阶：从「盲跑」升级成真正的 Plan-and-Execute
+
+> ⚠️ 上面这版是**盲跑**：planner 一锤定音，执行过程中不回头改计划。按 [07 章 §5.3](07-agents.md) 的说法，**作为 agent 架构，Plan-and-Execute 的灵魂正是 replan loop —— 没有 replan，它跟 ReAct 比没优势**。
+
+升级方法：把 `is_done` 这个纯计数判断，换成一个 **replan 节点** —— 每跑完一步，让 LLM 看着结果重写**剩余**计划(可能加步骤、删步骤，或判定任务已完成)：
+
+```python
+class Response(BaseModel):                         # replan 的两种结果之一：已完成
+    answer: str
+class Act(BaseModel):
+    action: Response | PlanSchema                  # 要么收尾，要么给新计划
+
+def replan(state: PlanState):
+    out = llm.with_structured_output(Act).invoke(
+        f"原计划:{state['plan']}\n已完成:{state['results']}\n"
+        "若任务已完成给出最终答案，否则给出更新后的剩余步骤。"
+    )
+    if isinstance(out.action, Response):
+        return {"messages": [AIMessage(out.action.answer)]}   # 完成
+    return {"plan": out.action.steps, "current_step": 0}      # 改写剩余计划
+
+# 接线改两行：executor 之后不再直接判 is_done，而是先经过 replan
+graph.add_edge("executor", "replan")
+graph.add_conditional_edges(
+    "replan",
+    lambda s: END if s["messages"][-1].type == "ai" else "executor",
+    ["executor", END],
+)
+```
+
+对比记忆：**盲跑版** = `executor →(计数判断)→ executor / summarize`；**replan 版** = `executor → replan →(LLM 判断)→ executor / END`。差别就在那个 replan 节点是不是真让 LLM 回头改计划。07 章有完整参考实现和 ReWOO / 产品版 plan 的对照。
 
 ---
 
