@@ -169,7 +169,7 @@ async def async_route():
 
 - **检测事件循环阻塞**：debug 模式的慢回调警告（`loop.slow_callback_duration`）、阻塞看门狗（`asyncio.sleep(1)` 实际睡了 2 秒就说明被阻塞了 1 秒）、py-spy dump 看卡在哪个同步调用栈。**完整可复制的检测中间件/看门狗代码见** `performance-tuning-roadmap/06b-python-debugging/02-asyncio-debugging.md`。
 - **uvloop**：`pip install uvloop`，几乎零成本换上高性能事件循环，吞吐提升 2–4 倍（uvicorn 装了会自动用）。
-- **专用线程池**：`run_in_executor` 默认线程池有线程数上限，重 I/O 桥接时建一个专用 `ThreadPoolExecutor` 控制规模。
+- **`to_thread` / `run_in_executor(None, …)` 用的是默认线程池，坑位有限**：它复用事件循环的默认 executor——一个 `ThreadPoolExecutor`，默认大小 **`min(32, CPU核数 + 4)`**（≈32，见第 02 章）。这 ≈32 个坑位占满后，后续调用会在执行器的**无界 FIFO 队列里排队**等线程空出来，**并不会真正「无限并发」**。所以 `to_thread` 是「把同步库桥进 async」的工具，**不是高并发引擎**：重 I/O 桥接要建专用 `ThreadPoolExecutor(max_workers=N)` 控制规模，要真高并发就走全 async（第 04 章）。
 
 ---
 

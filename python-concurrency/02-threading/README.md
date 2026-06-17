@@ -157,6 +157,11 @@ with ThreadPoolExecutor(max_workers=20) as pool:      # ≈ newFixedThreadPool(2
 # with 块退出 = 自动 shutdown(wait=True)，等所有任务跑完
 ```
 
+> **不传 `max_workers` 时的默认值**（高频追问「默认是多少」）：
+> - `ThreadPoolExecutor()` → **`min(32, CPU核数 + 4)`**（Python 3.8 起；旧版是 `CPU核数 × 5`，多核上会爆，故改）。`+4` 让单核机器也有几条线程顶 I/O，`32` 封顶防你在多核上为「默认 I/O 负载」一口气开几百条线程白吃内存。
+> - `ProcessPoolExecutor()` → **`CPU核数`**（`os.cpu_count()`，见第 03 章）。
+> - 这个默认值很关键：`asyncio.to_thread` / `run_in_executor(None, …)` 复用的就是这个 ≈32 的默认线程池（见第 05 章）——坑位占满，后续调用就排队，所以**别拿 `to_thread` 当高并发引擎**。
+
 对标速记：
 
 | Python | Java | 说明 |
@@ -286,8 +291,8 @@ Python 不能从外部强杀线程，也没有 `interrupt()`。用 `threading.Ev
 **Q5：`ThreadPoolExecutor` 的队列满了会怎样？**
 不会拒绝——任务队列无界，会一直堆积（和 Java 有界队列 + 拒绝策略不同）。要限流得自己加 `Semaphore` 或控制提交速率。
 
-**Q6：I/O 密集线程池开多大？**
-比核数多，按 I/O 等待占比估算（等得越久可开越多），但受内存（线程栈）和 GIL 争用约束，实务几十到一两百。CPU 密集则不该用线程。
+**Q6：I/O 密集线程池开多大？默认是多少？**
+比核数多，按 I/O 等待占比估算（等得越久可开越多），但受内存（线程栈）和 GIL 争用约束，实务几十到一两百。CPU 密集则不该用线程。不显式指定时，`ThreadPoolExecutor()` 默认 `min(32, 核数+4)`、`ProcessPoolExecutor()` 默认 `核数`；`asyncio.to_thread` 用的就是前者那个 ≈32 的默认池。
 
 ---
 
