@@ -27,4 +27,5 @@ def test_make_splits_deterministic():
     a = make_splits(X, y, seed=42)
     b = make_splits(X, y, seed=42)
     assert np.array_equal(a["y_train"], b["y_train"])
+    assert np.array_equal(a["y_val"], b["y_val"])
     assert np.array_equal(a["y_test"], b["y_test"])
