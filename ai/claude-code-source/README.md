@@ -22,11 +22,9 @@ input -> prompt/context -> query loop -> model stream -> tool_use -> tool execut
 
 旧版 subagent 相关笔记已经归档到 [_archive/](./_archive/)，保留作历史参考。新版章节会重新按 runtime pipeline 放置 subagent、fork、prompt cache 等内容。
 
-## 推荐阅读顺序
+## 最终导航
 
-建议从 `00` 一直读到 `14`。前半部分建立主循环和工具执行模型，后半部分再看 session、interrupt、subagent、MCP/plugin 以及面试表达。
-
-当前分支正在按章节逐步重写。现阶段 `00` 和 `13` 的初始源码地图可以先用来建立大图与定位入口；其他章节在对应任务合入前，可能还只是目录结构或简短提纲。
+建议从 `00` 一直读到 `14`。前半部分建立主循环和工具执行模型，后半部分再看 session、interrupt、subagent、MCP/plugin 以及面试表达。旧版材料保留在 [_archive/](./_archive/)，需要追溯历史 subagent 笔记时再看。
 
 - [00 - Coding Agent 总览](./00-coding-agent-big-picture.md)
 - [01 - Runtime Entry](./01-runtime-entry.md)
@@ -43,11 +41,13 @@ input -> prompt/context -> query loop -> model stream -> tool_use -> tool execut
 - [12 - MCP / Plugin / Bridge 附录](./12-mcp-plugin-bridge-appendix.md)
 - [13 - 源码地图](./13-source-code-map.md)
 - [14 - 面试 Playbook](./14-interview-playbook.md)
+- [_archive/ - 历史笔记归档](./_archive/)
 
 ## 怎么使用这组笔记
 
 - 面试前先读 `00`，形成一句话大图：Claude Code 是围绕 model、tools、state 运转的闭环 runtime。
 - 需要讲执行链路时，按 `01` 到 `07` 串起来：入口、上下文、query、stream、tool、permission、shell/file effect。
 - 需要讲长期会话能力时，看 `08` 到 `11`：transcript、compaction、resume、interrupt、subagent、fork。
-- 需要找源码锚点时，打开 `13`，先定位文件，再回到对应章节理解实现逻辑。
-- 需要准备面试表达时，用 `14` 把概念压缩成可讲的回答模板。
+- 需要找源码锚点时，打开 [13 - 源码地图](./13-source-code-map.md)，先定位文件，再回到对应章节理解实现逻辑。
+- 需要准备面试表达时，用 [14 - 面试 Playbook](./14-interview-playbook.md) 把概念压缩成可讲的回答模板。
+- 需要追溯旧版材料时，看 [_archive/](./_archive/)，但主阅读顺序以上面 `00` 到 `14` 为准。

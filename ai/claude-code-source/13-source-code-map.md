@@ -10,6 +10,45 @@
 
 使用方式是先按 runtime 阶段定位文件，再回到对应章节理解实现逻辑。这里不做逐行解释，也不替代后续章节的细读。
 
+## 文件到章节速查
+
+这张表回答“看到一个源码文件，应该回到哪一章读解释”。章节号使用正文编号；同一个文件可能跨多个主题，因为 Claude Code 的 runtime 状态会在入口、query、工具、session 和 subagent 之间流动。
+
+| 源码路径 | 对应章节 | 主要原因 |
+|----------|----------|----------|
+| `src/main.tsx` | 01 | CLI / runtime entry、模式分流、顶层参数 |
+| `src/screens/REPL.tsx` | 01 | 交互式 REPL runtime container、输入进入 `query()` |
+| `src/query.ts` | 02, 04, 05, 08, 09 | query loop、model stream、tool result 回填、compact、queued commands |
+| `src/constants/prompts.ts` | 03 | 默认 system prompt 与 runtime instructions |
+| `src/utils/systemPrompt.ts` | 03 | effective system prompt precedence |
+| `src/utils/queryContext.ts` | 03 | user/system context 获取与 headless prompt parts |
+| `src/utils/attachments.ts` | 03, 09, 10 | attachments、queued command、pending subagent messages |
+| `src/Tool.ts` | 05 | `Tool` contract、`ToolUseContext`、tool result mapping |
+| `src/tools.ts` | 05, 12 | built-in tools、MCP tool pool assembly |
+| `src/services/api/claude.ts` | 04 | model request、streaming / non-streaming、tool schemas |
+| `src/services/tools/toolOrchestration.ts` | 05 | 普通工具编排与并发 batch |
+| `src/services/tools/StreamingToolExecutor.ts` | 05 | 流式工具执行、queue、synthetic result |
+| `src/utils/permissions/permissionSetup.ts` | 06 | 权限上下文初始化与权限模式切换 |
+| `src/tools/BashTool/` | 06, 07 | Bash permission、sandbox、shell 执行 |
+| `src/tools/FileReadTool/` | 07 | 文件读取工具 |
+| `src/tools/FileEditTool/` | 07 | 文件编辑工具 |
+| `src/tools/FileWriteTool/` | 07 | 文件写入工具 |
+| `src/services/compact/autoCompact.ts` | 08 | auto compact gate 与主动压缩 |
+| `src/services/compact/compact.ts` | 08 | compact result 与 post-compact messages |
+| `src/utils/messageQueueManager.ts` | 09, 10 | interrupt/continue queue 与 subagent notification |
+| `src/tools/AgentTool/` | 10, 11 | subagent runtime、fork path、Agent tool |
+| `src/tasks/LocalAgentTask/` | 10 | background local agent task lifecycle |
+| `src/utils/forkedAgent.ts` | 11 | fork cache-safe params 与 fork child context |
+| `src/services/mcp/client.ts` | 12 | MCP client、tool fetching、SDK MCP transport |
+| `src/services/mcp/useManageMCPConnections.ts` | 12 | React MCP connection lifecycle 与 app state sync |
+| `src/utils/plugins/pluginLoader.ts` | 12 | plugin loading 与 enabled/disabled/errors 聚合 |
+| `src/utils/plugins/loadPluginAgents.ts` | 12 | plugin agents 进入 agent definitions |
+| `src/utils/plugins/loadPluginCommands.ts` | 12 | plugin commands / skills 进入 command surface |
+| `src/utils/plugins/loadPluginHooks.ts` | 12 | plugin hooks 注册到 runtime events |
+| `src/hooks/useReplBridge.tsx` | 12 | REPL bridge 接入 queued commands 和外部控制面 |
+| `src/bridge/replBridge.ts` | 12 | bridge handle 能力边界 |
+| `src/bridge/replBridgeHandle.ts` | 12 | active REPL bridge handle 的全局访问点 |
+
 ## Runtime Entry
 
 - `src/main.tsx` / `run()`：CLI / runtime 的主入口之一，负责 Commander command setup、顶层 flags、模式分流、system prompt 文件选项、模型/权限/MCP/session 参数处理。
