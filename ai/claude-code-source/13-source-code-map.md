@@ -25,9 +25,11 @@
 | `src/utils/attachments.ts` | 03, 09, 10 | attachments、queued command、pending subagent messages |
 | `src/Tool.ts` | 05 | `Tool` contract、`ToolUseContext`、tool result mapping |
 | `src/tools.ts` | 05, 12 | built-in tools、MCP tool pool assembly |
+| `src/utils/api.ts` | 03, 05 | tool schema conversion、API schema cache、tool prompt assembly |
 | `src/services/api/claude.ts` | 04 | model request、streaming / non-streaming、tool schemas |
 | `src/services/tools/toolOrchestration.ts` | 05 | 普通工具编排与并发 batch |
 | `src/services/tools/StreamingToolExecutor.ts` | 05 | 流式工具执行、queue、synthetic result |
+| `src/services/tools/toolExecution.ts` | 05, 06 | 单个 tool_use 的 validation、permission、hooks、call、result mapping |
 | `src/utils/permissions/permissionSetup.ts` | 06 | 权限上下文初始化与权限模式切换 |
 | `src/tools/BashTool/` | 06, 07 | Bash permission、sandbox、shell 执行 |
 | `src/tools/FileReadTool/` | 07 | 文件读取工具 |
@@ -36,7 +38,11 @@
 | `src/services/compact/autoCompact.ts` | 08 | auto compact gate 与主动压缩 |
 | `src/services/compact/compact.ts` | 08 | compact result 与 post-compact messages |
 | `src/utils/messageQueueManager.ts` | 09, 10 | interrupt/continue queue 与 subagent notification |
+| `src/hooks/useCancelRequest.ts` | 09 | ESC / Ctrl+C / kill-agents 中断入口 |
+| `src/cli/print.ts` | 01, 03, 08, 09 | headless/print 输入、prompt parts、continue/resume 初始 messages |
+| `src/utils/conversationRecovery.ts` | 08, 09 | durable transcript / session resume |
 | `src/tools/AgentTool/` | 10, 11 | subagent runtime、fork path、Agent tool |
+| `src/tools/AgentTool/forkSubagent.ts` | 11 | implicit fork gate、forked messages、prompt-cache tail |
 | `src/tasks/LocalAgentTask/` | 10 | background local agent task lifecycle |
 | `src/utils/forkedAgent.ts` | 11 | fork cache-safe params 与 fork child context |
 | `src/services/mcp/client.ts` | 12 | MCP client、tool fetching、SDK MCP transport |
@@ -101,8 +107,8 @@
 - `src/services/api/claude.ts:1120` / `queryModel()` request preparation：tool search、filtered tools、beta headers、schema 构建的起点。
 - `src/services/api/claude.ts:1235` / `toolSchemas`：调用 `toolToAPISchema()` 生成模型可见 tools。
 - `src/services/api/claude.ts:1260` / `normalizeMessagesForAPI()`：API 请求前规范化 transcript。
-- `src/services/api/claude.ts:1292` / `ensureToolResultPairing()`：请求边界修复 `tool_use` / `tool_result` 配对。
-- `src/services/api/claude.ts:1930` / stream part loop：消费 Anthropic stream，处理 stall、TTFT、`message_start`、content block events。
+- `src/services/api/claude.ts:1301` / `ensureToolResultPairing()`：请求边界修复 `tool_use` / `tool_result` 配对。
+- `src/services/api/claude.ts:1940` / stream part loop：消费 Anthropic stream，处理 stall、TTFT、`message_start`、content block events。
 - `src/services/api/claude.ts:2171` / `content_block_stop`：把单个完成 content block normalize 成 assistant message 并 yield。
 - `src/services/api/claude.ts:2229` / `message_delta`：把真实 usage 和 stop reason 回写到最近 yield 的 assistant message。
 - `src/utils/messages.ts:2930` / `handleMessageFromStream()`：UI 层根据 stream event 更新 responding、thinking、tool-input、tool-use 状态。

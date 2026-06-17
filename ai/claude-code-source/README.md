@@ -20,7 +20,7 @@ input -> prompt/context -> query loop -> model stream -> tool_use -> tool execut
 
 这条线也是面试里最容易讲清楚 Claude Code 的方式：先讲闭环，再讲闭环里每个阶段的实现职责。核心章节会解释实现逻辑、状态流转和关键边界，不走逐行代码风格；需要定位源码时再配合 [13 - 源码地图](./13-source-code-map.md)。
 
-旧版 subagent 相关笔记已经归档到 [_archive/](./_archive/)，保留作历史参考。新版章节会重新按 runtime pipeline 放置 subagent、fork、prompt cache 等内容。
+旧版 subagent 相关笔记已经归档到 [_archive/](./_archive/)，保留作历史参考。新版章节已按 runtime pipeline 重新放置 subagent、fork、prompt cache 等内容。
 
 ## 最终导航
 

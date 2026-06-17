@@ -54,7 +54,7 @@ MCP 工具进入 runtime 的路径可以拆成四步。
 
 第二步，MCP tool 被包装成 Claude Code 的 `Tool`。包装后的对象带有 `name`、`mcpInfo`、`isMcp: true`、`description()` / `prompt()`、`inputJSONSchema`，并把 MCP annotations 映射到 runtime 能理解的提示：`readOnlyHint` 影响 `isReadOnly()` 和 `isConcurrencySafe()`，`destructiveHint` 影响 `isDestructive()`，`openWorldHint` 影响 `isOpenWorld()`。真正执行时，`call()` 仍然是内部 `Tool.call()` contract，只是内部会转发到 MCP client。
 
-第三步，MCP tools 与内置工具合并。`src/tools.ts:271` 的 `getTools(permissionContext)` 只返回内置工具，并应用 simple mode、REPL mode、special tool、deny rules 和 `isEnabled()` 过滤。`src/tools.ts:345` 的 `assembleToolPool(permissionContext, mcpTools)` 再把内置工具和 MCP tools 合成完整 tool pool：先过滤 MCP deny rules，再分别排序以保持 prompt-cache stability，保留 built-ins 作为连续前缀，最后按 name 去重，冲突时 built-in 优先。
+第三步，MCP tools 先进入 app state，再与内置工具合并。交互式路径由 `useManageMCPConnections` 把 fetched tools 同步到 `appState.mcp.tools`；headless / SDK 路径也会把连接得到的 MCP tools 放进 runtime options。随后 `src/tools.ts:271` 的 `getTools(permissionContext)` 只返回内置工具，并应用 simple mode、REPL mode、special tool、deny rules 和 `isEnabled()` 过滤。`src/tools.ts:345` 的 `assembleToolPool(permissionContext, mcpTools)` 再把内置工具和 `appState.mcp.tools` / SDK MCP tools 合成完整 tool pool：先过滤 MCP deny rules，再分别排序以保持 prompt-cache stability，保留 built-ins 作为连续前缀，最后按 name 去重，冲突时 built-in 优先。
 
 第四步，合并后的工具走第 5 章同一条工具链。也就是说，MCP 工具不会绕过 `toolToAPISchema()`、`findToolByName()`、permission、hooks、`runToolUse()`、`StreamingToolExecutor` 或 `tool_result` 映射。面试里可以强调：MCP 是工具来源，不是另一套工具执行协议在 query loop 里的并行宇宙。
 
