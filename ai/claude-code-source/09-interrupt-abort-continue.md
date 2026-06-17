@@ -30,7 +30,7 @@ continue 的心智模型是“从已有历史发起新 turn”。中断发生后
 
 ## 实现逻辑
 
-交互式中断入口是 `CancelRequestHandler`。它本身不渲染 UI，而是在 keybinding context 中注册 `chat:cancel` 和 `app:interrupt`。handler 会先构造 analytics metadata，然后按优先级处理：如果存在未 abort 的 `abortSignal`，说明有 foreground task 正在运行，它会记录 cancel、清空 tool permission confirm queue、调用 `onCancel()` 并返回；如果没有运行任务但有 command queue，则调用 `popCommandFromQueue()`，把排队输入弹回 prompt；最后才走 fallback cancel。
+交互式中断入口是 `CancelRequestHandler`。它本身不渲染 UI，而是在 keybinding context 中注册 `chat:cancel` 和 `app:interrupt`。handler 会先构造 analytics metadata，然后按优先级处理：如果存在未 abort 的 `abortSignal`，说明有 foreground task 正在运行，它会记录 cancel、清空 tool permission confirm queue、调用 `onCancel()` 并返回；如果没有运行任务但有 editable queued command，则调用 `popCommandFromQueue()`，把可编辑的排队输入弹回 prompt，不能编辑的 notification 继续留在 queue；最后才走 fallback cancel。
 
 这个优先级解释了 ESC 的行为差异：运行中时，ESC 是 interrupt；空闲且有 queued command 时，ESC 是取回输入；某些 overlay、history search、help、transcript screen、Vim insert mode、特殊输入模式空值、teammate view 会有自己的 escape handler，`CancelRequestHandler` 会通过 `isContextActive`、`isEscapeActive` 和 `isCtrlCActive` 避免抢事件。
 
@@ -40,9 +40,9 @@ Ctrl+C 走 `app:interrupt`。在 teammate view 中，它会先执行 `killAllAge
 
 REPL、QueryEngine、headless print、attachment 处理、prompt submit、background agent registration 等都会创建或持有 abort controller。`useSessionBackgrounding()` 解释了 foreground/background 差异：当一个 background task 被 foregrounded，它会把该 task 的 messages 同步到主视图，并把 task 的 abort controller 设置成当前 ESC 处理对象；如果 task signal 已经 aborted，就清理 foregrounded state、重置 loading，并把它重新标记为 background。把 foregrounded task 重新 background 时，则清空主 messages、reset loading、`setAbortController(null)`。
 
-命令队列由 `messageQueueManager` 维护，是 module-level singleton。`QueuedCommand` 至少包含 `value`、`mode`，还可以包含 priority、uuid、pasted contents、origin、isMeta、workload、agentId 等。`enqueue()` 默认 priority 为 `next`，用于用户输入；`enqueuePendingNotification()` 默认 priority 为 `later`，用于 task notification，避免系统消息饿死用户输入。`dequeue()` / `peek()` 按 `now > next > later` 和 FIFO 取命令；`clearCommandQueue()` 用于 ESC 类取消清理。
+命令队列由 `messageQueueManager` 维护，是 module-level singleton。`QueuedCommand` 至少包含 `value`、`mode`，还可以包含 priority、uuid、pasted contents、origin、isMeta、workload、agentId 等。`enqueue()` 默认 priority 为 `next`，用于用户输入；`enqueuePendingNotification()` 默认 priority 为 `later`，用于 task notification，避免系统消息饿死用户输入。`dequeue()` / `peek()` 按 `now > next > later` 和 FIFO 取命令；`clearCommandQueue()` 不是普通 ESC foreground cancel 的路径，而是 explicit two-press `kill-agents` 这类强停止路径会使用的清理动作。
 
-query loop 中，工具执行结束后的边界会读取队列。它会根据 Sleep 是否运行选择 drain `later` 或 `next`，过滤 slash command，并按 agent scope 隔离：main thread 只 drain `agentId === undefined`，subagent 只 drain 发给自己的 task notification。随后 `getAttachmentMessages()` 会调用 `getQueuedCommandAttachments()`，把 prompt / task-notification 等 inline notification 模式转成模型可见 attachment。附件里保留 prompt、source uuid、image paste ids、command mode、origin 和 isMeta。这样中断时产生的 pending notification 或用户忙时输入的 command 可以在安全边界进入模型，而不是直接插进正在 streaming 的消息中间。
+query loop 中，工具执行结束后的边界会读取队列。它会调用 `getCommandsByMaxPriority(sleepRan ? 'later' : 'next')`：`next` 表示取 `now` 和 `next`，`later` 表示连 `later` notification 也一起纳入；这不是只取某个精确 priority。随后 runtime 过滤 slash command，并按 agent scope 隔离：main thread 只 drain `agentId === undefined`，subagent 只 drain 发给自己的 task notification。随后 `getAttachmentMessages()` 会调用 `getQueuedCommandAttachments()`，把 prompt / task-notification 等 inline notification 模式转成模型可见 attachment。附件里保留 prompt、source uuid、image paste ids、command mode、origin 和 isMeta。这样中断时产生的 pending notification 或用户忙时输入的 command 可以在安全边界进入模型，而不是直接插进正在 streaming 的消息中间。
 
 continue 的实现不要理解成“继续上一帧”。在 print/headless 入口，`loadInitialMessages()` 对 `options.continue` 调用 `loadConversationForResume(undefined, undefined)`，拿最近 durable conversation；对 `options.resume` 解析指定 session，并恢复 messages、metadata、session id 和 interruption state。交互式场景里，用户中断后再提交新输入，也会通过正常 prompt submit / queue processor 进入新的 `query()`。旧 turn 的 abort signal 已经结束，新 turn 会有新的 controller 和新的 model request。
 
