@@ -13,7 +13,7 @@
 
 记忆一句话:**GIL 让多线程能并发(concurrency,交替推进)IO,但不能并行(parallelism,同时计算)CPU。**
 
-> 注意:GIL 是 **CPython 的实现细节**,不是 Python 语言规范(Jython 没有)。3.13 起有实验性的 **free-threaded(可关 GIL)** 构建,未来可能改变这一格局,但短期内生产仍以"有 GIL"为前提(见[第 15 章](15-cpython-internals-performance.md))。
+> 注意:GIL 是 **CPython 的实现细节**,不是 Python 语言规范(Jython 没有)。3.13 起有**实验性**的 free-threaded(可关 GIL)构建;**3.14(2025-10)经 PEP 779 转为官方支持**,不再是实验性,真去 GIL、线程真并行。代价:它仍是**可选构建**(默认发行版照旧带 GIL),单线程约有 5–10% 开销,C 扩展也需适配后才在该模式下安全。「Python 多线程跑不满多核」这条老结论正被改写(详见[第 15 章](15-cpython-internals-performance.md))。
 
 ## 二、三条路与选型决策
 
@@ -41,6 +41,23 @@
 ```
 
 一句话版:**算得多用进程,等得多用线程或 asyncio;并发量极大且能全异步,就 asyncio。**
+
+### 3.13+:两条新并行路径
+
+除了上面「线程 / 进程 / asyncio」老三样,3.13–3.14 又多出两条**进程内真并行**的路:
+
+- **free-threaded 构建(PEP 703 → PEP 779)**:去掉 GIL,多线程真正并行跑 CPU。3.13 实验性,**3.14 转为官方支持的可选构建**(默认发行版仍带 GIL)。代价:单线程约 5–10% 变慢,C 扩展需适配。适合 CPU 密集且依赖纯 Python / 已适配扩展的场景。
+- **子解释器(PEP 734,3.14 起标准库 `concurrent.interpreters`)**:一个进程内开多个互相隔离的解释器,**每个有自己的 GIL**,因此能并行跑 CPU 任务。比多进程轻(共享进程、启动快),但对象不共享,跨解释器要用它提供的 `Queue` / 可共享对象传数据。
+
+```python
+# 3.14+,子解释器(PEP 734),示意不实测
+from concurrent import interpreters
+
+interp = interpreters.create()
+interp.exec("print('hello from subinterpreter')")
+```
+
+选型(接上面的决策树):CPU 密集 + 能用 free-threaded → 直接上线程;要隔离又嫌多进程重 → 子解释器;否则仍用 `multiprocessing`;IO 密集照旧 asyncio。以上都需 3.13/3.14,属**概念 / 面试向**,3.11 基线跑不了。
 
 ## 三、`async`/`await` 一句话心智
 
@@ -112,17 +129,17 @@ with ProcessPoolExecutor() as ex:                 # CPU 密集
 
 | | Java | Go | Python(CPython) |
 |--|------|-----|------------------|
-| CPU 并行 | 多线程真并行(无 GIL) | goroutine 真并行 | 线程**不行**(GIL),要用**多进程** |
+| CPU 并行 | 多线程真并行(无 GIL) | goroutine 真并行 | 线程**不行**(GIL),要用**多进程**;3.14 free-threaded 构建 / 子解释器可进程内真并行(≈ Java 线程 / Go goroutine) |
 | IO 并发 | 线程池 / NIO / 虚拟线程 | goroutine + channel | threading / asyncio |
 | 并发原语 | `synchronized`、`CompletableFuture`、线程池 | channel、`select`、`sync` | `threading.Lock`、`asyncio`、`concurrent.futures` |
 | 异步模型 | 回调 / Future / 虚拟线程 | 同步风格(goroutine 屏蔽异步) | `async`/`await`(显式着色) |
 
-最大震撼:**Java/Go 的多线程能吃满多核,Python 不能**。Go 的 goroutine 让你"用同步写法拿并行结果",Python 的 GIL 逼你按"CPU 用进程、IO 用线程/异步"分流。面试被问"为什么 Python 多线程跑不满 CPU",答 GIL。
+最大震撼:**Java/Go 的多线程能吃满多核,默认构建的 Python 不能**(3.14 free-threaded 构建与子解释器正在改写这条结论,但默认发行版照旧带 GIL,见上表)。Go 的 goroutine 让你"用同步写法拿并行结果",Python 的 GIL 逼你按"CPU 用进程、IO 用线程/异步"分流。面试被问"为什么 Python 多线程跑不满 CPU",答 GIL。
 
 ## 章末面试卡
 
 **Q1. GIL 是什么?有什么影响?**
-GIL 是 CPython 的全局解释器锁,保证任一时刻只有一个线程执行 Python 字节码。影响:**CPU 密集任务多线程无法并行加速**(同时只有一个线程在算);但 IO 密集任务多线程仍有效(线程等 IO 时释放 GIL)。它是 CPython 实现细节,3.13 起有实验性 free-threaded 构建。
+GIL 是 CPython 的全局解释器锁,保证任一时刻只有一个线程执行 Python 字节码。影响:**CPU 密集任务多线程无法并行加速**(同时只有一个线程在算);但 IO 密集任务多线程仍有效(线程等 IO 时释放 GIL)。它是 CPython 实现细节;3.13 起有实验性 free-threaded 构建,**3.14 经 PEP 779 转为官方支持**(可选,默认仍带 GIL),另有子解释器(PEP 734,`concurrent.interpreters`)提供进程内真并行的第二条路。
 
 **Q2. threading、multiprocessing、asyncio 怎么选?**
 CPU 密集 → multiprocessing(绕开 GIL 吃满多核)或 C 扩展/numpy;IO 密集且用阻塞库、并发中等 → threading(或 ThreadPoolExecutor);海量 IO 连接或全异步栈 → asyncio。一句话:算得多用进程,等得多用线程/异步。
@@ -137,4 +154,4 @@ asyncio 是单线程事件循环上的协作式并发:`await` 处主动让出控
 会**卡住整个事件循环**——因为是单线程,没有 `await` 让出的耗时操作会让所有协程停摆。解决:把阻塞调用丢到线程池(`loop.run_in_executor` / `asyncio.to_thread`)或进程池,别在协程里直接做重计算/阻塞 IO。
 
 **Q6. Python 怎么做 CPU 并行计算?**
-用 `multiprocessing`/`ProcessPoolExecutor` 多进程(每进程独立解释器、各自 GIL,真并行),代价是进程开销和跨进程数据序列化;或用在 C 层释放 GIL 的库(numpy 向量化、C 扩展、Cython)。
+用 `multiprocessing`/`ProcessPoolExecutor` 多进程(每进程独立解释器、各自 GIL,真并行),代价是进程开销和跨进程数据序列化;或用在 C 层释放 GIL 的库(numpy 向量化、C 扩展、Cython)。3.14 起另有两条进程内路径:free-threaded 构建(PEP 779,关 GIL 后多线程真并行)和子解释器(PEP 734,`concurrent.interpreters`,每解释器独立 GIL);均需 3.14、属可选 / 早期,当前默认仍首选多进程。
