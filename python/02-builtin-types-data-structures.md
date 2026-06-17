@@ -96,6 +96,33 @@ f"{1234567:,}"        # '1,234,567' 千分位
 f"{0.1234:.1%}"       # '12.3%'     百分比
 ```
 
+### Unicode 规范化:看起来相等却 `!=`
+
+同一个「字形」可以由不同的码位序列表示。以 `é` 为例:预组合形式(NFC)是 1 个码位 U+00E9;分解形式(NFD)是基字符 `e` 加组合尖音符 U+0301,共 2 个码位。两者肉眼无法区分,但 Python 的 `==` 按码位逐个比较——结果是 `False`。`len` 同理:它数的是码位(code point),不是字形(grapheme),所以这两个 `é` 的 `len` 分别是 1 和 2。
+
+解法是在比较、去重、当 dict key、入库之前,先用 `unicodedata.normalize` 统一到同一形式:
+- `"NFC"`:合成(最短),网络协议和数据库入库首选;
+- `"NFD"`:完全分解;
+- `"NFKC"` / `"NFKD"`:在 NFC/NFD 基础上做**兼容折叠**——全角→半角、`①`→`1` 等。兼容折叠会丢失格式信息,用于搜索归一化可以,存档慎用。
+
+用户输入、文件名、跨系统数据来源不一,不做规范化就会出现「搜不到 / 去重失败 / `==` 为 False」的诡异 bug。
+
+**大小写比较用 `casefold()`,不是 `lower()`**:`casefold()` 是更彻底的大小写折叠,专为不区分大小写的比较而设计——`lower()` 只做基本映射,不处理德语 `ß`→`ss` 这类多字符展开,`casefold()` 则全覆盖。
+
+```python
+import unicodedata
+a = "é"          # 'é' 预组合:1 个码位 U+00E9
+b = "é"         # 'é' 分解:'e' + 组合尖音符 U+0301,2 个码位
+print(a == b)         # False —— 肉眼相同,码位不同
+print(len(a), len(b)) # 1 2 —— len 数码位,不数字形
+
+n = unicodedata.normalize
+print(n("NFC", a) == n("NFC", b))   # True —— 先规范化再比
+
+print("ß".casefold() == "ss")       # True —— casefold 比 lower 更激进
+print("ß".lower())                  # 'ß' —— lower 不折叠
+```
+
 ## 三、序列:list / tuple / range
 
 | 类型 | 可变? | 典型用途 |
@@ -212,6 +239,7 @@ print({1, 2, 3} & {2, 3, 4})   # {2, 3} 交集;| 并,- 差,^ 对称差
 | 文本/字节 | `String` ↔ `byte[]`,编码常隐式 | `str` ↔ `bytes`,`encode`/`decode` 强制显式 |
 | 哈希表顺序 | `HashMap` 无序(`LinkedHashMap` 才有序) | `dict` 默认保插入序(语言保证) |
 | 不可变集合作 key | 任意 `equals`/`hashCode` 对象 | 必须可哈希:用 `tuple`/`frozenset`,不能用 `list` |
+| Unicode 规范化 | `java.text.Normalizer.normalize(s, NFC)` | `unicodedata.normalize("NFC", s)`;`casefold` ≈ 不区分大小写折叠 |
 
 ## 章末面试卡
 
@@ -239,3 +267,6 @@ except IndexError:
 
 **Q6. 判断元素是否在集合里,用 list 还是 set?为什么?**
 用 `set`(或 `dict`):成员判断平均 O(1);`list` 的 `in` 是 O(n) 线性扫描。数据量大或频繁判断时差距巨大。
+
+**Q7. 两个肉眼完全相同的字符串,`==` 却是 False,怎么回事?**
+很可能是 Unicode 规范化不同——同一字形可由「预组合(NFC,1 码位)」或「分解(NFD,基字符+组合符,多码位)」表示,`==` 按码位比就不等,`len` 也不同。修法:比较/去重/做 key 前先 `unicodedata.normalize("NFC", s)` 统一。不区分大小写用 `casefold()`(比 `lower()` 更彻底,如 `ß`→`ss`)。
