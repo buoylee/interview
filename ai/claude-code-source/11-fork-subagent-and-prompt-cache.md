@@ -39,7 +39,6 @@ fork subagent 的心智模型：
 ```text
 main agent current request prefix
   -> same rendered system prompt
-  -> same user/system context
   -> same exact tool schema
   -> same parent messages
   -> same assistant tool_use structure
@@ -47,13 +46,15 @@ main agent current request prefix
   -> only final child directive differs
 ```
 
+这里要区分两条相近但不同的实现路径：`AgentTool` implicit fork 显式复用的是 parent rendered system prompt、parent messages prefix、exact tools 和 forked prompt tail；它进入 `runAgent()` 后仍会重新读取 user/system context，除非调用方显式 override。`src/utils/forkedAgent.ts` 里的 `runForkedAgent()` helper 则有 `CacheSafeParams`，可以把 systemPrompt、userContext、systemContext、toolUseContext、forkContextMessages 作为一组 cache-safe 参数传入。两者共同原则是“让 cache-sensitive 前缀尽量稳定”，但不能把 helper 的参数保证直接套到 `AgentTool` fork path 上。
+
 prompt cache 的基本直觉是：请求越靠前的内容越稳定，越容易复用 cache；差异越早出现，后面的大段内容越难复用。fork subagent 的设计就是把“不同”尽量后移。
 
 这也是 fork agent 存在的原因：主 agent 已经读了很多文件、构造了很长上下文、拥有一组稳定工具 schema 时，如果要并发探索多个方向，重新创建多个普通 subagent 会让每个请求很早分叉；fork 则让多个 child 像同一个 parent prefix 的不同尾巴。
 
 ## 实现逻辑
 
-第一步，feature gate 决定 fork 是否可用。`isForkSubagentEnabled()` 要求 `FORK_SUBAGENT` feature 开启，同时排除 coordinator mode 和 non-interactive session。开启后，`Agent` tool schema 中 `subagent_type` 可省略；省略时不再表示 general-purpose，而是触发 implicit fork。源码也会用 `isInForkChild(messages)` 扫描 fork boilerplate，防止 fork child 递归 fork。
+第一步，feature gate 决定 fork 是否可用。`isForkSubagentEnabled()` 要求 `FORK_SUBAGENT` feature 开启，同时排除 coordinator mode 和 non-interactive session。开启后，`Agent` tool schema 中 `subagent_type` 可省略；省略时不再表示 general-purpose，而是触发 implicit fork。源码防递归有两层：primary guard 看 `toolUseContext.options.querySource === agent:builtin:fork`，因为它能跨 autocompact 消息改写保留下来；message scan `isInForkChild(messages)` 是 fallback，用 fork boilerplate 检测没有正确传 querySource 的路径。
 
 第二步，`AgentTool.call()` 进入 fork path。它会优先使用 parent 已经渲染好的 system prompt；如果没有可用的 parent rendered system prompt，才重新计算。这样做是为了避免 GrowthBook 或动态上下文冷热状态导致 system prompt 字节不一致，从最前面破坏 cache。fork path 同时使用 parent 当前 tools，并用 `useExactTools` 让 `runAgent()` 不再通过普通 `resolveAgentTools(...)` 重排或过滤工具。
 
@@ -75,7 +76,7 @@ buildForkedMessages(directive, assistantMessage)
 
 这里必须补 `tool_result`，因为模型 tool protocol 要求 assistant 的 `tool_use` 后面有对应 user `tool_result`。如果不同 fork child 的 `tool_result` 内容不同，差异会紧跟在 tool_use 后出现；所以源码使用稳定 placeholder，例如 `Fork started - processing in background` 这一类固定文本，让多个 child 在 directive 之前保持相同结构。真正变化的只有最后的 child directive。
 
-第五步，`runAgent()` 仍然按第 10 章的 subagent runtime 执行。它会把 `filterIncompleteToolCalls(forkContextMessages) + promptMessages` 组成 initial messages，设置 agentId，解析 model、permission、context、tools，创建 `ToolUseContext`，进入 `query()`，写 sidechain transcript。fork 的特殊性不在于另有一个 query engine，而在于 `systemPrompt`、`forkContextMessages`、`promptMessages`、`availableTools`、`useExactTools`、`contentReplacementState` 这些 cache-sensitive 参数被更谨慎地传入。
+第五步，`runAgent()` 仍然按第 10 章的 subagent runtime 执行。它会把 `filterIncompleteToolCalls(forkContextMessages) + promptMessages` 组成 initial messages，设置 agentId，解析 model、permission、context、tools，创建 `ToolUseContext`，进入 `query()`，写 sidechain transcript。fork 的特殊性不在于另有一个 query engine，而在于 `systemPrompt`、`forkContextMessages`、`promptMessages`、`availableTools`、`useExactTools`、`contentReplacementState` 这些 cache-sensitive 参数被更谨慎地传入。对 `AgentTool` implicit fork 来说，user/system context 仍由 `runAgent()` 当场读取，所以它们是 cache 风险边界；对 `runForkedAgent()` helper 来说，这些 context 可以通过 `CacheSafeParams` 明确复用。
 
 ## 源码入口
 
@@ -186,7 +187,7 @@ per-child tail:
 
 feature 边界：fork 只在 gate 开启、非 coordinator mode、交互式 session 中启用。非交互式模式或 coordinator mode 下，省略 `subagent_type` 不应该被解释成 implicit fork；具体行为回到当时 schema 和普通 Agent path 的规则。
 
-递归边界：fork child 的 tool pool 为了 cache 兼容可能仍保留 `Agent` tool，但源码用 `isInForkChild(messages)` 检测 fork boilerplate，并在 `AgentTool.call()` 处阻止 recursive fork。也就是说，工具可见不等于行为允许。
+递归边界：fork child 的 tool pool 为了 cache 兼容可能仍保留 `Agent` tool，但源码在 `AgentTool.call()` 处先用 `options.querySource === agent:builtin:fork` 阻止 recursive fork，再用 `isInForkChild(messages)` 扫描 fork boilerplate 作为 fallback。primary guard 放在 querySource 上，是因为 autocompact 可能重写 messages，但不会重写 context options。也就是说，工具可见不等于行为允许。
 
 prompt cache 边界：cache compatibility 会被这些变化破坏：
 

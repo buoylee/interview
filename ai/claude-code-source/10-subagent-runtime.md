@@ -2,9 +2,9 @@
 
 ## 面试式回答
 
-Claude Code 的 local subagent 不是新进程、不是单独的 MCP server，也不是另一个常驻 agent daemon。它本质上是主 agent 通过 `Agent` tool 启动的另一个 `query()` loop：运行在同一个 Node.js 进程和同一个 runtime 里，但拥有自己的 `agentId`、`agentType`、`ToolUseContext`、messages、工具集合、abort controller、sidechain transcript 和 task registry 记录。
+Claude Code 的 local subagent 不是新进程、不是单独的 MCP server，也不是另一个常驻 agent daemon。它本质上是主 agent 通过 `Agent` tool 启动的另一个 `query()` loop：运行在同一个 Node.js 进程和同一个 runtime 里，但拥有自己的 `agentId`、`agentType`、`ToolUseContext`、messages、工具集合、sidechain transcript 和 task registry 记录。取消控制不是一刀切的“每个 subagent 都有独立 controller”：普通 sync subagent 默认共享 parent abort signal；background / fork task 使用 task-owned abort controller；foreground task registry 也会保存 task controller，方便中途转后台或被 task 系统接管。
 
-主 agent 调用 `Agent` tool 时，`AgentTool.call()` 会先决定走 teammate、普通 subagent 还是 fork subagent；普通 local subagent 路径会构造 selected agent 的 prompt/system prompt、解析工具权限和隔离策略，然后调用 `runAgent()`。`runAgent()` 再创建隔离的 subagent context，最终进入同一个核心 `query()` 循环。同步模式下，`Agent` tool 等 subagent 完成后把结果作为当前 `tool_result` 返回；后台模式下，它先通过 `registerAsyncAgent()` 注册 `LocalAgentTask`，再 fire-and-forget 启动 `runAsyncAgentLifecycle()`，当前 `Agent` tool 只返回“已启动”的 `tool_result`，完成结果稍后通过 `<task-notification>` 回到主会话。
+主 agent 调用 `Agent` tool 时，`AgentTool.call()` 会先决定走 teammate、普通 subagent 还是 fork subagent；普通 local subagent 路径会构造 selected agent 的 prompt/system prompt、解析工具权限和隔离策略，然后调用 `runAgent()`。`runAgent()` 再创建隔离的 subagent context，最终进入同一个核心 `query()` 循环。同步模式下，`Agent` tool 通常等 subagent 完成后把结果作为当前 `tool_result` 返回；但源码会先注册 foreground task，因此长任务可以被用户或 auto-background 机制中途转成 background，再返回 `async_launched`。后台模式下，它先通过 `registerAsyncAgent()` 注册 `LocalAgentTask`，再 fire-and-forget 启动 `runAsyncAgentLifecycle()`，当前 `Agent` tool 只返回“已启动”的 `tool_result`，完成结果稍后通过 `<task-notification>` 回到主会话。
 
 因此面试里最重要的一句话是：local subagent 的独立性来自运行时上下文隔离和 task 生命周期管理，不来自进程隔离。
 
@@ -69,11 +69,11 @@ runAgent()
 
 第二步，`AgentTool.call()` 做分流和校验。它会检查是否是 teammate path、普通 selected agent path 或 fork path；校验 team 限制、agent type 权限、required MCP servers、递归 fork guard、isolation/worktree 等运行条件；然后根据 normal/fork 分别构造 `promptMessages` 和 system prompt。普通 subagent 通常拿到 selected agent 的 system prompt 和一个简单 user prompt；fork path 则尽量复用 parent rendered system prompt 和 parent messages prefix，这一章先讲普通 runtime，fork 细节放到第 11 章。
 
-第三步，决定 sync 还是 background。同步路径会在当前 tool call 内直接 `for await` 消费 `runAgent()` 的消息，直到 subagent 完成，然后把最终结果映射成当前 `Agent` tool 的 `tool_result`。后台路径会先调用 `registerAsyncAgent()` 创建 task，再启动 `runAsyncAgentLifecycle()`，并立即把“agent 已在后台运行”的结果返回给主 agent。
+第三步，决定 sync 还是 background。同步路径不是完全没有 task 状态：`AgentTool.call()` 会先 `registerAgentForeground()`，让当前 foreground subagent 可以被面板、ESC/background 手势或 auto-background timer 观察和接管。正常情况下，它在当前 tool call 内 `for await` 消费 `runAgent()` 的消息，直到 subagent 完成，然后把最终结果映射成当前 `Agent` tool 的 `tool_result`；如果 `backgroundSignal` 先赢得 race，它会关闭 foreground iterator，用同一个 task id 重新以 `isAsync: true` 继续跑，并返回 `async_launched`。后台路径则从一开始调用 `registerAsyncAgent()` 创建 task，再启动 `runAsyncAgentLifecycle()`，并立即把“agent 已在后台运行”的结果返回给主 agent。
 
-第四步，`runAgent()` 构造真正的 subagent query 环境。它会计算 resolved model、生成或接收 `agentId`，把 `filterIncompleteToolCalls(forkContextMessages) + promptMessages` 作为 `initialMessages`，选择文件状态缓存，解析 user/system context，按 agent permissionMode 覆盖父权限模式，解析工具集合，并选择 abort controller。普通路径通过 `resolveAgentTools(...)` 按 agent definition 过滤工具；fork path 使用 `useExactTools` 以保持工具 schema 稳定。
+第四步，`runAgent()` 构造真正的 subagent query 环境。它会计算 resolved model、生成或接收 `agentId`，把 `filterIncompleteToolCalls(forkContextMessages) + promptMessages` 作为 `initialMessages`，选择文件状态缓存，解析 user/system context，按 agent permissionMode 覆盖父权限模式，解析工具集合，并选择 abort controller：override 优先；async agent 默认新建 unlinked controller；sync agent 默认共享 parent controller。普通路径通过 `resolveAgentTools(...)` 按 agent definition 过滤工具；fork path 使用 `useExactTools` 以保持工具 schema 稳定。
 
-第五步，`createSubagentContext()` 创建隔离的 `ToolUseContext`。默认会创建子 abort controller，包装 `getAppState` 以避免后台 agent 触发不合适的 permission prompt，clone `readFileState`、memory triggers、`contentReplacementState`，新建 `queryTracking`，并把 UI callbacks / `setAppState` 做成 no-op，除非显式选择共享。不过它保留 `setAppStateForTasks` 到 root store，因为 task registry、progress、kill/complete 状态必须回写到全局 `AppState.tasks`。
+第五步，`createSubagentContext()` 创建隔离的 `ToolUseContext`。在 `runAgent()` 路径里，调用方会先算好 `agentAbortController` 并作为 override 传入：sync agent 传 parent controller，async/background agent 传独立 controller 或 task controller，foreground 转后台时也会传同一 task 的 controller。`createSubagentContext()` 因此直接使用这个 override；只有没有显式 override 的其他调用路径，才会按自己的默认规则创建 child controller 或共享 parent signal。它还会包装 `getAppState` 以避免后台 agent 触发不合适的 permission prompt，clone `readFileState`、memory triggers、`contentReplacementState`，新建 `queryTracking`，并把 UI callbacks / `setAppState` 做成 no-op，除非显式选择共享。不过它保留 `setAppStateForTasks` 到 root store，因为 task registry、progress、kill/complete 状态必须回写到全局 `AppState.tasks`。
 
 第六步，subagent 进入 `query()`。这个 `query()` 和主 agent 的 loop 是同一个核心实现，只是 `messages`、`systemPrompt`、`toolUseContext`、`querySource`、`maxTurns` 等参数不同。`runAgent()` 会把每条产出的 message 写入 sidechain transcript，并把 stream 往外 yield 给 sync path 或 async lifecycle。
 
@@ -145,6 +145,21 @@ main query()
   -> return completed tool_result to main query()
 ```
 
+同步转后台路径：
+
+```text
+main query()
+  -> assistant emits Agent tool_use
+  -> AgentTool.call()
+  -> registerAgentForeground()
+  -> runAgent() starts as foreground
+  -> backgroundSignal wins race
+  -> close foreground iterator
+  -> continue same task id with runAgent(... isAsync: true ...)
+  -> return async_launched tool_result to main query()
+  -> later enqueueAgentNotification(<task-notification>)
+```
+
 后台 local subagent 正常路径：
 
 ```text
@@ -198,7 +213,7 @@ local subagent 的失败边界主要来自权限、工具集合、abort、resume
 
 工具边界：普通 subagent 通过 `resolveAgentTools(...)` 得到工具池；fork path 使用 exact parent tools。工具池不同会改变模型可见 tool schema，也会改变 agent 能做什么。缺工具不是 runtime 自动补全的问题，而是 selected agent definition、MCP availability、permission 和 feature gate 的结果。
 
-中断边界：sync subagent 默认跟随 parent abort controller，所以主 turn 被 ESC 取消时，sync subagent 也会停。background subagent 有 task 自己的 controller；主 turn ESC 通常不会杀已经注册的 background task，kill agents 或显式 task kill 才会 abort 它。`runAsyncAgentLifecycle()` 捕获 AbortError 后会标记 killed，并用 partial result enqueue killed `<task-notification>`。
+中断边界：sync subagent 默认跟随 parent abort controller，所以主 turn 被 ESC 取消时，sync subagent 也会停。foreground task 注册并不改变这个默认取消语义，它主要让长任务可见、可转后台。background subagent 有 task 自己的 controller；主 turn ESC 通常不会杀已经注册的 background task，kill agents 或显式 task kill 才会 abort 它。`runAsyncAgentLifecycle()` 捕获 AbortError 后会标记 killed，并用 partial result enqueue killed `<task-notification>`。
 
 失败边界：background lifecycle 中普通异常会进入 failed task 状态并 enqueue failed notification；这不是静默失败。主 agent 后续通过 task notification 或 `TaskOutput` 看到失败摘要和 error。
 
@@ -221,6 +236,11 @@ sequenceDiagram
   Main->>AgentTool: tool_use Agent(prompt, subagent_type, background?)
   AgentTool->>Registry: register task(agentId, abortController, pendingMessages)
   AgentTool-->>Main: tool_result(async_launched or completed)
+  alt foreground task backgrounds before completion
+    AgentTool->>Runner: close foreground iterator
+    AgentTool->>Runner: restart same task as runAgent(... isAsync: true ...)
+    AgentTool-->>Main: tool_result(async_launched)
+  end
   AgentTool->>Runner: start runAgent(params)
   Runner->>Sub: query(initialMessages, subagent ToolUseContext)
   Sub-->>Transcript: recordSidechainTranscript(messages)
