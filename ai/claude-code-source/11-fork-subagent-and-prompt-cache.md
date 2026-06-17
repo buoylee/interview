@@ -262,7 +262,7 @@ sequenceDiagram
 system prompt、tool schema、model、thinking budget、parent messages prefix、placeholder 内容、content replacement state 任一变化都可能打碎 cache。尤其 system prompt 和 tools 在请求前部，影响最大。
 
 **问：fork child 是不是拿到完整父会话后就能继续 fork？**
-不能。虽然为了 exact tools 可能仍看到 `Agent` tool，但 runtime 用 fork boilerplate 检测递归 fork并拒绝。
+不能。虽然为了 exact tools 可能仍看到 `Agent` tool，但 runtime 的 primary guard 会检查 `options.querySource === agent:builtin:fork` 并拒绝；fork boilerplate message scan 只是 fallback。
 
 **问：fork 对权限有什么特殊处理？**
 `FORK_AGENT` 的 permissionMode 是 bubble，权限会回到父交互面；但工具执行仍通过 subagent 的 `ToolUseContext`、`canUseTool` 和通用 permission pipeline。
