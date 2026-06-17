@@ -1,0 +1,22 @@
+[project]
+name = "ml-labs"
+version = "0.1.0"
+description = "Runnable ML training labs — interview track (A) + robotics track (B)"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "pandas",
+    "matplotlib",
+]
+
+# 按需安装:uv sync --group tabular(会自动带上默认 dev 组)
+[dependency-groups]
+dev = ["pytest"]
+tabular = ["scikit-learn"]
+nlp = ["torch", "transformers", "datasets", "scikit-learn", "sentence-transformers"]
+gpt = ["torch"]
+vision = ["torch", "torchvision"]
+audio = ["openai-whisper"]
+
+[tool.uv]
+package = false

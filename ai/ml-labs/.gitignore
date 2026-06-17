@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pt
+*.pth
+*.ckpt
+# 模型权重不入库;数据 CSV 和 outputs/ 要入库,故不忽略
