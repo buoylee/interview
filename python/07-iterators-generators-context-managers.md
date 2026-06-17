@@ -166,6 +166,42 @@ with suppress(ZeroDivisionError):  # 优雅吞掉指定异常
 
 实务里 `@contextmanager` 用得比手写类多。要管理多个/动态数量的资源,用 `contextlib.ExitStack`。
 
+### 异步孪生:`async for` / `async with` 背后的协议
+
+同步协议各有一个 async 孪生,**一一对应**:
+
+- 迭代协议 `__iter__`/`__next__` → `__aiter__`/`__anext__`(耗尽抛 `StopAsyncIteration`)
+- 上下文协议 `__enter__`/`__exit__` → `__aenter__`/`__aexit__`(返回 awaitable,由事件循环 `await`)
+- 生成器 `def`+`yield` → `async def`+`yield`(async 生成器,自动实现异步迭代协议)
+
+`async for` 和 `async with` 只能写在 `async def` 里——它们的核心意义是「在 `await` 点能让出控制权」,由事件循环驱动,而非阻塞等待。这让数据库连接、HTTP 会话、流式 I/O 等异步资源能套进熟悉的 `for`/`with` 语法,代码结构和同步版几乎一致。
+
+`contextlib` 也提供了对应工具:`@asynccontextmanager`(对应 `@contextmanager`)把 `async def`+`yield` 包成异步上下文管理器;`aclosing`(对应 `closing`)确保 async 生成器在任何退出路径下都被正确关闭,避免资源泄漏。
+
+```python
+import asyncio
+
+async def squares(n):                 # async 生成器:async def 体内 yield
+    for i in range(n):
+        await asyncio.sleep(0)        # 让出事件循环(async 生成器要有 await 才真异步)
+        yield i * i                   # 自动实现 __aiter__/__anext__
+
+class AConn:                          # 异步上下文管理器
+    async def __aenter__(self):       # 对应同步 __enter__
+        print("open"); return self
+    async def __aexit__(self, *exc):  # 对应同步 __exit__
+        print("close"); return False
+
+async def main():
+    async with AConn():               # async with → __aenter__/__aexit__
+        out = [x async for x in squares(3)]   # async for → __aiter__/__anext__
+    print(out)                        # [0, 1, 4]
+
+asyncio.run(main())                   # 启动事件循环,驱动整个协程树
+```
+
+这些都是**语言协议**,不涉及并发策略的选型。真实项目里多任务怎么调度、何时用 `asyncio.gather` 还是 `TaskGroup`、与线程/进程怎么混搭——见[第 13 章](13-concurrency-bridge.md)与 `python-concurrency/`。
+
 ## Java/Go 对照框
 
 | | Java / Go | Python |
@@ -174,6 +210,7 @@ with suppress(ZeroDivisionError):  # 优雅吞掉指定异常
 | 惰性流 | Java `Stream`(惰性)、Go channel | 生成器 / 生成器表达式 / `itertools` |
 | 资源管理 | try-with-resources(`AutoCloseable`)、Go `defer` | `with` + `__enter__`/`__exit__`,或 `@contextmanager` |
 | 协程基础 | — | 生成器的 `yield`/`send` 是 `asyncio` 协程的前身 |
+| 异步迭代/资源 | Java 响应式 `Flow`、Go `range` over channel | `async for`(`__aiter__`/`__anext__`)、`async with`(`__aenter__`/`__aexit__`)、async 生成器 |
 
 `with` 最接近 Java 的 try-with-resources / Go 的 `defer`,但更通用:它能包裹任意"进入—退出"逻辑(计时、加锁、临时改状态、事务提交/回滚),不限于关闭资源。
 
@@ -204,3 +241,6 @@ print(list(g()))
 
 **Q6. 怎么快速写一个上下文管理器?**
 用 `contextlib.contextmanager` 装饰一个生成器:`yield` 之前的代码相当于 `__enter__`,之后相当于 `__exit__`(用 `try/finally` 包住 `yield` 可确保异常时也清理)。比手写 `__enter__`/`__exit__` 类简洁。
+
+**Q7. `async with` / `async for` 和同步版的区别?背后是哪些 dunder?**
+它们是同步协议的异步孪生,一一对应:`async with` → `__aenter__`/`__aexit__`(返回 awaitable,由事件循环 await),`async for` → `__aiter__`/`__anext__`(耗尽抛 `StopAsyncIteration`),`async def`+`yield` 是 async 生成器。只能用在 `async def` 内,作用是「在 `await` 点让出控制权」(并发策略见第 13 章)。
