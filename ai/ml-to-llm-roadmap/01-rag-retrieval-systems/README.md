@@ -1,11 +1,14 @@
 # 01 RAG 与检索系统
 
 > **定位**：这个模块解释 RAG 为什么存在，以及如何把外部知识从“搜到一些文本”变成可评估、可追溯、可上线的上下文增强生成系统。
+>
+> 📖 本模块是 **RAG 资深主线** 的「原理簇」(框架无关的判断力,覆盖阶段 1~4、6 的"为什么")。它和 LangChain 实现、RAG Lab、生产 MVP 如何衔接成一条从零到资深的路线,见总纲:[`../../rag-roadmap.md`](../../rag-roadmap.md)。
 
 ## 默认学习顺序
 
 1. [RAG 解决什么问题：边界与基本链路](./01-rag-problem-boundary.md)
 2. [索引、Embedding 与召回](./02-indexing-embedding-retrieval.md)
+   - 深入:[向量库内部:一个 chunk 怎么存、怎么被搜出来](./02b-vector-store-internals.md)(行结构 / 暴力扫描 / HNSW / IVF-PQ / 过滤塌陷 / 高并发扩展)
 3. [Hybrid Search、Rerank 与上下文组装](./03-hybrid-search-rerank-context.md)
 4. [RAG 评估、幻觉与生产排查](./04-rag-evaluation-debugging.md)
 

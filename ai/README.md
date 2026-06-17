@@ -32,8 +32,10 @@ ai/
 
 ## 学习顺序
 
-### 路线 A: RAG + 记忆系统
-`agent-memory/01` → `02` → `03` → `04`
+### 路线 A: RAG 系统(从零到资深)
+**总纲**:[`rag-roadmap.md`](rag-roadmap.md) — 把散落在 `ml-to-llm-roadmap/01-rag-retrieval-systems/`(原理)、`langchain/08-rag-with-langchain.md`(实现)、`rag-lab/`(调试)、`langchain/mvp-agentic-rag/`(生产 MVP)四簇材料串成一条「读→建→量→深挖」的主线,先读它再分簇深入。
+
+> 早期 RAG + 记忆材料在 `agent-memory/01`→`04`,内容与上面原理簇有重叠,可作为补充阅读。
 
 ### 路线 B: 构建 Coding Agent
 1. `coding-agent/build-guide.md` — 先动手搭原型，理解 agent 原理
