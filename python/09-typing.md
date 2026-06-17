@@ -108,6 +108,49 @@ class Builder:
 Builder().add(1).add(2)                  # 类型检查器知道返回的是 Builder
 ```
 
+### 变型:协变、逆变、不变
+
+泛型类型参数对子类型关系的"传导方向"叫**变型(variance)**。Python 默认**不变(invariant)**:即使 `Dog` 是 `Animal` 的子类,`SomeGeneric[Dog]` 和 `SomeGeneric[Animal]` 也没有任何父子关系——mypy 把它们看成两个互不相干的类型。
+
+**为什么可变容器必须不变?** 这是整个变型讨论的核心直觉。假设 mypy 允许把 `list[Dog]` 传给接收 `list[Animal]` 的函数——那函数完全有权往那个列表里 `append(Animal())` 甚至 `append(Cat())`,函数返回后原来那个 `list[Dog]` 里就混进了非 Dog 对象,契约就被悄悄破坏了。所以 mypy 拒绝:可变容器是**不变**的,不允许向上传递。
+
+**只读容器可以协变(covariant)**。`Sequence` 没有 `append`、没有写入途径,只能读,`Sequence[Dog]` 传进去当 `Sequence[Animal]` 用完全安全。mypy 因此为 `Sequence` 标记协变:**子类型方向一致**,`Dog <: Animal` → `Sequence[Dog] <: Sequence[Animal]`。
+
+**回调/消费者的参数位是逆变(contravariant)**:方向反过来,`Dog <: Animal` → `Callable[[Animal], None] <: Callable[[Dog], None]`。直觉:你要一个处理 Dog 的回调,传入一个能处理任意 `Animal` 的函数完全没问题——能处理任意 Animal 的,必然能处理 Dog。参数**越宽**的函数,反而能当参数**更窄**的回调用。
+
+自定义泛型时,只有**只读**的容器/包装器才能安全地声明 `covariant=True`——因为没有写入路径就没有"塞进非法值"的风险。旧式用 `TypeVar("T_co", covariant=True)` / `TypeVar("T_contra", contravariant=True)` 显式声明;PEP 695 的 `class Box[T]`(3.12+)由静态检查器自动推断变型,平时不必手写。
+
+**一句话记忆:能写就不变,只读可协变,消费者(回调入参)逆变。**
+
+```python
+from typing import TypeVar, Generic, Sequence, Callable
+
+class Animal: ...
+class Dog(Animal): ...
+
+# ① 可变容器:不变(invariant)
+dogs: list[Dog] = [Dog()]
+def feed_all(xs: list[Animal]) -> None:
+    xs.append(Animal())          # 它有权往里塞 Animal
+# feed_all(dogs)                 # mypy 标红:list 不变
+
+# ② 只读容器:协变(covariant)
+def count(xs: Sequence[Animal]) -> int:
+    return len(xs)
+count(dogs)                      # mypy OK:Sequence 只读,Dog 是 Animal,塞不坏
+
+# ③ 回调参数位:逆变(contravariant)
+handler: Callable[[Dog], None]
+def on_animal(a: Animal) -> None: ...
+handler = on_animal              # mypy OK:能处理任意 Animal,必能处理 Dog
+
+# 自定义协变泛型:只读才能安全标 covariant=True
+T_co = TypeVar("T_co", covariant=True)
+class ReadOnlyBox(Generic[T_co]):
+    def __init__(self, v: T_co) -> None: self._v = v
+    def get(self) -> T_co: return self._v
+```
+
 ## 四、进阶武器
 
 ### `Protocol`:结构化类型(鸭子类型的静态版)
@@ -157,7 +200,49 @@ def parse(x):                        # 唯一真实现
     return x
 ```
 
-`@overload` 让"输入类型决定输出类型"能被精确表达(运行时只保留最后那个真实现,前面的纯标记)。更高阶的有 `ParamSpec`/`Concatenate`(给装饰器保类型)、`Annotated`(给类型附元数据,pydantic/FastAPI 重度使用)。
+`@overload` 让"输入类型决定输出类型"能被精确表达(运行时只保留最后那个真实现,前面的纯标记)。更高阶的还有 `ParamSpec`/`Concatenate`(给装饰器保类型,这里不展开)。
+
+### `Annotated`:类型不变,额外挂元数据
+
+`Annotated[T, ...]` 的**第一个参数才是真正的类型**,后面可以挂任意个"元数据"。对静态检查器来说 `Annotated[int, ...]` 就等于 `int`——元数据完全透明、不影响类型判断;它是留给**框架在运行时读**的。
+
+```python
+from typing import Annotated, get_type_hints, get_args
+
+# 语法:Annotated[真正的类型, 元数据1, 元数据2, ...]
+Age = Annotated[int, "单位:岁", "must be > 0"]
+
+def birthday(age: Age) -> int:
+    return age + 1
+
+print(birthday(18))          # 19 —— 运行时 age 就是普通 int,检查器也把它当 int
+```
+
+元数据不会自己生效,要靠代码**主动取出来**用。关键坑:`get_type_hints` 默认会把元数据剥掉,得加 `include_extras=True`:
+
+```python
+hints = get_type_hints(birthday, include_extras=True)
+print(hints["age"])          # typing.Annotated[int, '单位:岁', 'must be > 0']
+
+base, *meta = get_args(hints["age"])
+print(base)                  # <class 'int'>             —— 真正的类型
+print(meta)                  # ['单位:岁', 'must be > 0']  —— 挂上去的元数据
+
+print(get_type_hints(birthday)["age"])   # <class 'int'> —— 不加 include_extras,元数据被丢掉
+```
+
+**它解决什么问题**:你想给一个 `int` 附加"语义/约束"(单位、取值范围、校验规则),又不想为此造一个新类型(包装类会让 `+ - *` 全失效),也不想塞进文档字符串(工具读不到)。`Annotated` 让**类型保持 `int`**(检查器和运行时都当 int),同时携带结构化元数据供框架读取。
+
+真实世界里库就是这么用的——把"约束对象"放进元数据位:
+
+```python
+# pydantic v2 / FastAPI(示意,需装库):
+# from pydantic import Field
+# Score = Annotated[int, Field(ge=0, le=100)]   # 类型仍是 int,Field 是给 pydantic 读的元数据
+# pydantic 运行时读出 Field(ge=0, le=100),对传入值做 0~100 校验;FastAPI 的 Query/Path/Depends 同理
+```
+
+> Java 背景可类比 Bean Validation 的 `@Min(0) @Max(100) int score`:注解挂在类型上、由框架在运行时读取才生效——`Annotated` 是 Python 把这种"类型 + 框架元数据"塞进类型注解的方式。
 
 ## 五、工具链与运行时类型
 
@@ -175,6 +260,7 @@ def parse(x):                        # 唯一真实现
 | 接口 | `interface`(名义) | `Protocol`(结构化,≈ Go interface 隐式满足) |
 | 可空 | Java `Optional<T>`/`@Nullable`、Go 指针/零值 | `X | None`(即 `Optional[X]`) |
 | 运行时校验 | 自带(类型安全) | 需 pydantic 等库显式做 |
+| 变型 | Java 通配符 `? extends T`(协变)/`? super T`(逆变);Go 泛型无显式变型声明 | `TypeVar(covariant=/contravariant=)`;3.12+ 自动推断;只读协变、可变不变 |
 
 最大差异:Java/Go 的类型是**语言强制**的;Python 的类型注解是**给工具的提示**,解释器无视它。所以"加了类型还传错值会怎样"——运行时啥事没有,只有 mypy 会标红。
 
@@ -197,3 +283,9 @@ Java 泛型在编译期做类型擦除(运行时拿不到具体类型参数);Pyt
 
 **Q6. 项目里怎么落地类型检查?**
 逐步加注解(渐进式),在 CI 跑 `mypy`/`pyright` 拦截类型错误,编辑器用 Pylance 实时提示;需要运行时真正校验输入(如 API 边界)时用 pydantic。常配 `from __future__ import annotations` 规避前向引用。
+
+**Q7. `Annotated[int, x]` 和 `int` 对类型检查器有区别吗?它拿来干嘛?**
+没区别——对 mypy/pyright 来说 `Annotated[int, x]` 就是 `int`,元数据透明。它的用途是给类型**挂运行时元数据**:框架用 `get_type_hints(obj, include_extras=True)` + `get_args()` 把元数据取出来做事(pydantic 用它放 `Field(...)` 约束、FastAPI 放 `Query/Depends`)。好处是类型本身不变,不必造包装类。注意 `get_type_hints` 默认会剥掉元数据,必须传 `include_extras=True`。
+
+**Q8. `list[Dog]` 能传给接收 `list[Animal]` 的函数吗?为什么?**
+不能。`list` 可变,是**不变(invariant)**的——若允许,函数可往里 `append` 一个 `Animal`(甚至 `Cat`),破坏 `list[Dog]` 的契约,mypy 因此拒绝。要协变就用**只读**类型 `Sequence[Animal]`(放行)。规律:能写就不变,只读可协变,回调入参逆变。3.12+ 泛型由检查器自动推断变型。
