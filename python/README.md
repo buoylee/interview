@@ -27,7 +27,7 @@
 | 06 | [OOP(二):继承、描述符、元类](06-oop-2-inheritance-descriptors-metaclasses.md) | MRO/C3、`super()`、描述符、元类、ABC/Protocol |
 | 07 | [迭代器、生成器、上下文管理器](07-iterators-generators-context-managers.md) | 迭代协议、`yield`/`yield from`、`itertools`、`with` |
 | 08 | [异常与错误处理](08-exceptions.md) | 异常链、EAFP vs LBYL、`except*`、`suppress` |
-| 09 | [类型系统与 typing](09-typing.md) | 渐进类型、泛型、`Protocol`/`TypedDict`、mypy/pyright |
+| 09 | [类型系统与 typing](09-typing.md) | 渐进类型、泛型、`Protocol`/`TypedDict`/`Annotated`、mypy/pyright |
 | 10 | [模块、包、导入系统](10-modules-packages-imports.md) | import 机制与缓存、循环导入、`__main__`、`__all__` |
 | 11 | [工程化:环境、依赖、打包、工具链](11-tooling-envs-packaging.md) | venv、uv/poetry、`pyproject.toml`、ruff、打包 |
 | 12 | [测试](12-testing.md) | pytest、fixture/parametrize、mock、coverage |
@@ -39,6 +39,7 @@
 | 18 | [安全基础](18-security.md) | eval/exec、pickle、注入、secrets/hashlib/hmac、随机性 |
 | 19 | [实战骨架](19-production-skeleton.md) | 项目结构、配置/密钥、生产 logging、错误边界、12-factor |
 | 20 | [编码面试工具箱](20-coding-interview-toolkit.md) | heapq/bisect/deque、sorted(key=)、复杂度、切片技巧 |
+| 21 | [Python↔C 边界](21-python-c-boundary.md) | 缓冲区协议、memoryview、struct/array、ctypes/cffi |
 | 99 | [面试卡](99-interview-cards.md) | 各章高频题汇总 + 猜输出 drill 合集 |
 
 ## 与仓库其他目录的关系
@@ -48,3 +49,4 @@
 - **并发深度** → [`../python-concurrency/`](../python-concurrency/):GIL、threading、multiprocessing、asyncio、anyio、生产 worker/任务队列、调优。第 13 章只讲"怎么选",实操在那里。
 - **性能剖析/调试** → [`../performance-tuning-roadmap/06a-python-profiling`](../performance-tuning-roadmap/06a-python-profiling)、[`06b-python-debugging`](../performance-tuning-roadmap/06b-python-debugging)。第 15 章讲内部机制与心智,工具实操在那里。
 - **Web/服务可观测性** → [`../fastapi-ops/`](../fastapi-ops/):FastAPI 指标/追踪/日志/压测/调优。
+- **零拷贝/二进制/FFI 的语言层** 就在本章(ch21);更深的**性能剖析与原生扩展工程化**仍指 [`../performance-tuning-roadmap/`](../performance-tuning-roadmap/)。
