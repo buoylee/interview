@@ -29,6 +29,7 @@ ai/
 - `openai-claude-chat-completion-接口整理.md` — OpenAI / Claude 的接口选型、三段最小示例和官方链接索引
 - `agent-platform/` — Agent 平台选型、云上架构、安全治理、RAG、工具网关、评测与发布方案
 - `a2a-protocol/` — A2A 协议(agent↔agent 互通的事实标准)上手:Java/Go 对照心智模型、最小可跑 demo、A2A vs MCP、框架接入、面试卡片
+- `ml-labs/` — 动手训练 labs(面试核心 A 轨 + robotics B 轨),runnable 产物;首个 A3 房价回归讲透 ML 基本功(过拟合/正则/指标/数据泄漏)
 
 ## 学习顺序
 

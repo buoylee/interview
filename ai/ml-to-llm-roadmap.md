@@ -42,6 +42,17 @@ foundations 按需补课
 | 面试复习笔记 | 30 秒答案、追问、易混点和项目连接 | [09-review-notes](./ml-to-llm-roadmap/09-review-notes/) | 已系统化 |
 | Foundations 解锁层 | 支撑 Transformer 的数学、NLP 与神经网络最小前置 | [foundations](./ml-to-llm-roadmap/foundations/) | 已系统化 |
 
+## 动手实验(ml-labs)
+
+理论之外的 runnable 作品,补「能训出模型」的缺口。详见 [ai/ml-labs/](./ml-labs/)。
+
+| Lab | 一句话面试故事 | 连回模块 | 状态 |
+|---|---|---|---|
+| [A3 房价回归](./ml-labs/interview/a3-house-price/) | train/val/test、过拟合、正则、RMSE vs MAE、数据泄漏 | 01-ml-basics | ✅ |
+| A2 意图识别 | 何时不该用 LLM(router/guardrail) | 02-agent-tool-use | ⏳ |
+| A1 tiny-GPT 从零 | 手写 attention,Mac 上训出生成模型 | 04-transformer-foundations | ⏳ |
+| Robotics 轨 | 感知 / 语音 / RL 路标(非当前面试) | —— | ⏳ |
+
 ## 面试冲刺路径
 
 > 这条路径适合先冲 AI Engineer 面试：先走系统学习模块，再用面试路径和速记文档复盘。旧版 RAG、Agent 材料只作为可选参考。
