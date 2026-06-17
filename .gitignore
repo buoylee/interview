@@ -1,5 +1,6 @@
 .DS_Store
 .idea
+.vscode/
 .worktrees/
 
 # 本地工具生成物(非内容)
