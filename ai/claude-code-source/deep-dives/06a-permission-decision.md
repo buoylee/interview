@@ -18,27 +18,7 @@
 
 ## 先看完整裁決流程
 
-下列每個箭頭都對應真實 symbol：
-
-```text
-useCanUseTool() / headless CanUseToolFn
-→ hasPermissionsToUseTool()
-→ hasPermissionsToUseToolInner()
-→ AbortController.signal
-→ getDenyRuleForTool()
-→ getAskRuleForTool()
-→ SandboxManager + shouldUseSandbox()（whole-tool ask 的例外）
-→ Tool.inputSchema.parse()
-→ Tool.checkPermissions()
-→ tool-level deny / requiresUserInteraction ask / content-rule ask / safetyCheck ask
-→ bypassPermissions 或 plan-inherited-bypass
-→ toolAlwaysAllowedRule()
-→ passthrough 轉 ask，或保留 tool allow / ask
-→ hasPermissionsToUseTool() 的 dontAsk / auto / shouldAvoidPermissionPrompts
-→ recordSuccess() / recordDenial() / persistDenialState()
-→ PermissionDecision
-→ useCanUseTool()、StructuredIO 或 permission prompt tool 處理剩餘 ask
-```
+先用三層定位主要 symbols：`useCanUseTool()` 或 headless `CanUseToolFn` 是入口；`hasPermissionsToUseToolInner()` 依序處理 abort、`getDenyRuleForTool()`、`getAskRuleForTool()`、sandbox ask 例外、`Tool.checkPermissions()`、bypass 與 `toolAlwaysAllowedRule()`；外層 `hasPermissionsToUseTool()` 再處理 `dontAsk`、auto、prompt availability，以及 `recordSuccess()` / `recordDenial()` / `persistDenialState()`。最後，互動 UI、`StructuredIO` 或 permission prompt tool 才解決仍為 `ask` 的 `PermissionDecision`。
 
 以下是依照 early return 次序整理的**偽代碼**，不是原始碼：
 
@@ -337,16 +317,16 @@ Runtime 先用工具的 Zod schema parse input，再呼叫 `tool.checkPermission
 
 ## permission modes 如何改變 ask
 
-「Unmatched action」在下表中指：沒有 whole-tool/content deny、ask、allow，且 tool-specific logic 沒有先回最終 allow/deny 的動作。
+下表的母體是「會碰到 mode-sensitive logic 的 tool use」，不只限於 unmatched action。這包含兩個時點：工具可在 `checkPermissions()` 內讀取 mode；通用層也可在 inner 的 bypass branch 或 outer 的 ask transformation 使用 mode。Whole-tool deny/ask、tool deny、forced-interaction ask、content ask 與 safety ask 等分支可能更早返回；表中的「更早返回」欄明確列出它們是否會越過後續 mode handling。
 
-| mode | what happens to an unmatched action | what can still block it | whether user UI is expected | important state changes |
+| mode | mode-sensitive handling | 更早返回、優先於後續 mode handling 的結果 | unresolved `ask` 與 user UI | important state changes |
 |---|---|---|---|---|
-| `default` | `passthrough` 最終轉 `ask` | whole-tool/content deny、ask、安全檢查、tool deny | 互動 session 預期會顯示；無 prompt context 則走 hook/deny 邊界 | 使用者可套用 session 或 persistent `PermissionUpdate` |
-| `plan` | 通常與 default 一樣成為 `ask`；若 session 原本具有 bypass availability，inner 會 allow；若 plan 啟用 auto，outer 走 classifier | plan 工具限制、deny/ask、安全檢查、tool deny；auto/bypass 前的 early returns | 普通 plan 可詢問；plan+auto 優先自動裁決 | 保存 `prePlanMode`；可能切換 auto state、strip/restore dangerous rules |
-| `acceptEdits` | 工具可對允許工作目錄內的 edit/write 或受驗證的 shell edit 動作回 `allow`；其他 unmatched 仍 `ask` | deny/ask、安全路徑、工作目錄、非 edit 或無法靜態驗證的命令 | 對未自動接受的動作仍預期 UI | `setMode` 可來自使用者批准；context mode 改變 |
-| `auto` | outer 先試 acceptEdits fast path，再試 safe-tool allowlist，最後 classifier；一般 ask（包括 explicit ask rule）可被 classifier allow、deny，或在 fallback/limit 時升級為人工 review | hard deny、non-classifier-approvable safety check、forced user interaction；classifier block 可產生 deny，PowerShell gate 或 prompt-unavailable context 也可阻止執行 | 正常不先打擾；classifier context 過長、fail-open、denial limit 等可回 UI review | strip dangerous allow rules；更新 consecutive/total denial；成功清連續拒絕 |
-| `bypassPermissions` | 通過 inner early blockers後直接 `allow` | whole-tool deny；whole-tool ask（除非符合 sandbox auto-allow 例外）；tool deny、requires-interaction ask、explicit content ask、safetyCheck ask | 一般 unmatched 不需要；仍存活的 ask 在可互動 context 可能需要 UI | 不刪規則；只以 mode reason 回 allow，並保留 `updatedInput` |
-| `dontAsk` | inner 先產生 `ask`，outer 再轉成 `deny` | 所有原本 deny；所有剩餘 ask 也被 mode 拒絕 | 不預期顯示批准 UI | 不新增 allow rule；final reason 為 `mode: dontAsk` |
+| `default` | 沒有全域 fast path；工具回 `passthrough` 時，inner 轉成 `ask`。工具若已回 allow/deny，保留該結果 | whole-tool deny/ask、tool deny、forced-interaction/content/safety ask 都按原結果返回 | 互動 session 預期顯示；`shouldAvoidPermissionPrompts` context 先跑 hook，無決策則 deny | 使用者批准可套用 session 或 persistent `PermissionUpdate` |
+| `plan` | 若 `isBypassPermissionsModeAvailable`，通過前置檢查的 action 在 inner allow；若 plan 的 auto state active，inner ask 在 outer 走 auto；其餘與 default 相同 | bypass branch 之前的 whole-tool deny/ask、tool deny、forced-interaction/content/safety ask 先從 inner 返回；plan-auto 只會在 outer 接手這些 ask，其中 forced interaction 與部分 safety ask 仍保持不可自動批准 | 普通 plan 可詢問；plan-auto 優先自動裁決，fallback 才 review | 保存 `prePlanMode`；可能切換 auto state、strip/restore dangerous rules |
+| `acceptEdits` | 工具可在 `checkPermissions()` 對允許工作目錄內 edit/write 或受驗證的 shell edit 回 allow；其他 tool result 照 inner 規則成為 allow、deny 或 ask | whole-tool deny/ask 先於工具；tool deny、forced-interaction/content/safety ask 先於通用 allow rule | 未被工具自動接受的 ask 仍預期 UI；不可 prompt 時走 hook/deny | `setMode` 可來自批准；後續工具讀到新的 context mode |
+| `auto` | Inner ask 到 outer 後，先試 acceptEdits fast path、safe-tool allowlist，再跑 classifier；一般 ask（包括 explicit content ask rule）可轉 allow、deny，或 fallback/review ask | whole-tool/tool deny 已是 hard deny，不進 auto；forced-interaction ask 與 non-classifier-approvable safety ask 不交給 classifier；其他 ask 可進 auto | 正常不先打擾；PowerShell gate、classifier context 過長、fail-open、denial limit 等可保留或產生 review ask；不可 prompt 分支可 deny/abort | strip dangerous allow rules；成功 `recordSuccess()`，block `recordDenial()` 並使用 denial limits |
+| `bypassPermissions` | Action 只有通過所有 inner 前置分支，才在 bypass branch 直接 allow；不會再靠 unmatched-action prompt 決定 | whole-tool deny；whole-tool ask（sandbox auto-allow 例外除外）；tool deny、forced-interaction ask、explicit content ask、safety ask 都在 bypass 前返回 | bypass branch 本身不需要 UI；前置 ask 若存活，仍由正常互動/headless 邊界處理 | 不刪規則；allow reason 記為 mode，並保留 `updatedInput` |
+| `dontAsk` | Inner allow/deny 保留；任何到達 outer 的 inner ask 都轉成 mode deny | 更早的 deny 保持 deny；更早的 ask 不算最終 blocker，因為 outer 會統一轉 deny | 不顯示批准 UI | 不新增 deny rule；final reason 為 `mode: dontAsk` |
 
 ### 原始碼摘錄 2：outer transformation
 
