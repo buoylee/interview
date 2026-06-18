@@ -87,40 +87,75 @@ permissionDecision(tool, input, context):
       return ask
     return toolResult
 
-  result = await inner()
+  innerResult = await inner()
 
   # B. outer mode transformation；不屬於 inner()
-  if result is allow:
-    in auto mode, reset consecutive denial count when needed
-    return result
+  outerTransform(result):
+    if result is ask and mode is dontAsk:
+      return { decision: deny(mode=dontAsk) }
 
-  if result is ask and mode is dontAsk:
-    return deny(mode=dontAsk)
+    if result is ask and auto classifier path is active:
+      enforce non-classifier safety exceptions
+      if acceptEdits fast path allows:
+        return { decision: allow, autoOutcome: success }
+      if safe-tool allowlist allows:
+        return { decision: allow, autoOutcome: success }
 
-  if result is ask and auto classifier path is active:
-    enforce non-classifier safety exceptions
-    try acceptEdits fast path
-    try safe-tool allowlist
-    run classifier with abort signal
-    update denial state
-    return allow / deny / fallback ask / throw AbortError
+      classifierResult = run classifier with abort signal
+      if classifier allows:
+        return { decision: allow, autoOutcome: success }
+      if classifier blocks normally:
+        return {
+          decision: provisional classifier deny,
+          autoOutcome: blocked(classifier reason),
+        }
+      # transcript-too-long 的 headless 分支可直接 throw AbortError
+      return { decision: fallback ask / unavailable deny }
 
-  if result is ask and permission prompts must be avoided:
-    run PermissionRequest hooks
-    if a hook decides: return its allow / deny
-    return deny(asyncAgent)
+    if result is ask and permission prompts must be avoided:
+      run PermissionRequest hooks
+      if a hook decides: return { decision: hook allow / deny }
+      return { decision: deny(asyncAgent) }
 
-  # C. decision 後的 bookkeeping / presentation
-  return result
+    return { decision: result }
+
+  # C. post-decision state bookkeeping；與 mode transformation 分開
+  bookkeepDecision(innerResult, transformed):
+    if innerResult is allow and current mode is auto
+       and consecutiveDenials > 0:
+      newState = recordSuccess()
+      persistDenialState(newState)
+      # 清除非零 consecutiveDenials，保留 totalDenials
+
+    if transformed.autoOutcome is success:
+      newState = recordSuccess()
+      persistDenialState(newState)
+
+    if transformed.autoOutcome is blocked(reason):
+      newState = recordDenial()
+      persistDenialState(newState)
+      if denial limit is reached:
+        replace provisional deny with fallback ask
+        or throw AbortError when prompts are unavailable
+
+  # source order：inner 已 allow 時，先做 C，直接返回；
+  # 否則先由 B 產生 mode/auto outcome，再由 C 更新狀態與完成 final decision。
+  if innerResult is allow:
+    bookkeepDecision(innerResult, none)
+    finalResult = innerResult
+  else:
+    transformed = outerTransform(innerResult)
+    bookkeepDecision(innerResult, transformed)
+    finalResult = transformed.decision
 
 caller:
-  if allow or deny: resolve it
-  if ask:
+  if finalResult is allow or deny: resolve it
+  if finalResult is ask:
     interactive UI, coordinator/swarm handler, stdio/SDK，
     or a configured permission prompt tool resolves the request
 ```
 
-這個切分很重要：`dontAsk` 不是 `hasPermissionsToUseToolInner()` 的一部分；auto classifier 與 denial tracking 也在 outer function。把它們塞進 inner 偽代碼會錯置 early return，尤其會讓讀者誤以為 bypass、whole-tool allow 或 tool-level deny 都會再經過 classifier。
+這個切分很重要：`dontAsk` 不是 `hasPermissionsToUseToolInner()` 的一部分；auto classifier 與 denial tracking 也在 outer function，但 state bookkeeping 仍是獨立責任。Source 的實際順序是：inner 已 allow 時先重設 auto 的連續拒絕並返回；inner ask 進 auto 時，則在 classifier allow/block 已產生後更新 denial state，再組出 final allow、deny、fallback ask 或 abort。把這些全塞進 inner 或把 bookkeeping 說成 UI presentation，都會錯置 early return 與狀態變更時點。
 
 ### 原始碼摘錄 1：abort、deny、ask、tool check 的順序
 
@@ -309,8 +344,8 @@ Runtime 先用工具的 Zod schema parse input，再呼叫 `tool.checkPermission
 | `default` | `passthrough` 最終轉 `ask` | whole-tool/content deny、ask、安全檢查、tool deny | 互動 session 預期會顯示；無 prompt context 則走 hook/deny 邊界 | 使用者可套用 session 或 persistent `PermissionUpdate` |
 | `plan` | 通常與 default 一樣成為 `ask`；若 session 原本具有 bypass availability，inner 會 allow；若 plan 啟用 auto，outer 走 classifier | plan 工具限制、deny/ask、安全檢查、tool deny；auto/bypass 前的 early returns | 普通 plan 可詢問；plan+auto 優先自動裁決 | 保存 `prePlanMode`；可能切換 auto state、strip/restore dangerous rules |
 | `acceptEdits` | 工具可對允許工作目錄內的 edit/write 或受驗證的 shell edit 動作回 `allow`；其他 unmatched 仍 `ask` | deny/ask、安全路徑、工作目錄、非 edit 或無法靜態驗證的命令 | 對未自動接受的動作仍預期 UI | `setMode` 可來自使用者批准；context mode 改變 |
-| `auto` | outer 先試 acceptEdits fast path，再試 safe-tool allowlist，最後 classifier；可得 allow/deny，特定失敗回 ask | non-classifier-approvable safety check、tool deny、explicit ask、classifier block、PowerShell gate、prompt-unavailable fallback | 正常不先打擾；classifier context 過長、fail-open、denial limit 等可回 UI review | strip dangerous allow rules；更新 consecutive/total denial；成功清連續拒絕 |
-| `bypassPermissions` | 通過 inner early blockers後直接 `allow` | whole-tool deny、tool deny、requires-interaction ask、explicit content ask、safetyCheck ask | 一般 unmatched 不需要；仍存活的 ask 在可互動 context 可能需要 UI | 不刪規則；只以 mode reason 回 allow，並保留 `updatedInput` |
+| `auto` | outer 先試 acceptEdits fast path，再試 safe-tool allowlist，最後 classifier；一般 ask（包括 explicit ask rule）可被 classifier allow、deny，或在 fallback/limit 時升級為人工 review | hard deny、non-classifier-approvable safety check、forced user interaction；classifier block 可產生 deny，PowerShell gate 或 prompt-unavailable context 也可阻止執行 | 正常不先打擾；classifier context 過長、fail-open、denial limit 等可回 UI review | strip dangerous allow rules；更新 consecutive/total denial；成功清連續拒絕 |
+| `bypassPermissions` | 通過 inner early blockers後直接 `allow` | whole-tool deny；whole-tool ask（除非符合 sandbox auto-allow 例外）；tool deny、requires-interaction ask、explicit content ask、safetyCheck ask | 一般 unmatched 不需要；仍存活的 ask 在可互動 context 可能需要 UI | 不刪規則；只以 mode reason 回 allow，並保留 `updatedInput` |
 | `dontAsk` | inner 先產生 `ask`，outer 再轉成 `deny` | 所有原本 deny；所有剩餘 ask 也被 mode 拒絕 | 不預期顯示批准 UI | 不新增 allow rule；final reason 為 `mode: dontAsk` |
 
 ### 原始碼摘錄 2：outer transformation
