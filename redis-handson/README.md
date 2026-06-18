@@ -8,9 +8,10 @@
 ## 怎么用这个 repo
 
 1. **第一次来**:`cd 00-lab && make up`,等到 `redis healthy`。`make cli` 进 redis-cli 看到提示符就 OK。想要图形界面 `make up-ui` 开 http://localhost:5540。
-2. **想学某主题**:从章节 README 开始,每章固定 7 段(核心问题 / 直觉理解 / 原理深入 / 日常开发应用 / 调优实战 / 面试高频考点 / 一句话总结)。
-3. **想答某面试题**:去 `99-interview-cards/` 找卡,每张卡链回 scenario 当证据。
-4. **想加 scenario**:复制 `templates/scenario-template.md` 到对应章节 `scenarios/`,**先写「预期」、commit 一次**,再跑、再 commit 观察结果。
+2. **答不好「该不该用 Redis / 使用场景」**(面试最常答虚处):先读 `00-when-to-use/` —— 全 repo 的 top-down 选型导读,场景目录会把你带到对应章节当证据。
+3. **想学某主题**:从章节 README 开始,每章固定 7 段(核心问题 / 直觉理解 / 原理深入 / 日常开发应用 / 调优实战 / 面试高频考点 / 一句话总结)。
+4. **想答某面试题**:去 `99-interview-cards/` 找卡,每张卡链回 scenario 当证据。
+5. **想加 scenario**:复制 `templates/scenario-template.md` 到对应章节 `scenarios/`,**先写「预期」、commit 一次**,再跑、再 commit 观察结果。
 
 ## 客户端语言约定
 
@@ -19,6 +20,7 @@
 
 ## 章节地图
 
+- `00-when-to-use/` — **选型决策导读**:该不该用 Redis / 用哪种姿势 / 什么时候别用 / vs 替代品(top-down,场景目录链回各章)★
 - `01-execution-model/` — 单线程 + epoll + io-threads + 什么命令会卡
 - `02-data-structures/` — 5 类型 + 底层编码 + OBJECT ENCODING 实测 + 选型决策表 ← **第一个完整章节**
 - `03-advanced-types/` — bitmap / HyperLogLog / GEO / Stream / bitfield
