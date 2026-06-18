@@ -145,9 +145,14 @@ AST walker 會遞迴處理 `program`、`list`、`pipeline`、`redirected_stateme
 `parse-unavailable` 表示 parser module/feature 不可用、command 為空或超過 parser 長度 gate 等「沒有 AST 結果」；它不是「已證明 command 複雜」。此 branch 先用 `tryParseShellCommand()` 檢查 malformed syntax，再走 legacy split 與 `bashCommandIsSafeAsync_DEPRECATED()`。因此：
 
 ```text
-parser loaded but aborted → too-complex → fail closed / ask
-parser unavailable        → legacy checks
-legacy syntax parse fails → ask
+parser available + too-complex
+  → checkEarlyExitDeny（exact deny/ask/allow；prefix/wildcard deny）
+  → 若未命中，fail closed / ask
+
+parser unavailable
+  → legacy tryParseShellCommand
+  → malformed syntax 時立即 ask，尚未進後面的 exact matching
+  → parse 成功才繼續 legacy split / rule / safety checks
 ```
 
 **版本限制**：`TREE_SITTER_BASH`、shadow mode、killswitch 與 command-injection env flag 會改變哪條 branch 成為 authoritative。本文描述此 commit 的 source ordering，不保證每個 build 都啟用相同 feature。
@@ -263,7 +268,7 @@ Deny/ask 的候選生成較 aggressive：`stripAllLeadingEnvVars()` 與 `stripSa
 
 ### 正規化對照表
 
-下表假設 AST parser 可用；rule outcome 仍取決於實際設定，因此只列 source 能確定的 candidate 與條件。
+前六列假設 AST parser 可用；最後一列刻意對照 parser available 與 unavailable 兩條 malformed-syntax branch。Rule outcome 仍取決於實際設定，因此只列 source 能確定的 candidate 與條件。
 
 | raw command | parser / decomposition | candidate 或 stripping | stripping 停止點 | 可匹配 rule style 與原因 |
 |---|---|---|---|---|
@@ -273,7 +278,7 @@ Deny/ask 的候選生成較 aggressive：`stripAllLeadingEnvVars()` 與 `stripSa
 | `timeout 30 bazel test //...` | `simple`；semantic check 可辨識 wrapper；一個 wrapped command | 原文與 `bazel test //...` | duration/flags 必須符合 allowlisted grammar；未知 flag/value fail closed | `bazel test:*` allow/deny/ask 可匹配 stripped candidate；自動 suggestion 對原文第二 token 為 `30`，通常退回 exact |
 | `RUN=/tmp/tool python3 script.py` | `simple`；leading assignment | deny/ask 可得 `python3 script.py`；allow 保留 `RUN=...` | allow 在非-safe `RUN` 停止 | exact 原文；deny/ask 可命中 `python3:*`；allow `python3:*` 不命中 |
 | `sh -c "..."` | 語法上可為 `simple`；shell body 是 argument，不代表其內容已被 rule parser 展開 | 通常維持原文；`sh` 不是 safe wrapper | 不剝 `sh` | exact 或使用者手寫 wildcard/prefix 可能匹配；suggestion 拒絕產生 `sh:*`，auto-mode cleanup 也視 broad shell rule 為 dangerous |
-| malformed shell syntax | parser 可用時通常為 `too-complex` / `Parse error`；parser 不可用時 legacy parse 失敗 | 不信任 decomposition，保留原 command | 立即停止 | exact deny/ask/allow 仍可生效；prefix/wildcard deny可保留；無匹配則 conservative `ask` |
+| malformed shell syntax | parser available：通常為 `too-complex` / `Parse error`；parser unavailable：legacy parse failure | 兩條 branch 都不信任 decomposition；available branch 仍可先檢查原 command 的 early-exit rules，legacy malformed branch 不產生後續 matching candidates | available branch 在 early-exit rule 或 conservative ask 停止；legacy malformed branch 在 syntax check 立即停止 | 只有 `too-complex` branch 可命中 exact deny/ask/allow 與 prefix/wildcard deny；legacy malformed branch 會在 exact matching 前直接 `ask` |
 
 ## unsafe command 與保守回退
 
@@ -290,14 +295,14 @@ path/sed/read-only checks        → command-specific constraints
 
 - unknown AST node、parse error、control character、Unicode whitespace、special expansion 無法靜態求值：`too-complex`；
 - parser abort：`too-complex`，不 legacy downgrade；
-- legacy malformed syntax：`ask`；
+- legacy malformed syntax：在 exact matching 前直接 `ask`；
 - subshell/command group：`ask` 且不建議 rule；
 - dangerous semantic builtin 或 wrapper flag 無法定位 wrapped command：先執行 deny enforcement，再 `ask`；
 - safety validator 發現 injection/misparsing concern：`ask`，`suggestions: []`；
 - compound 任一 subcommand deny：整體 deny；
 - compound 沒有全部 allow：不把部分 allow 誤當整體 allow。
 
-Exact rule 是少數有意識的 escape hatch：使用者可精確允許一條完整複雜 command；但 broad prefix/wildcard 不會在未拆分原 command 上自動放行，deny 也不會被 fallback 降級成 ask。
+在 parser available 的 `too-complex` branch，exact rule 是少數有意識的 escape hatch：使用者可精確允許一條完整複雜 command；但 broad prefix/wildcard 不會在未拆分原 command 上自動放行，deny 也不會被 fallback 降級成 ask。這不適用於 legacy malformed-syntax early return：該 branch 在後續 exact matching 前已回 `ask`。
 
 ## approval suggestion 如何避免過度授權
 
@@ -481,15 +486,20 @@ normalized candidates:
   不信任拆分；保留原 command
 
 matched/unmatched rules:
-  假設沒有 exact deny/ask/allow，也沒有可命中的 deny fallback
+  parser 可用 / too-complex：
+    先檢查原 command 的 exact deny/ask/allow 與 prefix/wildcard deny；
+    此例假設全部未命中
+  parser 不可用 / legacy malformed：
+    syntax failure 立即返回，不執行後面的 exact matching
 
 safety result:
-  一般 safety/allow aggregation 不繼續；parse branch 已 fail closed
+  兩條 branch 都不進一般 decomposition / safety aggregation；
+  too-complex 是 early-rule 後 fail closed，legacy malformed 是 syntax check 後 fail closed
 
 final PermissionResult:
-  ask
-  parser 可用的 too-complex branch 帶 suggestions: []
-  legacy malformed branch 同樣 ask，不把 parse failure 當 allow
+  parser 可用且 early rules 未命中：ask，suggestions: []
+  parser 可用且 exact rule 命中：依該 exact deny / ask / allow 結果返回
+  parser 不可用且 legacy syntax parse 失敗：ask，未進 exact matching
 ```
 
 ## 證據、限制與設計取捨
