@@ -10,6 +10,7 @@
 2. [索引、Embedding 与召回](./02-indexing-embedding-retrieval.md)
    - 深入:[向量库内部:一个 chunk 怎么存、怎么被搜出来](./02b-vector-store-internals.md)(行结构 / 暴力扫描 / HNSW / IVF-PQ / 过滤塌陷 / 高并发扩展)
 3. [Hybrid Search、Rerank 与上下文组装](./03-hybrid-search-rerank-context.md)
+   - 进阶:[高级检索策略:当 hybrid+rerank 还不够](./03b-advanced-retrieval-strategies.md)(small-to-big / auto-merging / recursive / sub-question / routing / metadata 过滤;以 LlamaIndex 为教材,可移植到任意栈)
 4. [RAG 评估、幻觉与生产排查](./04-rag-evaluation-debugging.md)
 
 ## 学前检查

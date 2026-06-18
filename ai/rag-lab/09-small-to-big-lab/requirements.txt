@@ -1,0 +1,8 @@
+# ── 真实语义模式 (LAB_EMBEDDER=bge, 默认) 需要这些 ──
+sentence-transformers>=2.7.0
+llama-index>=0.10.0
+llama-index-embeddings-huggingface>=0.2.0
+
+# ── 纯本地冒烟模式 (LAB_EMBEDDER=lexical) 仅需 Python 标准库 ──
+# 上面三个都可以不装，直接:  LAB_EMBEDDER=lexical python run.py
+# 用来快速确认管线跑通；数值是词法匹配，不代表语义检索效果。

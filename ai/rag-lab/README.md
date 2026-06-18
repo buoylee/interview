@@ -49,6 +49,7 @@ trace
 6. [类 ChatGPT 文件 Agent：文件范围、选择、检索与注入](./05-chatgpt-like-file-agent.md)
 7. [RAG 文件 Agent 测试用例集](./06-rag-file-agent-test-cases.md)
 8. [RAG 文件 Agent 实现路线](./07-implementation-roadmap.md)
+9. [small-to-big 动手 lab：两种实现 + 量化（裸 Python vs LlamaIndex）](./09-small-to-big-lab/) — 可运行，全本地零 key
 
 ## 阶段产出
 
@@ -86,6 +87,8 @@ file_search 可以做 RetrievalProvider
 ## 和 LlamaIndex 的关系
 
 建议先手写 mini RAG，再用 LlamaIndex 复刻同一条链路。这样你看到 `Document`、`Node`、`Index`、`Retriever`、`QueryEngine` 时，会知道它们对应 mini RAG 的哪一层，而不是被框架术语带着走。
+
+想动手对照「同一个高级检索策略，裸 Python vs LlamaIndex `AutoMergingRetriever`」并用数字看效果，见 [09 small-to-big lab](./09-small-to-big-lab/) —— 它正是「框架不是魔法，策略可移植」这个结论的可运行证明。
 
 ## 完成标准
 
