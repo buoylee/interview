@@ -44,10 +44,15 @@ flowchart TD
     D -->|simple| E["parser<br/>SimpleCommand[] + semantic checks"]
     D -->|too-complex| F["rule matcher<br/>exact deny/ask/allow + deny fallback"]
     D -->|parse-unavailable| G["parser<br/>legacy shell-quote / split fallback"]
-    E --> H["compound decomposition<br/>operators, pipes, redirects"]
+    E --> H{"operator / decomposition"}
     G --> H
-    H --> I["rule matcher<br/>candidate normalization + exact/prefix/wildcard"]
-    I --> J["safety checks<br/>path, unsafe command, injection guards"]
+    H -->|pipe| P["BashTool<br/>reconstruct segments + recursively re-check each"]
+    H -->|&& / || / ; / ordinary leaves| I["rule matcher<br/>lower-level per-subcommand checks"]
+    P --> Q["BashTool helper<br/>pipe-specific result aggregation"]
+    I --> N["candidate normalization<br/>exact/prefix/wildcard"]
+    Q -->|deny / ask| L
+    Q -->|all allow| J
+    N --> J["safety checks<br/>path, unsafe command, injection guards"]
     J --> K["suggestion generation<br/>narrow prefix or exact; otherwise none"]
     F --> L["PermissionResult"]
     K --> L
@@ -61,9 +66,9 @@ flowchart TD
 3. `too-complex` 不進一般拆分：先尊重 exact deny/ask/allow 與 prefix/wildcard deny，否則直接 `ask` 且不產生 suggestion。
 4. `simple` 先跑 `checkSemantics()`；通過後保存 AST-derived subcommands、redirects 與 `SimpleCommand[]`。
 5. `parse-unavailable` 才走 legacy `tryParseShellCommand()`、`splitCommand_DEPRECATED()` 與 regex safety validators。Malformed syntax 直接 `ask`。
-6. pipe、subshell、command group 等 operator branch 先處理；pipe segment 會遞迴回完整的 `bashToolHasPermission()`。
-7. 一般 compound command 逐 subcommand 執行 exact、deny、ask、path、allow、mode/read-only 與 safety checks。
-8. 任一 subcommand deny，整體 deny；全部 allow 且沒有 injection concern，整體 allow；其餘聚合為 ask/passthrough 與有限的 suggestions。
+6. Operator analysis 先處理 unsafe structure 與 pipe。只有 pipe segments 會在重建並移除 segment output redirection 後，逐段遞迴回完整的 `bashToolHasPermission()`。
+7. `&&`、`||`、`;` 等一般 compound/list 則使用 AST/legacy 拆出的 leaf subcommands，直接呼叫較低層的 `bashToolCheckPermission()`，再視需要進 `checkCommandAndSuggestRules()`，不是同一條 pipe recursion。
+8. 兩條 aggregation 都是任一 deny 優先、全部 allow 才 allow；但一般 compound 與 pipe 對 ask/passthrough、suggestions 的聚合細節不同。
 9. command-level `PermissionResult` 回到通用 permission layer；`passthrough` 不是 allow，通常會在 06a 的通用層成為 `ask`。
 
 ## BashTool 輸入與 PermissionResult
@@ -117,7 +122,9 @@ text        原始 source span，供顯示與下游 string matcher 使用
 
 AST walker 會遞迴處理 `program`、`list`、`pipeline`、`redirected_statement`，辨識 `&&`、`||`、`|`、`;`、`&`、`|&` 與 newline。`&&`、`;` 可沿用前段已確定的 variable scope；`||`、pipe 與 background branch 會重設到 snapshot，避免把條件式或 subshell 內的 assignment 誤當成後段必然存在。
 
-部分 command substitution 可被遞迴抽出：inner command 也加入 `commands[]`，outer argument 放入 placeholder，再分別做 permission check。這不表示所有 expansion 都可接受。Process substitution、無法解析的 parameter/arithmetic/brace expansion、control flow、未知 node type，或 runtime-determined command name 都會轉成 `too-complex`。
+部分 command substitution 可被遞迴抽出：inner command 也加入 `commands[]`，outer argument 放入 placeholder，再分別做 permission check。這不表示所有 expansion 都可接受。Process substitution、無法解析的 parameter/arithmetic/brace expansion、未知 node type，或 runtime-determined command name 仍會轉成 `too-complex`。
+
+`for_statement`、`if_statement`、`while_statement` 是高風險 shell control flow，但不是僅因 node type 就必然 `too-complex`。Walker 有專用 branch，會抽取 condition、iteration source 與各 branch/body 的 commands，並用 scope copy、unknown-value placeholder 等方式避免條件分支或 loop variable 汙染後續分析。若 body 只使用能靜態證明的內容，整體可回 `simple`；若 loop variable 被當作 bare path/flag、特殊變數繞過 assignment validation，或 branch scope 無法證明，才保守回 `too-complex`。
 
 ## simple、too-complex、parse-unavailable 的分流
 
@@ -161,7 +168,7 @@ parser unavailable
 
 AST path 優先使用每個 `SimpleCommand.text`；只有 `parse-unavailable` 才依賴 `splitCommand_DEPRECATED()`。Legacy splitter 會保留 quote、處理 line continuation、heredoc placeholder、operator token，並將可安全辨識的 output redirection 從 subcommand 文字移除；redirect target 仍由獨立 path validation 檢查。
 
-以下為 compound handling 的**真實原始碼節錄（abridged）**：
+以下是 pipe aggregation 的**真實原始碼節錄（abridged）**：
 
 ```ts
 for (const segment of segments) {
@@ -181,11 +188,14 @@ if (allAllowed) {
 return { behavior: 'ask', /* collected suggestions */ }
 ```
 
-輸入是 pipe 或 operator 拆出的 segments；每段不是直接做字串 prefix check，而是重新進完整 Bash permission flow。輸出以 deny 優先，只有全部 allow 才 allow，其餘 ask。安全理由是：`git status | curl ...` 不能因第一段安全就放行第二段。
+輸入只是在 pipe path 中重建出的 segments；每段不是直接做字串 prefix check，而是重新進完整 Bash permission flow。輸出以 deny 優先，只有全部 allow 才 allow，其餘 ask。安全理由是：`git status | curl ...` 不能因第一段安全就放行第二段。
+
+一般 `&&`、`||`、`;` 不走上述 helper。`bashToolHasPermission()` 會取得 AST-derived leaf spans（legacy 時才用 splitter），先以 `bashToolCheckPermission()` 對每個 subcommand 做 exact、deny/ask、path、allow、mode/read-only 檢查；尚未作最終決定的 leaf 才進 `checkCommandAndSuggestRules()`，最後在同一函式內聚合。
 
 實際 branch 還包含：
 
-- subshell 或 command group：視為 unsafe compound，直接 `ask`，不建議保存 allow rule；
+- subshell：AST walker 有專用 branch，會以 isolated scope 抽取 inner commands，因此可先得到 `simple`；若沒有更早的 deny short-circuit，後續 operator analysis 看到 `hasSubshell` 後會走 unsafe-compound `ask`，不產生 suggestion；
+- command group：若 parser 產生 `compound_statement`，security walker 沒有同等的 allowlisted collector branch，會落入 `too-complex`；此時先走 `checkEarlyExitDeny()`，所以 exact deny/ask/allow 或 full-command prefix/wildcard deny仍可能先返回，未命中才 conservative `ask`；
 - pipe：保留 quote 拆 segment，移除 output redirects 後逐段遞迴；
 - pipe segments 全 allow 後：仍回頭驗證原 command 的 redirect 與 path，避免 redirect 因拆分而消失；
 - 多個 `cd`，或同一 compound 中同時出現 `cd` 與 `git`：保守 `ask`；
@@ -273,7 +283,7 @@ Deny/ask 的候選生成較 aggressive：`stripAllLeadingEnvVars()` 與 `stripSa
 | raw command | parser / decomposition | candidate 或 stripping | stripping 停止點 | 可匹配 rule style 與原因 |
 |---|---|---|---|---|
 | `git status` | `simple`；一個 leaf，argv 約為 `["git","status"]` | `git status` | 無 prefix 可剝 | exact `git status`、prefix `git:*` / `git status:*`、wildcard `git *` |
-| `git status && curl example.com` | `simple`；兩個 leaf，各自檢查 | `git status`、`curl example.com` | operator 不屬於任何 leaf | 每段可各自 exact/prefix/wildcard；allow prefix 不直接匹配整條 compound |
+| `git status && curl example.com` | `simple`；兩個 leaf，由一般 compound path 做較低層 per-subcommand checks，不走 pipe recursion | `git status`、`curl example.com` | operator 不屬於任何 leaf | 每段可各自 exact/prefix/wildcard；allow prefix 不直接匹配整條 compound |
 | `FOO=bar bazel run //target` | `simple`；assignment 與 argv 分離，但下游 rule matcher 仍使用 source span | allow candidates 保留原文；deny/ask fixed point 可得 `bazel run //target` | allow 在 `FOO` 停止，因 `FOO` 不在 safe allowlist | exact 原文可匹配；deny/ask 的 `bazel:*` / wildcard 可匹配；一般 allow `bazel:*` 不可藉 arbitrary `FOO` 命中 |
 | `timeout 30 bazel test //...` | `simple`；semantic check 可辨識 wrapper；一個 wrapped command | 原文與 `bazel test //...` | duration/flags 必須符合 allowlisted grammar；未知 flag/value fail closed | `bazel test:*` allow/deny/ask 可匹配 stripped candidate；自動 suggestion 對原文第二 token 為 `30`，通常退回 exact |
 | `RUN=/tmp/tool python3 script.py` | `simple`；leading assignment | deny/ask 可得 `python3 script.py`；allow 保留 `RUN=...` | allow 在非-safe `RUN` 停止 | exact 原文；deny/ask 可命中 `python3:*`；allow `python3:*` 不命中 |
@@ -296,7 +306,8 @@ path/sed/read-only checks        → command-specific constraints
 - unknown AST node、parse error、control character、Unicode whitespace、special expansion 無法靜態求值：`too-complex`；
 - parser abort：`too-complex`，不 legacy downgrade；
 - legacy malformed syntax：在 exact matching 前直接 `ask`；
-- subshell/command group：`ask` 且不建議 rule；
+- subshell 若先被 walker 證明為 `simple`：後續 unsafe-operator branch `ask` 且不建議 rule；
+- command group / `compound_statement` 若成為 `too-complex`：先檢查 exact deny/ask/allow 與 full-command deny，未命中才 `ask`；
 - dangerous semantic builtin 或 wrapper flag 無法定位 wrapped command：先執行 deny enforcement，再 `ask`；
 - safety validator 發現 injection/misparsing concern：`ask`，`suggestions: []`；
 - compound 任一 subcommand deny：整體 deny；
@@ -337,7 +348,12 @@ sudo、doas、pkexec
 
 `sh:*` / `bash:*` 可透過 `-c` 執行任意 shell program；`env:*`、`sudo:*` 與 exec-style wrappers 也能把任意後續 command 放在 prefix 之後。因此 source 寧可建議 exact `sh -c "..."`，也不自動產生可泛化成 arbitrary code execution 的 prefix。
 
-Heredoc 與 multiline command 另有穩定性處理：嘗試取 heredoc 前的窄 prefix，或第一行 prefix；若無法安全抽取，仍回 exact。Compound suggestions 會去重並設定數量上限，避免一次批准產生無界 allow rules。
+Heredoc 與 multiline command 另有穩定性處理：嘗試取 heredoc 前的窄 prefix，或第一行 prefix；若無法安全抽取，仍回 exact。
+
+Suggestion aggregation 也分兩條路：
+
+- 一般 `&&`、`||`、`;` compound aggregation 會從各 subcommand 抽取 rules，以字串表示去重，再只保留左側前 `MAX_SUGGESTED_RULES_FOR_COMPOUND` 筆。
+- Pipe 的 `segmentedCommandPermissionResult()` 只把非-allow segment 的 `suggestions` 依序 `push(...result.suggestions)`；該 helper 本身沒有套用上述 rule-level dedup 或相同 cap。
 
 ## dangerous permission cleanup
 
@@ -418,6 +434,7 @@ raw input:
 
 parser result:
   simple；兩個 leaf commands
+  這是一般 && compound path，不是 pipe segment recursion
 
 normalized candidates:
   "git status"
@@ -433,7 +450,7 @@ safety result:
 final PermissionResult:
   deny
   decisionReason.type = "subcommandResults"
-  原因是任一 subcommand deny 優先於其他 allow
+  原因是一般 compound aggregation 中任一 subcommand deny 優先於其他 allow
 ```
 
 ### 案例三：safe env + wrapper-prefixed command
