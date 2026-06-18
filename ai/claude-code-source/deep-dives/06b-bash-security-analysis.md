@@ -47,7 +47,7 @@ flowchart TD
     E --> H{"operator / decomposition"}
     G --> H
     H -->|pipe| P["BashTool<br/>reconstruct segments + recursively re-check each"]
-    H -->|&& / || / ; / ordinary leaves| I["rule matcher<br/>lower-level per-subcommand checks"]
+    H -->|&& / &#124;&#124; / ; / ordinary leaves| I["rule matcher<br/>lower-level per-subcommand checks"]
     P --> Q["BashTool helper<br/>pipe-specific result aggregation"]
     I --> N["candidate normalization<br/>exact/prefix/wildcard"]
     Q -->|deny / ask| L
@@ -67,7 +67,7 @@ flowchart TD
 4. `simple` 先跑 `checkSemantics()`；通過後保存 AST-derived subcommands、redirects 與 `SimpleCommand[]`。
 5. `parse-unavailable` 才走 legacy `tryParseShellCommand()`、`splitCommand_DEPRECATED()` 與 regex safety validators。Malformed syntax 直接 `ask`。
 6. Operator analysis 先處理 unsafe structure 與 pipe。只有 pipe segments 會在重建並移除 segment output redirection 後，逐段遞迴回完整的 `bashToolHasPermission()`。
-7. `&&`、`||`、`;` 等一般 compound/list 則使用 AST/legacy 拆出的 leaf subcommands，直接呼叫較低層的 `bashToolCheckPermission()`，再視需要進 `checkCommandAndSuggestRules()`，不是同一條 pipe recursion。
+7. `&&`、`||`、`;` 等一般 compound/list 則使用 AST/legacy 拆出的 leaf subcommands，先對每個 leaf 呼叫較低層的 `bashToolCheckPermission()`；若流程未因整體 deny、單一 ask、exact allow 或全 allow 等條件提前返回，multi-subcommand aggregation 會再對所有 leaves 呼叫 `checkCommandAndSuggestRules()`，包括先前已 allow 的 leaf。這不是同一條 pipe recursion。
 8. 兩條 aggregation 都是任一 deny 優先、全部 allow 才 allow；但一般 compound 與 pipe 對 ask/passthrough、suggestions 的聚合細節不同。
 9. command-level `PermissionResult` 回到通用 permission layer；`passthrough` 不是 allow，通常會在 06a 的通用層成為 `ask`。
 
@@ -190,7 +190,7 @@ return { behavior: 'ask', /* collected suggestions */ }
 
 輸入只是在 pipe path 中重建出的 segments；每段不是直接做字串 prefix check，而是重新進完整 Bash permission flow。輸出以 deny 優先，只有全部 allow 才 allow，其餘 ask。安全理由是：`git status | curl ...` 不能因第一段安全就放行第二段。
 
-一般 `&&`、`||`、`;` 不走上述 helper。`bashToolHasPermission()` 會取得 AST-derived leaf spans（legacy 時才用 splitter），先以 `bashToolCheckPermission()` 對每個 subcommand 做 exact、deny/ask、path、allow、mode/read-only 檢查；尚未作最終決定的 leaf 才進 `checkCommandAndSuggestRules()`，最後在同一函式內聚合。
+一般 `&&`、`||`、`;` 不走上述 helper。`bashToolHasPermission()` 會取得 AST-derived leaf spans（legacy 時才用 splitter），先以 `bashToolCheckPermission()` 對每個 subcommand 做 exact、deny/ask、path、allow、mode/read-only 檢查。若未被前段整體 early return 截止，multi-subcommand aggregation 會對每個 leaf 都再執行 `checkCommandAndSuggestRules()`，包含第一次檢查已 allow 的 leaf；接著判斷是否全 allow，並只從 non-allow results 收集需要批准的 rules/suggestions。
 
 實際 branch 還包含：
 
