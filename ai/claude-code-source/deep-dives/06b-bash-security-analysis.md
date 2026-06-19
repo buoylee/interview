@@ -402,7 +402,9 @@ and, if permission otherwise authorizes execution, skips OS containment
 
 ## 走一遍具體案例
 
-以下案例為了得到 deterministic outcome，明示假設：parser 可用、沒有 prompt classifier 額外規則、path checks 無額外阻擋，且只列出的 Bash rules 存在。
+以下案例為了得到 deterministic outcome，明示假設：除案例四另列的 parser-unavailable branch 外，parser 可用；沒有 prompt classifier 額外規則、path checks 無額外阻擋，且只列出的 Bash rules 存在。案例一至三另假設 sandbox-backed auto-allow 不啟用或不符合資格，也就是 `SandboxManager.isAutoAllowBashIfSandboxedEnabled()` 與 `shouldUseSandbox(input)` 的 gate 不成立，讓流程刻意進入 ordinary exact/compound/rule processing。若該 gate 成立，Bash 可能更早返回 sandbox auto-allow，`decisionReason` 與 aggregation 細節也會不同。
+
+案例四不需要這項 sandbox assumption：parser 可用的 `too-complex` branch 與 parser 不可用的 malformed-syntax branch，都會在 sandbox auto-allow gate 之前返回。
 
 ### 案例一：simple exact allow
 
