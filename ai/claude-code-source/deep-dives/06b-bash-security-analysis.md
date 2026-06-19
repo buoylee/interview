@@ -44,8 +44,11 @@ flowchart TD
     D -->|simple| E["parser<br/>SimpleCommand[] + semantic checks"]
     D -->|too-complex| F["rule matcher<br/>exact deny/ask/allow + deny fallback"]
     D -->|parse-unavailable| G["parser<br/>legacy shell-quote / split fallback"]
-    E --> H{"operator / decomposition"}
-    G --> H
+    E --> R{"sandbox auto-allow gate<br/>enabled + autoAllowBashIfSandboxed + shouldUseSandbox"}
+    G --> R
+    R -->|eligible| S["permission fast path<br/>explicit deny/ask else sandbox-backed allow"]
+    S --> L
+    R -->|ineligible| H{"operator / decomposition"}
     H -->|pipe| P["BashTool<br/>reconstruct segments + recursively re-check each"]
     H -->|&& / &#124;&#124; / ; / ordinary leaves| I["rule matcher<br/>lower-level per-subcommand checks"]
     P --> Q["BashTool helper<br/>pipe-specific result aggregation"]
@@ -66,10 +69,11 @@ flowchart TD
 3. `too-complex` 不進一般拆分：先尊重 exact deny/ask/allow 與 prefix/wildcard deny，否則直接 `ask` 且不產生 suggestion。
 4. `simple` 先跑 `checkSemantics()`；通過後保存 AST-derived subcommands、redirects 與 `SimpleCommand[]`。
 5. `parse-unavailable` 才走 legacy `tryParseShellCommand()`、`splitCommand_DEPRECATED()` 與 regex safety validators。Malformed syntax 直接 `ask`。
-6. Operator analysis 先處理 unsafe structure 與 pipe。只有 pipe segments 會在重建並移除 segment output redirection 後，逐段遞迴回完整的 `bashToolHasPermission()`。
-7. `&&`、`||`、`;` 等一般 compound/list 則使用 AST/legacy 拆出的 leaf subcommands，先對每個 leaf 呼叫較低層的 `bashToolCheckPermission()`；若流程未因整體 deny、單一 ask、exact allow 或全 allow 等條件提前返回，multi-subcommand aggregation 會再對所有 leaves 呼叫 `checkCommandAndSuggestRules()`，包括先前已 allow 的 leaf。這不是同一條 pipe recursion。
-8. 兩條 aggregation 都是任一 deny 優先、全部 allow 才 allow；但一般 compound 與 pipe 對 ask/passthrough、suggestions 的聚合細節不同。
-9. command-level `PermissionResult` 回到通用 permission layer；`passthrough` 不是 allow，通常會在 06a 的通用層成為 `ask`。
+6. Sandbox 與 `autoAllowBashIfSandboxed` 都啟用時，`shouldUseSandbox(input)` 是 sandbox-backed auto-authorization fast path 的必要條件。命中 `excludedCommands` 會令它回 false，因此不進此 fast path，而是繼續 ordinary ask/rule handling；`excludedCommands` 本身不產生 allow 或 deny。
+7. Operator analysis 先處理 unsafe structure 與 pipe。只有 pipe segments 會在重建並移除 segment output redirection 後，逐段遞迴回完整的 `bashToolHasPermission()`。
+8. `&&`、`||`、`;` 等一般 compound/list 則使用 AST/legacy 拆出的 leaf subcommands，先對每個 leaf 呼叫較低層的 `bashToolCheckPermission()`；若流程未因整體 deny、單一 ask、exact allow 或全 allow 等條件提前返回，multi-subcommand aggregation 會再對所有 leaves 呼叫 `checkCommandAndSuggestRules()`，包括先前已 allow 的 leaf。這不是同一條 pipe recursion。
+9. 兩條 aggregation 都是任一 deny 優先、全部 allow 才 allow；但一般 compound 與 pipe 對 ask/passthrough、suggestions 的聚合細節不同。
+10. command-level `PermissionResult` 回到通用 permission layer；`passthrough` 不是 allow，通常會在 06a 的通用層成為 `ask`。
 
 ## BashTool 輸入與 PermissionResult
 
@@ -374,10 +378,14 @@ Source 的責任切分是：
 
 ```text
 permission decides authorization
-excludedCommands only influences whether an authorized command skips containment
+excludedCommands makes shouldUseSandbox(input) false
+therefore it disables the sandbox-backed auto-authorization fast path
+and, if permission otherwise authorizes execution, skips OS containment
 ```
 
-`shouldUseSandbox()` 只有在 sandbox 已啟用、沒有合法 explicit override、command 存在，且 `containsExcludedCommand()` 沒命中時才回 true。這裡不解釋 containment 如何運作；關鍵是 `excludedCommands` 不會把未授權 command 變成已授權。
+`shouldUseSandbox()` 只有在 sandbox 已啟用、沒有合法 explicit override、command 存在，且 `containsExcludedCommand()` 沒命中時才回 true。`bashToolHasPermission()` 又把它列為 `autoAllowBashIfSandboxed` fast path 的必要條件。因此 excluded command 不符合 sandbox-backed auto-authorization 資格，會落回 ordinary ask/rule handling；若 permission 最終仍授權執行，同一個 false 結果也使 execution path 不使用 OS containment。
+
+這裡不展開 06a 的通用 permission precedence，也不解釋 06c 的 containment 實作。責任邊界是：permission 始終擁有 authorization；`excludedCommands` 從不直接 grant、deny 或取代 permission，也不是 security boundary。
 
 `containsExcludedCommand()` 重用 permission rule parser 與 matcher：
 
@@ -388,7 +396,9 @@ excludedCommands only influences whether an authorized command skips containment
 - parse failure 時 fallback 為 `[original command]`，避免 rendering/selection crash；
 - `BINARY_HIJACK_VARS = /^(LD_|DYLD_|PATH$)/` 命中時停止 env stripping，避免把「其實會換 binary/library」的 prefix 藏掉。
 
-例如 `timeout 300 FOO=bar bazel run` 可經 fixed point 得到 `bazel run`；但 `PATH=/tmp/bin bazel run` 在 `PATH` 停止。這仍只是 convenience matcher。繞過它的後果是 command 沒有如預期跳過 containment，而不是 permission authorization 被繞過；source 也明示 export-then-command 等形式可能繞過此 heuristic，並不把它視為 security-boundary failure。
+例如 `timeout 300 FOO=bar bazel run` 可經 fixed point 得到 `bazel run`；但 `PATH=/tmp/bin bazel run` 在 `PATH` 停止。若 `bazel:*` 位於 `excludedCommands`，前者會令 `shouldUseSandbox()` 回 false：即使 `autoAllowBashIfSandboxed` 已啟用，也不會因此自動獲得 sandbox-backed allow，而是回到 ordinary ask/rule handling；只有 permission 以其他路徑授權後，才會在沒有 OS containment 的 execution path 執行。
+
+這仍只是 convenience matcher。繞過它的後果是 command 可能仍符合 sandbox-backed auto-authorization 並使用 containment，而不是 permission authorization 被繞過；source 也明示 export-then-command 等形式可能繞過此 heuristic，並不把它視為 security-boundary failure。
 
 ## 走一遍具體案例
 
@@ -525,7 +535,7 @@ final PermissionResult:
 - **證據**：`parseForSecurityFromAst()` 明確區分 parser unavailable 與 parser abort；後者回 `too-complex`。
 - **證據**：`matchingRulesForInput()` 對 deny/ask 設定 `stripAllEnvVars: true`，allow 沒有；候選 fixed-point loop 與 allow compound rejection 都在 matcher source 中。
 - **證據**：`getSimpleCommandPrefix()` 與 `BARE_SHELL_PREFIXES` 說明 suggestion 比 matching 更保守；它們不是同一套 normalization policy。
-- **證據**：`shouldUseSandbox.ts` 的 source comment 直接聲明 `excludedCommands` 是 user-facing convenience，不是 security boundary。
+- **證據**：`shouldUseSandbox.ts` 令命中 `excludedCommands` 的 input 回 false；`bashPermissions.ts` 同時把 `shouldUseSandbox(input)` 作為 `autoAllowBashIfSandboxed` fast path 的必要條件。Source comment 直接聲明這是 user-facing convenience，不是 security boundary，permission prompt/system 才是 authorization control。
 - **版本限制**：tree-sitter feature、shadow mode、classifier、internal `USER_TYPE` 與 killswitch 會改變 active branch 或 cleanup set。
 - **推論**：表格中的 argv 省略 parser 內部 placeholder 與 source byte offsets；這不改變列出的 rule-matching結論。
 - **尚未確認**：此 read-only snapshot 未包含可直接執行的完整 test harness；本文的 deterministic 案例以 source branch、call relation 與 source comments 為證，未宣稱做過 runtime integration experiment。
@@ -539,7 +549,7 @@ final PermissionResult:
 | `src/tools/BashTool/bashPermissions.ts` | `bashToolHasPermission`、`bashToolCheckExactMatchPermission`、`bashToolCheckPermission`、`checkCommandAndSuggestRules`、`filterRulesByContentsMatchingInput`、`stripSafeWrappers`、`stripAllLeadingEnvVars`、`getSimpleCommandPrefix`、`getFirstWordPrefix` |
 | `src/tools/BashTool/bashCommandHelpers.ts` | `checkCommandOperatorPermissions`、`bashToolCheckCommandOperatorPermissions`、`segmentedCommandPermissionResult` |
 | `src/tools/BashTool/bashSecurity.ts` | `bashCommandIsSafeAsync_DEPRECATED` 與 legacy validators |
-| `src/tools/BashTool/shouldUseSandbox.ts` | `containsExcludedCommand`、`shouldUseSandbox`；只決定 containment selection |
+| `src/tools/BashTool/shouldUseSandbox.ts` | `containsExcludedCommand`、`shouldUseSandbox`；回傳值同時控制 sandbox-backed auto-authorization eligibility 與 execution containment selection，本身不作 authorization decision |
 | `src/utils/bash/ast.ts` | `ParseForSecurityResult`、`parseForSecurity`、`parseForSecurityFromAst`、`walkProgram`、`collectCommands`、`checkSemantics` |
 | `src/utils/bash/parser.ts` | `parseCommandRaw`、`PARSE_ABORTED`、feature/length gate |
 | `src/utils/bash/bashParser.ts` | pure-TypeScript parser、50ms timeout、50,000 node budget |
