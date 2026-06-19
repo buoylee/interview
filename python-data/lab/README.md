@@ -27,6 +27,17 @@ uv run python demos/async_vs_sync.py     # 20 并发:sync vs async 吞吐
 
 > `isolation.py` 会改 `accounts.balance`,跑前先 `seed.py` 复位。
 
+迁移演示(配 [ch07](../07-migrations.md)):
+
+```bash
+uv run python -c "from db import make_engine; from models import Base; Base.metadata.drop_all(make_engine())"  # 清空
+uv run alembic revision --autogenerate -m "initial schema"   # 对比模型与库,生成迁移
+uv run alembic upgrade head                                  # 应用;alembic current 看版本
+uv run python seed.py                                        # 复原,继续其它 demo
+```
+
+> `seed.py` 用 `create_all` 走快捷路径;`alembic/` 是独立的真迁移演示,两者产出同一 schema。
+
 ## 实测数字(本机)
 
 > Postgres 16 / SQLAlchemy 2.0.51 / psycopg 3.3.4 / asyncpg 0.31.0 / Python 3.11 / Apple Silicon。**你的数字会不同**;完整输出见 `CAPTURED.md`。
@@ -47,6 +58,7 @@ uv run python demos/async_vs_sync.py     # 20 并发:sync vs async 吞吐
 | `models.py` | `Author`/`Book`/`Account`(SQLAlchemy 2.0 风格) |
 | `seed.py` | 建表 + 灌可复现数据 |
 | `demos/` | 四个现象各一个独立脚本 |
+| `alembic/` + `alembic.ini` | 迁移演示(env.py 接 `models.Base.metadata`),配 ch07 |
 | `CAPTURED.md` | 实测原始输出存档 |
 
 > 关停:`docker compose down`(加 `-v` 连数据卷一起删)。

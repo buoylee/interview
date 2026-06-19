@@ -49,3 +49,27 @@ async: 20 concurrent                   = 0.28s  (speedup 3.7x)
 ```
 
 要点:async ~3.7x,而非理论的 20x——20 条新 async 连接的建连/握手开销吃掉一部分。诚实的现实数字:**async 赢在「大量并发等待」,赢幅受连接与事件循环开销折损**。
+
+## migrations(Alembic)
+
+`alembic/` 接到 `models.Base.metadata`(env.py 注入 `db.SYNC_URL`)。空库上 `alembic revision --autogenerate`:
+
+```
+INFO  [alembic.autogenerate.compare.tables] Detected added table 'accounts'
+INFO  [alembic.autogenerate.compare.tables] Detected added table 'authors'
+INFO  [alembic.autogenerate.compare.tables] Detected added table 'books'
+Generating .../alembic/versions/8b46a381d163_initial_schema.py ... done
+```
+
+生成的 `upgrade()` 是正确的 `op.create_table(...)`(含 `ForeignKeyConstraint(['author_id'], ['authors.id'])`)。`alembic upgrade head` 应用后:
+
+```
+INFO  [alembic.runtime.migration] Running upgrade  -> 8b46a381d163, initial schema
+$ alembic current
+8b46a381d163 (head)
+$ tables -> ['accounts', 'alembic_version', 'authors', 'books']
+```
+
+要点:autogenerate **可靠测出加表/列 + 外键**(实测三张表 + FK 都对);它**测不准改名/类型转换/数据迁移**(见 ch07,需手写 + review)。`alembic_version` 表记录当前版本。
+
+> 注:`seed.py` 用 `Base.metadata.create_all` 走快捷路径(给其它 demo 快速建表);`alembic/` 是独立的「真迁移」演示。两者产出同一份 schema。

@@ -55,6 +55,15 @@ def upgrade():
     op.alter_column("books", "slug", nullable=False)                       # 再收紧
 ```
 
+> **实测**(`lab/alembic/`,env.py 接到 `models.Base.metadata`)。空库上 `alembic revision --autogenerate`:
+> ```
+> Detected added table 'accounts'
+> Detected added table 'authors'
+> Detected added table 'books'
+> Generating .../versions/8b46a381d163_initial_schema.py ... done
+> ```
+> 生成的 `upgrade()` 是正确的 `op.create_table(...)`,且**外键被识别**(`ForeignKeyConstraint(['author_id'], ['authors.id'])`)。`alembic upgrade head` 后 `alembic current` → `8b46a381d163 (head)`,`alembic_version` 表记录版本。**加表/列/外键 autogenerate 测得准**;改名/类型转换/数据迁移测不准(上面那几条),要手写。lab 里能自己跑一遍验证。
+
 ## 三、zero-downtime:线上改表的套路
 
 线上大表的 DDL 可能**锁表**,几秒到几分钟,期间服务读写全卡。原则:**任何一次部署,新旧代码要能同时跑在同一个 schema 上**(因为滚动发布期间两版本并存)。于是危险变更都拆成**多次部署、每步都兼容**。
