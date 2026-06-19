@@ -40,6 +40,7 @@
 | 19 | [实战骨架](19-production-skeleton.md) | 项目结构、配置/密钥、生产 logging、错误边界、12-factor |
 | 20 | [编码面试工具箱](20-coding-interview-toolkit.md) | heapq/bisect/deque、sorted(key=)、复杂度、切片技巧 |
 | 21 | [Python↔C 边界](21-python-c-boundary.md) | 缓冲区协议、memoryview、struct/array、ctypes/cffi |
+| 22 | [数据访问(桥接章)](22-data-access-bridge.md) | 选型决策树、事务/N+1/池一句话;深度 → python-data/ |
 | 99 | [面试卡](99-interview-cards.md) | 各章高频题汇总 + 猜输出 drill 合集 |
 
 ## 与仓库其他目录的关系
@@ -50,3 +51,4 @@
 - **性能剖析/调试** → [`../performance-tuning-roadmap/06a-python-profiling`](../performance-tuning-roadmap/06a-python-profiling)、[`06b-python-debugging`](../performance-tuning-roadmap/06b-python-debugging)。第 15 章讲内部机制与心智,工具实操在那里。
 - **Web/服务可观测性** → [`../fastapi-ops/`](../fastapi-ops/):FastAPI 指标/追踪/日志/压测/调优。
 - **零拷贝/二进制/FFI 的语言层** 就在本章(ch21);更深的**性能剖析与原生扩展工程化**仍指 [`../performance-tuning-roadmap/`](../performance-tuning-roadmap/)。
+- **数据访问深度** → [`../python-data/`](../python-data/):driver/连接池/ORM/Session/事务边界/N+1/async/迁移/repository,含可跑 Postgres lab(池耗尽/N+1/隔离/async 吞吐实测)。第 22 章只讲"怎么选",实操在那里。
