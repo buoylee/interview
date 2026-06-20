@@ -41,7 +41,7 @@
 | [`testing/`](testing/) | 3 | table-driven / mock·DI / benchmark·fuzzing·集成测试 | ✅ 完整 |
 | [`design/`](design/) | 4 | 小接口·消费方定义 / 组合优于继承·DI / 函数式选项 / 并发安全 API | ✅ 完整 |
 | [`stdlib/`](stdlib/) | 4 | io 接口家族 / net/http / encoding·json / database/sql | ✅ 完整 |
-| [`service-design/`](service-design/) | 4 | 服务骨架·优雅关闭 / gRPC vs REST / 中间件横切 / 可观测性接入 | ⬜ 待建 |
+| [`service-design/`](service-design/) | 4 | 服务骨架·优雅关闭 / gRPC vs REST / 中间件横切 / 可观测性接入 | ✅ 完整 |
 
 合计约 38 章 + 9 套面试卡，增量交付。
 
@@ -60,7 +60,8 @@
 | `testing/` | ✅ 完整 | 3 章 + 面试卡(速答表 + 3 张深题卡) |
 | `design/` | ✅ 完整 | 4 章 + 面试卡(速答表 + 4 张深题卡) |
 | `stdlib/` | ✅ 完整 | 4 章 + 面试卡(速答表 + 4 张深题卡) |
-| 其余 1 条主线(C 层) | ⬜ 待建 | service-design(最后一条) |
+| `service-design/` | ✅ 完整 | 4 章 + 面试卡(速答表 + 4 张深题卡) |
+| **全部 9 条主线** | ✅ **完成** | **38 章 + 9 套面试卡,master 教程交付完毕** |
 
 ## 关联已有笔记（复用不重复）
 
