@@ -176,6 +176,41 @@ print("ß".lower())                  # 'ß' —— lower 不折叠
 
 `tuple` 不只是"不可变的 list"——因为不可变所以**可哈希**,能当 `dict` 键或放进 `set`;`list` 不行。`range(1_000_000)` 不会真造一百万个数,它惰性按需产出(Python 3 的 `range` 是对象不是 list)。
 
+### `range` 的三种形式
+
+`range` 循环里天天用,但参数语义和 Java/Go 的 `for (i=0; i<n; i++)` 不是逐字对应,值得说清三种形式:
+
+```python
+range(stop)               # 0,1,…,stop-1         start 默认 0、step 默认 1
+range(start, stop)        # start,…,stop-1
+range(start, stop, step)  # 按 step 跳,可负
+```
+
+```python
+list(range(5))            # [0, 1, 2, 3, 4]       不含 5
+list(range(2, 5))         # [2, 3, 4]
+list(range(0, 10, 2))     # [0, 2, 4, 6, 8]
+list(range(10, 0, -1))    # [10, 9, …, 1]         负步长倒序
+```
+
+**两个和别的语言差异最大的直觉:**
+
+- **左闭右开**:含 `start`、**不含 `stop`**。所以 `range(len(xs))` 正好覆盖全部合法下标 `0..len-1`,天然不越界——这是它和切片 `[start:stop]`、`enumerate` 共用的同一套区间约定,**记一次用三处**。
+- **倒序必须靠负 `step`**,没有"自动反向":`range(5, 0)` 是**空**的(start≥stop 且 step>0 → 一个都不产)。要倒序写 `range(n-1, -1, -1)`,或更易读的 `reversed(range(n))`。
+
+`range` 不只是"能 for 的东西",它是个**惰性序列对象**,支持序列操作而不展开成 list:
+
+```python
+r = range(0, 100, 2)
+len(r)        # 50               O(1),不遍历
+r[10]         # 20               支持索引
+r[5:8]        # range(10, 16, 2) 切片结果还是 range
+50 in r       # True             O(1) 解方程判断,不逐个扫
+49 in r       # False
+```
+
+最后一条尤其反直觉:`x in range(...)` 是**常数时间**(它按等差数列算,不像 `x in list` 要逐个比)。但日常别把它当容器用——真要存一串数就 `list(range(...))`。
+
 ### 切片(slicing)
 
 切片是 Python 序列的瑞士军刀,语法 `seq[start:stop:step]`,几个关键行为:
@@ -309,6 +344,7 @@ print({1, 2, 3} & {2, 3, 4})   # {2, 3} 交集;| 并,- 差,^ 对称差
 | 取模符号 | 随被除数 | 随除数 |
 | 舍入 | `Math.round` 逢五进一 | `round()` 银行家舍入(五成双);要逢五进一用 `Decimal`+`ROUND_HALF_UP` |
 | NaN | `Double.NaN`,`==` 也为 false | `float('nan')`,但 `nan in [nan]` 可为 True(容器先比 `is`);判它用 `math.isnan` |
+| 循环计数 | `for(i=0;i<n;i++)`,自己控边界 | `range(n)` 左闭右开惰性序列;倒序 `range(n-1,-1,-1)` 或 `reversed(range(n))` |
 | 哈希表顺序 | `HashMap` 无序(`LinkedHashMap` 才有序) | `dict` 默认保插入序(语言保证) |
 | 遍历时改集合 | `ConcurrentModificationException` | dict/set 抛 `RuntimeError`;**list 静默漏删** |
 | 不可变集合作 key | 任意 `equals`/`hashCode` 对象 | 必须可哈希:用 `tuple`/`frozenset`,不能用 `list` |
