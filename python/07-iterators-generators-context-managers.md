@@ -18,6 +18,8 @@ print(iter(it) is it)     # True  —— 迭代器的 __iter__ 返回自己
 
 关键区别:**可迭代对象可以被遍历多次**(每次 `for` 重新要一个迭代器);**迭代器是一次性的**,走到头就空了。`for x in obj` 的真实过程是:先 `iter(obj)` 拿迭代器,再反复 `next()` 直到 `StopIteration`。
 
+> **挂回地图**:这套「可迭代协议」就是全书四原语之 **②**(见[第 03 章〇节](03-control-flow-comprehensions.md)的总览地图)。第 03 章的 `for`/`enumerate`/`zip`/`*args`/推导式、本章的生成器与 `itertools`,凡是「能被 `for` 走一遍」的东西都共用这一套协议——这正是它们能无缝拼成数据管道的原因,不是各自独立的语法。
+
 自己实现一个迭代器:
 
 ```python

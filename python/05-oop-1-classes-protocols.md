@@ -119,6 +119,24 @@ print(hasattr(b, "__secret"))        # False —— 真实名字带类前缀,直
 
 心智:**默认公开;实现细节用 `_x` 表态;只有写基类、确实怕子类命名撞车时才用 `__x`。** 绝大多数业务代码 `_x` 就够,`__x` 反而少见。
 
+### 「外层真能拿到一切吗?」——边界与真想挡的手段
+
+对**普通纯 Python 类**,基本是的:`vars(obj)`/`obj.__dict__` 会把所有属性摊开,连 `__x` 的改写名 `_Class__x` 都在里面——保护是**社会性的**(约定+文档),不是技术性的。这正是序列化、ORM、调试器、Mock 能"伸手进对象"的根基(Java 做这些得靠反射强行突破 `private`)。
+
+但「任何对象的任何属性都能随便拿」是过头话,两个反例:
+
+- **C 实现的内置类型天然封闭**:`(42).foo = 1` 直接 `AttributeError`——int/str/tuple 默认没 `__dict__`,内部字段不暴露成 Python 属性。
+- **你主动设防也能真挡住**:
+
+| 想要 | 手段 | 强制力 |
+|--|--|--|
+| 表达"内部用,别碰" | `_x` | 0(纯约定,够用) |
+| 防子类命名撞车 | `__x` | 弱(改名,可绕过) |
+| **只读**对外属性 | `@property` 不写 setter | 真能挡写(`obj.x=...` 报错) |
+| 真要禁止读取 | 重写 `__getattribute__` / `__slots__` / C 扩展 | 强(但极少值得) |
+
+哲学是 **"we're all consenting adults"**:语言只提供"意图表达"(`_x`/`__x`),把"破不破"交给调用者职业操守——和 Java `private`(反射照样破,本质也是设计约束而非安全边界)只是把约束强度调到了更低。实战 90% 用 `_x`;要只读上无 setter 的 `property`;`__getattribute__` 那种基本只在写框架时碰。
+
 ## 四、方法的三种类型
 
 ```python
@@ -141,6 +159,79 @@ Pizza.oven_temp()                  # 450
 - **实例方法**:收 `self`,操作实例。
 - **`@classmethod`**:收 `cls`(类本身),最常见用途是**替代构造器**(`dict.fromkeys`、`datetime.now` 都是),且子类调用时 `cls` 是子类,天然支持继承。
 - **`@staticmethod`**:不收 `self`/`cls`,逻辑上属于类但不依赖实例/类状态。如果只是个工具函数,Python 更推荐直接写成**模块级函数**,别为了模仿 Java 硬塞进类里。
+
+### 方法内部能同时拿到"实例"和"类"吗?
+
+能——但要分清"形参自动注入"和"内部能取到"两件事。描述符协议**不会**给同一个方法同时注入 `self` 和 `cls`:实例方法只拿 `self`,classmethod 只拿 `cls`。但**实例方法内部本来就同时握有两者**——实例是 `self`,类用 `type(self)` 取:
+
+```python
+class Foo:
+    def m(self):
+        cls = type(self)       # 当前实例的类
+        return self, cls
+```
+
+反过来,**`@classmethod` 拿不到 `self`,且不是"不方便"而是"根本没有实例可拿"**。即便你用实例去调 classmethod,实例也会被**丢弃**,只取它的类:
+
+```python
+class Foo:
+    @classmethod
+    def cm(cls):
+        return cls
+
+f = Foo()
+f.cm()      # 能跑!但 cls = Foo,实例 f 被无视
+Foo.cm()    # 完全等价
+```
+
+这点和 Java 一致:`instance.staticMethod()` 能编译,但实例被忽略。要在 classmethod 里操作某个实例,只能把它当**普通参数显式传进去**(那它就是个一般参数,不是绑定的 `self`)。
+
+| 装饰器 | 自动注入第一参数 | 拿得到实例 | 拿得到类 |
+|--|--|--|--|
+| 无(实例方法) | `self` | ✅ | ✅ 用 `type(self)` |
+| `@classmethod` | `cls`(类) | ❌ | ✅ 直接是 `cls` |
+| `@staticmethod` | 无 | ❌ | ❌(要自己传) |
+
+### `type(self)` / `cls` / 裸 `__class__`:三个"当前类"句柄
+
+在方法里取"当前类"有三种写法,**多态性不同**,别混:
+
+```python
+class Base:
+    def runtime(self):  return type(self)    # 运行时实际类 —— 多态
+    def lexical(self):  return __class__     # 定义该方法的类 —— 词法固定,不多态
+
+class Sub(Base): pass
+
+s = Sub()
+s.runtime()   # <class 'Sub'>   ← 实际类,子类调用得子类
+s.lexical()   # <class 'Base'>  ← 永远是写代码那一层
+```
+
+- `type(self)`(优先)/ `self.__class__`:**运行时实际类**,子类实例调用就得子类。两者几乎等价,但 `type(self)` 不会被属性覆盖,更稳。
+- classmethod 的 `cls`:同样是**运行时调用的类**(`Sub.cm()` 里 `cls` 就是 `Sub`),这正是替代构造器对子类友好的原因(见上)。
+- 方法体里**裸写的 `__class__`(零参数)**:是**定义该方法的那个类**,词法固定、不随调用方变。它就是零参数 `super()` 背后依赖的东西——`super()` 约等于 `super(__class__, self)`,得知道"这段代码写在哪一层"才能在继承链上找"上一层"。
+
+> `__class__` 一名两义:**实例上的 `obj.__class__`** 是运行时类(= `type(obj)`,多态);**方法体里裸 `__class__`** 是定义类(词法固定)。同名不同义,别搞混。
+
+### 自省继承关系
+
+多层继承(`A→B→C`,A 最派生、C 最基)的关系全可查:
+
+```python
+class C: pass
+class B(C): pass
+class A(B): pass
+
+A.__bases__              # (B,)               直接父类(可多个)
+A.__base__               # <class 'B'>        主父类(单个)
+A.__mro__                # (A, B, C, object)  完整解析链
+issubclass(A, C)         # True               A 是 C 的后代
+isinstance(A(), C)       # True
+C.__subclasses__()       # [B]                直接子类(注意:只给直接的)
+```
+
+`__mro__` 把继承"树"拉平成一条有序链,是 `super()`、属性查找的依据;它**只往上不往下**(从 A 能看祖先 B/C,看后代要用 `__subclasses__()`)。MRO 怎么由 C3 算法算出、`super()` 如何沿它走,见[第 06 章](06-oop-2-inheritance-descriptors-metaclasses.md)。
 
 ## 五、`@property`:把方法伪装成属性
 
@@ -262,13 +353,34 @@ print(Point(1, 2) == Point(1, 2))   # True,自动按字段比较
 
 注意:dataclass 里**可变默认值要用 `field(default_factory=list)`**,直接写 `tags: list = []` 会触发可变默认参数陷阱(dataclass 实际上会直接报错拦你)。`@dataclass(frozen=True)` 得到不可变、可哈希的数据类。
 
-### `namedtuple` 与 `Enum`
+### `namedtuple`
+
+反直觉的一点:`namedtuple` 是个**函数**,它在运行时**造出一个类再返回给你**——相当于用一行函数调用,动态写出 Java 的 `record P(int x, int y) {}`。Python 里类只是运行时对象,所以能被函数当返回值造出来。
 
 ```python
 from collections import namedtuple
-P = namedtuple("P", "x y")
-print(P(1, 2).x)            # 1,轻量不可变记录,可解包
+P = namedtuple("P", "x y")   # 造一个叫 P、带 x/y 两个只读字段的类
+print(P(1, 2).x)             # 1
+```
 
+- 第 1 个参数 `"P"` 是这个类**自报家门用的名字**(打印时显示 `P(x=1, y=2)`、调试时认它);
+- 第 2 个参数 `"x y"` 是**字段名**,空格分隔的字符串只是简写,写成 `"x,y"` 或 `["x", "y"]` 等价。
+
+为什么 `P` 写了两遍?等号左边的 `P` 是你给这个类起的**变量名**(以后用它),字符串里的 `"P"` 是类**内部记的名字**。两者可以不同(`Foo = namedtuple("Bar", "x y")` 也能跑),但那样实例打印出来却显示 `Bar(...)`,自找混乱,所以约定写成一样。
+
+它的价值在于「named」+「tuple」两半都占:既能像类一样按名字读,又保留 tuple 的全部能力。
+
+```python
+p = P(1, 2)
+p.x          # 1   —— 按名字读(普通 tuple 只能 p[0],得记位置)
+p[0]         # 1   —— 仍能按下标
+x, y = p     # 解包成两个变量(它骨子里是 tuple)
+# p.x = 9    # 报错:不可变,和元组一样改不了
+```
+
+### `Enum`
+
+```python
 from enum import Enum
 class Color(Enum):
     RED = 1
@@ -342,3 +454,6 @@ print(b.tricks)
 
 **Q7. Python 有私有成员吗?`_x` 和 `__x` 区别?**
 没有强制的私有。`_x` 是纯约定("内部用,别碰",`import *` 不带出,但能照常访问);`__x` 触发**名字改写**,编译期被重写成 `_ClassName__x`,目的是**防子类命名碰撞**而非访问控制——`obj._ClassName__x` 照样能读。所以 `__x` 不能像 Java `private` 被子类继承式覆盖(父子各有 `_父__x`/`_子__x`)。要让子类可重写用 `_x`,只有写基类怕撞名才用 `__x`。
+
+**Q8. 方法里怎么同时拿到实例和类?`type(self)`、`cls`、裸 `__class__` 有何区别?**
+实例方法里 `self` 是实例、`type(self)` 是它的(运行时)类,两者同时可得;`@classmethod` 只有 `cls`、拿不到实例(用实例调用时实例被丢弃,只取类)。`type(self)`/`self.__class__` 与 classmethod 的 `cls` 都是**运行时实际类**(子类调用得子类,多态);方法体里**裸 `__class__`** 是**定义方法的那个类**(词法固定,零参数 `super()` 靠它)。注意 `obj.__class__`(运行时类)与方法体里裸 `__class__`(定义类)同名不同义。查继承关系用 `__mro__`/`__bases__`/`issubclass`/`isinstance`/`__subclasses__`。
