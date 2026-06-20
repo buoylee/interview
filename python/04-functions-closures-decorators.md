@@ -116,8 +116,8 @@ def fib(n):
     return n if n < 2 else fib(n-1) + fib(n-2)
 print(fib(30))                   # 832040,瞬间出(否则指数级慢)
 
-square = partial(pow, 2)         # 固定第一个参数,得到新函数
-print(square(10))                # 1024  == pow(2, 10)
+power_of_2 = partial(pow, 2)     # 把 pow 的第一个参数焊死成 2,得到新函数
+print(power_of_2(10))            # 1024  == pow(2, 10)
 
 print(reduce(lambda a, b: a + b, [1, 2, 3, 4]))   # 10  累积折叠
 ```
@@ -127,6 +127,46 @@ print(reduce(lambda a, b: a + b, [1, 2, 3, 4]))   # 10  累积折叠
 - `reduce`:折叠(Java 的 `Stream.reduce`、Go 手写循环)。
 - `singledispatch`:按第一个参数类型做函数重载(Python 没有 Java 那种签名重载)。
 - `wraps`:写装饰器必备,见下。
+
+### `partial`:做一个「半成品函数」
+
+`partial(f, x)` 不立刻计算,而是**提前把 `f` 最左边的参数填成 `x`,返回一个还差剩余参数的新函数**。等价于手写一个包一层的小函数,只是少打几个字:
+
+```python
+power_of_2 = partial(pow, 2)     # 等价于 ↓
+def power_of_2(exp):
+    return pow(2, exp)           # 2 被焊死,exp 留给你之后传
+
+power_of_2(10)                   # 你传的 10 落到 exp 上 → pow(2, 10) = 1024
+```
+
+关键:**给 `partial` 的参数从左往右去填原函数的坑。** 实战里常用来焊死配置项,之后调用就不用每次重复写:
+
+```python
+get = partial(requests.get, timeout=5)   # 之后 get(url) 自带 timeout=5
+```
+
+> Java 对照:`exp -> Math.pow(2, exp)`;Go 对照:返回一个捕获了 `base` 的闭包。本质都是「绑死一部分参数」。
+
+### `reduce`:把列表「滚成」一个值
+
+`reduce(合并函数, 列表)` 用一个「两两合并」的函数,从左到右累积 —— 就是 Java 的 `Stream.reduce`,或你在 Go 里手写的累加循环。**上一步的结果会变成下一步的第一个参数**(累加器 `a`):
+
+```python
+reduce(lambda a, b: a + b, [1, 2, 3, 4])
+# a=1, b=2 → 3      先拿前两个
+# a=3, b=3 → 6      a 是上一步结果 3,b 是列表第 3 个
+# a=6, b=4 → 10     a 是上一步结果 6,b 是列表第 4 个 → 最终 10
+```
+
+换掉合并函数就能干别的;可选的第三个参数是累加器初值(空列表时更安全):
+
+```python
+reduce(lambda a, b: a * b, [1, 2, 3, 4])      # 24    连乘
+reduce(lambda a, b: a + b, [], 0)             # 0     给了初值,空列表也不报错
+```
+
+> 一句话记忆:`map` 逐个变换,`filter` 逐个筛选,`reduce` 全部滚成一个。
 
 ## 六、装饰器
 
