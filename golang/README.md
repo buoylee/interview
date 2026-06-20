@@ -22,7 +22,7 @@
 |---|---|---|---|
 | [`error-handling/`](error-handling/) | 6 | **error 是值**：三种风格 / `%w`·`Is`·`As` / panic·recover·defer / 错误设计 / 并发错误 ← 面试高频痛点 | ✅ 完整 |
 | [`type-system/`](type-system/) | 6 | 接口底层（iface/eface/itab/动态派发）/ 方法集与接收者 / 嵌入组合 / typed nil 陷阱 | ✅ 完整 |
-| [`data-structures/`](data-structures/) | 5 | slice 扩容别名 / map 内幕无序 / string·rune / 逃逸分析 / struct 对齐 | ⬜ 待建 |
+| [`data-structures/`](data-structures/) | 5 | slice 扩容别名 / map 内幕无序 / string·rune / 逃逸分析 / struct 对齐 | ✅ 完整 |
 | [`generics/`](generics/) | 3 | 泛型基础 / GCShape stenciling 底层（非模板非擦除）/ 与接口取舍 | ⬜ 待建 |
 
 ### B. 运行时与性能（已有成熟笔记，本课只链接复用）
@@ -54,7 +54,8 @@
 | `concurrency/` | ✅ | 已有完整 10 章 + 5 张深题卡 |
 | `error-handling/` | ✅ 完整 | 6 章 + 面试卡(速答表 + 5 张深题卡)全部完成 |
 | `type-system/` | ✅ 完整 | 6 章 + 面试卡(速答表 + 5 张深题卡)全部完成 |
-| 其余 6 条主线 | ⬜ 待建 | 按顺序：data-structures → generics → engineering → testing → design → stdlib → service-design |
+| `data-structures/` | ✅ 完整 | 5 章 + 面试卡(速答表 + 5 张深题卡)全部完成 |
+| 其余 5 条主线 | ⬜ 待建 | 按顺序：generics → engineering → testing → design → stdlib → service-design |
 
 ## 关联已有笔记（复用不重复）
 
@@ -64,3 +65,12 @@
 - `java/` — Java 侧基础，做对标锚点
 - `python-concurrency/` — Python 并发，反向对标锚点
 - `system-design/`、`distr-tx/` — 分布式系统/事务（本课非目标，service-design 仅点到链接）
+
+## 外部参考资料
+
+> 从原 `collections.md` stub 收编。深挖底层时的好资源。
+
+- [Go 语言设计与实现（draveness）](https://draveness.me/golang/) — runtime/数据结构/调度的中文内幕书
+- [Go Questions（Go 问题集）](https://www.bookstack.cn/books/qcrao-Go-Questions) — 面试向底层问答
+- [golangFamily 面试题合集 + 知识图谱](https://github.com/xiaobaiTech/golangFamily)
+- [你不知道的 Go：unsafe.Pointer / uintptr 原理](https://www.cnblogs.com/sunsky303/p/11820500.html) — `uintptr` 做指针运算、`unsafe.Pointer` 任意可寻址指针转换
