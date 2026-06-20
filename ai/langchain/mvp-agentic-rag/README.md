@@ -54,6 +54,44 @@ OBS_BACKEND=otel        # OTel GenAI 语义约定 span,OTLP 导出(默认打到 
 
 ---
 
+## 开启 Langfuse 看 trace(可选,自托管)
+
+默认 `OBS_BACKEND=none`,不依赖 Langfuse。想看每次 `/chat` 的调用树(supervisor 路由 → 检索 → LLM,逐步 token/延迟),用项目自带的**独立** compose 起一套自托管 Langfuse v3(数据全在本机内网,不出网):
+
+```bash
+make langfuse-up      # = docker compose -f docker-compose.langfuse.yml up -d
+#  首次拉镜像 + 建库约 1-2 分钟;共 6 个容器(web/worker/postgres/clickhouse/redis/minio),约 2GB 内存
+```
+
+起来后三步接上:
+
+1. UI 在 http://localhost:3000,登录 **dev@example.com / localdev123**(首次由 `LANGFUSE_INIT_*` 自动建好 org/project/user)。
+2. 项目和一对**固定 key** 也已自动建好,直接填进 app 的 `.env`:
+
+   ```bash
+   OBS_BACKEND=langfuse
+   LANGFUSE_PUBLIC_KEY=pk-lf-local-mvp
+   LANGFUSE_SECRET_KEY=sk-lf-local-mvp
+   LANGFUSE_HOST=http://localhost:3000
+   ```
+
+3. 重启 `make serve`(改了 `.env` 必须重启,`get_settings` 有 `lru_cache`),之后每次 `/chat` 就会在 UI 出现一条 trace。
+
+停 / 清:
+
+```bash
+make langfuse-down            # 停,保留数据
+make langfuse-down ARGS=-v    # 停 + 删数据(volumes)
+```
+
+**注意:**
+- **与主栈完全隔离**:独立 project `mvp-langfuse` + 独立 volumes,跟 `make up` 的 pgvector 互不影响,可单独起停。
+- 容器里密钥是 **DEV 默认值**(明文弱口令),只供本地;生产须换 `ENCRYPTION_KEY` / `NEXTAUTH_SECRET` / 各密码。
+- `LANGFUSE_HOST=localhost:3000` 适用于 app 跑在**本机**(路线 A `make serve`)。若 app 也进容器(路线 B),要改成 `http://host.docker.internal:3000` 或把 app 接进同一 docker 网络。
+- Langfuse 连不上时 `obs/backends.py` 会**优雅降级**(记 warning、跳过 handler),不影响 `/chat`。
+
+---
+
 ## 12 章 → MVP 落点
 
 > 这张表证明这一个项目把 `ai/langchain/` 整套 12 章教程落成了可运行实现。
