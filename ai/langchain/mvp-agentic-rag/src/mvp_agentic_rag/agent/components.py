@@ -1,4 +1,4 @@
-from typing import Protocol
+from typing import Literal, Protocol
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
@@ -8,7 +8,9 @@ from mvp_agentic_rag.retrieval.types import RetrievedChunk
 
 # ---- 结构化输出 schema ----
 class RouteDecision(BaseModel):
-    next: str = Field(description="下一步交给谁,取值之一:kb_rag / web / FINISH")
+    # Literal 而非裸 str:with_structured_output 会把它编成枚举,模型只能从这三个里选,
+    # 不会再吐出描述性字符串被 supervisor 静默兜底。
+    next: Literal["kb_rag", "web", "FINISH"] = Field(description="下一步交给谁")
 
 
 class GradeDecision(BaseModel):
@@ -46,10 +48,12 @@ def _format(chunks: list[RetrievedChunk]) -> str:
 
 # ---- LLM 实现 ----
 _ROUTER_SYS = (
-    "你是一个多 Agent 调度器。根据对话,决定下一步:\n"
-    "- kb_rag:问题需要查企业知识库\n"
-    "- web:问题超出知识库范围,需要外部信息\n"
-    "- FINISH:已经有了足够的最终答案\n"
+    "你是一个多 Agent 调度器。根据当前对话,决定下一步交给谁:\n"
+    "- kb_rag:需要查企业知识库才能回答的问题(技术/产品/文档类问题默认走这里)\n"
+    "- web:知识库覆盖不到、需要外部实时信息的问题\n"
+    "- FINISH:对话里【已经存在】助手给出的最终答案,无需再处理\n"
+    "重要:只要对话里还【没有】助手的答案,就绝不能输出 FINISH——"
+    "必须先路由到 kb_rag 或 web。\n"
     "只输出路由决策。"
 )
 

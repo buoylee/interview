@@ -1,4 +1,6 @@
 from langgraph.checkpoint.postgres import PostgresSaver
+from psycopg import Connection
+from psycopg.rows import dict_row
 
 from mvp_agentic_rag.agent.factory import build_production_agent_graph
 from mvp_agentic_rag.api.app import create_app
@@ -12,7 +14,14 @@ def build_app():
     s = get_settings()
     db = get_database()
     db.init_schema()
-    checkpointer = PostgresSaver.from_conn_string(s.database_url).__enter__()
+    # checkpointer 的连接由 app 进程长期持有(server 活多久它活多久)。
+    # 不能用 from_conn_string(...).__enter__():那个上下文管理器临时对象会被 GC,
+    # 触发内部 `with Connection.connect()` 退出、把连接关掉,下一行 setup() 就拿到
+    # 一条已关闭的连接。这里直接建一条自有连接,参数复刻 from_conn_string 内部所需。
+    conn = Connection.connect(
+        s.database_url, autocommit=True, prepare_threshold=0, row_factory=dict_row
+    )
+    checkpointer = PostgresSaver(conn)
     checkpointer.setup()
     graph = build_production_agent_graph(db, checkpointer, s)
     callbacks = get_observability_callbacks(s)

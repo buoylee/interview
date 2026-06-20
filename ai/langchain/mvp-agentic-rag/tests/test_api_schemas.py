@@ -3,15 +3,18 @@ def test_chat_request_defaults():
 
     r = ChatRequest(message="hi")
     assert r.message == "hi"
-    assert r.thread_id == "default"
+    # 不传 → None,由 server 端按缺省生成新会话(不再共用固定 "default")
+    assert r.thread_id is None
 
 
 def test_chat_response_shape():
     from mvp_agentic_rag.api.schemas import ChatResponse
 
-    r = ChatResponse(response="ans", citations=[{"doc_id": "a.md"}], request_id="x")
+    r = ChatResponse(response="ans", citations=[{"doc_id": "a.md"}],
+                     request_id="x", thread_id="t1")
     assert r.response == "ans"
     assert r.citations[0]["doc_id"] == "a.md"
+    assert r.thread_id == "t1"
 
 
 def test_resume_request():

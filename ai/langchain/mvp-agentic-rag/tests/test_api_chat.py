@@ -31,8 +31,29 @@ def test_chat_returns_answer_and_citations():
     assert body["response"] == "stub answer"
     assert body["citations"][0]["doc_id"] == "k8s.md"
     assert body["request_id"]
-    # thread_id 进了 config
+    # 传了 thread_id → 原样进 config,并在响应里回传
     assert graph.last_config["configurable"]["thread_id"] == "t1"
+    assert body["thread_id"] == "t1"
+
+
+def test_chat_generates_thread_id_when_missing():
+    graph = StubGraph()
+    client = _client(graph)
+    r = client.post("/chat", json={"message": "hi"})  # 不传 thread_id
+    assert r.status_code == 200
+    tid = r.json()["thread_id"]
+    assert tid  # server 生成了一个非空 thread_id
+    # 用的就是这个生成值(不再是固定 "default")
+    assert graph.last_config["configurable"]["thread_id"] == tid
+    assert tid != "default"
+
+
+def test_chat_missing_thread_id_is_isolated_per_call():
+    client = _client(StubGraph())
+    a = client.post("/chat", json={"message": "hi"}).json()["thread_id"]
+    b = client.post("/chat", json={"message": "hi"}).json()["thread_id"]
+    # 不传 → 每次全新会话,互不污染
+    assert a != b
 
 
 def test_chat_requires_api_key_when_configured(monkeypatch):

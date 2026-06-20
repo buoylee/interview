@@ -43,7 +43,8 @@ def create_app(deps: AppDeps) -> FastAPI:
 
     @app.post("/chat", response_model=ChatResponse)
     async def chat(req: ChatRequest, request: Request, _: None = Depends(require_api_key)):
-        config = {"configurable": {"thread_id": req.thread_id}, "callbacks": deps.callbacks}
+        thread_id = req.thread_id or uuid.uuid4().hex
+        config = {"configurable": {"thread_id": thread_id}, "callbacks": deps.callbacks}
         result = deps.graph.invoke(
             {"messages": [HumanMessage(content=req.message)],
              "next": "", "citations": [], "step_budget": 6},
@@ -57,11 +58,12 @@ def create_app(deps: AppDeps) -> FastAPI:
         if not answer:
             raise HTTPException(status_code=500, detail="no AI response generated")
         return ChatResponse(response=answer, citations=result.get("citations", []),
-                            request_id=request.state.request_id)
+                            request_id=request.state.request_id, thread_id=thread_id)
 
     @app.post("/chat/stream")
     async def chat_stream(req: ChatRequest, request: Request, _: None = Depends(require_api_key)):
-        config = {"configurable": {"thread_id": req.thread_id}, "callbacks": deps.callbacks}
+        thread_id = req.thread_id or uuid.uuid4().hex
+        config = {"configurable": {"thread_id": thread_id}, "callbacks": deps.callbacks}
         inp = {"messages": [HumanMessage(content=req.message)],
                "next": "", "citations": [], "step_budget": 6}
 
@@ -72,7 +74,9 @@ def create_app(deps: AppDeps) -> FastAPI:
                     yield f"data: {content}\n\n"
             yield "data: [DONE]\n\n"
 
-        return StreamingResponse(event_stream(), media_type="text/event-stream")
+        # SSE body 不便放结构化字段,thread_id 走响应头交给 client(想续聊就带回来)。
+        return StreamingResponse(event_stream(), media_type="text/event-stream",
+                                 headers={"X-Thread-ID": thread_id})
 
     @app.get("/threads/{thread_id}")
     async def get_thread(thread_id: str, _: None = Depends(require_api_key)):
@@ -97,6 +101,6 @@ def create_app(deps: AppDeps) -> FastAPI:
         if not answer:
             raise HTTPException(status_code=500, detail="no AI response generated")
         return ChatResponse(response=answer, citations=result.get("citations", []),
-                            request_id=request.state.request_id)
+                            request_id=request.state.request_id, thread_id=thread_id)
 
     return app
