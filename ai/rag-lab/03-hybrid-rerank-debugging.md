@@ -161,6 +161,58 @@ status=indexed
 
 这不是 rerank 问题，而是 filter 边界问题。
 
+## 实现：版本过滤怎么落地（stale_hit 的 fix）
+
+`06` 的 Case 9（旧版本政策污染）期望 `fix=metadata version filter`，但它藏了最难的一步：**系统凭什么知道哪份是旧的？** 问“现在 SLA 是多久”，新版（7 天）和旧版（15 天）两份都在讲退款 SLA、都语义命中、两路召回都会撈回来。向量相似度永远分不出新旧。所以 filter 不是凭空加一句 `WHERE`——要先让“新旧”成为结构化字段，`WHERE` 才有东西可过滤。
+
+三步，缺一不可：
+
+```text
+1 建模   schema 给 chunk 加 status / effective_date / doc_family 字段
+2 写入   ingest 时把版本信息写进每个 chunk(文档自带 front-matter,不靠猜文件名)
+3 过滤   召回前在 SQL 加 WHERE,把旧版挡在候选池外
+```
+
+### WHERE 加在哪一层
+
+加在**每一条召回通道的 first-stage 检索 SQL** 里：dense 一刀、sparse 一刀。
+
+```text
+dense    SELECT ... WHERE status='active' ORDER BY embedding <=> ...
+sparse   SELECT ... WHERE tsv @@ ... AND status='active'
+```
+
+两路都要加。hybrid 是把 dense + sparse 的结果 merge，只要一路漏了旧 chunk，RRF 就会把它捞回来。
+
+不要加在这些地方——太晚，旧 chunk 已经进了候选池：
+
+```text
+fusion / rerank
+```
+
+对照本篇开头那条链路：这一刀就是把 `metadata filter` 焊进 `first-stage retrieval`。
+
+### 谁来判定“最新”
+
+两种策略，代价不同：
+
+```text
+A ingest 打旗标   旧文档标 status=archived,检索 WHERE status='active'
+                 确定、简单;但“谁是最新”要人/流程维护
+B query 取最新    同一 doc_family 取 effective_date 最大
+                 新版进来自动压下旧版,零维护;多一点 SQL
+```
+
+### 一个绕不开的设计：版本粒度
+
+不要在 chunk 层做版本合并——chunk 边界不稳（重切就错位），还会让 v1、v2 的片段混进同一个上下文、自相矛盾（Frankenstein context）。
+
+正确做法是**把 doc / family 的粒度切到“一起变更的单元”**。“退款政策”自己是一份独立文档，而不是埋在《客服大手册》里。这样“对手册的局部更新”自然变成“退款政策这份小文档的完整新版”，策略 B 直接成立，不需要任何 merge。约束送进来的每份文件都是完整版本，把版本复杂度推到 ingest 边界，检索层保持简单。
+
+### 要 trace 出 exclusion_reason
+
+Case 9 还期望 `exclusion_reason=stale_version`。只想让结果正确，SQL `WHERE` 直接过滤即可。要让 trace 说清“为什么排除了 C”，就别在 SQL 里硬 DROP——召回宽一点，在内存里把候选分成 kept / excluded（带 reason）两堆，reason 进 trace。
+
 ## Hybrid fusion
 
 Hybrid search 的目标是把不同召回通道的结果合并。
