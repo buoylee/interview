@@ -37,7 +37,7 @@
 
 | 主线 | 章数 | 一句话 | 状态 |
 |---|---|---|---|
-| [`engineering/`](engineering/) | 3 | modules/MVS/workspace / project layout·build tags·embed / 工具链 | ⬜ 待建 |
+| [`engineering/`](engineering/) | 3 | modules/MVS/workspace / project layout·build tags·embed / 工具链 | ✅ 完整 |
 | [`testing/`](testing/) | 3 | table-driven / mock·DI / benchmark·fuzzing·集成测试 | ⬜ 待建 |
 | [`design/`](design/) | 4 | 小接口·消费方定义 / 组合优于继承·DI / 函数式选项 / 并发安全 API | ⬜ 待建 |
 | [`stdlib/`](stdlib/) | 4 | io 接口家族 / net/http / encoding·json / database/sql | ⬜ 待建 |
@@ -56,7 +56,8 @@
 | `type-system/` | ✅ 完整 | 6 章 + 面试卡(速答表 + 5 张深题卡)全部完成 |
 | `data-structures/` | ✅ 完整 | 5 章 + 面试卡(速答表 + 5 张深题卡)全部完成 |
 | `generics/` | ✅ 完整 | 3 章 + 面试卡(速答表 + 3 张深题卡);**A 层语言内核收官** |
-| 其余 4 条主线(C 层) | ⬜ 待建 | 按顺序：engineering → testing → design → stdlib → service-design |
+| `engineering/` | ✅ 完整 | 3 章 + 面试卡(速答表 + 4 张深题卡);**C 层开篇** |
+| 其余 3 条主线(C 层) | ⬜ 待建 | 按顺序：testing → design → stdlib → service-design |
 
 ## 关联已有笔记（复用不重复）
 
