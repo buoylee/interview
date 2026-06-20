@@ -20,7 +20,7 @@
 
 | 主线 | 章数 | 一句话 | 状态 |
 |---|---|---|---|
-| [`error-handling/`](error-handling/) | 6 | **error 是值**：三种风格 / `%w`·`Is`·`As` / panic·recover·defer / 错误设计 / 并发错误 ← 面试高频痛点 | 🟡 建设中 |
+| [`error-handling/`](error-handling/) | 6 | **error 是值**：三种风格 / `%w`·`Is`·`As` / panic·recover·defer / 错误设计 / 并发错误 ← 面试高频痛点 | ✅ 完整 |
 | [`type-system/`](type-system/) | 6 | 接口底层（iface/eface/itab/动态派发）/ 方法集与接收者 / 嵌入组合 / typed nil 陷阱 | ⬜ 待建 |
 | [`data-structures/`](data-structures/) | 5 | slice 扩容别名 / map 内幕无序 / string·rune / 逃逸分析 / struct 对齐 | ⬜ 待建 |
 | [`generics/`](generics/) | 3 | 泛型基础 / GCShape stenciling 底层（非模板非擦除）/ 与接口取舍 | ⬜ 待建 |
@@ -52,7 +52,7 @@
 | umbrella spec | ✅ | `docs/superpowers/specs/2026-06-20-go-senior-interview-master-design.md` |
 | master 索引（本文件） | ✅ | 全图 + 进度 + B 层复用链接 |
 | `concurrency/` | ✅ | 已有完整 10 章 + 5 张深题卡 |
-| `error-handling/` | 🟡 建设中 | track spec ✅；00 错误哲学 + 04 错误设计实战 先行 |
+| `error-handling/` | ✅ 完整 | 6 章 + 面试卡(速答表 + 5 张深题卡)全部完成 |
 | 其余 7 条主线 | ⬜ 待建 | 按顺序：type-system → data-structures → generics → engineering → testing → design → stdlib → service-design |
 
 ## 关联已有笔记（复用不重复）

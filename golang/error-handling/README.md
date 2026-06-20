@@ -38,13 +38,15 @@
 |---|---|---|
 | 设计 spec | ✅ | `docs/superpowers/specs/2026-06-20-go-error-handling-track-design.md` |
 | 骨架 + 进度地图 | ✅ | 本文件 |
-| 00-philosophy | ✅ | 错误哲学（样章·立地基） |
-| 04-error-design | ✅ | 错误设计实战（样章·面试痛点核心） |
-| 01-error-values | ⬜ 待写 | 三种风格 |
-| 02-wrapping | ⬜ 待写 | `%w`/`Is`/`As` |
-| 03-panic-recover-defer | ⬜ 待写 | defer/recover 语义 |
-| 05-concurrent-errors | ⬜ 待写 | errgroup/Join/goroutine panic |
-| 99-interview-cards | ⬜ 待写 | 速答表 + 深题卡 |
+| 00-philosophy | ✅ | error 是值不是控制流 / 为什么否决 try / error vs panic 判据 |
+| 01-error-values | ✅ | sentinel / typed / opaque 三种风格 + typed nil 坑 |
+| 02-wrapping | ✅ | `%w` 链 / `Is`·`As` 算法 / 多重包装(Join) |
+| 03-panic-recover-defer | ✅ | defer 求值·LIFO·改返回值 / recover 为何没接住 / 何时 panic |
+| 04-error-design | ✅ | 边界翻译 / `%w` vs `%v` / handle once / 哨兵·类型·行为接口 |
+| 05-concurrent-errors | ✅ | errgroup 首错取消 / `errors.Join` / goroutine panic crash |
+| 99-interview-cards | ✅ | 速答表(29 条) + 5 张深题卡 |
+
+**本 track 全部完成。** 整条线读完即可系统复习「Go 错误处理最佳实践」。
 
 ## 关联已有笔记（复用不重复）
 
