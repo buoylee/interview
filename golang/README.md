@@ -39,7 +39,7 @@
 |---|---|---|---|
 | [`engineering/`](engineering/) | 3 | modules/MVS/workspace / project layout·build tags·embed / 工具链 | ✅ 完整 |
 | [`testing/`](testing/) | 3 | table-driven / mock·DI / benchmark·fuzzing·集成测试 | ✅ 完整 |
-| [`design/`](design/) | 4 | 小接口·消费方定义 / 组合优于继承·DI / 函数式选项 / 并发安全 API | ⬜ 待建 |
+| [`design/`](design/) | 4 | 小接口·消费方定义 / 组合优于继承·DI / 函数式选项 / 并发安全 API | ✅ 完整 |
 | [`stdlib/`](stdlib/) | 4 | io 接口家族 / net/http / encoding·json / database/sql | ⬜ 待建 |
 | [`service-design/`](service-design/) | 4 | 服务骨架·优雅关闭 / gRPC vs REST / 中间件横切 / 可观测性接入 | ⬜ 待建 |
 
@@ -58,7 +58,8 @@
 | `generics/` | ✅ 完整 | 3 章 + 面试卡(速答表 + 3 张深题卡);**A 层语言内核收官** |
 | `engineering/` | ✅ 完整 | 3 章 + 面试卡(速答表 + 4 张深题卡);**C 层开篇** |
 | `testing/` | ✅ 完整 | 3 章 + 面试卡(速答表 + 3 张深题卡) |
-| 其余 3 条主线(C 层) | ⬜ 待建 | 按顺序：design → stdlib → service-design |
+| `design/` | ✅ 完整 | 4 章 + 面试卡(速答表 + 4 张深题卡) |
+| 其余 2 条主线(C 层) | ⬜ 待建 | 按顺序：stdlib → service-design |
 
 ## 关联已有笔记（复用不重复）
 
