@@ -50,6 +50,49 @@ from decimal import Decimal
 print(Decimal("0.1") + Decimal("0.2"))   # 0.3  (注意用字符串构造,别用 Decimal(0.1))
 ```
 
+### `round()` 是银行家舍入(五成双)
+
+内置 `round()` **不是"逢五进一"**,而是 **round-half-to-even**(银行家舍入)——正好 `.5` 时向**最近的偶数**靠:
+
+```python
+print(round(0.5), round(1.5), round(2.5), round(3.5))   # 0 2 2 4 —— 全进到偶数
+```
+
+Java 的 `Math.round`、手算、Excel 默认都是"逢五进一",会得到 `1 2 3 4`。这是**静默给错结果**的坑:报表、计费、对账里用 `round` 凑整,数字就和别的系统对不上。更阴的一层——浮点本身存不精确,`round(x, n)` 看的是 float 真实存储值,不是字面量:
+
+```python
+print(round(2.675, 2))   # 2.67(不是 2.68)—— 2.675 实际存成 2.67499…
+```
+
+要"逢五进一"或精确十进制舍入,用 `decimal.Decimal` 显式指定模式:
+
+```python
+from decimal import Decimal, ROUND_HALF_UP
+print(Decimal("2.5").quantize(Decimal("1"), rounding=ROUND_HALF_UP))   # 3
+```
+
+心智:**`round()` 只配"差不多就行"的展示;算钱、对账、要可预测进位规则,一律走 `Decimal` + 显式 rounding 模式。**
+
+### `float('nan')`:不等于自己,还会骗过 `in`
+
+`nan`(非数)有个 IEEE 754 规定的怪癖——**它不等于任何值,包括它自己**:
+
+```python
+nan = float("nan")
+print(nan == nan)    # False
+print(nan != nan)    # True   —— 唯一 != 自己的值
+```
+
+这条很多人知道,但 Python **容器**里的连锁反应才是真坑。`in`、`list.count`、`index` 出于性能会**先比 identity(`is`)再比 `==`**,于是"同一个 nan 对象"能被找到,而 `==` 语义又是假的:
+
+```python
+print(nan in [nan])                      # True  —— 先比 is,命中同一个对象
+print(float('nan') in [float('nan')])    # False —— 不同对象,只能靠 ==,失败
+print(sorted([3, nan, 1, 2]))            # [3, nan, 1, 2] —— nan 让排序失去意义,却不报错
+```
+
+后果:含 nan 的数据**去重、排序、查找全不可靠,而且不报错**。实务上在入口就用 `math.isnan(x)` 拦掉或替换。**判 nan 必须用 `math.isnan()`,不能写 `x == nan`(永远 False)。**
+
 ### bool 是 int 的子类
 
 ```python
@@ -186,6 +229,34 @@ d["b"] = 2
 print(list(ks))   # ['a', 'b'] —— 视图看得到后加的 b
 ```
 
+### 遍历时改容器:dict 抛错,list 静默漏删
+
+**一边遍历一边增删同一个容器**是后端常踩的坑,且两类容器表现还不一样。dict/set 会**当场抛 `RuntimeError`**(fail-fast,类似 Java 的 `ConcurrentModificationException`):
+
+```python
+d = {1: "a", 2: "b", 3: "c"}
+for k in d:
+    if k == 2:
+        del d[k]        # RuntimeError: dictionary changed size during iteration
+```
+
+list **更阴——不报错,而是静默漏删**:
+
+```python
+xs = [1, 2, 3, 4, 5, 6]
+for x in xs:
+    if x % 2 == 0:
+        xs.remove(x)    # 不报错
+print(xs)               # [1, 3, 5] —— 你以为删光偶数,其实漏了 4
+```
+
+原因:list 迭代器按**下标**推进,`remove` 让后面元素整体前移,下一轮下标就**跳过**了补位的那个。正解一律是**别在原容器上边遍历边改**——遍历副本,或推导式重建:
+
+```python
+xs[:] = [x for x in xs if x % 2]              # 重建后整体替换;[:] 保持原对象 id
+d = {k: v for k, v in d.items() if k != 2}    # dict 同理
+```
+
 ### get / setdefault / defaultdict
 
 取值带默认、避免 `KeyError` 的地道写法:
@@ -236,8 +307,10 @@ print({1, 2, 3} & {2, 3, 4})   # {2, 3} 交集;| 并,- 差,^ 对称差
 | 整数 | `int`/`long` 定长会溢出,大数要 `BigInteger`/`math/big` | 单一 `int`,任意精度,不溢出 |
 | 整数除 `/` | 向 0 截断,`-7/2 == -3` | `//` 地板除,`-7//2 == -4`;`/` 给 float |
 | 取模符号 | 随被除数 | 随除数 |
-| 文本/字节 | `String` ↔ `byte[]`,编码常隐式 | `str` ↔ `bytes`,`encode`/`decode` 强制显式 |
+| 舍入 | `Math.round` 逢五进一 | `round()` 银行家舍入(五成双);要逢五进一用 `Decimal`+`ROUND_HALF_UP` |
+| NaN | `Double.NaN`,`==` 也为 false | `float('nan')`,但 `nan in [nan]` 可为 True(容器先比 `is`);判它用 `math.isnan` |
 | 哈希表顺序 | `HashMap` 无序(`LinkedHashMap` 才有序) | `dict` 默认保插入序(语言保证) |
+| 遍历时改集合 | `ConcurrentModificationException` | dict/set 抛 `RuntimeError`;**list 静默漏删** |
 | 不可变集合作 key | 任意 `equals`/`hashCode` 对象 | 必须可哈希:用 `tuple`/`frozenset`,不能用 `list` |
 | Unicode 规范化 | `java.text.Normalizer.normalize(s, NFC)` | `unicodedata.normalize("NFC", s)`;`casefold` ≈ 不区分大小写折叠 |
 
@@ -270,3 +343,19 @@ except IndexError:
 
 **Q7. 两个肉眼完全相同的字符串,`==` 却是 False,怎么回事?**
 很可能是 Unicode 规范化不同——同一字形可由「预组合(NFC,1 码位)」或「分解(NFD,基字符+组合符,多码位)」表示,`==` 按码位比就不等,`len` 也不同。修法:比较/去重/做 key 前先 `unicodedata.normalize("NFC", s)` 统一。不区分大小写用 `casefold()`(比 `lower()` 更彻底,如 `ß`→`ss`)。
+
+**Q8(猜输出).** `round(0.5), round(1.5), round(2.5)` 是几?
+`0 2 2`。`round()` 是银行家舍入(round-half-to-even),正好 `.5` 时向最近偶数靠,不是逢五进一。要逢五进一用 `decimal.Decimal(...).quantize(..., rounding=ROUND_HALF_UP)`。另:`round(2.675, 2)==2.67`,因为 2.675 浮点存成 2.67499…。
+
+**Q9. 怎么判断一个 float 是不是 NaN?为什么不能用 `==`?**
+用 `math.isnan(x)`。`nan` 按 IEEE 754 不等于任何值(含自己),`x == float('nan')` 永远 False。还要小心:`nan in [nan]` 可能为 True,因为容器成员判断先比 `is` 再比 `==`——含 nan 的数据去重/排序/查找都不可靠,入口就该拦掉。
+
+**Q10(猜输出).**
+```python
+xs = [1, 2, 3, 4, 5, 6]
+for x in xs:
+    if x % 2 == 0:
+        xs.remove(x)
+print(xs)
+```
+`[1, 3, 5]`,漏删了 4。list 迭代按下标推进,`remove` 后元素前移导致跳过。dict/set 同样情形会直接抛 `RuntimeError`。正解:遍历副本或推导式重建(`xs[:] = [x for x in xs if x % 2]`)。
