@@ -193,4 +193,27 @@ with client.messages.stream(model="claude-opus-4-8", max_tokens=1024,
 - 流式输出 token 数要从 `message_delta` 取,不在 `message_start`。
 - 鉴权是 `x-api-key` + `anthropic-version` 头(不是 Bearer)。
 
-→ 三者横向对照见 [README.md](./README.md)
+---
+
+## 8. 返回内容类型 & 处理
+
+输出 `content[]` 是**块数组**,遍历按 `type` 分发(别假设 `content[0]`):
+
+| 块 `type` | 内容 | 怎么处理 |
+|---|---|---|
+| `thinking` | `thinking`(摘要文本)+ `signature` | 见下 replay 铁律;`display:"omitted"` 时文本空、签名仍在 |
+| `redacted_thinking` | 加密思考(安全场景) | 同样原样回传,别解析 |
+| `text` | 正文,可能带 `citations` | 取正文遍历 `type=="text"`;引用读 `citations`(`cited_text`/`document_index`/页码) |
+| `tool_use` | `id,name,input`(**对象**) | 见 [04](./04-streaming-tool-calls.md);结果回 user 的 `tool_result` 块 |
+| `server_tool_use` | 服务端工具调用(web_search/code…) | 展示「在做什么」 |
+| `web_search_tool_result` | `.content` 成功是 **list**、出错是 **object** | 取来源前先判 list/object |
+| `bash_code_execution_tool_result` | `.content.{stdout,stderr,return_code}` | 读 stdout;产物文件经 Files API 下 |
+
+- **thinking replay 铁律**:同模型续接,必须把 `thinking`/`redacted_thinking` 块**原样回传**(含 `signature`、含空文本块),改了就 **400**;**换模型则被自动丢弃且不计费**。工具循环里那条带 `tool_use` 的 assistant 输出**前面就挂着 thinking 块**,要把**整条 `content` 追加**。
+- **引用 citations**:document 开 `citations:{enabled:true}` 后,回答的 `text` 块带 `citations` 数组(含 `cited_text`、`document_index`、`page_location`/`char_location`)。与 `output_config.format` 互斥(同开 400)。
+- **生成文件**:code execution / skills 产物给 `file_id` → `client.beta.files.download(file_id).write_to_file(path)`。
+- **结构化输出**:`output_config:{format:{type:"json_schema","schema":...}}` 或 strict tool;SDK `client.messages.parse(...)` → `parsed_output`。
+- **refusal**:`stop_reason:"refusal"`(**HTTP 200**),`stop_details.category` 给类别——**读 content 前先判**,否则 index 越界;Fable 5 可配 `fallbacks` 自动转到 Opus。
+- **服务端工具循环**:`stop_reason:"pause_turn"` 时原样回传 assistant 输出即可继续。
+
+→ 内容类型跨三者对照见 [05](./05-content-types-and-handling.md);三者横向对照见 [README.md](./README.md)

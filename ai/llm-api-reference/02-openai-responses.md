@@ -182,4 +182,30 @@ with client.responses.stream(model="gpt-4o", input="写首诗") as stream:
 - 输入用 `input_text`/`input_image`,输出是 `output_text`,别混。
 - 流式是语义事件,解析逻辑和 Chat Completions 的 `delta` 完全不同。
 
-→ 三者横向对照见 [README.md](./README.md)
+---
+
+## 8. 返回内容类型 & 处理
+
+输出是**有序的 typed item 数组 `output[]`**,遍历按 `type` 分发:
+
+| item `type` | 内容 | 怎么处理 |
+|---|---|---|
+| `reasoning` | `summary:[{type:"summary_text",text}]`、可选 `content` | 见下 replay |
+| `message` | `content` 里 `output_text` + `annotations` | 取正文优先用顶层 `output_text`(SDK 拼好) |
+| `function_call` | `call_id,name,arguments`(字符串) | 见 [04](./04-streaming-tool-calls.md);结果回 `function_call_output` item |
+| `web_search_call` | 联网搜索调用 | 来源在 message 的 `annotations`(`url_citation`);取来源加 `include:["web_search_call.action.sources"]` |
+| `file_search_call` | 文件检索 | 结果加 `include:["file_search_call.results"]` |
+| `code_interpreter_call` | 代码执行 | 产出加 `include:["code_interpreter_call.outputs"]`;产物文件经 Files API 下 |
+| `image_generation_call` | 内建图像生成 | `result` 是 b64,解码落盘 |
+| `mcp_call` | 远程 MCP 工具 | 同函数工具回环 |
+
+- **思考/推理(reasoning)的 replay 是 Responses 独有的坑**:
+  - **有状态**(默认 `store:true` + `previous_response_id`):服务端替你留着 reasoning,下轮只发新输入。
+  - **无状态**(`store:false` / ZDR):要**手动把 `reasoning` item 放进下轮 `input`**,并加 `include:["reasoning.encrypted_content"]` 拿加密内容一起带回——尤其工具调用循环里,丢了推理链会降智。
+  - `reasoning:{summary:"auto|concise|detailed"}` 才有摘要文本,raw 推理始终加密。
+- **引用来源**:`message` 的 `output_text.annotations` 里 `url_citation`(联网搜索的出处)。
+- **结构化输出**:`text={"format":{"type":"json_schema",...}}` → `output_text` 是 JSON;SDK `client.responses.parse(...)` → `output_parsed`。
+- **refusal**:出现 `refusal` 内容部件;配合顶层 `status`/`incomplete_details` 判断。
+- **多轮回传**:用 `previous_response_id` 时只发增量;手动管上下文时,把 `output` 里的 **reasoning / function_call / message 都按需追加**回 `input`。
+
+→ 内容类型跨三者对照见 [05](./05-content-types-and-handling.md);三者横向对照见 [README.md](./README.md)

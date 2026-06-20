@@ -192,4 +192,24 @@ for chunk in stream:
 - `tool_calls[].function.arguments` 和流式增量都是**字符串**,需要拼接 + `json.loads`。
 - system 指令是 messages 里的一条,不是顶层参数(和 Claude 不同)。
 
-→ 三者横向对照见 [README.md](./README.md)
+---
+
+## 8. 返回内容类型 & 处理
+
+输出是**单个 `message`**(不是数组),可能带这些字段:
+
+| 字段 | 何时出现 | 怎么处理 |
+|---|---|---|
+| `content`(str) | 普通回答 | **纯工具调用 / refusal 时为 `null`**,取值前判空 |
+| `tool_calls` | `finish_reason:"tool_calls"` | 见 [04](./04-streaming-tool-calls.md);`arguments` 是字符串要 `json.loads` |
+| `refusal`(str) | 安全拒绝 | 有值时 `content` 为 null;另见 `finish_reason:"content_filter"` |
+| `audio` | 开了音频输出 | `{id,data(b64),transcript,expires_at}`,见下 |
+| `annotations` | 搜索类模型(`*-search-*`) | URL 引用来源 |
+
+- **思考/推理不返回**:o 系列 / gpt-5 的推理过程隐藏,只在 `usage.completion_tokens_details.reasoning_tokens` 给计数;`reasoning_effort` 控深度。无状态,**无需回传推理**。
+- **音频输出**:`modalities=["text","audio"]` + `audio={"voice","format"}` → `message.audio.{data,transcript,id}`;解 b64 落盘,多轮续接用 `{"role":"assistant","audio":{"id":...}}` 引用。
+- **音频 / PDF 输入**:音频 `{"type":"input_audio","input_audio":{data,format}}`(需 `gpt-4o-audio`);PDF `{"type":"file","file":{file_id|file_data|filename}}`。**视频不支持**(抽帧成图)。
+- **结构化输出**:`response_format={"type":"json_schema",...}` → `content` 是 JSON 串;SDK `client.chat.completions.parse(...)` → `message.parsed`。
+- **多轮回传**:把 assistant 那条(含 `tool_calls` / `audio.id`)整条追加回 `messages`。
+
+→ 内容类型跨三者对照见 [05](./05-content-types-and-handling.md);三者横向对照见 [README.md](./README.md)

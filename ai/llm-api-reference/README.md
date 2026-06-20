@@ -5,6 +5,8 @@
 - [01 OpenAI Chat Completions](./01-openai-chat-completions.md) — 经典、无状态、生态最广
 - [02 OpenAI Responses](./02-openai-responses.md) — 新一代、有状态、内置工具
 - [03 Claude Messages](./03-claude-messages.md) — Anthropic 唯一对话接口、无状态
+- [04 流式工具调用的执行模型](./04-streaming-tool-calls.md) — 跨三者的应用篇:边收边执行 / 并行 / SDK 与 LangChain 封装到哪一步
+- [05 返回内容类型 & 处理](./05-content-types-and-handling.md) — 跨三者:thinking / 多模态输入输出 / 工具结果块 / 结构化 / refusal 各自怎么读怎么回传
 
 > 另有 [../openai-claude-chat-completion-接口整理.md](../openai-claude-chat-completion-接口整理.md):偏选型/迁移 + 代码示例(SSE、异常处理),和本目录的纯参数速查互补。
 
@@ -25,7 +27,13 @@
 | 工具结果回填 | `role:"tool"` 一条 | `function_call_output` item | user 消息里 `tool_result` 块 |
 | 工具入参形态 | `arguments` 是 **JSON 字符串** | `arguments` 是 **JSON 字符串** | `input` 是 **已解析对象** |
 | tool_choice | `auto/none/required/{function}` | `auto/none/required/{name}` | `{type:auto/any/tool/none}` |
-| 思考/推理 | `reasoning_effort` | `reasoning.{effort,summary}` | `thinking.{type}` + `output_config.effort` |
+| 思考/推理(入参) | `reasoning_effort` | `reasoning.{effort,summary}` | `thinking.{type}` + `output_config.effort` |
+| 思考返回形态 | ❌ 仅 `reasoning_tokens` 计数 | `reasoning` item(summary,raw 加密) | `thinking` 块(summary + 签名) |
+| 思考 replay | 无需 | 有状态自动;无状态要回传 item + `include encrypted_content` | **同模型必须原样回传(含签名)**,换模型丢弃 |
+| 音频 I/O | 输入+输出(`gpt-4o-audio`) | 主力在 Realtime API | ❌ |
+| 视频输入 | ❌(抽帧成图) | ❌(抽帧成图) | ❌(抽帧成图) |
+| 生成文件/图 | ❌ | 图像生成 / code 产物 | code execution / skills 产物(Files API 下) |
+| 引用来源 | 搜索模型 `annotations` | `output_text.annotations`(url_citation) | `text` 块 `citations` 数组 |
 | 结构化输出 | `response_format` | `text.format` | `output_config.format` / strict tool |
 | 内置工具(web/file/code) | ❌ | ✅(web_search/file_search/code_interpreter/mcp) | ✅(server-side tools,另算) |
 | 提示缓存 | 自动(`cached_tokens`) | 自动(`cached_tokens`) | 手动 `cache_control` 打点 |
