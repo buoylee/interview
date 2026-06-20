@@ -74,9 +74,10 @@
 
 ## 外部参考资料
 
-> 从原 `collections.md` stub 收编。深挖底层时的好资源。
+> 从原 `collections/base/GC/memory/reflect.md` stub 收编。深挖底层时的好资源(本教程正文已覆盖这些主题,链接作延伸)。
 
-- [Go 语言设计与实现（draveness）](https://draveness.me/golang/) — runtime/数据结构/调度的中文内幕书
+- [Go 语言设计与实现（draveness）](https://draveness.me/golang/) — runtime/数据结构/调度的中文内幕书(含 new vs make、GMP 为什么要 P)
 - [Go Questions（Go 问题集）](https://www.bookstack.cn/books/qcrao-Go-Questions) — 面试向底层问答
-- [golangFamily 面试题合集 + 知识图谱](https://github.com/xiaobaiTech/golangFamily)
-- [你不知道的 Go：unsafe.Pointer / uintptr 原理](https://www.cnblogs.com/sunsky303/p/11820500.html) — `uintptr` 做指针运算、`unsafe.Pointer` 任意可寻址指针转换
+- [golangFamily 面试题合集 + 知识图谱](https://github.com/xiaobaiTech/golangFamily) ｜ [Golang-Interview 笔试题](https://github.com/yqchilde/Golang-Interview)
+- [你不知道的 Go：unsafe.Pointer / uintptr 原理](https://www.cnblogs.com/sunsky303/p/11820500.html) — `uintptr` 指针运算、`unsafe.Pointer` 任意可寻址指针转换
+- 专题延伸:[闭包到底包了什么](https://zhuanlan.zhihu.com/p/92634505) ｜ [channel 还是锁](https://segmentfault.com/a/1190000017890174) ｜ [GC 高频题](https://zhuanlan.zhihu.com/p/352871607) ｜ [Go 内存分配](https://lessisbetter.site/2019/07/06/go-memory-allocation/) ｜ [reflect 获取 tag / 为什么不能导出私有变量 tag](https://mp.weixin.qq.com/s/WK9StkC3Jfy-o1dUqlo7Dg)
