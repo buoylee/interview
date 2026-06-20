@@ -164,4 +164,4 @@ G 即将进入可能阻塞的 syscall
 
 ← 上一章 [`02 抢占式调度`](../02-preemption/README.md) ｜ **调度器内核三章（GMP / 抢占 / netpoller）到此完结。** 下一章 → [`04 goroutine 实战`](../04-goroutine/README.md)：回到地面，看 goroutine 的创建、栈增长与泄漏。
 
-> 延伸对照：Python 这边的同主题 [`asyncio 核心`](../../python-concurrency/04-asyncio-core/README.md) 与 [`asyncio 陷阱（阻塞事件循环 / to_thread）`](../../python-concurrency/05-asyncio-pitfalls/README.md)
+> 延伸对照：Python 这边的同主题 [`asyncio 核心`](../../../python-concurrency/04-asyncio-core/README.md) 与 [`asyncio 陷阱（阻塞事件循环 / to_thread）`](../../../python-concurrency/05-asyncio-pitfalls/README.md)

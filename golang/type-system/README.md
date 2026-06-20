@@ -52,7 +52,7 @@
 ## 关联已有笔记（复用不重复）
 
 - [`error-handling/01`](../error-handling/01-error-values/README.md) / [`05`](../error-handling/05-concurrent-errors/README.md) — typed nil 在错误场景点过,本 track `05` 是完整版
-- slice/map/string 底层 → 见 [`data-structures/`](../data-structures/)(待建),本 track 只讲「它们是含指针的头」
+- slice/map/string 底层 → 见 [`data-structures/`](../data-structures/),本 track 只讲「它们是含指针的头」
 - `java/` — Java 类型系统/继承/泛型,做对标锚点
 
 ← 回 [`golang/` master 索引](../README.md)

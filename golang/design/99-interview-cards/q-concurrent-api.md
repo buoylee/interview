@@ -14,12 +14,12 @@
 
 ## 为什么别导出 Mutex/channel
 
-- 嵌入 `sync.Mutex` 会把 `Lock`/`Unlock` 提升成公共方法(见 [`type-system/04`](../../../type-system/04-embedding/README.md))→ 外部能锁你内部状态。用未导出 `mu sync.Mutex`。
+- 嵌入 `sync.Mutex` 会把 `Lock`/`Unlock` 提升成公共方法(见 [`type-system/04`](../../type-system/04-embedding/README.md))→ 外部能锁你内部状态。用未导出 `mu sync.Mutex`。
 - 导出 channel 让「谁关闭/缓冲多大/泄漏」成契约负担;优先方法/回调。
 
 ## 证据链接
 
-- 正文:[`03 并发安全的 API 设计`](../03-concurrent-api/README.md);goroutine 泄漏 [`concurrency/04`](../../../concurrency/04-goroutine/README.md);ctx [`concurrency/07`](../../../concurrency/07-context/README.md);panic crash [`error-handling/05`](../../../error-handling/05-concurrent-errors/README.md)
+- 正文:[`03 并发安全的 API 设计`](../03-concurrent-api/README.md);goroutine 泄漏 [`concurrency/04`](../../concurrency/04-goroutine/README.md);ctx [`concurrency/07`](../../concurrency/07-context/README.md);panic crash [`error-handling/05`](../../error-handling/05-concurrent-errors/README.md)
 
 ## 易追问的延伸
 

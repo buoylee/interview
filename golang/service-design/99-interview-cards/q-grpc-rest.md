@@ -14,7 +14,7 @@
 
 ## 证据链接
 
-- 正文:[`01 gRPC vs REST`](../01-grpc-rest/README.md);错误码边界 [`error-handling/04`](../../../error-handling/04-error-design/README.md);ctx [`concurrency/07`](../../../concurrency/07-context/README.md)
+- 正文:[`01 gRPC vs REST`](../01-grpc-rest/README.md);错误码边界 [`error-handling/04`](../../error-handling/04-error-design/README.md);ctx [`concurrency/07`](../../concurrency/07-context/README.md)
 
 ## 易追问的延伸
 

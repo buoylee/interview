@@ -16,7 +16,7 @@
 
 ## 证据链接
 
-- 正文:[`03 可观测性接入`](../03-observability/README.md);ctx 传播 [`concurrency/07`](../../../concurrency/07-context/README.md);**深挖** → [`observability/`](../../../../observability/) track
+- 正文:[`03 可观测性接入`](../03-observability/README.md);ctx 传播 [`concurrency/07`](../../concurrency/07-context/README.md);**深挖** → [`observability/`](../../../observability/) track
 
 ## 易追问的延伸
 

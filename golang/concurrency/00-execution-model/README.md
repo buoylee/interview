@@ -149,7 +149,7 @@ func handle() (A, B, C) {
 - **为什么 goroutine 能开几十万，线程几千就爆？** 栈小(2KB vs MB)+ 用户态切换便宜 + M 复用。给得出「1GB/2KB≈50万」这笔账加分。
 - **M:N 是什么？为什么不用 1:1？** N 个 goroutine 复用 M 个 OS 线程；1:1 太贵(线程重)，N:1 没并行；M:N 兼得轻与并行，代价是 runtime 调度器复杂。
 - **(对标题) goroutine 和 Java 线程/虚拟线程怎么对应？** goroutine ≈ 虚拟线程(Loom)，M ≈ carrier/平台线程；Java 老的 `Thread` 是 1:1 OS 线程 = Go 的 M。
-- **(对标题) goroutine 和 asyncio 协程区别？** 都是轻量任务，但 asyncio 是单线程 N:1、协作式、要 `await`；goroutine 是 M:N、能真并行、抢占式、不用手写让出。深答见 `02`/`03` 和 [goroutine vs asyncio 卡](../../python-concurrency/99-interview-cards/q-asyncio-vs-goroutine.md)。
+- **(对标题) goroutine 和 asyncio 协程区别？** 都是轻量任务，但 asyncio 是单线程 N:1、协作式、要 `await`；goroutine 是 M:N、能真并行、抢占式、不用手写让出。深答见 `02`/`03` 和 [goroutine vs asyncio 卡](../../../python-concurrency/99-interview-cards/q-asyncio-vs-goroutine.md)。
 
 ---
 

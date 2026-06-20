@@ -26,7 +26,7 @@ type B struct{ b int64; a bool; c bool }   // b a c[pad6]      = 16 字节
 
 ## 易追问的延伸
 
-- **false sharing?** 不同核高频写的字段落同一 cache line(通常 64B)会互相使缓存失效;用 padding 撑到不同 line(高并发计数器/分片锁优化)。见 [`concurrency/06`](../../../concurrency/06-sync-memory-model/README.md)。
+- **false sharing?** 不同核高频写的字段落同一 cache line(通常 64B)会互相使缓存失效;用 padding 撑到不同 line(高并发计数器/分片锁优化)。见 [`concurrency/06`](../../concurrency/06-sync-memory-model/README.md)。
 - **atomic 对齐坑?** 32 位平台 64 位 atomic 值要 8 字节对齐,否则 panic;常把它放 struct 开头。
 - **要不要总是按大小排?** 海量/热点结构值得;少量对象按逻辑分组更可读,别过度优化。
 - **和 Java 区别?** Java 布局由 JVM 定(`@Contended` 防伪共享);Go 按声明顺序排,字段顺序是你能控的优化点。

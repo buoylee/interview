@@ -27,7 +27,7 @@ var assets embed.FS
 
 ## 证据链接
 
-- 正文:[`01 项目结构与构建`](../01-project-build/README.md);copylocks 等 [`type-system/02`](../../../type-system/02-method-sets/README.md)
+- 正文:[`01 项目结构与构建`](../01-project-build/README.md);copylocks 等 [`type-system/02`](../../type-system/02-method-sets/README.md)
 
 ## 易追问的延伸
 

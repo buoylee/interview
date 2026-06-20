@@ -40,7 +40,7 @@
 ## 关联已有笔记（复用不重复）
 
 - pprof/trace/race **机制** → `performance-tuning-roadmap/05a-go-profiling/`、`05b-go-debugging/`、[`concurrency/06`](../concurrency/06-sync-memory-model/README.md)(本 track 只讲工程上怎么接)
-- 测试工具(go test/benchmark)→ [`testing/`](../testing/)(待建)
+- 测试工具(go test/benchmark)→ [`testing/`](../testing/)
 - `java/` — Maven/Gradle 依赖管理对标锚点
 
 ← 回 [`golang/` master 索引](../README.md)

@@ -24,7 +24,7 @@ Max[*A]     Max[*B]         Max[*C]         // 共一份(都是指针形状)
 
 ## 证据链接
 
-- 正文:[`01 底层实现`](../01-implementation/README.md);接口动态派发对照 [`type-system/01`](../../../type-system/01-interface-internals/README.md)
+- 正文:[`01 底层实现`](../01-implementation/README.md);接口动态派发对照 [`type-system/01`](../../type-system/01-interface-internals/README.md)
 
 ## 易追问的延伸
 

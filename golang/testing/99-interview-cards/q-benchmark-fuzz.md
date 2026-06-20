@@ -36,7 +36,7 @@ func FuzzParse(f *testing.F) {
 
 ## 证据链接
 
-- 正文:[`02 基准·模糊·集成`](../02-benchmark-fuzz-integration/README.md);逃逸/分配 [`data-structures/03`](../../../data-structures/03-escape-analysis/README.md);build tag [`engineering/01`](../../../engineering/01-project-build/README.md)
+- 正文:[`02 基准·模糊·集成`](../02-benchmark-fuzz-integration/README.md);逃逸/分配 [`data-structures/03`](../../data-structures/03-escape-analysis/README.md);build tag [`engineering/01`](../../engineering/01-project-build/README.md)
 
 ## 易追问的延伸
 

@@ -36,7 +36,7 @@ go func() { panic("boom") }()    // 没人 recover → crash 整个程序(不是
 ## 证据链接
 
 - 正文:[`05 并发中的错误`](../05-concurrent-errors/README.md)
-- 互链:[`concurrency/08-patterns`](../../../concurrency/08-patterns/README.md)(errgroup 并发机制) / [`concurrency/07-context`](../../../concurrency/07-context/README.md)(取消传播) / [`concurrency/04-goroutine`](../../../concurrency/04-goroutine/README.md)(泄漏/panic)
+- 互链:[`concurrency/08-patterns`](../../concurrency/08-patterns/README.md)(errgroup 并发机制) / [`concurrency/07-context`](../../concurrency/07-context/README.md)(取消传播) / [`concurrency/04-goroutine`](../../concurrency/04-goroutine/README.md)(泄漏/panic)
 
 ## 易追问的延伸
 

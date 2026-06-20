@@ -19,7 +19,7 @@ if err != nil { return err }
 
 ## 证据链接
 
-- 正文:[`00 io 接口家族`](../00-io/README.md);接口设计 [`design/00`](../../../design/00-interface-design/README.md);io.EOF [`error-handling/01`](../../../error-handling/01-error-values/README.md)
+- 正文:[`00 io 接口家族`](../00-io/README.md);接口设计 [`design/00`](../../design/00-interface-design/README.md);io.EOF [`error-handling/01`](../../error-handling/01-error-values/README.md)
 
 ## 易追问的延伸
 

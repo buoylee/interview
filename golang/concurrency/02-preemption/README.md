@@ -186,4 +186,4 @@ for i := 0; i < 1000; i++ {
 
 ← 上一章 [`01 GMP 调度器`](../01-gmp-scheduler/README.md)（sysmon/P 的来历） ｜ 下一章 → [`03 netpoller 与阻塞处理`](../03-netpoller-blocking/README.md)：`time.Sleep`/网络 I/O 怎么让出而**不**阻塞线程，以及 syscall 时 P 怎么交接。
 
-> 延伸对照：[goroutine vs asyncio 面试卡](../../python-concurrency/99-interview-cards/q-asyncio-vs-goroutine.md) ｜ Python 协作式的另一面 [`asyncio 陷阱`](../../python-concurrency/05-asyncio-pitfalls/README.md)
+> 延伸对照：[goroutine vs asyncio 面试卡](../../../python-concurrency/99-interview-cards/q-asyncio-vs-goroutine.md) ｜ Python 协作式的另一面 [`asyncio 陷阱`](../../../python-concurrency/05-asyncio-pitfalls/README.md)

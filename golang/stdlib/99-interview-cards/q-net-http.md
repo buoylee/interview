@@ -15,7 +15,7 @@ srv.Shutdown(ctx)                       // 优雅关闭
 
 ## 证据链接
 
-- 正文:[`01 net/http`](../01-net-http/README.md);ctx [`concurrency/07`](../../../concurrency/07-context/README.md);优雅关闭 [`service-design/00`](../../../service-design/00-service-skeleton/README.md)
+- 正文:[`01 net/http`](../01-net-http/README.md);ctx [`concurrency/07`](../../concurrency/07-context/README.md);优雅关闭 [`service-design/00`](../../service-design/00-service-skeleton/README.md)
 
 ## 易追问的延伸
 

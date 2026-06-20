@@ -40,7 +40,7 @@
 ## 关联已有笔记（复用不重复）
 
 - [`type-system/02`](../type-system/02-method-sets/README.md) — 接口/方法集(mock 靠接口)
-- [`design/`](../design/)(待建)— 接口设计哲学(本 track 讲「为测试而设计接口」,互链)
+- [`design/`](../design/) — 接口设计哲学(本 track 讲「为测试而设计接口」,互链)
 - race 机制 → [`concurrency/06`](../concurrency/06-sync-memory-model/README.md) / [`engineering/02`](../engineering/02-toolchain/README.md)
 - `java/` — JUnit/Mockito 对标锚点
 

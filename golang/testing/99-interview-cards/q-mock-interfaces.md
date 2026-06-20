@@ -24,7 +24,7 @@ func (f fakeStore) QueryName(int) (string, error) { return f.name, nil }
 
 ## 证据链接
 
-- 正文:[`01 mock 与接口`](../01-mock-interfaces/README.md);接口隐式实现 [`type-system/01`](../../../type-system/01-interface-internals/README.md);设计哲学 [`design/`](../../../design/)
+- 正文:[`01 mock 与接口`](../01-mock-interfaces/README.md);接口隐式实现 [`type-system/01`](../../type-system/01-interface-internals/README.md);设计哲学 [`design/`](../../design/)
 
 ## 易追问的延伸
 

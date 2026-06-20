@@ -23,7 +23,7 @@ b = append(b, 100)   // cap 够 → 写 a[3] → a 变 [1,99,3,100,5](覆盖!)
 
 ## 证据链接
 
-- 正文:[`00 slice`](../00-slice/README.md);header 概念 [`type-system/00`](../../../type-system/00-values-layout/README.md)
+- 正文:[`00 slice`](../00-slice/README.md);header 概念 [`type-system/00`](../../type-system/00-values-layout/README.md)
 
 ## 易追问的延伸
 

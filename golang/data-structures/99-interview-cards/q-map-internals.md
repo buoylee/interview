@@ -22,7 +22,7 @@ bucket(bmap): [tophash×8][key×8][value×8][overflow→]
 
 ## 证据链接
 
-- 正文:[`01 map`](../01-map/README.md);可比较性 [`type-system/00`](../../../type-system/00-values-layout/README.md);并发安全 [`concurrency/06`](../../../concurrency/06-sync-memory-model/README.md)
+- 正文:[`01 map`](../01-map/README.md);可比较性 [`type-system/00`](../../type-system/00-values-layout/README.md);并发安全 [`concurrency/06`](../../concurrency/06-sync-memory-model/README.md)
 
 ## 易追问的延伸
 

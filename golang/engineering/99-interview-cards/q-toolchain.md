@@ -20,7 +20,7 @@ gofmt -l(格式 gate)→ go vet → golangci-lint run → go test -race -cover �
 
 ## 证据链接
 
-- 正文:[`02 工具链`](../02-toolchain/README.md);race 原理 [`concurrency/06`](../../../concurrency/06-sync-memory-model/README.md);lostcancel [`concurrency/07`](../../../concurrency/07-context/README.md)
+- 正文:[`02 工具链`](../02-toolchain/README.md);race 原理 [`concurrency/06`](../../concurrency/06-sync-memory-model/README.md);lostcancel [`concurrency/07`](../../concurrency/07-context/README.md)
 
 ## 易追问的延伸
 

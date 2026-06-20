@@ -27,7 +27,7 @@
 
 ## 证据链接
 
-- 正文:[`02 工程取舍`](../02-when-to-use/README.md);免装箱 [`data-structures/03`](../../../data-structures/03-escape-analysis/README.md)
+- 正文:[`02 工程取舍`](../02-when-to-use/README.md);免装箱 [`data-structures/03`](../../data-structures/03-escape-analysis/README.md)
 
 ## 易追问的延伸
 

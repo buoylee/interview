@@ -19,7 +19,7 @@ func Keys[K comparable, V any](m map[K]V) []K { ... } // comparable 才能当 ma
 
 ## 证据链接
 
-- 正文:[`00 泛型基础`](../00-basics/README.md);可比较性 [`type-system/00`](../../../type-system/00-values-layout/README.md)
+- 正文:[`00 泛型基础`](../00-basics/README.md);可比较性 [`type-system/00`](../../type-system/00-values-layout/README.md)
 
 ## 易追问的延伸
 

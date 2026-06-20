@@ -34,7 +34,7 @@ func do() error {
 
 ## 证据链接
 
-- 正文:[`05 nil 的多张面孔`](../05-nil/README.md);接口两个字见 [`01`](../01-interface-internals/README.md);错误风格场景 [`error-handling/01`](../../../error-handling/01-error-values/README.md)
+- 正文:[`05 nil 的多张面孔`](../05-nil/README.md);接口两个字见 [`01`](../01-interface-internals/README.md);错误风格场景 [`error-handling/01`](../../error-handling/01-error-values/README.md)
 
 ## 易追问的延伸
 

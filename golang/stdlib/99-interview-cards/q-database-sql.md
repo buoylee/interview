@@ -21,7 +21,7 @@ return tx.Commit()
 
 ## 证据链接
 
-- 正文:[`03 database/sql`](../03-database-sql/README.md);ctx [`concurrency/07`](../../../concurrency/07-context/README.md);连接池类比 [`01 net/http`](../01-net-http/README.md)
+- 正文:[`03 database/sql`](../03-database-sql/README.md);ctx [`concurrency/07`](../../concurrency/07-context/README.md);连接池类比 [`01 net/http`](../01-net-http/README.md)
 
 ## 易追问的延伸
 

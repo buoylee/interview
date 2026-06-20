@@ -18,7 +18,7 @@ srv.Shutdown(sdCtx)
 
 ## 证据链接
 
-- 正文:[`00 服务骨架`](../00-service-skeleton/README.md);Shutdown [`stdlib/01`](../../../stdlib/01-net-http/README.md);后台 goroutine 退出 [`design/03`](../../../design/03-concurrent-api/README.md)/[`concurrency/08`](../../../concurrency/08-patterns/README.md)
+- 正文:[`00 服务骨架`](../00-service-skeleton/README.md);Shutdown [`stdlib/01`](../../stdlib/01-net-http/README.md);后台 goroutine 退出 [`design/03`](../../design/03-concurrent-api/README.md)/[`concurrency/08`](../../concurrency/08-patterns/README.md)
 
 ## 易追问的延伸
 

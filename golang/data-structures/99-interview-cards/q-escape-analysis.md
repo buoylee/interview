@@ -16,12 +16,12 @@
 
 - **取地址 `&` 不必然逃逸**——地址不逃出函数就能留栈。
 - **返回 `&x` 安全**:编译器发现逃逸自动改放堆,**没有 C 的悬垂指针**。
-- **小对象传值常比传指针好**:传指针可能反而触发逃逸(承接 [`type-system/00`](../../../type-system/00-values-layout/README.md))。
+- **小对象传值常比传指针好**:传指针可能反而触发逃逸(承接 [`type-system/00`](../../type-system/00-values-layout/README.md))。
 - **栈会增长**(goroutine 栈 2KB 起可扩),所以栈也能放不小的东西。
 
 ## 证据链接
 
-- 正文:[`03 逃逸分析`](../03-escape-analysis/README.md);接口装值逃逸 [`type-system/01`](../../../type-system/01-interface-internals/README.md);GC 机制 → perf-roadmap `05a/03-go-gc-runtime.md`
+- 正文:[`03 逃逸分析`](../03-escape-analysis/README.md);接口装值逃逸 [`type-system/01`](../../type-system/01-interface-internals/README.md);GC 机制 → perf-roadmap `05a/03-go-gc-runtime.md`
 
 ## 易追问的延伸
 

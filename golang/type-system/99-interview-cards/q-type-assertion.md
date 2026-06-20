@@ -34,7 +34,7 @@ default:            // v 是原接口类型
 ## 易追问的延伸
 
 - **断言失败一定 panic 吗?** 不一定,comma-ok 不 panic。
-- **和 `errors.As` 关系?** `As` = 沿错误链逐环做类型断言并赋值(见 [`error-handling/02`](../../../error-handling/02-wrapping/README.md))。
+- **和 `errors.As` 关系?** `As` = 沿错误链逐环做类型断言并赋值(见 [`error-handling/02`](../../error-handling/02-wrapping/README.md))。
 - **type switch case 顺序要紧吗?** 多数场景编译器已 hash 优化;但接口 case 会匹配多个动态类型,放前面可能抢走本想进具体分支的值——注意语义。
 - **`any` + 大量断言是坏味道?** 是,能在编译期约束就用泛型(generics track),断言留给真异构场景。
 - **和 Java 比?** `x.(T)`≈`(T)x`+`instanceof`;comma-ok 提供「安全试探不抛异常」,Java 要先 `instanceof` 再强转。

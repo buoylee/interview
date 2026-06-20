@@ -14,7 +14,7 @@
 
 ## 证据链接
 
-- 正文:[`02 encoding/json`](../02-encoding-json/README.md);string/[]byte [`data-structures/02`](../../../data-structures/02-string-bytes-rune/README.md)
+- 正文:[`02 encoding/json`](../02-encoding-json/README.md);string/[]byte [`data-structures/02`](../../data-structures/02-string-bytes-rune/README.md)
 
 ## 易追问的延伸
 
