@@ -27,6 +27,7 @@ ai/
 ## 补充主题
 
 - `openai-claude-chat-completion-接口整理.md` — OpenAI / Claude 的接口选型、三段最小示例和官方链接索引
+- `workflow-orchestration-selection.md` — Celery/Airflow/Prefect/Dagster/Temporal 选型:先分三类(任务队列/数据编排/持久化执行)再选;含视觉 LLM 批改试卷流的 LangGraph+编排层两层范例
 - `agent-platform/` — Agent 平台选型、云上架构、安全治理、RAG、工具网关、评测与发布方案
 - `a2a-protocol/` — A2A 协议(agent↔agent 互通的事实标准)上手:Java/Go 对照心智模型、最小可跑 demo、A2A vs MCP、框架接入、面试卡片
 - `ml-labs/` — 动手训练 labs(面试核心 A 轨 + robotics B 轨),runnable 产物;首个 A3 房价回归讲透 ML 基本功(过拟合/正则/指标/数据泄漏)
