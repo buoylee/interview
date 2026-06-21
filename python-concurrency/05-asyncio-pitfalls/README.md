@@ -138,6 +138,42 @@ async with asyncio.timeout(10):      # 3.11+
 # 或库自带的：await client.get(url, timeout=10)
 ```
 
+### 3.7 坑：fire-and-forget 任务吞掉异常
+
+`await foo()` 的异常会顺着 await 抛回来，`try/except` 抓得到（和同步一样）。但 `create_task` 把任务**脱钩**丢到后台跑——异常归 Task 对象，**不会回到你的 `try`**：
+
+```python
+async def worker():
+    raise ValueError("boom")
+
+async def main():
+    try:
+        asyncio.create_task(worker())   # ❌ 异常存进 Task，不抛到这里
+    except ValueError:
+        pass                            # 永远进不来，try 早执行完了
+    await asyncio.sleep(1)
+# 程序退出时只剩一行日志：Task exception was never retrieved
+```
+
+没人 `await`/`.result()` 去取，task 又被 GC，异常就只剩那行警告（最接近 Go 里没 recover 的 goroutine，区别是 Python 不会 crash 进程，只是「静默」）。两条救法：
+
+1. **优先 `TaskGroup`（3.11+）**：任务收回作用域，任一失败自动取消其余并把异常打包成 `ExceptionGroup` 抛出（见第 04 章 3.3），根本不需要手动兜。
+2. **真要 fire-and-forget（背景常驻任务）**：① 存住引用防 GC；② 挂 `add_done_callback` 把异常打到日志/Sentry：
+
+```python
+_bg: set[asyncio.Task] = set()
+
+def spawn_bg(coro):
+    t = asyncio.create_task(coro)
+    _bg.add(t)                              # 存引用，否则可能被 GC
+    t.add_done_callback(_bg.discard)
+    t.add_done_callback(                    # 异常上报，别让它静默
+        lambda f: f.cancelled() or (f.exception() and
+                  log.error("bg task failed", exc_info=f.exception())))
+```
+
+> `gather(*coros, return_exceptions=True)` 是另一种「吞」：异常被当成返回值塞进结果 list，不抛。要 fail-fast 用默认 `return_exceptions=False` 或直接上 `TaskGroup`。
+
 ---
 
 ## 4. 日常开发应用
@@ -189,6 +225,9 @@ async 只能被 await、await 只能在 async 函数里，导致一个函数变 
 
 **Q5：FastAPI 里 `def` 和 `async def` 路由有什么区别？**
 `def` 路由被自动丢线程池执行（同步阻塞不影响别人）；`async def` 路由跑在事件循环上，里面的同步阻塞会冻结整个循环。所以 async 路由里更要小心、必须全程 async。
+
+**Q6：异步代码里 try/except 抓不到异常，可能是什么原因？**
+多半是把任务 fire-and-forget 了。`await foo()` 异常会顺着 await 抛回、`try` 抓得到；但 `asyncio.create_task(foo())` 把任务脱钩到后台，异常存进 Task 对象，不会回到 `try`，没人取还会变 "Task exception was never retrieved"。`gather(return_exceptions=True)` 也会把异常塞进返回值不抛。救法：优先用 `TaskGroup`（任一失败取消其余 + `ExceptionGroup`），真要后台任务就存引用防 GC + `add_done_callback` 上报异常。
 
 ---
 

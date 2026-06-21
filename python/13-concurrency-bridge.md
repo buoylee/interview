@@ -91,7 +91,68 @@ asyncio.run(main())
 > req_id.set("abc123"); req_id.get()   # 'abc123',各任务各自一份
 > ```
 
-## 四、`concurrent.futures`:统一的高层接口
+## 四、async 里的异常:`await` 传播,脱钩任务自负盈亏
+
+新 async 用户常以为"异步函数抓不到异常"。其实分两种写法,天差地别:
+
+```python
+async def foo():
+    raise ValueError("boom")
+
+async def bar():
+    try:
+        await foo()          # ① await:异常顺着 await 往上抛
+    except ValueError as e:
+        print("caught", e)   # ✅ 抓得到,和同步 try/except 一模一样
+```
+
+`await foo()` 语义上是"在**同一个 Task** 里把 `foo` 的栈接上来继续跑",异常 unwind 回来时你的 `try` 正好罩在那条栈上。**这就是"Python async 不存在抓不到异常的问题"的来源——但只对 `await` 这条「耦合」路径成立。** 一旦改成 fire-and-forget(丢出去自己跑),异常就脱钩了:
+
+```python
+async def bar():
+    try:
+        asyncio.create_task(foo())   # ❌ 不 await:异常归 Task 对象,不回这里
+    except ValueError:
+        print("caught")              # 永远进不来,try 早就执行完了
+    await asyncio.sleep(1)
+    # 程序退出时只剩一行日志:Task exception was never retrieved
+```
+
+`create_task` 起的是**独立 Task**(最接近 Go 的 `go func()`),异常被存进 Task 对象;没人 `await` / `.result()` 去取、又被 GC,异常就丢了。`asyncio.gather(..., return_exceptions=True)` 也是同类——异常被当成返回值塞进 list,不抛。
+
+**最佳实践:用 `TaskGroup`(3.11+)把任务收回作用域**,异常就能像同步一样传播到一个统一边界:
+
+```python
+async def handle_order(order):
+    async with asyncio.TaskGroup() as tg:        # 结构化并发
+        tg.create_task(charge_payment(order))
+        tg.create_task(reserve_stock(order))
+    # 离开 with:任一子任务失败 → 自动取消其余 + 异常打包成 ExceptionGroup 抛出
+
+try:
+    await handle_order(order)
+except* PaymentError as eg:      # except*(3.11+)按类型解包异常组
+    ...
+```
+
+`TaskGroup` 取代裸 `create_task`/`gather`:**任一失败就 fail-fast 取消兄弟任务**,异常汇成 `ExceptionGroup` 抛到 `with` 外,`except*` 分类处理。真要 fire-and-forget(背景任务),两条铁律:**存住引用防 GC + 挂 `add_done_callback` 把异常打到日志/Sentry**,别让它变一行 "never retrieved"。(handson 见 [`../python-concurrency/04-asyncio-core`](../python-concurrency/04-asyncio-core) 与 [`05-asyncio-pitfalls`](../python-concurrency/05-asyncio-pitfalls))
+
+### 三语言一张表:异步异常的产线最佳实践
+
+这本质是同一道题——**异步任务跑在不在你 try/catch 罩的那条栈上**:耦合(同一逻辑栈的挂起点)就能传播,脱钩(独立执行单元)就归那个单元自己。三语言都在朝**结构化并发**收敛:把任务绑回作用域,让异常传播到统一边界。
+
+| | Python | Java | Go |
+|--|--------|------|-----|
+| **异常自动回到调用方 try?** | `await` ✅ / `create_task` ❌ | `Thread.start`/`submit` ❌(存进 Future) | `go func` ❌(还会 crash 全进程) |
+| **结构化并发**(收回作用域) | `TaskGroup` / anyio nursery | `StructuredTaskScope`(新)/ `CompletableFuture` 链(存量) | `errgroup` |
+| **取消传播**(一个败其余停) | TaskGroup 自动取消 | scope 自动 / Reactor cancel | `context` + errgroup |
+| **异常打包/解包** | `ExceptionGroup` + `except*` | 解 `CompletionException.getCause()` | `%w` + `errors.Is`/`As` |
+| **fire-and-forget 安全网** | `add_done_callback` 上报 + 存引用 | 线程池 `UncaughtExceptionHandler` | safe-go `recover` 包装 |
+| **边界统一处理** | 框架 exception_handler | `@ControllerAdvice` | HTTP/gRPC middleware |
+
+一句话面试结论:**三语言产线都在朝结构化并发收敛——把并发任务绑回调用栈,让异常像同步代码一样传播到一个统一边界,中间任何脱钩点都必须接上可观测性。** Python(`TaskGroup`)和 Go(`errgroup`)已是默认这么写;Java 存量靠 Spring 全局 `@ControllerAdvice` + `CompletableFuture` 必接 `.handle`/`.exceptionally`,增量往虚拟线程 + 结构化并发(`StructuredTaskScope`)走,让并发异常回归 try/catch。论凶险:Go 最毒(脱钩 panic 直接炸全进程,见 [`../golang/error-handling/05-concurrent-errors`](../golang/error-handling/05-concurrent-errors/README.md)),Java 次之(静默吞进 Future 要主动取),Python 最温和(默认耦合,至少还印 "never retrieved")。
+
+## 五、`concurrent.futures`:统一的高层接口
 
 不想直接摆弄 thread/process,用 `concurrent.futures` 的执行器,换一个类名就能在"线程池/进程池"之间切:
 
@@ -107,7 +168,7 @@ with ProcessPoolExecutor() as ex:                 # CPU 密集
 
 接口一致(`submit`/`map`/`Future`),IO 用 Thread 版、CPU 用 Process 版。这是日常最常用的并发入口,类似 Java 的 `ExecutorService`。
 
-## 五、深入:去 `python-concurrency/`
+## 六、深入:去 `python-concurrency/`
 
 本章到此为止只够"选对方向"。每条路的细节在专题目录,按需深入:
 
@@ -155,3 +216,9 @@ asyncio 是单线程事件循环上的协作式并发:`await` 处主动让出控
 
 **Q6. Python 怎么做 CPU 并行计算?**
 用 `multiprocessing`/`ProcessPoolExecutor` 多进程(每进程独立解释器、各自 GIL,真并行),代价是进程开销和跨进程数据序列化;或用在 C 层释放 GIL 的库(numpy 向量化、C 扩展、Cython)。3.14 起另有两条进程内路径:free-threaded 构建(PEP 779,关 GIL 后多线程真并行)和子解释器(PEP 734,`concurrent.interpreters`,每解释器独立 GIL);均需 3.14、属可选 / 早期,当前默认仍首选多进程。
+
+**Q7. 异步函数能 try/except 抓到异常吗?Python/Java/Go 有区别吗?**
+看任务**耦合还是脱钩**于调用栈。Python 的 `await foo()` 是耦合的(同一 Task 的挂起点),异常顺着 await 抛回,`try/except` 抓得到,和同步一样——这是 Python async 的默认写法,所以"感觉不到问题"。但 `create_task` 脱钩成独立 Task,异常存进 Task 对象,不会回到 `try`(没人取还会变 "Task exception was never retrieved")。Java 的 `Thread.start`/`submit`、Go 的 `go func` 默认就是脱钩的:Java 异常存进 Future(要 `get()`/`.handle` 取),Go 的 goroutine panic 父协程 recover 不到、还会 **crash 整个进程**。结论:不是"Python 没这问题",而是 Python 默认写法耦合、Java/Go 默认写法脱钩;切到对方写法坑一样。
+
+**Q8. 三语言异步异常处理的产线最佳实践?**
+都朝**结构化并发**收敛——把并发任务绑回作用域,让异常传播到一个统一边界,中间脱钩点必接可观测性。Python:`TaskGroup`(任一失败取消其余 + `ExceptionGroup`/`except*`),fire-and-forget 用 `add_done_callback` 上报 + 存引用防 GC。Go:`errgroup.WithContext`(首错取消)+ 每个 goroutine 自带 `recover`。Java:存量靠 Spring `@ControllerAdvice` 全局兜底 + `CompletableFuture` 必接 `.handle`/`.exceptionally`,增量往虚拟线程 + `StructuredTaskScope` 走让异常回归 try/catch。

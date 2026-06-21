@@ -149,7 +149,9 @@ except* TypeError as eg:
     print([str(x) for x in eg.exceptions])   # ['b']
 ```
 
-`except*` 能从一个异常组里**挑出**匹配的子异常分别处理,其余继续传播。主要服务于结构化并发(第 13 章)。
+`except*` 能从一个异常组里**挑出**匹配的子异常分别处理,其余继续传播。主要服务于结构化并发——`TaskGroup` 里任一任务失败会把整组异常打包成 `ExceptionGroup` 抛出,用 `except*` 分类。
+
+> **async 的异常会不会被 `try` 抓到?** 看任务**耦合还是脱钩**:`await foo()` 异常顺着 await 抛回、`try/except` 抓得到;`create_task` 脱钩到后台则异常归 Task 对象、抓不到。这块连同 Python/Java/Go 三语言的产线最佳实践,见 [13 章 §四「async 里的异常」](13-concurrency-bridge.md)。
 
 ### `assert`:只用于"绝不该发生"的内部断言
 
