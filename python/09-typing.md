@@ -143,17 +143,39 @@ Builder().add(1).add(2)                  # 类型检查器知道返回的是 Bui
 
 ### 变型:协变、逆变、不变
 
-泛型类型参数对子类型关系的"传导方向"叫**变型(variance)**。Python 默认**不变(invariant)**:即使 `Dog` 是 `Animal` 的子类,`SomeGeneric[Dog]` 和 `SomeGeneric[Animal]` 也没有任何父子关系——mypy 把它们看成两个互不相干的类型。
+这一节的全部内容,只回答一个 yes/no 问题:
 
-**为什么可变容器必须不变?** 这是整个变型讨论的核心直觉。假设 mypy 允许把 `list[Dog]` 传给接收 `list[Animal]` 的函数——那函数完全有权往那个列表里 `append(Animal())` 甚至 `append(Cat())`,函数返回后原来那个 `list[Dog]` 里就混进了非 Dog 对象,契约就被悄悄破坏了。所以 mypy 拒绝:可变容器是**不变**的,不允许向上传递。
+> `Dog` 是 `Animal`。那「**一盒 Dog**」算不算「**一盒 Animal**」?
 
-**只读容器可以协变(covariant)**。`Sequence` 没有 `append`、没有写入途径,只能读,`Sequence[Dog]` 传进去当 `Sequence[Animal]` 用完全安全。mypy 因此为 `Sequence` 标记协变:**子类型方向一致**,`Dog <: Animal` → `Sequence[Dog] <: Sequence[Animal]`。
+直觉脱口而出「当然算」,但正确答案是:**看你拿这盒子干嘛——只读、只写、还是又读又写。** 这个「读 / 写」就是判定变型的唯一原语,记住它,三个术语全部自己长出来。
 
-**回调/消费者的参数位是逆变(contravariant)**:方向反过来,`Dog <: Animal` → `Callable[[Animal], None] <: Callable[[Dog], None]`。直觉:你要一个处理 Dog 的回调,传入一个能处理任意 `Animal` 的函数完全没问题——能处理任意 Animal 的,必然能处理 Dog。参数**越宽**的函数,反而能当参数**更窄**的回调用。
+**先认清下面三个类型「能干什么」不同**,变型方向才有意义——它们不是 `list` 的三种变体,而是允许的操作根本不同:
 
-自定义泛型时,只有**只读**的容器/包装器才能安全地声明 `covariant=True`——因为没有写入路径就没有"塞进非法值"的风险。旧式用 `TypeVar("T_co", covariant=True)` / `TypeVar("T_contra", contravariant=True)` 显式声明;PEP 695 的 `class Box[T]`(3.12+)由静态检查器自动推断变型,平时不必手写。
+| 类型 | 能做的操作 | 做不了 | 本质 | → 变型 |
+|---|---|---|---|---|
+| `list[Dog]` | 读 `x[0]`/`for`/`len` + 写 `append`/`x[0]=` | —(读写全能) | 可读可写盒子 | 不变 |
+| `Sequence[Dog]` | 读 `x[0]`/`for`/`len` | **没有** `append`、`x[0]=`(写方法被藏掉) | 只读盒子 | 协变 |
+| `Callable[[Dog], None]` | **调用** `f(某dog)` | 它不是盒子,是**函数** | 接受 Dog 的函数 | 参数位逆变 |
+
+注意 `Sequence` **不是另一个对象**:运行时你传的还是那个 `list`,`Sequence[Dog]` 只是更窄的**类型标签**,把 `append`/`__setitem__` 从「检查器允许你用的方法」里藏起来——标成 `Sequence` 就等于对 mypy 发誓「我只读不写」。`Callable[[Dog], None]` 则压根不是容器,是个**函数类型**;把它理解成「只写槽」的关键是:**调用一个函数 = 把值塞进它的参数槽,所以参数位 = 写/消费位**。下面 ①②③ 就是这张表的三行各自为什么是那个变型。
+
+**① 只读 → 协变(covariant)。** 你只从盒子往外拿。一盒 Dog 当一盒 Animal 用绝对安全:你期待掏出 Animal,实际掏出的是 Dog,而 Dog 本来就是 Animal。**方向跟着子类型走**:`Dog <: Animal` ⇒ `只读盒[Dog] <: 只读盒[Animal]`。Python 里 `Sequence` 就是这种(没有 `append`,无写入途径)。
+
+**② 又读又写 → 不变(invariant),这是 `list` 的情况,也是 Python 泛型的默认。** 假设 mypy 允许把 `list[Dog]` 传给接收 `list[Animal]` 的函数——那函数完全有权往里 `append(Animal())` 甚至 `append(Cat())`,函数返回后,你原来那盒 Dog 里就混进了猫,契约被悄悄破坏。所以可变容器**不允许向上传**:`list[Dog]` 和 `list[Animal]` 在 mypy 眼里是互不相干的两个类型。
+
+**③ 只写 → 逆变(contravariant),方向反过来。** 「往里塞」什么时候反而安全?当目标盒子接收的范围**更宽**时:一个「能装任意 Animal」的盒子,可以安全地当「装 Dog 的盒子」用——你要塞 Dog,它照单全收。所以 `Dog <: Animal` ⇒ `写盒[Animal] <: 写盒[Dog]`,**箭头掉头**。最常见的「只写位」是**函数的参数位**:`Callable[[Animal], None]` 是 `Callable[[Dog], None]` 的子类型——你要一个处理 Dog 的回调,给它一个「能处理任意 Animal」的函数完全没问题。
+
+**Java 桥:这正是你早就会的 PECS**——*Producer Extends, Consumer Super*:
+
+- 盒子当**生产者**(你从里读)→ `List<? extends Animal>` → 协变
+- 盒子当**消费者**(你往里写)→ `List<? super Dog>` → 逆变
+- 普通 `List<Animal>` 读写都要 → 不变
+
+唯一区别:**Java 把变型写在使用点**(每次用 `?` 通配符声明),**Python 写在定义点**(`TypeVar` 上标 `covariant=`/`contravariant=`,或 3.12+ 让检查器自动推断)。规则一模一样。
 
 **一句话记忆:能写就不变,只读可协变,消费者(回调入参)逆变。**
+
+**变型在代码里其实是两道关卡,看清这点就彻底懂了。** 下面 ①②③ 是**调用点**:别人把 `list[Dog]`/`Sequence[Dog]` 传给你时,mypy 放行还是标红。而变型的**声明**在**定义点**——`TypeVar("T_co", covariant=True)` 是一句承诺「这个 `T` 只出现在**返回位**(产出),绝不出现在**参数位**(吃进)」,mypy 会**逐个方法验你有没有违约**:协变 `T` 落在参数位 → 报 `Cannot use a covariant type variable as a parameter`;逆变 `T` 落在返回位 → 报 `Cannot use a contravariant type variable as return type`。这正是 PECS 落到代码的硬约束(协变 = Producer = 只进返回位;逆变 = Consumer = 只进参数位),也是「只读才能安全协变」被机制保证的原因——**协变盒子里你根本写不出 `put`**,定义点这关就过不去。(3.12+ 的 `class Box[T]` 由检查器自动推断变型,不必手写这些 `TypeVar`。)第①关你天天撞见,第②关解释了第①关的「为什么」。
 
 ```python
 from typing import TypeVar, Generic, Sequence, Callable
@@ -161,27 +183,35 @@ from typing import TypeVar, Generic, Sequence, Callable
 class Animal: ...
 class Dog(Animal): ...
 
-# ① 可变容器:不变(invariant)
+# ① 只读容器:协变(covariant)
 dogs: list[Dog] = [Dog()]
-def feed_all(xs: list[Animal]) -> None:
-    xs.append(Animal())          # 它有权往里塞 Animal
-# feed_all(dogs)                 # mypy 标红:list 不变
-
-# ② 只读容器:协变(covariant)
 def count(xs: Sequence[Animal]) -> int:
     return len(xs)
 count(dogs)                      # mypy OK:Sequence 只读,Dog 是 Animal,塞不坏
+
+# ② 可变容器:不变(invariant)—— Python 默认
+def feed_all(xs: list[Animal]) -> None:
+    xs.append(Animal())          # 它有权往里塞 Animal
+# feed_all(dogs)                 # mypy 标红:list 不变
 
 # ③ 回调参数位:逆变(contravariant)
 handler: Callable[[Dog], None]
 def on_animal(a: Animal) -> None: ...
 handler = on_animal              # mypy OK:能处理任意 Animal,必能处理 Dog
 
-# 自定义协变泛型:只读才能安全标 covariant=True
-T_co = TypeVar("T_co", covariant=True)
+# ④ 定义点的强制(变型最硬核的体现):承诺写进 TypeVar,mypy 逐方法验
+T_co = TypeVar("T_co", covariant=True)        # 承诺:T 只产出,绝不吃进
 class ReadOnlyBox(Generic[T_co]):
     def __init__(self, v: T_co) -> None: self._v = v
-    def get(self) -> T_co: return self._v
+    def get(self) -> T_co: return self._v     # OK:返回位 = 产出
+    # def put(self, v: T_co) -> None: ...      # 若解开 → mypy 报:
+    #   error: Cannot use a covariant type variable as a parameter
+
+T_contra = TypeVar("T_contra", contravariant=True)   # 承诺:T 只吃进,绝不产出
+class Sink(Generic[T_contra]):
+    def put(self, v: T_contra) -> None: ...   # OK:参数位 = 吃进
+    # def get(self) -> T_contra: ...           # 若解开 → mypy 报:
+    #   error: Cannot use a contravariant type variable as return type
 ```
 
 ## 四、进阶武器
