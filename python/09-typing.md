@@ -23,6 +23,39 @@ print(add("x", "y"))    # "xy" —— 传 str 不报错!解释器无视注解
 print(add.__annotations__)   # {'a': <class 'int'>, 'b': <class 'int'>, 'return': <class 'int'>}
 ```
 
+### 那"运行时不强制",到底靠什么解决"传错类型"?——关键是**时机**
+
+既然解释器无视注解,你一定会问:那写注解 + mypy 到底"解决"了什么?**答案不在"运行时拦不拦",而在"什么时候查"。**
+
+mypy 是**另一个程序**:它把你的源码当文本**读一遍、但不运行它**,纯靠分析就预测出哪里类型会错。
+
+```python
+def greet(name: str) -> str:
+    return "Hi " + name
+
+greet(123)        # 传了 int
+```
+
+```bash
+$ mypy greet.py
+greet.py:4: error: Argument 1 to "greet" has incompatible type "int"; expected "str"
+# 注意:这时 python 根本还没跑
+```
+
+等你真的 `python greet.py`,这个 bug **已经在运行之前被你改掉了**——不是运行时把它挡下来,是它根本没机会发生。**"解决"=把发现时机从"运行到那一行才爆"提前到"还没运行就报错"。** 你怕的"不知道跑起来会传进来什么、跑到一半才崩",正是 mypy 消灭的东西。
+
+**用 Java 对齐就秒懂:** 你以为 Java 的类型安全是 JVM 在运行时给的?不是——是 `javac` **编译那一步**查的,那一步也在运行之前。**mypy 就是你手动装回来的 `javac`**,只是从"语言强制、不过编译就没有 `.class`"降级成"工具可选、自己在 CI 里卡死"。
+
+```
+Java:           写码 → javac 编译【查类型,过不了就没 .class】→ JVM 运行
+Python 无 mypy:  写码 →─────────(没有这一关)─────────→ python 运行(错到那一行才爆)
+Python 有 mypy:  写码 → mypy 检查【你自己装回来的这一关】───→ python 运行
+```
+
+所以"加类型 + mypy"不是给解释器加运行时限制(那永远没有),而是**在运行之前补一道和 `javac` 同位置的静态检查**。一句话钉死:**Python 的类型检查和 Java 一样发生在"运行前",差别只是 Java 由语言强制、Python 由你用工具自愿强制。**
+
+> 注意边界:mypy 只能查"你源码里看得见的类型"。运行时才从外部流进来的数据(JSON / 网络 / DB),mypy 读不到——那一块归 pydantic 在运行时校验(见本章第五节)。别把这两件事混成一件。
+
 ## 二、基础注解
 
 ```python
@@ -254,7 +287,7 @@ print(get_type_hints(birthday)["age"])   # <class 'int'> —— 不加 include_e
 
 | | Java / Go | Python |
 |--|-----------|--------|
-| 类型检查时机 | 编译期强制 | 注解**不在运行时强制**,靠 mypy/pyright 静态查 |
+| 类型检查时机 | **运行前**(javac/go build 编译期),语言强制 | **也在运行前**(mypy/pyright 静态查),工具可选;解释器运行时无视注解 |
 | 不写类型 | 不允许(Java)/类型推断(Go) | 允许,渐进式,不写按动态处理 |
 | 泛型 | Java 类型擦除、Go 1.18+ 泛型 | `TypeVar`/`Generic`,3.12+ `class Foo[T]`;注解本就不进运行时 |
 | 接口 | `interface`(名义) | `Protocol`(结构化,≈ Go interface 隐式满足) |
