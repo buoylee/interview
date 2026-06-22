@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  05:Spring Boot 用 logback-spring.xml。appender 只掛 root(避免 additivity 雙重發射)。
+  03:用 LogstashEncoder 輸出 JSON,把 MDC 的 requestId 變成欄位。
+-->
+<configuration>
+  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+      <includeMdcKeyName>requestId</includeMdcKeyName>
+      <fieldNames>
+        <timestamp>ts</timestamp>
+        <message>msg</message>
+        <logger>logger</logger>
+        <version>[ignore]</version>
+        <thread>[ignore]</thread>
+        <levelValue>[ignore]</levelValue>
+      </fieldNames>
+    </encoder>
+  </appender>
+
+  <!-- 業務 logger 只設 level,不掛 appender,靠冒泡到 root 的單一 appender -->
+  <logger name="com.example" level="INFO"/>
+
+  <root level="WARN">
+    <appender-ref ref="STDOUT"/>
+  </root>
+</configuration>

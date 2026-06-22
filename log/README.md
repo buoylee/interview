@@ -1,6 +1,8 @@
 # 后端服务日志规范
 
 > 适用于：Python FastAPI 技术栈，5 人小团队，VM + Docker 混合部署
+>
+> 📌 **本目录是 Python/FastAPI 专属的落地深切**。若想看「怎么把日志写好」这个动作的**跨语言(Python/Go/Java)教学版**——等级 rubric、log-or-throw、配置坑、三语言可跑范例——见 [`../logging/`](../logging/README.md)。两者关系:`logging/` 教写法、`observability/` 教收集查询、本目录是 Python 深切范例。
 
 ## 文档目录
 

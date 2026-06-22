@@ -1,0 +1,7 @@
+# build / test artifacts(範例原始碼與 go.mod/go.sum/pom.xml 仍會進版控)
+python/__pycache__/
+python/.venv/
+go/logging-demo
+java/target/
+*.class
+*.pyc
