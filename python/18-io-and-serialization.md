@@ -62,6 +62,25 @@ json.dumps({"d": datetime.date(2026, 6, 14)}, default=enc)   # '{"d": "2026-06-1
 
 > 类型映射:JSON 的 object↔dict、array↔list、null↔None、true/false↔True/False。注意 JSON 的 key 只能是字符串——`json.dumps({1: "a"})` 会把 key 转成 `"1"`。
 
+> **小知识:`\\u4e2d` 到底是什么?为什么 LLM 返回的中文全是它?**
+>
+> 先分清三个常被混为一谈的概念:
+> - **ASCII**:最老的字符集,只有 128 个字符——英文字母、数字、标点,**没有中文/emoji**。
+> - **Unicode**:超大字符集,给全世界字符都编了号(`中` = `U+4E2D`、`😀` = `U+1F600`)。**ASCII 是 Unicode 最前面那 128 个的子集**(`A` 在两边都是 65,故意兼容)。
+> - **转义 `\\uXXXX`**:一种**写法**,用「反斜杠 + 该字符的 Unicode 编号」把一个非 ASCII 字符表示出来——而 `\\` `u` `4` `e` `2` `d` 这 6 个字符本身全是 ASCII。
+>
+> 所以 `ensure_ascii=True`(默认)的完整逻辑是:**"输出只准是 ASCII → `中` 超出 ASCII → 用 `\\u4e2d` 转义"**。`\\u4e2d` 和 `中` 是**同一个字的两种拼法**,`json.loads` 时都还原成 `中`,数据没丢。
+>
+> **常见坑:某接口 / LLM 返回的中文全是 `\\u4e2d`,怎么修?** 关键——**没有「ASCII 解码」这种操作**,把它变回 `中` 的是 JSON 解析器。先看你在哪儿看到的:
+>
+> | 看到 `\\u4e2d` 的地方 | 真相 | 修法 |
+> |---|---|---|
+> | 一段未解析的 **JSON 文本** | 还没解析 | `json.loads(s)` 自动还原 |
+> | 你自己又 `json.dumps()` 去存/返回 | 默认又转义回去 | 加 `ensure_ascii=False` / 用 orjson / 靠框架默认 |
+> | `print(已解析的 dict)` | 只是 `repr` 显示形式 | 直接 `print(d["key"])` 即中文,非 bug |
+>
+> LLM 的响应体本就是 JSON,SDK 通常已 `json.loads`,中文早在内存里好好的——满屏 `\\u4e2d` 多半是**你在输出端又 dump 回去了**。用 FastAPI 直接 `return data` 不会有此问题(`JSONResponse` 默认 `ensure_ascii=False`),所以别手动 `json.dumps` 再返回。
+
 ## 三、CSV
 
 别手动 `split(",")`(字段里有逗号、引号、换行就崩),用标准库 `csv`:
