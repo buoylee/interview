@@ -174,6 +174,39 @@ def spawn_bg(coro):
 
 > `gather(*coros, return_exceptions=True)` 是另一种「吞」：异常被当成返回值塞进结果 list，不抛。要 fail-fast 用默认 `return_exceptions=False` 或直接上 `TaskGroup`。
 
+### 3.8 坑：以为「单线程」就不用锁
+
+最容易翻车的一句话：「asyncio 单线程，共享状态不用加锁。」——只对一半。协程只在 `await` 处让出，所以：
+
+- **临界区内没有 `await`** → 中间没人能插队，`counter += 1`、`d[k] = v` 这种**就是原子的，真不用锁**（同样的 `counter += 1` 在 `threading` 里反而是经典 race，因为 GIL 可能在 `LOAD/ADD/STORE` 之间切线程）。
+- **临界区跨了 `await`** → 让出期间别的协程照样跑、能改你刚读过的状态，竞态立刻回来：
+
+```python
+balance = 100
+
+async def withdraw(amount):
+    global balance
+    if balance >= amount:        # ① read
+        await settle()           # ② 让出！另一个 withdraw 在这里也过了 ①
+        balance -= amount        # ③ write，基于过期的 read
+# 两个 withdraw(100) 并发 → 都过了检查 → 都减 → balance 变负
+```
+
+救法是 `asyncio.Lock`（协程级锁，不是线程锁），把**跨 await 的临界区**整段锁起来：
+
+```python
+lock = asyncio.Lock()
+
+async def withdraw(amount):
+    global balance
+    async with lock:             # 持锁期间别的协程想进这段就挂起等待
+        if balance >= amount:
+            await settle()
+            balance -= amount
+```
+
+> 真正的区别不是「不用锁」，而是**插队点可见**：threading 里别人能在任意字节码边界插进来（到处都得防）；asyncio 里只能在 `await` 处插进来——竞态全明写成 `await`，肉眼可查、能局部化。所以 asyncio 消灭的是「不可预期的抢占」，**没**消灭「跨 await 的逻辑竞态」。
+
 ---
 
 ## 4. 日常开发应用
@@ -228,6 +261,9 @@ async 只能被 await、await 只能在 async 函数里，导致一个函数变 
 
 **Q6：异步代码里 try/except 抓不到异常，可能是什么原因？**
 多半是把任务 fire-and-forget 了。`await foo()` 异常会顺着 await 抛回、`try` 抓得到；但 `asyncio.create_task(foo())` 把任务脱钩到后台，异常存进 Task 对象，不会回到 `try`，没人取还会变 "Task exception was never retrieved"。`gather(return_exceptions=True)` 也会把异常塞进返回值不抛。救法：优先用 `TaskGroup`（任一失败取消其余 + `ExceptionGroup`），真要后台任务就存引用防 GC + `add_done_callback` 上报异常。
+
+**Q7：asyncio 单线程，到底要不要加锁？**（经典陷阱题）
+看临界区里有没有 `await`。没有（如 `counter += 1`）→ 中间没人插队，原子操作，**不用锁**（同样代码在 `threading` 里却是 race）。临界区**跨了 `await`**（`read; await; write`）→ **必须 `asyncio.Lock`**，因为让出期间别的协程会改你读过的状态。一句话：asyncio 消灭了「不可预期的抢占」，没消灭「跨 await 的逻辑竞态」。直接答「单线程不用锁」会被追问翻车。
 
 ---
 
