@@ -1,0 +1,27 @@
+services:
+  redis:
+    image: redis:7-alpine
+
+  node1:
+    build: .
+    environment:
+      NODE_ID: node1
+      REDIS_HOST: redis
+      LIMIT: "10"
+      WINDOW: "30"
+    ports:
+      - "8001:8000"
+    depends_on:
+      - redis
+
+  node2:
+    build: .
+    environment:
+      NODE_ID: node2
+      REDIS_HOST: redis
+      LIMIT: "10"
+      WINDOW: "30"
+    ports:
+      - "8002:8000"
+    depends_on:
+      - redis
