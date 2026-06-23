@@ -1,0 +1,25 @@
+services:
+  redis:
+    image: redis:7-alpine
+
+  fake-llm:
+    build: .
+    environment:
+      APP: fake_llm
+    depends_on:
+      - redis
+
+  gateway:
+    build: .
+    environment:
+      APP: gateway
+      REDIS_HOST: redis
+      LLM_URL: http://fake-llm:8000/v1/chat
+      BUDGET: "200"        # 每 client 窗口內 token 預算
+      WINDOW: "300"
+      THRESHOLD: "0.6"     # 語義快取命中閾值(此值配「字元 2-gram」教學近似;真 embedding 空間通常用 ~0.9)
+    ports:
+      - "9000:8000"
+    depends_on:
+      - redis
+      - fake-llm
