@@ -284,6 +284,19 @@ mysqlbinlog --skip-gtids \
   mysql-bin.000042 > /tmp/recover.sql
 ```
 
+#### PITR 的三个边界坑（架构师常被追问）
+
+**坑 1：`--stop-datetime` 停在了一个大事务中间。** binlog 里事务是「BEGIN … 一堆 row 事件 … COMMIT」。如果你按时间点切，而那个时刻正好落在一个跑了 2 小时的批量 `DELETE` 的中段，`mysqlbinlog` 截到的是**半个事务**（有 BEGIN、没 COMMIT）——重放时这半个事务要么报错、要么整体不提交，你以为恢复到了 14:32，实际丢了那笔大事务的全部或部分。
+- 正解：**别用 datetime 当精确边界，用事务边界**。GTID 模式下用 `--exclude-gtids` 精确排除「不想要的那个事务及之后」；或用 `--stop-position` 指到某个 `COMMIT`/`Xid` 事件的位点（先 `mysqlbinlog` 不带 stop 看一遍，找到目标事务的 COMMIT 位点）。时间点只用来「大致定位到哪个 binlog 文件」。
+
+**坑 2：`--skip-gtids` 不是无脑加。** 它会**剥掉原始 GTID**，让重放的事务在目标实例上获得**全新的 GTID**。
+- **该加**：恢复到一个**独立的新实例**（误删恢复、临时取数）——你不在乎 GTID，只要数据。
+- **不该加**：你在**重建一个要挂回原拓扑的从库**，需要它的 `gtid_executed` 与源库一致。这时若 skip 掉 GTID，新从库的 GTID 集合和主库对不上，挂回去复制立刻 errant/分叉。重建从库正确做法是用 `xtrabackup` 带回 `gtid_executed` 再 `CHANGE REPLICATION SOURCE ... SOURCE_AUTO_POSITION=1`，根本不用 mysqlbinlog 重放。
+
+**坑 3：从「从库的备份」做 PITR，会把 errant 事务一起带进来。** 如果备份取自一个有幽灵事务（[ch09 §3.11](../09-replication-and-ha/README.md)）的从库，全备里就含这些幽灵数据，重放出来的实例也带着它们。所以**备份源要干净**（从 `super_read_only` 的从库取，或取主库），恢复后用 `GTID_SUBTRACT` 复核 gtid 集合是否符合预期。
+
+> 一句话收口：**PITR 的精度由「事务边界 + GTID」保证，不是由 `--stop-datetime` 保证**；时间点只是粗定位，真正的「切到哪」要落在某个事务的 COMMIT 上。
+
 ---
 
 ### 3.5 关键参数调优清单

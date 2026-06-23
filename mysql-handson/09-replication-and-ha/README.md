@@ -401,6 +401,78 @@ lossless 半同步保证写操作返回时，**至少一个从库**已收到 bin
 | 半同步保证 | 近强（有概率）| 不增加 | 低（配置层）|
 | 最终一致 + 乐观 UI | 无 | 不增加 | 低 |
 
+### 3.10 并行复制（MTS）深入：为什么开了 8 个 worker 还是追不上
+
+§3.8 说「开 MTS（`replica_parallel_workers=8`）」治延迟，但架构师要知道**它什么时候有效、什么时候开了也白开**。
+
+**单 SQL thread 是天然瓶颈**：主库可以几十个连接并发写，从库默认只有**一个** SQL thread 串行 apply binlog。主库 1 万 TPS、从库单线程上限 ~2000-5000 TPS，积压无可避免。MTS（Multi-Threaded Slave）就是把 apply 拆成多个 worker 并行。
+
+**关键是「哪些事务能并行」——三代演进**：
+
+| 模式 | `replica_parallel_type` | 能并行的事务 | 局限 |
+|---|---|---|---|
+| 按库（5.6） | `DATABASE` | 不同 schema 的事务 | 单库场景完全无效 |
+| 逻辑时钟（5.7 默认起） | `LOGICAL_CLOCK` | **主库同一个 group commit 批次里提交的事务**（它们必然无锁冲突） | 依赖批次大小，见下 |
+| 写集合（8.0 默认） | `LOGICAL_CLOCK` + `binlog_transaction_dependency_tracking=WRITESET` | **只要改的行不重叠就能并行**（即使不在同一批次） | 需算 row hash，略增主库开销 |
+
+**LOGICAL_CLOCK 的隐藏陷阱**——并行度取决于**主库的 group commit 批次大小**：
+- 高 TPS 时，主库一次 group commit 攒了几十个事务一起刷盘，它们在 binlog 里被标成「同一逻辑时钟」，从库就能 8 个 worker 并行 apply。
+- **低 TPS / 串行写时**，每次 group commit 只有 1 个事务，批次永远是 1，从库**并行度恒为 1**——开了 8 个 worker 也只有 1 个在干活。「主库压力不大却有延迟」常栽在这。
+- 反直觉的解法：在主库**故意拖慢提交**攒大批次：
+
+```ini
+# 主库：让 group commit 多等一会、攒更大的批，从库才好并行
+binlog_group_commit_sync_delay        = 100     # 微秒，提交多等 100us 攒批
+binlog_group_commit_sync_no_delay_count = 20     # 但攒满 20 个就立刻刷，别死等
+```
+
+**WRITESET 是更优解**（8.0.1+）：`binlog_transaction_dependency_tracking=WRITESET` 让主库按「事务改了哪些行（主键/唯一键的 hash）」判断依赖——**只要两个事务改的行不重叠，哪怕不在同一批次也能在从库并行**。低 TPS 场景下并行度大幅提升，不用靠 sync_delay 凑批次。
+
+**从库侧配套参数**：
+
+```ini
+replica_parallel_workers          = 8       # worker 数，一般 = CPU 核数
+replica_parallel_type             = LOGICAL_CLOCK
+replica_preserve_commit_order     = ON      # 从库提交顺序与主库一致(否则破坏因果/读到中间态)
+```
+
+`replica_preserve_commit_order=ON` 很关键：并行 apply 但**最终提交顺序仍按主库**，否则「读自己的写」「外键依赖」会读到乱序中间态。
+
+**MTS 的恢复坑**：多 worker 并行时，崩溃瞬间各 worker 进度不一（出现 binlog「空洞」——靠前的事务还没 apply、靠后的已 apply）。8.0 靠 `relay_log_recovery=ON` + worker 进度表自动补洞；恢复时先把空洞补齐再继续。查 `performance_schema.replication_applier_status_by_worker` 能看到每个 worker 卡在哪个事务。
+
+### 3.11 GTID errant 事务：故障切换后的「幽灵事务」
+
+**什么是 errant（偏离）事务**：一个 **GTID 只存在于从库、主库没有**的事务。来源：有人直连从库写了数据、从库上跑了 `SET sql_log_bin=0` 的本地操作、或上一次故障切换留下的残留。
+
+**为什么是定时炸弹**：平时无感，**故障切换时爆**。假设从库 B 有一个主库 A 没有的 errant GTID `B_uuid:1`。当 A 宕机、B 被选为新主后，其它从库 reconnect 到 B 时会发现自己缺 `B_uuid:1`，于是去 B 拉取——但这个事务可能是当初的脏写，**会被复制到全集群**；更糟的是若新主又生成了相同区间的 GTID，复制直接报 `errant transaction` 错误中断。
+
+**检测**（切换前必查）：
+
+```sql
+-- 在每个从库上：从库执行过、但主库没有的 GTID = errant
+SELECT GTID_SUBTRACT(
+  @@global.gtid_executed,                    -- 本从库执行过的全集
+  '<主库的 gtid_executed 字符串>'             -- 主库执行过的全集
+) AS errant_gtids;
+-- 返回非空 = 这些 GTID 是本从库独有的幽灵事务
+```
+
+> 数据是否真分叉再用 `pt-table-checksum` 跨节点比对校验和。
+
+**处理**：
+
+- **干净做法**：在新主上为每个 errant GTID **注入一个空事务**（`SET GTID_NEXT='B_uuid:1'; BEGIN; COMMIT; SET GTID_NEXT='AUTOMATIC';`），让新主的 gtid_executed «覆盖» 这些 GTID，从库就不会再去拉那个真事务——代价是**承认并丢弃**那笔幽灵数据（先确认它无业务价值）。
+- **若幽灵数据有价值**：先把它正常地在主库重放一遍（变成合法事务），再让复制继续。
+
+**预防**（架构默认就该开）：
+
+```ini
+super_read_only = ON     # 从库连 SUPER 用户也禁止写，从源头杜绝 errant
+read_only       = ON
+```
+
+谨慎使用 `sql_log_bin=0`（它写的东西不进 binlog，正是 errant 的常见来源）；运维脚本连从库一律走只读账号。
+
 ## 4. 日常开发应用
 
 **建表和 DML 设计**
