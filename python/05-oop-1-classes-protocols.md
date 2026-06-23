@@ -31,6 +31,15 @@ class Demo:
 # Demo() 会先打印 new 再打印 init
 ```
 
+**`__new__` 的返回值决定 `__init__` 跑不跑**:只有当 `__new__` 返回的是 `cls` 的实例时,Python 才接着调 `__init__`;返回别的对象(或别的类型)则 `__init__` 被**直接跳过**。单例、对象池、不可变类型子类化就靠这一点。
+
+```python
+class Weird:
+    def __new__(cls): return 42        # 返回的不是 Weird 实例
+    def __init__(self): print("init")  # 永不执行
+print(Weird())                          # 42 —— __init__ 被跳过
+```
+
 ## 二、类属性 vs 实例属性(高频陷阱)
 
 类属性写在类体里,**属于类、所有实例共享**;实例属性在 `__init__` 里 `self.x=` 设,**每个实例独立**:
@@ -53,6 +62,29 @@ u = C()
 u.role = "admin"               # 新建实例属性,遮蔽类属性
 print(u.role, C.role)          # admin guest  —— 类属性没变
 ```
+
+### 属性查找的完整算法(架构师白板)
+
+上面的"实例 → 类 → 父类"是简化版。真实的 `obj.attr` 由 `type(obj).__getattribute__` 执行,**优先级是这样的**(描述符=有 `__get__`/`__set__` 的类属性,机制见[第 06 章](06-oop-2-inheritance-descriptors-metaclasses.md) §3):
+
+1. 沿 `type(obj).__mro__` 找 `attr`;若找到的是 **data descriptor**(有 `__set__`/`__delete__`,如 `property`、`__slots__` 槽位),立即调它的 `__get__` 返回——**它赢过实例属性**。
+2. 否则查**实例 `obj.__dict__`**,命中即返回。
+3. 否则回到第 1 步在类里找到的:若是 **non-data descriptor**(只有 `__get__`,如普通函数/方法)或普通类属性,返回它(方法在此被绑定上 `self`)。
+4. 全没有 → 抛 `AttributeError`,这才触发 `__getattr__`(若定义了)兜底。
+
+一句话优先级:**data 描述符 > 实例 `__dict__` > non-data 描述符/类属性 > `__getattr__`**。
+
+```python
+class DataDesc:                        # data descriptor:有 __set__
+    def __get__(self, o, t=None): return "descriptor"
+    def __set__(self, o, v): o.__dict__["x"] = v
+class C:
+    x = DataDesc()
+c = C(); c.__dict__["x"] = "instance"  # 直接塞进实例 dict
+print(c.x)                             # descriptor —— data 描述符赢过实例 dict
+```
+
+这条算法是 `property`、`__slots__`、方法绑定、ORM 字段全部"魔法"的同一个引擎。
 
 ### 陷阱:可变类属性被所有实例共享
 
@@ -254,7 +286,7 @@ t.fahrenheit = 212
 print(t._c)            # 100.0  —— 像写属性,其实在反算
 ```
 
-好处:接口是属性形态(`t.fahrenheit`),将来从"存的字段"改成"算出来的"无需改调用方。`property` 底层是**描述符**,原理在[第 06 章](06-oop-2-inheritance-descriptors-metaclasses.md)。
+好处:接口是属性形态(`t.fahrenheit`),将来从"存的字段"改成"算出来的"无需改调用方。`property` 底层是**描述符**,原理在[第 06 章](06-oop-2-inheritance-descriptors-metaclasses.md)。而且它是 **data descriptor**(即便只读、没写 setter,内部也带一个会抛错的 `__set__`),按上一节的查找算法**优先级高于实例 `__dict__`**——所以实例属性盖不住它,这正是只读 property 真能挡住 `obj.x = ...` 的原因。
 
 ## 六、`__slots__`:省内存、禁止动态属性
 
@@ -270,7 +302,7 @@ p = Point(1, 2)
 # p.z = 3   → AttributeError:'Point' object has no attribute 'z'
 ```
 
-适合海量创建的小对象(几十万个点/记录)。代价:没了 `__dict__`,失去动态加属性能力,多继承时也有限制。
+适合海量创建的小对象(几十万个点/记录)。代价:没了 `__dict__`,失去动态加属性能力,多继承时也有限制。机制上,`__slots__` 给每个槽名建一个 **member descriptor**(data descriptor,按固定偏移存取),所以它走的正是上面"data 描述符"那条优先路径——详见[第 16 章](16-objects-memory-gc-gil.md) §5。
 
 ## 七、数据模型:用 dunder 接入语言协议
 
@@ -457,3 +489,9 @@ print(b.tricks)
 
 **Q8. 方法里怎么同时拿到实例和类?`type(self)`、`cls`、裸 `__class__` 有何区别?**
 实例方法里 `self` 是实例、`type(self)` 是它的(运行时)类,两者同时可得;`@classmethod` 只有 `cls`、拿不到实例(用实例调用时实例被丢弃,只取类)。`type(self)`/`self.__class__` 与 classmethod 的 `cls` 都是**运行时实际类**(子类调用得子类,多态);方法体里**裸 `__class__`** 是**定义方法的那个类**(词法固定,零参数 `super()` 靠它)。注意 `obj.__class__`(运行时类)与方法体里裸 `__class__`(定义类)同名不同义。查继承关系用 `__mro__`/`__bases__`/`issubclass`/`isinstance`/`__subclasses__`。
+
+**Q9. `obj.x` 的完整查找顺序是什么?**
+由 `type(obj).__getattribute__` 执行,优先级:**data 描述符(类上有 `__set__`/`__delete__`)> 实例 `__dict__` > non-data 描述符/普通类属性 > `__getattr__` 兜底**。沿 `type(obj).__mro__` 找类属性,data 描述符直接 `__get__` 返回;否则查实例 dict;再否则用 non-data 描述符/类属性(方法在此绑 `self`);全空才 `AttributeError`→`__getattr__`。
+
+**Q10. 为什么实例属性能"盖住"普通方法,却盖不住 `@property`?**
+方法是 **non-data descriptor**(只有 `__get__`),优先级低于实例 `__dict__`,所以同名实例属性能遮蔽它;`property` 是 **data descriptor**(带 `__set__`,只读时也有),优先级高于实例 `__dict__`,实例属性盖不住——这也是只读 property 能挡住赋值的原因。

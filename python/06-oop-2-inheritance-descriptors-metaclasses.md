@@ -18,6 +18,20 @@ print([c.__name__ for c in D.__mro__])
 
 这就是经典的"菱形继承"(D 继承 B、C,二者都继承 A)。C3 保证:子类排在父类前、`B` 排在 `C` 前(按声明顺序)、且每个类只出现一次。查找属性/方法就沿这条链从左到右找,第一个命中的胜出。
 
+### C3 是怎么算的
+
+C3 把每个类线性化成一条序列。记 `L(C)` 为 C 的 MRO,合并规则:
+
+```
+L(C) = C + merge(L(P1), L(P2), …, [P1, P2, …])
+```
+
+`merge` 每步取第一个列表的**头**,若该头**没出现在任何其它列表的尾部**(非头位置),就取出它、从所有列表删掉,继续;否则改看下一个列表的头。取不出来就报错。
+
+对 `D(B,C)`、`B(A)`、`C(A)`:`merge([B,A], [C,A], [B,C])` → 取 B(没在别处尾部)→ 取 C → 取 A → 得 `D,B,C,A,object`。这保证**子类先于父类、声明序被尊重、每类只一次**。
+
+若两条继承路径要求的顺序自相矛盾(如 `M(X,Y)` 与 `N(Y,X)`,再 `class Z(M,N)`),merge 卡死,Python **直接拒绝建类**:`TypeError: Cannot create a consistent method resolution order`。
+
 ## 二、`super()`:何时写、调的是谁
 
 ### 先搞清:什么情况才需要写 `super()`?
@@ -87,6 +101,8 @@ print(log)        # ['D', 'B', 'C', 'A'] —— A 只执行一次!
 
 实践要点:**只要可能用于多继承,每个 `__init__`/方法都该调 `super().__init__(...)` 并透传 `*args, **kwargs`**,否则链会断。这跟 Java"`super` 明确指向唯一父类"完全不同——Java 单继承没有这个问题。
 
+> 零参 `super()` 怎么知道"当前类"、从而沿 MRO 找"下一个"?编译器在用了 `super()` 的方法里偷偷塞了个 `__class__` 闭包变量(cell),绑定到**定义该方法的类**——`super()` ≈ `super(__class__, self)`。机制(cell/编译期注入)见[第 15 章](15-cpython-execution-model.md) §4。
+
 ## 三、描述符:`@property` 和方法的底层
 
 **描述符**是实现了 `__get__`/`__set__`/`__delete__` 的对象。当它作为**类属性**存在时,对实例访问该属性会被这些方法接管。这是 Python 属性机制的底层引擎——`@property`、`@classmethod`、`@staticmethod`、甚至普通方法的"绑定 self",全是描述符在工作。
@@ -120,7 +136,9 @@ print(acc.balance)        # 100   —— 触发 __get__
 print(hasattr(property, "__get__"))   # True —— property 本身是描述符
 ```
 
-**data vs non-data 描述符**(优先级,面试加分点):同时实现 `__get__` 和 `__set__`(或 `__delete__`)的是 **data descriptor**,优先级**高于**实例 `__dict__`;只实现 `__get__` 的是 **non-data descriptor**,优先级**低于**实例 `__dict__`。这解释了为什么 `@property`(data)无法被实例属性遮蔽,而普通方法(non-data)可以被同名实例属性覆盖。
+**data vs non-data 描述符**(优先级,面试加分点):同时实现 `__get__` 和 `__set__`(或 `__delete__`)的是 **data descriptor**,优先级**高于**实例 `__dict__`;只实现 `__get__` 的是 **non-data descriptor**,优先级**低于**实例 `__dict__`。这解释了为什么 `@property`(data)无法被实例属性遮蔽,而普通方法(non-data)可以被同名实例属性覆盖。完整的查找路径在[第 05 章](05-oop-1-classes-protocols.md) §2"属性查找的完整算法"。
+
+**`__set_name__` 的时机**:类创建时,等类体执行完、命名空间填好,Python 会遍历类属性,对每个描述符调用 `__set_name__(owner, name)`,把"我叫什么、属于哪个类"告诉它——描述符因此不必你手动传名字(`Positive()`、ORM 字段自动知道自己绑在哪个属性上)。
 
 ## 四、属性拦截:`__getattr__` / `__getattribute__` / `__setattr__`
 
@@ -161,6 +179,30 @@ print(Y().hi())       # hi
 ```
 
 `class Foo(Base, metaclass=Meta)` 会调用 `Meta(name, bases, namespace)` 来创建类。自定义元类能在**类被创建时**介入(改写类、注册、校验),ORM(Django Model)、序列化库靠它实现声明式魔法。
+
+### 类创建的三段式(`__prepare__` → `__new__` → `__init__`)
+
+`class Foo(metaclass=Meta):` 执行时,Python 按三步走:
+
+1. **`Meta.__prepare__(name, bases)`** → 返回一个映射,**类体就在这个映射里执行**(键值=类体里的赋值/方法名)。默认返回普通 dict;返回自定义映射可"监听/改写"类体的定义过程(如记录定义顺序)。
+2. 类体跑完、命名空间填好 → **`Meta.__new__(mcs, name, bases, ns)`** 真正**创建类对象**。
+3. **`Meta.__init__(cls, …)`** 收尾(注册、校验)。
+
+之后**实例化** `Foo()` 调的是 **`type(Foo).__call__`**(即 `Meta.__call__`),它再依次调 `Foo.__new__` 造实例、`Foo.__init__` 初始化——这就是元类能拦截"建实例"(如做单例)的位置。
+
+```python
+order = []
+class Meta(type):
+    @classmethod
+    def __prepare__(mcs, name, bases, **k): order.append("prepare"); return {}
+    def __new__(mcs, n, b, ns, **k): order.append("new"); return super().__new__(mcs, n, b, ns)
+    def __init__(cls, *a, **k): order.append("init"); super().__init__(*a)
+    def __call__(cls, *a, **k): order.append("call"); return super().__call__(*a, **k)
+class Foo(metaclass=Meta):
+    order.append("body")
+Foo()
+print(order)   # ['prepare', 'body', 'new', 'init', 'call']
+```
 
 **但是**:99% 的场景你**不需要**元类。它能做的事,更轻量的工具大多也能做:
 
@@ -250,3 +292,9 @@ MRO 是多继承下方法/属性的解析顺序,由 C3 线性化算出,存于 `_
 
 **Q6. ABC 和 Protocol 有什么区别?**
 ABC 是名义子类型:必须显式继承并实现抽象方法,否则不能实例化(像 Java 抽象类)。Protocol 是结构化子类型:不需继承,只要具备对应方法就算符合(鸭子类型 + 静态检查,像 Go interface)。面对不可控类型或要松耦合时用 Protocol。
+
+**Q7. C3 线性化怎么算?什么时候会报 MRO 冲突?**
+`L(C) = C + merge(各父类的 L, [父类列表])`;merge 每步取第一个列表的头,若它不出现在其它列表的非头位置就取出、各列表删之,否则看下一个列表的头。保证子类先于父类、声明序被尊重、每类一次。若两条路径要求的顺序自相矛盾(`M(X,Y)` vs `N(Y,X)` 再 `Z(M,N)`),merge 卡死 → `TypeError: Cannot create a consistent method resolution order`。
+
+**Q8. 元类创建类有哪三步?`MyClass()` 实例化时元类哪个方法被调?**
+建类三步:`Meta.__prepare__`(给类体准备命名空间)→ `Meta.__new__`(造类对象)→ `Meta.__init__`(收尾)。实例化 `MyClass()` 调的是 `type(MyClass).__call__`(即 `Meta.__call__`),它再调 `MyClass.__new__` + `__init__`——元类拦截"建实例"(如单例)就在这里。顺序实测:`prepare, body, new, init, call`。

@@ -333,7 +333,67 @@ print({1, 2, 3} & {2, 3, 4})   # {2, 3} 交集;| 并,- 差,^ 对称差
 - **频繁判断"在不在"用 `set`/`dict`(O(1)),别用 `list`(O(n))**。
 - **频繁在头部增删用 `collections.deque`(两端 O(1)),别用 list**(`pop(0)` 是 O(n))。
 
-`list` 和 `dict` 都靠**过度分配**摊销扩容:list 满了按比例多要一块空间,所以 `append` 平均 O(1) 而非每次都搬;dict 装载因子超阈值时整体扩容并重新散列。对象本身为什么"重"(对象头 / 引用计数)见[第 16 章](16-objects-memory-gc-gil.md)。
+`list` 和 `dict` 都靠**过度分配**摊销扩容:list 满了按比例多要一块空间,所以 `append` 平均 O(1) 而非每次都搬;dict 装载因子超阈值时整体扩容并重新散列。下一节把这两件事拆到字节级。对象本身为什么"重"(对象头 / 引用计数)见[第 16 章](16-objects-memory-gc-gil.md)。
+
+## 六、内部一瞥:容器到底怎么存的(架构师向)
+
+前面说 dict「条目数组 + 哈希索引表」、list「按比例多要一块」——白板上要能再往下一层。
+
+### compact dict:两个数组,省内存又保序
+
+3.6 起 dict 用**紧凑布局**,拆成两块:
+
+- **entries(条目数组)**:按**插入顺序**追加 `(hash, key, value)` 三元组,密集排列。
+- **indices(索引数组)**:真正的哈希表,存的是「到 entries 的下标」(小整数),按 `hash(key) & mask` 定位。
+
+查 `d[k]`:算 `hash(k)`,取低位当 indices 下标拿到一个 entries 下标,再去 entries 验 key。**保序**是因为 entries 按插入序追加(删除会留空洞,攒多了 rehash 压实);**省内存**是因为稀疏的那张 indices 表只存小整数下标,而且按表大小用 1/2/4/8 字节最窄的整型——比 3.5 时代「每槽都存完整 entry」省 20–25%。
+
+**哈希冲突**走**开放寻址**(open addressing):槽位被占就按一个**扰动探测序列**(perturbation,把 hash 高位也搅进探测路径)找下一个空槽,而不是 Java `HashMap` 的链表/红黑树。装载因子超过 2/3 整体扩容并 rehash。
+
+### list 的过度分配:append 为什么摊销 O(1)
+
+list 底层是「指向各元素对象的指针数组」。满了不是 +1,而是**一次多要一批**,留空位给后续 append:
+
+```python
+import sys
+xs, prev = [], None
+for i in range(33):
+    xs.append(i)
+    if sys.getsizeof(xs) != prev:
+        prev = sys.getsizeof(xs)
+        print(len(xs), prev, (prev - 56) // 8, "slots")  # 56=空 list 头开销,每槽 8 字节指针
+```
+```
+1  88   4 slots      # 空→直接要 4 个槽
+5  120  8 slots
+9  184  16 slots
+17 248  24 slots
+25 312  32 slots
+33 376  40 slots
+```
+
+容量按约 **`newsize + newsize/8 + 常数`(≈1.125×)** 增长。因为每次扩容把后续若干次 append 的成本一起摊掉,**n 次 append 总成本 O(n)**,单次就是**摊销 O(1)**——偶尔那次真扩容(分配新数组 + 拷指针)是 O(n),平摊到每次仍是常数。注意:省的是**重分配次数,不是内存**——`getsizeof` 能看到容量常大于 `len`。
+
+### hash 随机化:为什么 str 的 hash 每次进程都不同
+
+```python
+hash(123)        # 123    —— 小 int 基本哈希成自己
+hash("hello")    # 每次启动进程都不一样!
+```
+
+str/bytes 的哈希用 **SipHash**,掺入一个**进程启动时随机生成的种子**(`PYTHONHASHSEED`):同一进程内稳定,**跨进程随机**。
+
+```bash
+$ python -c "print(hash('hello'))"                  # 7328807002428364657
+$ python -c "print(hash('hello'))"                  # -5774523555128231174  每次不同
+$ PYTHONHASHSEED=0 python -c "print(hash('hello'))" # 固定,可复现
+```
+
+**为什么**:防 **hash-flooding DoS**——攻击者若能预测字符串哈希,就能构造海量哈希冲突的 key 把 dict 探测退化成 O(n) 拖垮服务(2011 年一波 Web 框架中招)。随机化让落点不可预测。
+
+**坑**:① 别把 `hash(str)` 持久化或跨进程/机器比较(不稳定);要稳定哈希用 `hashlib`(第 19 章)。② 调试要可复现时设 `PYTHONHASHSEED=0`。
+
+> int 为什么也带头、`getsizeof(2**100)` 为什么随大小涨(30-bit 数字数组):见[第 16 章](16-objects-memory-gc-gil.md) §1。
 
 ## Java/Go 对照框
 
@@ -395,3 +455,9 @@ for x in xs:
 print(xs)
 ```
 `[1, 3, 5]`,漏删了 4。list 迭代按下标推进,`remove` 后元素前移导致跳过。dict/set 同样情形会直接抛 `RuntimeError`。正解:遍历副本或推导式重建(`xs[:] = [x for x in xs if x % 2]`)。
+
+**Q11. compact dict 怎么同时做到省内存和保插入序?**
+拆成两个数组:**entries** 按插入序追加 `(hash,key,value)`(故保序),**indices** 是真正的哈希表、只存「到 entries 的小整数下标」并按表大小用最窄整型(故省内存,比旧布局省 20–25%)。冲突走开放寻址 + 扰动探测,不是 Java 的链表。
+
+**Q12. list 的 `append` 为什么是摊销 O(1)?str 的 `hash` 为什么每次进程不同?**
+append:list 过度分配,满了一次多要约 1.125× 的容量,n 次 append 总成本 O(n),单次摊销 O(1)。str hash:用 SipHash + 进程启动随机种子(`PYTHONHASHSEED`),防 hash-flooding DoS,所以进程内稳定、跨进程随机;要稳定哈希用 `hashlib`,要可复现设 `PYTHONHASHSEED=0`。
