@@ -142,7 +142,7 @@ Optimizer 分两步工作：
 
 对所有候选执行计划逐一估算成本，选最小的。候选项包括：
 - 对每张表：全表扫 vs 每个可用索引（range / ref / eq_ref）
-- 多表 JOIN：不同的 JOIN 顺序（表少于 `optimizer_search_depth=8` 时穷举，超过时贪心）
+- 多表 JOIN：不同的 JOIN 顺序（`optimizer_search_depth` 默认 **62**，即最多对前 62 张表做穷举排列，超过才转贪心；现实 JOIN 很少超过这个数，所以基本都是穷举搜索）
 
 成本计算公式（简化版）：
 
@@ -371,7 +371,8 @@ EXPLAIN SELECT id, city, age FROM user_profile WHERE city='Taipei' AND age=30;
 
 ```
 key_len = (50×4 + 2) + (4) = 202 + 4 = 206 字节（均 NOT NULL）
-若 city 允许 NULL：key_len = (50×4 + 2 + 1) + (4 + 1) = 208 字节
+若 city、age 均允许 NULL：key_len = (50×4 + 2 + 1) + (4 + 1) = 203 + 5 = 208 字节
+（NULL 标志位是「按列」加的：只有 city 可空就是 203 + 4 = 207）
 ```
 
 > 如果 `key_len` 等于只有第一列的长度，说明联合索引只用了第一列，后续列没走到。
