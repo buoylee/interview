@@ -14,3 +14,7 @@
 .obsidian/cache
 
 .cursor
+
+# Python 字节码 / 缓存(各 lab 跑测试时生成,非内容)
+__pycache__/
+*.py[cod]
