@@ -49,3 +49,17 @@ BEGIN
   END WHILE;
 END //
 DELIMITER ;
+
+DROP PROCEDURE IF EXISTS storm;
+DELIMITER //
+-- n 次全表 UPDATE：每次弄脏大量页 + 写约 4MB redo（ch11 写风暴 scenario）。
+-- 先 CALL seed(50000) 灌满 up2 再用。多连接并发 CALL storm() 制造写压力。
+CREATE PROCEDURE storm(n INT)
+BEGIN
+  DECLARE i INT DEFAULT 0;
+  WHILE i < n DO
+    UPDATE up2 SET age = age + 1;
+    SET i = i + 1;
+  END WHILE;
+END //
+DELIMITER ;

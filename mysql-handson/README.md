@@ -23,8 +23,8 @@
 - `08-sql-tuning/` — 慢查日志 + 索引设计 + JOIN + ORDER BY + filesort + 临时表 ← **含 3 个实机 scenario**
 - `09-replication-and-ha/` — 主从 + 半同步 + MGR + 读写分离
 - `10-sharding-and-scaling/` — 分库分表 + 全局 ID + 在线迁移
-- `11-ops-and-troubleshooting/` — Online DDL + pt-osc + 备份 + 参数调优
-- `99-interview-cards/` — 反向产出的面试题答案卡（已覆盖 ch03/05/06/07/08）
+- `11-ops-and-troubleshooting/` — Online DDL + pt-osc + 备份 + 参数调优 ← **含 1 个架构师整合 scenario（写风暴跨章拖垮链）**
+- `99-interview-cards/` — 反向产出的面试题答案卡（已覆盖 ch03/05/06/07/08/11）
 
 ## Lab 速查
 
