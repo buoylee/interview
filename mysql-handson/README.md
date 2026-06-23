@@ -21,10 +21,10 @@
 - `06-locking/` — 行/表/间隙/Next-Key/插入意向 + 死锁案例 ← **含 3 个实机 scenario**
 - `07-logs-and-crashsafe/` — Redo / Undo / Binlog + WAL + 两阶段提交 ← **含 2 个实机 scenario**
 - `08-sql-tuning/` — 慢查日志 + 索引设计 + JOIN + ORDER BY + filesort + 临时表 ← **含 3 个实机 scenario**
-- `09-replication-and-ha/` — 主从 + 半同步 + MGR + 读写分离
+- `09-replication-and-ha/` — 主从 + 半同步 + MGR + 读写分离 ← **含 3 个复制 scenario（需从库；实机待跑）**
 - `10-sharding-and-scaling/` — 分库分表 + 全局 ID + 在线迁移
 - `11-ops-and-troubleshooting/` — Online DDL + pt-osc + 备份 + 参数调优 ← **含 1 个架构师整合 scenario（写风暴跨章拖垮链）**
-- `99-interview-cards/` — 反向产出的面试题答案卡（已覆盖 ch01-08 + ch11）
+- `99-interview-cards/` — 反向产出的面试题答案卡（已覆盖 ch01-09 + ch11）
 
 ## Lab 速查
 

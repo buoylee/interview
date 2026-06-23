@@ -682,3 +682,11 @@ FROM performance_schema.replication_group_members;
 ## 7. 一句话总结
 
 主从复制的本质是**三线程（dump / IO / SQL）搬运并重放 binlog**；默认异步会丢数据，lossless 半同步在 commit 前等 ACK 解决丢失问题，MGR 用 Paxos 投票做原生 HA；用 GTID 替代位点让切主从"手工对齐坐标"变成"自动算差集"；读写分离的"读自己的写"问题用写后路由主库或 `WAIT_FOR_EXECUTED_GTID_SET()` 解决；延迟飙升先看 `SHOW REPLICA STATUS` + `pt-heartbeat`，根因多半是大事务或 SQL thread 单线程跑不过主库写入速度。
+
+## Scenarios
+
+> 需要从库：`make up-replica && make replica-setup`。⚠️ 以下三个 scenario 步骤就绪、含强预期；本次撰写 session 宿主 Docker 重启致从库网络损坏未跑出真值（复制拓扑早段已验证可用），请在稳定环境跑出真值替换各文件的「实机告诉我」块。
+
+- [01 - 注入主从延迟，看 `Seconds_Behind_Source` 为什么不准](scenarios/01-replica-lag-and-seconds-behind.md) — toxiproxy 注延迟，对比该指标与 GTID 差集
+- [02 - 主从断裂 + 靠 GTID 自动续传恢复](scenarios/02-replication-break-and-gtid-resume.md) — `chaos-replica-cut` 切网，恢复后 `Auto_Position=1` 无人工干预追平
+- [03 - 制造并检测 GTID errant 事务](scenarios/03-errant-transaction-detect.md) — 直连从库写，`GTID_SUBTRACT` 揪幽灵事务（§3.11 实证）
