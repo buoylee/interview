@@ -73,6 +73,51 @@ print(good(2))  # [2]   ← 互不干扰
 
 附带结论:默认值"定义时算一次"对任何表达式都成立。`def f(t=time.time())` 里的 `time.time()` 只在定义那一刻算一次,之后每次不传 `t` 拿到的都是那个固定时刻——也是同一个坑的变体。
 
+### 进阶:当 `None` 也是合法值——用专用哨兵区分「没传」和「传了 None」
+
+上面拿 `None` 当哨兵,有个**隐含前提:`None` 不是一个合法的业务取值**。一旦 `None` 本身有意义,`if x is None` 就分不清两种情况了:
+
+```python
+def update_user(name=None):
+    if name is None:
+        ...   # 是「调用方没传 name」,还是「调用方明确要把 name 清空成 null」?分不清
+```
+
+这在生产里是**真问题**:REST 的 **PATCH** / 部分更新语义就卡在这个区分上——`update_user()`(没传)= 「这个字段别动」,`update_user(name=None)`(传了 `None`)= 「把 name 清成空」。拿 `None` 当默认值,两个意图就糊成一团。
+
+**解法:造一个只跟自己相等的唯一对象当哨兵**,把 `None` 解放出来做正常取值:
+
+```python
+_MISSING = object()                 # 模块级唯一对象,外人造不出第二个
+
+def update_user(name=_MISSING):
+    if name is _MISSING:
+        pass                        # 真的没传 → 跳过,字段不动
+    else:
+        write_name(name)            # 传了 → 写入,哪怕 name 就是 None(清空)
+```
+
+为什么用 `object()`:它的实例**只跟自己 `is` 相等**,跟任何别的值都不等,调用方也伪造不出同一个对象,所以拿它当「没传过」的独一无二标记最稳。**判定务必用 `is` 不用 `==`**——`==` 会走对方对象的 `__eq__`,可能被骗;`is` 比的是身份(地址),骗不了。
+
+> 顺着[第 03 章](03-control-flow-comprehensions.md)那条缺省值阶梯往上爬:`x or default`(连 `0`/`""` 都当缺失,最糙)→ `x if x is not None else default`(把 `None` 当缺失)→ **专用哨兵**(连 `None` 都是合法值时才用)。越往上越精确,按「`None` 算不算合法值」来选这一级。
+
+实务里再升一档:**给哨兵一个可读的 `repr`**。纯 `object()` 印进报错/日志是 `<object object at 0x...>`,没法 debug;包一层小类就行:
+
+```python
+class _Missing:
+    def __repr__(self): return "<MISSING>"
+MISSING = _Missing()                # 单例;repr 友好,traceback 里一眼认出
+```
+
+**标准库里到处是这个模式**——它不是偏方,是正典:
+
+- `functools.lru_cache` 内部 `sentinel = object()`,用来区分「缓存没命中」和「命中了、但缓存的值正好是 `None`」。没有哨兵,缓存 `None` 就会被当成 miss、每次都重算。
+- `dataclasses.MISSING` 标记「这个字段没给默认值」——因为「默认值就是 `None`」是合法的,不能再拿 `None` 兼任「没默认值」。
+- `inspect.Parameter.empty` / `Signature.empty` 标记「这个参数没默认值 / 没标注返回类型」。
+- 社区还有 **PEP 661** 想把这套标准化成内建 `sentinel()`,截至目前还没进标准库——但 `object()` 这招随时能用,不必等。
+
+**类型标注的小坑**(详见[第 09 章](09-typing.md)):哨兵的类型和参数真实类型不是一回事,`def f(name: str | None = _MISSING)` 会让类型检查器抱怨默认值类型不符。处理办法是给哨兵单独建一个类型再 `Union`、或对默认值 `cast`;面试能点到「哨兵类型要和参数类型分开」就够了。
+
 ## 四、闭包与陷阱二:延迟绑定
 
 **闭包**是"记住了定义时所在作用域里变量"的内层函数。注意它记住的是**变量(绑定),不是当时的值**:

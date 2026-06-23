@@ -154,6 +154,15 @@ print(h() == h())        # True
 ```
 → `True`。默认值只在定义时建一次,每次不传拿到同一个对象。【第 04】
 
+**D14 哨兵:区分「没传」和「传了 None」**
+```python
+_MISSING = object()
+def patch(name=_MISSING):
+    return "没传" if name is _MISSING else f"传了 {name!r}"
+print(patch(), patch(None))
+```
+→ `没传 传了 None`。当 `None` 本身是合法值(如 PATCH 把字段清空)时,不能拿 `None` 当哨兵——造个 `object()` 唯一对象、用 `is` 判定。标准库 `functools.lru_cache`/`dataclasses.MISSING`/`inspect.Parameter.empty` 都是这招。【第 04】
+
 > 答这类题的套路:**先报输出,再一句话点根因**。D1/D2/D3/D5 同根——"名字是绑定 + 可变对象被共享"(第 01 章),能说出这层就是高分。
 
 ## 三、系统 / 设计类追问
