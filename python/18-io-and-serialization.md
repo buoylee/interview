@@ -113,7 +113,7 @@ pickle.loads(pickle.dumps(Evil()))   # 直接打印 —— loads 期间就执行
 # 把 print 换成 os.system / subprocess,就是远程代码执行(RCE)
 ```
 
-**铁律:绝不要 `pickle.loads` 来自不可信来源的数据**(用户上传、网络请求、外部缓存)。这等同于执行对方给的代码。可信场景(自己进程间、自己写的缓存)才用 pickle;对外交换一律用 JSON。需要安全的结构化序列化用 JSON;需要带类型校验的用 pydantic(第 14 章)。详见[第 18 章](18-security.md)。
+**铁律:绝不要 `pickle.loads` 来自不可信来源的数据**(用户上传、网络请求、外部缓存)。这等同于执行对方给的代码。可信场景(自己进程间、自己写的缓存)才用 pickle;对外交换一律用 JSON。需要安全的结构化序列化用 JSON;需要带类型校验的用 pydantic(第 14 章)。详见[第 19 章](19-security.md)。
 
 ## Java/Go 对照框
 

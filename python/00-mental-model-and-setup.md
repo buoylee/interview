@@ -10,7 +10,7 @@
 - **显式优于隐式**(Explicit is better than implicit):别玩隐藏的魔法,把意图写出来。
 - **应该有一种(最好只有一种)显而易见的做法**:这跟 Perl/JS "条条大路" 的文化相反,也是为什么 Python 社区对"地道写法(Pythonic)"特别较真。
 
-> 这不是鸡汤。面试官问"你觉得这段代码哪里不 Pythonic",考的就是你有没有内化这套价值观。第 16 章会把它落到具体写法。
+> 这不是鸡汤。面试官问"你觉得这段代码哪里不 Pythonic",考的就是你有没有内化这套价值观。第 17 章会把它落到具体写法。
 
 ## 二、执行模型:Python 是怎么跑起来的
 
@@ -112,7 +112,7 @@ x = "hi"    # x 改贴到一个 str 对象;y 还指着 42,纹丝不动
 进程结束,一切释放
 ```
 
-读法:**每一节深入细节时,都往这条线上挂**。第 [10 章](10-modules-packages-imports.md)讲"import 会执行顶层代码"——对应图里第 ③ 步那条 import 分支;第 [05 章](05-oop-1-classes-protocols.md)讲 `__new__`/`__init__`、第 [06 章](06-oop-2-inheritance-descriptors-metaclasses.md)讲"类自己也是对象"——对应 `Foo()` 那行;第 [15 章](15-cpython-internals-performance.md)讲 GC 三代——对应最后那个"分代 GC"节点。这张图不教新东西,它是把散在各章的机制接成"一个程序怎么从头跑到尾"的总索引。
+读法:**每一节深入细节时,都往这条线上挂**。第 [10 章](10-modules-packages-imports.md)讲"import 会执行顶层代码"——对应图里第 ③ 步那条 import 分支;第 [05 章](05-oop-1-classes-protocols.md)讲 `__new__`/`__init__`、第 [06 章](06-oop-2-inheritance-descriptors-metaclasses.md)讲"类自己也是对象"——对应 `Foo()` 那行;第 [16 章](16-objects-memory-gc-gil.md)讲 GC 三代——对应最后那个"分代 GC"节点。这张图不教新东西,它是把散在各章的机制接成"一个程序怎么从头跑到尾"的总索引。
 
 > 一句话总纲:**Python 程序 = 把文件编译成字节码,由虚拟机从上到下解释执行;执行中按需加载别的文件、在堆上创建对象、用引用计数随时回收 + 分代 GC 偶尔兜底。**
 

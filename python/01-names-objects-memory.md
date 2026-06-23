@@ -176,7 +176,7 @@ print(sys.getrefcount(a))   # 回到 2
 
 引用计数有个致命短板:**循环引用**。`a.ref = b; b.ref = a`,两者引用计数都不为 0,即使外部再也够不到它们,也不会被回收。为此 CPython 额外配了一个**分代垃圾回收器(generational GC)**,专门检测并回收这类循环垃圾。
 
-这里建立直觉即可——*引用计数管大头、GC 兜循环引用* 的细节(三代、`gc` 模块、为什么这影响 `__del__`)放到[第 15 章](15-cpython-internals-performance.md)讲透。
+这里建立直觉即可——*引用计数管大头、GC 兜循环引用* 的细节(三代、`gc` 模块、为什么这影响 `__del__`)放到[第 16 章](16-objects-memory-gc-gil.md)讲透。
 
 ## Java/Go 对照框
 

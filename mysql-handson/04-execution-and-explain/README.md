@@ -952,3 +952,9 @@ A: Explain 是「计划」，基于统计估算，不执行 SQL。Explain ANALYZ
 ## 7. 一句话总结
 
 一条 SQL 经过 Parser 验证语法和表/列存在、Optimizer 基于统计成本模型选出执行计划、Executor 驱动 InnoDB Handler 逐行读取并在 Server 层做残余过滤。**读 Explain 先看 type（ALL = 警觉，const/eq_ref = 放心）、再看 rows（估算行数 × 1/filtered = 真实流量）、再看 Extra（Using temporary / Using filesort = 要优化，Using index = 好）**；看不懂为什么不走期望索引时，开 optimizer_trace 看 `cost_for_plan`；估算偏差大时，跑 `ANALYZE TABLE` 更新统计或用 `EXPLAIN ANALYZE` 看实际行数。
+
+## Scenarios
+
+> 本机实测（MySQL 8.0.36），跑过「预期 → 实机 → 落差」。
+
+- [01 - 选择性变了计划却没翻：8.0 优化器有多黏索引](scenarios/01-plan-flips-by-selectivity.md) — 命中 96% 仍走 `ref`（破除「20-30% 就全表扫」迷思），trace 显示全扫 17589 vs 索引 2633

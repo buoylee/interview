@@ -333,7 +333,7 @@ print({1, 2, 3} & {2, 3, 4})   # {2, 3} 交集;| 并,- 差,^ 对称差
 - **频繁判断"在不在"用 `set`/`dict`(O(1)),别用 `list`(O(n))**。
 - **频繁在头部增删用 `collections.deque`(两端 O(1)),别用 list**(`pop(0)` 是 O(n))。
 
-`list` 和 `dict` 都靠**过度分配**摊销扩容:list 满了按比例多要一块空间,所以 `append` 平均 O(1) 而非每次都搬;dict 装载因子超阈值时整体扩容并重新散列。细节(紧凑 dict 内存布局、为什么 `append` 是摊销 O(1))在[第 15 章](15-cpython-internals-performance.md)。
+`list` 和 `dict` 都靠**过度分配**摊销扩容:list 满了按比例多要一块空间,所以 `append` 平均 O(1) 而非每次都搬;dict 装载因子超阈值时整体扩容并重新散列。对象本身为什么"重"(对象头 / 引用计数)见[第 16 章](16-objects-memory-gc-gil.md)。
 
 ## Java/Go 对照框
 

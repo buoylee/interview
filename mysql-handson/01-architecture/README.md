@@ -511,3 +511,9 @@ LIMIT 10;
 ## 7. 一句话总结
 
 MySQL 是 **Server 层（连接、解析、优化、执行） + 存储引擎层（InnoDB 负责数据读写、事务、锁、缓存）** 的两层插件式架构。一条 SQL 在 Server 层完成理解和决策，在引擎层完成实际的 IO 和事务保障。日常优化的核心抓手是：连接池设合理上限 + 长连接定期回收（`maxLifetime`）+ 写 SQL 先 EXPLAIN + UPDATE 路径理解 redo/binlog 两阶段提交（详见 ch07）。Query Cache 已死，缓存请上应用层。
+
+## Scenarios
+
+> 本机实测（MySQL 8.0.36），跑过「预期 → 实机 → 落差」。
+
+- [01 - 一条 SELECT 的旅程：各阶段耗时](scenarios/01-sql-journey-stage-timing.md) — 用 `events_stages_history_long` 量出大头是 `Opening tables`(70us)/`statistics`(66us) 而非 `optimizing`(4us)

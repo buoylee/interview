@@ -24,7 +24,7 @@ eval(user_input)       # 灾难 —— 用户传 "__import__('os').system('rm -r
 
 ## 二、pickle 反序列化(回顾)
 
-如[第 17 章](17-io-and-serialization.md)所讲,`pickle.loads` 反序列化时会执行还原代码,**对不可信数据 `loads` = RCE**:
+如[第 18 章](18-io-and-serialization.md)所讲,`pickle.loads` 反序列化时会执行还原代码,**对不可信数据 `loads` = RCE**:
 
 ```python
 class Evil:
@@ -111,7 +111,7 @@ hmac.compare_digest(expected, received)    # 定长时间比较,别用 == 比 to
 ## 五、输入校验与密钥管理
 
 - **校验用显式判断,别用 `assert`**:`assert` 在 `python -O` 下被跳过(第 08 章),拿它当安全/输入校验等于生产没校验。用 `if not valid: raise ValueError(...)`,或在边界用 **pydantic** 做结构化校验。
-- **密钥别硬编码、别进 git**:从环境变量/密钥管理服务读(第 19 章),`.env` 加进 `.gitignore`。源码里出现 `API_KEY = "sk-..."` 是事故常客。
+- **密钥别硬编码、别进 git**:从环境变量/密钥管理服务读(第 20 章),`.env` 加进 `.gitignore`。源码里出现 `API_KEY = "sk-..."` 是事故常客。
 - **最小权限 + 不信任输入**:所有外部输入(请求、文件、环境)默认不可信,先校验再用。
 
 ## Java/Go 对照框

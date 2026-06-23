@@ -62,7 +62,7 @@ settings = Settings()              # 启动时一次性加载 + 校验
 
 本地开发把环境变量放 `.env`(`DATABASE_URL=...`),用 `python-dotenv` 或 pydantic-settings 的 `env_file` 加载。**`.env` 必须进 `.gitignore`**;仓库里放一份不含真值的 `.env.example` 告诉别人需要哪些变量。
 
-> 密钥(API key、DB 密码)同理:**绝不硬编码、绝不进 git**(第 18 章)。生产从环境变量或密钥管理服务(Vault/云 KMS/Secrets Manager)注入。
+> 密钥(API key、DB 密码)同理:**绝不硬编码、绝不进 git**(第 19 章)。生产从环境变量或密钥管理服务(Vault/云 KMS/Secrets Manager)注入。
 
 ## 三、生产级日志
 

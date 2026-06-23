@@ -8,7 +8,7 @@
 
 ## 怎么读
 
-- **线性通读**(推荐第一遍):00 → 16 顺序读。00–01 建立"一切皆对象 + 名字即绑定"的总纲,后面所有"陷阱"都从这里长出来;跳过会反复卡。
+- **线性通读**(推荐第一遍):00 → 23 顺序读。00–01 建立"一切皆对象 + 名字即绑定"的总纲,后面所有"陷阱"都从这里长出来;跳过会反复卡。
 - **按主题跳读**(复习/查漏):直接进对应章,每章自带"导引 + Java/Go 对照框 + 章末面试卡",可独立读。
 - **面试前突击**:先扫 `99-interview-cards.md`,卡壳的知识点回到对应章补。
 
@@ -33,14 +33,15 @@
 | 12 | [测试](12-testing.md) | pytest、fixture/parametrize、mock、coverage |
 | 13 | [并发(桥接章)](13-concurrency-bridge.md) | GIL 心智、threading/multiprocessing/asyncio 怎么选 |
 | 14 | [标准库与生态地图](14-stdlib-and-ecosystem.md) | collections/itertools/pathlib/logging… + 生态地图 |
-| 15 | [CPython 内部与性能心智](15-cpython-internals-performance.md) | 字节码、引用计数 + 分代 GC、为什么慢、性能惯用法 |
-| 16 | [Python 风格与惯用法](16-pythonic-idioms.md) | PEP 8/20、地道写法、反模式、全书陷阱总览 |
-| 17 | [文件 I/O 与序列化](17-io-and-serialization.md) | open/编码/文本二进制、csv、json、pickle + 反序列化安全 |
-| 18 | [安全基础](18-security.md) | eval/exec、pickle、注入、secrets/hashlib/hmac、随机性 |
-| 19 | [实战骨架](19-production-skeleton.md) | 项目结构、配置/密钥、生产 logging、错误边界、12-factor |
-| 20 | [编码面试工具箱](20-coding-interview-toolkit.md) | heapq/bisect/deque、sorted(key=)、复杂度、切片技巧 |
-| 21 | [Python↔C 边界](21-python-c-boundary.md) | 缓冲区协议、memoryview、struct/array、ctypes/cffi |
-| 22 | [数据访问(桥接章)](22-data-access-bridge.md) | 选型决策树、事务/N+1/池一句话;深度 → python-data/ |
+| 15 | [CPython 执行模型](15-cpython-execution-model.md) | 字节码·code object·帧·名字解析(LOAD_FAST/GLOBAL/DEREF)·cell/闭包·自适应专门化 |
+| 16 | [对象模型·内存·GC·GIL 机制](16-objects-memory-gc-gil.md) | 对象头·引用计数·weakref·分代 GC·`__slots__` 机制·GIL 放锁·free-threading |
+| 17 | [Python 风格与惯用法](17-pythonic-idioms.md) | PEP 8/20、地道写法、反模式、全书陷阱总览 |
+| 18 | [文件 I/O 与序列化](18-io-and-serialization.md) | open/编码/文本二进制、csv、json、pickle + 反序列化安全 |
+| 19 | [安全基础](19-security.md) | eval/exec、pickle、注入、secrets/hashlib/hmac、随机性 |
+| 20 | [实战骨架](20-production-skeleton.md) | 项目结构、配置/密钥、生产 logging、错误边界、12-factor |
+| 21 | [编码面试工具箱](21-coding-interview-toolkit.md) | heapq/bisect/deque、sorted(key=)、复杂度、切片技巧 |
+| 22 | [Python↔C 边界](22-python-c-boundary.md) | 缓冲区协议、memoryview、struct/array、ctypes/cffi |
+| 23 | [数据访问(桥接章)](23-data-access-bridge.md) | 选型决策树、事务/N+1/池一句话;深度 → python-data/ |
 | 99 | [面试卡](99-interview-cards.md) | 各章高频题汇总 + 猜输出 drill 合集 |
 
 ## 与仓库其他目录的关系
@@ -48,7 +49,7 @@
 这套教程聚焦**语言本身**。三块深水区不在这里重写,只在对应章用指针带你过去:
 
 - **并发深度** → [`../python-concurrency/`](../python-concurrency/):GIL、threading、multiprocessing、asyncio、anyio、生产 worker/任务队列、调优。第 13 章只讲"怎么选",实操在那里。
-- **性能剖析/调试** → [`../performance-tuning-roadmap/06a-python-profiling`](../performance-tuning-roadmap/06a-python-profiling)、[`06b-python-debugging`](../performance-tuning-roadmap/06b-python-debugging)。第 15 章讲内部机制与心智,工具实操在那里。
+- **性能剖析/调试** → [`../performance-tuning-roadmap/06a-python-profiling`](../performance-tuning-roadmap/06a-python-profiling)、[`06b-python-debugging`](../performance-tuning-roadmap/06b-python-debugging)。第 15–16 章讲执行/内存的内部机制与心智,工具实操在那里。
 - **Web/服务可观测性** → [`../fastapi-ops/`](../fastapi-ops/):FastAPI 指标/追踪/日志/压测/调优。
-- **零拷贝/二进制/FFI 的语言层** 就在本章(ch21);更深的**性能剖析与原生扩展工程化**仍指 [`../performance-tuning-roadmap/`](../performance-tuning-roadmap/)。
-- **数据访问深度** → [`../python-data/`](../python-data/):driver/连接池/ORM/Session/事务边界/N+1/async/迁移/repository,含可跑 Postgres lab(池耗尽/N+1/隔离/async 吞吐实测)。第 22 章只讲"怎么选",实操在那里。
+- **零拷贝/二进制/FFI 的语言层** 就在本章(ch22);更深的**性能剖析与原生扩展工程化**仍指 [`../performance-tuning-roadmap/`](../performance-tuning-roadmap/)。
+- **数据访问深度** → [`../python-data/`](../python-data/):driver/连接池/ORM/Session/事务边界/N+1/async/迁移/repository,含可跑 Postgres lab(池耗尽/N+1/隔离/async 吞吐实测)。第 23 章只讲"怎么选",实操在那里。

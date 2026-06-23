@@ -13,10 +13,10 @@
 
 ## 章节地图
 
-- `01-architecture/` — Server 层 + 引擎层 + 一条 SQL 的旅程
-- `02-innodb-storage/` — 页/区/段 + Buffer Pool + Change Buffer + AHI
+- `01-architecture/` — Server 层 + 引擎层 + 一条 SQL 的旅程 ← **含 1 个实机 scenario（阶段耗时）**
+- `02-innodb-storage/` — 页/区/段 + Buffer Pool + Change Buffer + AHI ← **含 1 个实机 scenario（命中率）**
 - `03-indexing/` — B+树 / 聚簇 vs 二级 / 联合索引 / 覆盖 / ICP / MRR ← **第一个有完整 scenario 的章节**
-- `04-execution-and-explain/` — Parser → Optimizer → Executor + Explain 完整解读
+- `04-execution-and-explain/` — Parser → Optimizer → Executor + Explain 完整解读 ← **含 1 个实机 scenario（计划与选择性）**
 - `05-mvcc-and-transaction/` — 事务 ACID + MVCC + Undo Log + RR 真相 ← **含 3 个实机 scenario**
 - `06-locking/` — 行/表/间隙/Next-Key/插入意向 + 死锁案例 ← **含 3 个实机 scenario**
 - `07-logs-and-crashsafe/` — Redo / Undo / Binlog + WAL + 两阶段提交 ← **含 2 个实机 scenario**
@@ -24,7 +24,7 @@
 - `09-replication-and-ha/` — 主从 + 半同步 + MGR + 读写分离
 - `10-sharding-and-scaling/` — 分库分表 + 全局 ID + 在线迁移
 - `11-ops-and-troubleshooting/` — Online DDL + pt-osc + 备份 + 参数调优 ← **含 1 个架构师整合 scenario（写风暴跨章拖垮链）**
-- `99-interview-cards/` — 反向产出的面试题答案卡（已覆盖 ch03/05/06/07/08/11）
+- `99-interview-cards/` — 反向产出的面试题答案卡（已覆盖 ch01-08 + ch11）
 
 ## Lab 速查
 
