@@ -2,7 +2,7 @@
 
 写给**有后端底子、要把 Python 数据层用到架构师水准**的人:不是「怎么调 SQLAlchemy 的 API」,而是**从 Python 进程到数据库这一层的机制、内幕与取舍**——driver、连接池、Core/ORM、Session/工作单元、事务边界、N+1、async、迁移、repository。每个关键现象都有一个**可跑的 Postgres lab** 实测出数字。
 
-这是 [`../python/`](../python/) 资深教程的延伸:`python/` 聚焦语言本身,数据访问只在 [`python/22`(桥接章)](../python/22-data-access-bridge.md) 讲「怎么选」,实操深度在这里(对照 `python/13` 并发桥接章 → `../python-concurrency/` 的关系)。
+这是 [`../python/`](../python/) 资深教程的延伸:`python/` 聚焦语言本身,数据访问只在 [`python/23`(桥接章)](../python/23-data-access-bridge.md) 讲「怎么选」,实操深度在这里(对照 `python/13` 并发桥接章 → `../python-concurrency/` 的关系)。
 
 > **环境约定**:锚点 **Postgres 16 + SQLAlchemy 2.0**(async 为主),纯开源;示例代码都对真库实测过。`lab/` 里的数字是 Apple Silicon / 本地回环跑出来的,**你的会不同**——看的是数量级与现象。
 
@@ -33,7 +33,7 @@
 
 这里只讲「Python 应用侧怎么把数据访问用好」,几块深水区只给指针:
 
-- **数据访问选型一句话版** → [`../python/22`](../python/22-data-access-bridge.md)(桥接章,决策树)
+- **数据访问选型一句话版** → [`../python/23`](../python/23-data-access-bridge.md)(桥接章,决策树)
 - **DB 引擎 / SQL 调优 / 隔离级别原理** → [`../mysql/`](../mysql/)、[`../transaction/`](../transaction/)
 - **分布式事务 / 分片** → [`../distr-tx/`](../distr-tx/)、[`../Sharding-Sphere/`](../Sharding-Sphere/)
 - **缓存 / 多存储编排** → [`../redis/`](../redis/)

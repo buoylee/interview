@@ -76,7 +76,7 @@ conn 2: TimeoutError after 1.00s -> QueuePool limit of size 2 overflow 0 reached
 
 要点:
 
-- **池是每个进程一份**。gunicorn/uvicorn 开 8 个 worker,每个 worker 一个 engine、一份池——`pool_size=10` 实际是 `8 × 10 = 80` 条连接打到数据库。多实例 + 多 worker 很容易把 `max_connections`(默认才 100)顶爆。这点直接接 [`../python/10`](../python/10-modules-packages-imports.md)/[`19`](../python/19-production-skeleton.md):**连接池属于每 worker 初始化一份的资源**。
+- **池是每个进程一份**。gunicorn/uvicorn 开 8 个 worker,每个 worker 一个 engine、一份池——`pool_size=10` 实际是 `8 × 10 = 80` 条连接打到数据库。多实例 + 多 worker 很容易把 `max_connections`(默认才 100)顶爆。这点直接接 [`../python/10`](../python/10-modules-packages-imports.md)/[`20`](../python/20-production-skeleton.md):**连接池属于每 worker 初始化一份的资源**。
 - 池不是越大越好。连接在数据库侧也耗内存和调度;超过数据库能并行处理的数量,多出来的连接只是在排队,反而增加上下文切换。
 - 经验起点:`pool_size` ≈ 该 worker 的并发请求数;拿不准从小开始,用监控(池占用、DB 活动连接数)往上调。
 
