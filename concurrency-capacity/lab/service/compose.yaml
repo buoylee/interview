@@ -1,0 +1,31 @@
+# Driveable lab service + optional metrics. The simplest way to run the
+# experiments is just uvicorn locally:
+#
+#   cd concurrency-capacity/lab/service
+#   POOL_SIZE=8 uvicorn app:app --port 8000 --workers 1
+#   python drive.py --url 'http://localhost:8000/slow?ms=50' --steps 50,100,200,400,800
+#
+# This compose file is for when you want it containerised + a Prometheus
+# scrape of /stats. Load generation reuses the locust quickstart in
+# performance-tuning-roadmap/03x-load-gen-quickstart/.
+
+services:
+  service:
+    image: python:3.11-slim
+    working_dir: /app
+    volumes:
+      - ./:/app
+    environment:
+      POOL_SIZE: "8"        # ← the pool knob; experiments vary this
+      MODEL: "async"        # ← label for the model-shootout (async | sync | proc)
+    command: >
+      sh -c "pip install --quiet fastapi uvicorn httpx &&
+             uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1"
+    ports:
+      - "8000:8000"
+
+  # Optional: scrape /stats as metrics. Point a Prometheus at service:8000.
+  # prometheus:
+  #   image: prom/prometheus
+  #   volumes: [./prometheus.yml:/etc/prometheus/prometheus.yml]
+  #   ports: ["9090:9090"]
