@@ -18,3 +18,7 @@
 # Python 字节码 / 缓存(各 lab 跑测试时生成,非内容)
 __pycache__/
 *.py[cod]
+
+# 简历 PDF 与校验和:只留 .md 源,PDF 本地生成、不入库
+/*.pdf
+*.pdf.md5
