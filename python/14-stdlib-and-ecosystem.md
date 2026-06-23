@@ -119,6 +119,14 @@ m.groups()                               # ('12', '34');热路径用 re.compile 
 | **缓存/MQ 客户端** | redis-py / confluent-kafka | |
 | **迭代/函数增强** | more-itertools / toolz / boltons | 补 `itertools`/`functools` |
 
+> **任务队列 ≠ 消息中间件(Kafka/RocketMQ),别混淆——这是 Java/Go 背景最容易踩的点**:
+> Celery/rq/dramatiq 是**任务队列框架(应用层)**——你把一个 Python 函数标成 task,`task.delay(args)` 一调,worker 进程池就异步执行,自带重试/定时/结果回写。但它**自己不搬消息**,底下必须跑一个 **broker**:最常见是 RabbitMQ 或 Redis(也能挂 Kafka)。所以 **Celery 不是 Kafka 的竞品,它是"Kafka 那一层*之上*"的东西**。
+> Kafka/RocketMQ/RabbitMQ/Redis 才是和语言无关的**消息中间件(基础设施层)**,Python 一样在用(下一行的 `confluent-kafka`/`aiokafka`)。
+>
+> 那为什么 Python 有个这么突出的 Celery,Java/Go 却没有同等地位的"标准任务框架"?**broker 层三语言通用,差别只在 broker 之上那层**:Python 把它产品化成了 Celery(Django/Flask 同步 Web 早年就要把慢活推到后台,Celery 成了事实标准);Java 这层是 Spring `@Async`/`@Scheduled`/Quartz 或直接写 `@KafkaListener` 消费者;Go 是 asynq/machinery/river 或自己写 consumer。
+>
+> 落地常是**两者并存**:Celery 做 background job(job 视角:offload 慢活/定时/重试),Kafka 做事件骨干(event 视角:解耦/高吞吐/可重放/多消费者)——不是二选一。
+
 > **Guava/Lombok 对照**:Java 的 Guava(集合/缓存/字符串)≈ Python 的 `collections`+`itertools`+`more-itertools`+`toolz`;Lombok(数据类/Builder)≈ `dataclasses`/`attrs`/`pydantic`;Guava Cache ≈ `functools.lru_cache`/`cachetools`。
 
 资深选型直觉:**能用标准库就用标准库**(`collections`/`pathlib`/`itertools` 已经很强);数据边界要校验上 `pydantic`;HTTP 用 `httpx`;Web 用 `FastAPI`+`SQLAlchemy`;数据分析 `pandas`+`numpy`。
