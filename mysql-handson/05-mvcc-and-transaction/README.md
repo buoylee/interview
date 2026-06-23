@@ -482,3 +482,11 @@ COMMIT;
 ## 7. 一句话总结
 
 MVCC 的本质是：**每行保存一条 `(DB_TRX_ID, DB_ROLL_PTR)` 的隐藏字段，修改时在 undo log 里追加旧版本；读操作用 ReadView（`m_ids + min_trx_id + max_trx_id + creator_trx_id`）的四字段可见性算法沿链回溯，找到第一个可见版本——让快照读完全无锁、写不阻塞读**。RC 每条 SELECT 建新 ReadView（所以能看到已提交修改），RR 第一条 SELECT 建一次之后复用（所以同一事务内多次读一致）。RR 防幻读：快照读靠 ReadView，当前读靠 Gap/Next-Key Lock；两者混用时有漏洞，留意先快照读后当前读的激活场景。
+
+## Scenarios
+
+> 本机实测（MySQL 8.0.36），每个都跑过「预期 → 实机 → 落差」。
+
+- [01 - RC 与 RR 的 ReadView 建立时机差异](scenarios/01-rc-vs-rr-readview-timing.md) — 双会话实测：RR 两次读都 100，RC 第二次变 200
+- [02 - 长事务阻塞 undo purge，History list length 暴涨](scenarios/02-long-txn-blocks-purge.md) — 只读长事务（改 0 行）也能把 4000 个 undo 版本卡住不回收
+- [03 - 快照读看不到、当前读看得到](scenarios/03-snapshot-vs-current-read.md) — 同一瞬间快照读=2、当前读 FOR UPDATE=3，超卖 bug 的机制

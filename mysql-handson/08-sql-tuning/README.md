@@ -950,6 +950,14 @@ A：MySQL 的 LIMIT offset, count 要扫 offset+count 行才丢弃前 offset 行
 
 ---
 
+## Scenarios
+
+> 本机实测（MySQL 8.0.36），每个都跑过「预期 → 实机 → 落差」。
+
+- [01 - filesort 触发与从 status 确认](scenarios/01-filesort-trigger-and-status.md) — `Using filesort` ≠ 落磁盘，要看 `Sort_merge_passes` 才知道有没有真的写盘
+- [02 - `Using temporary` 触发与索引消除](scenarios/02-using-temporary-trigger.md) — 同样 GROUP BY，无索引列 → 临时表+filesort，有索引列 → `Using index`
+- [03 - 深翻页 `LIMIT 40000,20` 与延迟关联](scenarios/03-deep-pagination-deferred-join.md) — EXPLAIN 看延迟关联只回表 20 次（含「微基准为何骗人」的诚实记录）
+
 ## 相关章节
 
 - [03-indexing/README.md](../03-indexing/README.md) — B+ 树、聚簇索引、覆盖索引、ICP、联合索引设计原则

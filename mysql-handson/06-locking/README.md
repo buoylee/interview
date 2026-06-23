@@ -520,3 +520,11 @@ IS / IX 是表级「声明旗」，让需要加表级锁的操作能 O(1) 检测
 ## 7. 一句话总结
 
 InnoDB 的锁是「意向锁挂表层（O(1) 冲突检测）+ 行级锁挂索引上（Record / Gap / Next-Key / Insert Intention）」的两层设计；RR 默认加 Next-Key Lock 防幻读，等值命中唯一索引时退化为 Record Lock；行锁依赖索引，不走索引就是全表锁；死锁靠 INNODB STATUS 定位交叉等待，根治要么统一加锁顺序，要么缩短事务，要么 RC 级别去掉 Gap Lock。
+
+## Scenarios
+
+> 本机实测（MySQL 8.0.36），每个都跑过「预期 → 实机 → 落差」。
+
+- [01 - WHERE 列没索引，行锁退化成锁全表](scenarios/01-no-index-locks-whole-table.md) — 5 万行表的无索引 UPDATE 实测加了 50130 把 X 行锁（比行数还多，含间隙）
+- [02 - 间隙锁挡住 INSERT](scenarios/02-gap-lock-blocks-insert.md) — A 锁住范围间隙，B 往间隙插入 → `ERROR 1205` 等锁超时
+- [03 - 经典死锁复现 + 读懂死锁日志](scenarios/03-deadlock-reproduce-and-read-log.md) — 交叉加锁 → `ERROR 1213`，逐字解读 LATEST DETECTED DEADLOCK 的 hex 与 ROLL BACK
