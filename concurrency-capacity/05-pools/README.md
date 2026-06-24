@@ -118,4 +118,4 @@ PostgreSQL 的经验公式常被引为:`连接数 ≈ ((核数 × 2) + 有效磁
 > ```
 > 进阶 `lab/experiments/e05-pool-starvation.md`:把真实服务的 `POOL_SIZE` 调到刚好等于负载,看请求开始排队、P99 抬头。
 
-> **指进**:×worker 总账的语言落地与连接池模式 → [`python-concurrency/09-patterns-tuning`](../../python-concurrency/09-patterns-tuning/)(§3.2);数据库连接管理 → [`mysql-handson`](../../mysql-handson/) / [`DB/pg`](../../DB/pg/)。
+> **指进**:×worker 总账的语言落地与连接池模式 → [`python-concurrency/09-patterns-tuning`](../../python-concurrency/09-patterns-tuning/)(§3.2);数据库连接管理 → [`mysql-handson`](../../mysql-handson/) / [`DB/pg`](../../DB/pg/);把本章 `a=λS` + ×worker 总账具体落到 **FastAPI/anyio 那个默认 40 线程池**(`total_tokens` 怎么定) → [`fastapi-ops/01-foundation`](../../fastapi-ops/01-foundation/) A6。

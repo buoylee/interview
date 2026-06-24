@@ -96,7 +96,136 @@ socket 可读 → 事件循环醒 → httptools 解析字节 → 组出 scope
 
 > 这是 FastAPI 最大的坑,详见 [`python-concurrency/05-asyncio-pitfalls`](../../python-concurrency/05-asyncio-pitfalls/)。能讲清这题,面试官就知道你真懂事件循环,而不是只会调 API。
 
-### A6 `--workers N`:用多进程绕开 GIL
+### A6 那个「线程池」到底是什么 —— 单线程怎么又冒出 40 条线程?
+
+> A5 给的解药是「阻塞就丢 `run_in_threadpool`」。但这立刻戳出一个矛盾:不是说一个 worker 就**一条线程**吗,哪来的「线程池」?这一节把这个盒子打开——它是面试里能立刻分出层次的点,也是很多人嘴上会说「丢线程池」却讲不清的地方。
+
+**先把结论钉死,消除矛盾:**
+
+> **基本盘永远是 1 条线程**(事件循环,跑你所有 `async def`)。那个线程池是个**按需、懒加载的「逃生艇」**:你不写同步阻塞代码,它一条线程都不会建。「单线程」讲的是常态,「40 条」讲的是你主动引入阻塞时的可选溢出池。两件事不矛盾。
+
+#### 谁会触发线程池?只有一个开关:函数加没加 `async`
+
+```python
+@app.get("/a")
+async def a():          # async def → 就在事件循环那条线程上跑,0 条额外线程
+    await db.fetch(...)
+
+@app.get("/b")
+def b():                # 注意没 async → Starlette 自动把它丢进线程池的某条 worker thread
+    requests.get(...)   # 阻塞调用,但有自己的线程兜着,不会堵死循环
+```
+
+FastAPI 会检查你的端点是不是协程函数:
+
+- `async def` → 在事件循环上 `await`,**不碰线程池**;
+- 光 `def` → 自动走 `run_in_threadpool`(= `anyio.to_thread.run_sync`),**这时才借/建一条 worker thread**;
+- 同理,同步的依赖项 `Depends` 和同步的 `BackgroundTasks` 也走这个池。
+
+**所以一个全 `async def` 的 app,那个池从头到尾是空的。** 它不是 uvicorn 的标配,而是「你写了同步阻塞代码时,系统帮你兜底的隔离区」。这正解释了 A5 那条解药的代价:它有个容量上限,见下。
+
+#### 这些线程在哪?同一个进程,不同的线程(不是新进程)
+
+```
+       ┌──────────────── 一个 uvicorn worker 进程 ────────────────┐
+       │  主线程:asyncio 事件循环   ← 跑你所有 async def           │
+socket │       │                                                  │
+─────▶ │       │  await run_in_threadpool(同步函数)                 │
+       │       ▼                                                  │
+       │  anyio 线程池(同进程内的 OS 线程,懒加载 / 闲置复用)        │
+       │   ├─ worker thread #1   ← 同步函数在这跑                  │
+       │   ├─ worker thread #2                                    │
+       │   └─ … 最多 40(可调)                                     │
+       └──────────────────────────────────────────────────────────┘
+```
+
+定性一句话:**同进程、异线程。** 它们和事件循环线程共享同一块内存、同一把 GIL,只是不同的 OS 线程——不是子进程。这些线程**懒加载 + 闲置复用**:第一次有同步活儿才建,跑完留着给下一个用,长期闲置才回收。而且**每个 worker 进程各有自己的一套**(各自的事件循环 + 各自的线程池),进程间内存不通。
+
+#### 那「40」是什么?是个令牌桶,而且能动态调
+
+线程池的并发上限不是写死的常量,而是 anyio 的一个 **CapacityLimiter(容量限制器,本质是信号量 / 令牌桶)**,默认 `total_tokens = 40`:
+
+- 第 41 个同步活儿来了没令牌 → **排队**等,直到前面有人还令牌(这就是 A5 里「同步路由扛不住高并发慢 I/O」的物理原因)。
+- 它**绑在事件循环上**(每个 worker 各一份),所以**有效阻塞并发 = workers × 40**。
+- `total_tokens` 是个**可写属性**,运行期随时能改。这就直接回答了「线程数是启动时定死还是动态调」:**默认 40,但完全是动态可调的。**
+
+```python
+from contextlib import asynccontextmanager
+import anyio
+from fastapi import FastAPI
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 启动时把上限从 40 抬到 100(必须在事件循环里调)
+    anyio.to_thread.current_default_thread_limiter().total_tokens = 100
+    yield
+
+app = FastAPI(lifespan=lifespan)
+
+# 运行期也能改 —— total_tokens 只是个可写属性,从任意 async 上下文都能动:
+@app.post("/admin/threadpool/{n}")
+async def resize(n: int):
+    anyio.to_thread.current_default_thread_limiter().total_tokens = n
+    return {"total_tokens": n}
+```
+
+> 注意 `current_default_thread_limiter()` 必须在事件循环跑起来**之后**调用(它取的是当前 loop 绑定的那一份),所以放 lifespan 里,别放模块顶层。
+
+#### 事件循环线程和 worker thread 怎么对话(跨线程不出事的机制)
+
+这是「单线程模型里凭空多出一条线程,数据怎么安全传回来」的关键,也是面试爱追的细节:
+
+1. 协程 `await run_in_threadpool(fn)` → anyio 先向 CapacityLimiter **领一个令牌**(没令牌就排队)。
+2. 挑一条闲置 worker thread(没有就新建),把 `fn` 丢过去。
+3. **协程在此 park,让出事件循环**,循环继续服务别的请求——这一步是它没堵死循环的根本。
+4. worker thread 同步跑完 `fn`,用 `loop.call_soon_threadsafe(...)` 把结果塞回事件循环、唤醒那个 park 住的协程。
+5. 还回令牌。
+
+对你写的协程来说,它只看到一个普通的 `await`;底下其实是「跨线程把活儿甩出去、再唤醒回来」。
+
+#### 必问的反问:同进程同 GIL,丢到另一条线程到底有啥用?
+
+这是从 Java/Go 过来最容易卡住的点。同一把 GIL,worker thread 跑的时候不也占着 GIL、堵住循环吗?答案在 **GIL 什么时候被放开**:
+
+- worker thread 跑到**阻塞 I/O**(socket、文件、C 扩展写的 DB 驱动)→ 进 C 层那一刻**主动释放 GIL** → 事件循环线程立刻抢到 GIL 继续干活。**这就是丢线程的全部价值。**
+- worker thread 跑**纯 Python CPU**(算 hash、跑大循环)→ 它**死抱 GIL**,只靠 GIL 每几毫秒一次的强制切换勉强让一点 → 循环被严重拖慢。**所以 CPU 重活丢这个池几乎没用**,要丢进程池 / 任务队列(A5 已说)。
+
+#### 一句话心智 + 怎么亲眼验证
+
+> **异步并发** = 同一条线程靠 `await` 切换;**阻塞隔离** = 同进程内甩到别的线程,赌它做 I/O 时放开 GIL;**吃多核** = 开多进程(A7)。三件事,三个机制,别混成一锅。
+
+验证也很简单,埋一个端点看线程数:
+
+```python
+import threading
+
+@app.get("/threads")
+async def how_many():
+    return {"active_threads": threading.active_count()}
+```
+
+全 `async def` 的 app 打它,数字就一两条;把一堆端点改成同步 `def` 再压测,你会看到线程数往上爬、到 **40 封顶**不再涨——那就是 CapacityLimiter 在挡。
+
+#### 怎么给这 40 定大小(把池定容公式套到 anyio 上)
+
+默认 40 既可能**太小**(同步活儿排队、P99 抬头),也可能**太大**(把下游打挂)。别凭感觉调,套通用定容公式——把线程池当一个 M/M/c 队列,`c = total_tokens`:
+
+1. **下限:`total_tokens > offered load a = λ × S`**
+   - `λ` = 这个 worker 上**进线程池的同步调用**速率(req/s);
+   - `S` = 每个同步调用**占住线程的时长**(≈ 它背后那个阻塞 I/O 的响应时间)。
+   - 例:某 sync `def` 路由调一个遗留 SDK,`S = 0.2s`;这个 worker 每秒来 50 个这类请求 → `a = 50 × 0.2 = 10`。`total_tokens` 至少要 >10,留余量配 ~16。默认 40 在这绰绰有余。
+
+2. **上限 + 总账:`total_tokens × workers × 副本数 ≤ 下游能扛的并发`**
+   - 接上例:`16 × 4 worker × 8 副本 = 512` 个并发打向那个遗留后端——它扛得住 512 吗?若它限流在 100 并发,你别说 40,连 16 都过头,得**往下压**并配隔离/限流。
+   - **这就是不能无脑信默认 40 的原因**:`40 × worker × 副本` 轻松冲到几百上千,把下游(或它的连接池)打挂——和 connection pool 那个 `单池 × worker × 副本` 总账是同一个雷。
+
+3. **若 `a` 已经 > 下游并行度** → 别调大池(只是把排队从这儿挪到下游、还更慢),该 async 化 / 加缓存 / 给下游扩容 / 上限流 + 专用 `CapacityLimiter` 隔离。
+
+> 一句话:**给 anyio 这池定大小 = 下限喂饱 `λ×S`、上限卡在下游并行度之下、再用 ×worker×副本 总账封顶。** 默认 40 只是「零星同步活儿够用」的起点,不是免算金牌。
+
+> 关联:这个池的**工具视角**(anyio `to_thread` / capacity limiter / 结构化并发)见 [`python-concurrency/06-anyio`](../../python-concurrency/06-anyio/);**池/线程数定容的通用方法论**(Little 定律、M/M/c、×worker 总账、bulkhead 隔离、饱和度监控)见 [`concurrency-capacity`](../../concurrency-capacity/)(尤其 `01`/`05`/`06`/`08`,带可跑 lab);**worker 数怎么配**见 [`python-concurrency/07-prod-web-workers`](../../python-concurrency/07-prod-web-workers/)。
+
+### A7 `--workers N`:用多进程绕开 GIL
 
 单个 uvicorn worker 就一条线程,受 **GIL** 限制吃不满多核。所以线上要起多个 worker:
 
@@ -131,7 +260,7 @@ fastapi run app.py --workers 4
 
 > 历史背景(面试会问):早年 uvicorn 自己的多进程管理较弱,大家用 **gunicorn + UvicornWorker**。现在 uvicorn 的 `--workers` 和 `fastapi run` 已经够用,但 gunicorn 那套生产参数(见下)仍然更全。两条路都对。
 
-### A7 lifespan 协议:startup/shutdown 是怎么触发的
+### A8 lifespan 协议:startup/shutdown 是怎么触发的
 
 uvicorn 启动时,会先用一个 `scope["type"] == "lifespan"` 调你的 app:发 `lifespan.startup` 事件、等你回 `startup.complete`——**这一刻就是你的 FastAPI `lifespan` / `@app.on_event("startup")` 被执行的时刻**,建数据库连接池、预热缓存都在这。关机时发 `lifespan.shutdown`,你在这里优雅关闭连接池。
 
@@ -187,7 +316,7 @@ python3 -m venv /opt/myapp/venv
 
 ### B2 进程管理器层
 
-就是 A6 那套。命令二选一(gunicorn 生产参数更全,推荐):
+就是 A7 那套。命令二选一(gunicorn 生产参数更全,推荐):
 
 ```bash
 /opt/myapp/venv/bin/gunicorn app:app \
@@ -247,7 +376,7 @@ sudo systemctl enable --now myapp    # 既设开机自启,又立即启动
 journalctl -u myapp -f               # 看日志(stdout/stderr 自动进 journald,你不用做日志重定向)
 ```
 
-这套下来你白嫖了 Docker/K8s 帮你做的大半事情:**开机自启 ✅、崩溃自愈(`Restart`)✅、优雅关机(SIGTERM → 触发 A7 的 lifespan 关池)✅、资源限制(cgroup)✅、统一日志(journald)✅。**
+这套下来你白嫖了 Docker/K8s 帮你做的大半事情:**开机自启 ✅、崩溃自愈(`Restart`)✅、优雅关机(SIGTERM → 触发 A8 的 lifespan 关池)✅、资源限制(cgroup)✅、统一日志(journald)✅。**
 
 > systemd 的机制细节(`enable` vs `start`、`Type=simple` vs `forking`、cgroup、journald vs 文件日志、timer 替代 cron)在 [`linux-handson/08-systemd-and-services`](../../linux-handson/08-systemd-and-services/) 讲透了,本章不重复——那一章的「四语言桥接表」里 Python 那行就是这里的 uvicorn。
 
@@ -349,6 +478,8 @@ async def ready():
 
 > **FastAPI 配成同步 worker** → 异步应用必须用 ASGI/uvicorn worker,错配成普通同步 WSGI worker 会让异步代码退化甚至报错。
 
+> **整片用同步 `def` 端点** → 它们全挤 anyio 默认线程池(40 封顶,见 A6),高并发慢同步 I/O 会占满线程池、新请求排队:典型现象是 CPU 没满但 QPS 上不去、P99 爆。解法:重 I/O 端点 async 到底,或按需调大 `total_tokens`。
+
 ---
 
 ## Part D · 面试速记卡(只做复习自检)
@@ -363,6 +494,8 @@ async def ready():
 - uvicorn 是什么?→ ASGI 服务器,在 socket 上讲 HTTP,把它翻成 `await app(scope, receive, send)` 调你的 FastAPI,跑在单线程事件循环上。
 - 一个请求从 socket 到你的函数经过什么?→ socket 可读 → httptools 解析 → 建 scope → `await app(...)` → 路由 await I/O 让出 → send 写回。
 - 路由里写 `requests.get()` 会怎样?→ 阻塞调用卡死单线程事件循环,这 worker 所有并发请求一起冻住;改用 `httpx` 异步库或丢线程池。
+- 一个 worker 就一条线程,哪来的「线程池」?→ 基本盘是 1 条事件循环线程;只有同步 `def` 端点 / `run_in_threadpool` 才**按需**把活儿丢进 anyio 线程池(同进程异线程、懒加载、闲置复用)。全 async 的 app 这池是空的。
+- 那线程池的「40」是启动时定死的吗?→ 不是。是 anyio CapacityLimiter 的 `total_tokens`,默认 40、运行期可改(`current_default_thread_limiter()`);每个 worker 各一份,有效阻塞并发 = workers × 40。丢线程为什么有用?——线程做阻塞 I/O 时会放开 GIL,让事件循环继续跑;纯 CPU 重活则不放 GIL,丢了也白丢。
 - 不用 Docker 怎么做开机自启+崩溃自愈?→ 写 systemd `.service`(`Restart=on-failure` + `enable --now`)。
 - 为什么前面要放 nginx?→ 缓冲慢客户端(防 slowloris 占住事件循环)、TLS 终止、发静态、限流。
 - `--max-requests` 干嘛?→ worker 处理 N 个请求后自动重启,缓解内存泄漏;配 jitter 避免同时重启。
