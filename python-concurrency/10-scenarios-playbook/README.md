@@ -2,7 +2,7 @@
 
 > 前面 00–09 是按**工具**组织的（threading / multiprocessing / asyncio / anyio / 任务队列 / 模式）。问题是：学完一堆武器，真遇到需求时，你常常「好像懂了，但不知道该用哪个」。
 >
-> 这一章把方向反过来：**从你真实会遇到的后端场景出发**——先一张决策树 30 秒选出武器，再 8 个高频场景，每个都走「需求 → 选型 → 标准 pattern → 骨架代码 → 坑」。落点一律连回前面章节的原语，不重抄。
+> 这一章把方向反过来：**从你真实会遇到的后端场景出发**——先一张决策树 30 秒选出武器，再 9 个高频场景，每个都走「需求 → 选型 → 标准 pattern → 骨架代码 → 坑」。落点一律连回前面章节的原语，不重抄。
 >
 > 前置：第 03（多进程）、04（asyncio）、06（anyio）、08（队列）、09（模式）章——这章是它们的「用在哪」索引。
 
@@ -34,7 +34,9 @@
     │   ├─ 有 async 库(httpx/asyncpg/aioredis) → asyncio(gather / TaskGroup)      【场景 1、2】
     │   └─ 只有同步老 SDK(boto3 老接口/某些厂商 SDK) → 线程池(ThreadPoolExecutor / anyio.to_thread)
     │
-    └─ 可延迟 / 可后台(发邮件 / 通知 / 生成报表)? → 任务队列(Celery threads/gevent · arq)  【场景 5、6】
+    └─ 可延迟 / 可后台?
+        ├─ 进程内 · 不阻塞主流程 · 结束后要处理(写日志/埋点/通知,丢了不影响对错) → create_task + 监工协程   【场景 9】
+        └─ 要可靠 / 崩了重试 / 跨重启不丢(发邮件 / 报表) → 任务队列(Celery threads/gevent · arq)  【场景 5、6】
 
 ★ 横切铁律:不管落到哪一支，只要在「打外部依赖」，一律套上
   「超时 + 限流 + 重试」三件套(见 §3 场景 7，原语在 ch09)。
@@ -443,6 +445,70 @@ redis.incr("counter")          # 多进程/多机的唯一正解:把原子性下
 
 ---
 
+### 场景 9 · 后台异步任务:不阻塞主流程,但结束后要处理
+
+**场景**:主流程要快(秒回用户),但有个**附带动作**——写审计日志、上报埋点、发条通知、刷下缓存。做不做不影响主流程对错,可它跑完后你还想拿结果 / 异常做点事(记日志、告警)。你不想 `await` 它拖慢主流程,也不想它「放飞自我」连死活都不知道。
+
+**错法**:
+
+```python
+# ❌ await 附带动作:把它绑进主流程,白白拖慢响应
+await write_audit_log(...)
+
+# ❌ 裸 create_task 一行了事:
+#   ① 不持引用 → 任务可能被 GC 中途杀掉(Task was destroyed but it is pending)
+#   ② 异常被静默吞 → 只在任务被 GC 时打一条 Task exception was never retrieved
+asyncio.create_task(write_audit_log(...))
+```
+
+**选型**:I/O + 可后台 + **进程内** + best-effort(丢了不影响业务正确性)→ asyncio fire-and-forget(决策树「可后台」支的进程内分叉)。和场景 5 的分界线:**要「可靠 / 崩了重试 / 重启不丢」就升级任务队列**;只是「不想阻塞 + 想观测结果」才落这里。
+
+**Pattern**:用一个「监工协程」把**任务 + 结束后处理**缝成一体,主流程只管 `create_task` 起飞;再用一个集合**持引用防 GC**。纯标准库,无需安装。
+
+```python
+import asyncio, logging
+log = logging.getLogger(__name__)
+
+async def run_then_handle(coro, name=""):
+    """监工:把任务和『结束后处理』缝在一起,异常关在里面绝不外溢"""
+    try:
+        result = await coro                        # 等的是任务自己,不是主流程
+    except asyncio.CancelledError:
+        raise                                      # 取消要放行,别吞
+    except Exception as e:
+        log.error("后台任务 %s 失败: %r", name, e)     # 失败后处理(这里可以 await 告警/补偿)
+    else:
+        log.info("后台任务 %s 完成: %r", name, result)  # 成功后处理
+
+_bg: set[asyncio.Task] = set()                     # 强引用池:事件循环只持弱引用,不存会被 GC 杀掉
+def spawn(coro, name=""):
+    t = asyncio.create_task(run_then_handle(coro, name))
+    _bg.add(t); t.add_done_callback(_bg.discard)   # 持引用,跑完自动移除
+    return t
+
+# —— 主流程:起了就走,不阻塞 ——
+async def handle_request(...):
+    result = do_main_thing()
+    spawn(write_audit_log(result), name="audit")   # 不 await,主流程立即返回
+    return result
+```
+
+> **升级阶梯**(按可靠性选**最低**一档,别一上来就 Celery):
+> - **请求内一次性、响应后做** → FastAPI/Starlette `BackgroundTasks`(框架托管,标准库之上,最省心)。
+> - **长命应用、要统一监督 + 优雅关闭** → 活整个 app 生命周期的 `asyncio.TaskGroup`(标准库 3.11+,放 lifespan)或 `aiojobs.Scheduler`(**三方包**,aio-libs/aiohttp 那个组织出品,把上面这套 `_bg` 集合 + 监工 + 收尾打包好了)。
+> - **崩了要重试 / 重启不能丢** → 任务队列(场景 5)。
+
+**坑**:
+- **不持引用 = 任务可能被 GC 中途杀掉**:事件循环只持弱引用,必须 `_bg.add` 存住(官方文档明确的坑)。
+- **不接异常 = 异常被静默吞**:监工里 `try/except` 兜住;裸 `create_task` 的异常只会在 GC 时打条警告,等于丢了。
+- **普通 `TaskGroup` 不是 fire-and-forget**:`async with` 退出时会**等所有子任务跑完**——请求里开个短 group 会卡住主流程,正好抵消「不阻塞」。要「结构化又不阻塞」必须用**活整个 app** 的长命 group。
+- **关闭会丢**:loop / 进程关闭时这些任务被直接**取消**,结束处理可能没跑完。要保证执行,shutdown 时 `await asyncio.gather(*_bg, return_exceptions=True)`;要更硬就上队列。
+- **别无限 spawn**:没有上限的后台任务 = 隐形并发炸弹(打爆对端、自己 OOM)。叠场景 7 的 `Semaphore`,或用 `aiojobs` 的 `limit` 限住。
+
+**一句话**:后台 fire-and-forget = `create_task(监工协程)` + 集合**持引用防 GC** + 监工里 `try/except` 收结果/异常;长命应用升级长命 `TaskGroup` / `aiojobs`,要可靠就上队列;记住普通 `TaskGroup` 会等子任务、**不能**当 fire-and-forget。
+
+---
+
 ## 4. 一页速查表（场景 → 落点 → 关键 pattern）
 
 | 需求 | 落点（决策树） | 关键 pattern |
@@ -455,12 +521,13 @@ redis.incr("counter")          # 多进程/多机的唯一正解:把原子性下
 | 批量通知 | 任务队列 | 扇出一人一任务 + 幂等键 `SET NX` + 退避重试 |
 | 保护下游 | 限流 + 隔离 | 每下游 `Semaphore` 分舱 + 超时 + 熔断 |
 | 共享状态 | 消灭共享 / 锁 | 汇总/单消费者；线程 `Lock`、协程 `asyncio.Lock`、跨进程 Redis 原子 |
+| 后台 fire-and-forget | asyncio | `create_task(监工协程)` + 集合持引用防 GC + try/except 收尾;长命用 `TaskGroup`/`aiojobs`,要可靠上队列 |
 
 ---
 
 ## 5. 一句话总结
 
-这一章把前九章的武器按「**你会遇到的问题**」重新索引了一遍。记住整章就记一句话：**先问「CPU 还是 I/O」（决定进程还是协程/线程），再问「请求内要结果，还是可以丢后台」（决定同步并发还是任务队列），最后不管落到哪，打外部依赖一律套「超时 + 限流 + 重试」。** 这三问就是 §2 那张决策树，剩下 8 个场景都是它的具体落地。下次再「好像懂了但不知道用哪个」，回来翻这张表。
+这一章把前九章的武器按「**你会遇到的问题**」重新索引了一遍。记住整章就记一句话：**先问「CPU 还是 I/O」（决定进程还是协程/线程），再问「请求内要结果，还是可以丢后台」（决定同步并发还是任务队列），最后不管落到哪，打外部依赖一律套「超时 + 限流 + 重试」。** 这三问就是 §2 那张决策树，剩下 9 个场景都是它的具体落地。下次再「好像懂了但不知道用哪个」，回来翻这张表。
 
 ---
 
