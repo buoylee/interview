@@ -32,6 +32,7 @@
 | `07-prod-web-workers/` | **生产①** Web worker | gunicorn/uvicorn 线上怎么跑、worker 怎么配 |
 | `08-prod-task-queues/` | **生产②** 任务队列 | Celery/RQ/arq 后台任务 |
 | `09-patterns-tuning/` | 模式 & 调优 | 限流/连接池/超时重试 + py-spy 剖析 |
+| `10-scenarios-playbook/` | **实战场景手册** | 从「需求」反查该用哪把武器：决策树 + 8 个高频场景 ← **「懂了但不知道用哪」看这章** |
 | `99-interview-cards/` | 面试卡 | 反向产出的高频题答案 |
 
 ## 进度地图
@@ -50,6 +51,7 @@
 | 07-prod-web-workers | ✅ 完成 | WSGI/ASGI + gunicorn/uvicorn worker |
 | 08-prod-task-queues | ✅ 完成 | Celery/RQ/arq |
 | 09-patterns-tuning | ✅ 完成 | 限流/连接池/超时重试 + 剖析 |
+| 10-scenarios-playbook | ✅ 完成 | 场景→选型→pattern 反向索引（决策树 + 8 场景） |
 | 99-interview-cards | ✅ 完成 | 速答表 + 4 张深题卡 |
 | (可选) docker lab | ⬜ 后置 | 理论吃透后再加，仅 celery 章需 Redis |
 
