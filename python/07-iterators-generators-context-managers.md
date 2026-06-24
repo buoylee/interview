@@ -122,6 +122,35 @@ with Ctx() as c:
 # 输出 enter / body / exit
 ```
 
+### 等价展开:`with` 到底做了什么
+
+`with` 不是魔法,它是一段固定 `try/finally` 的语法糖。`with EXPR as VAR: BODY` **严格等价**于(PEP 343 的简化版):
+
+```python
+mgr = EXPR                          # with 后面的表达式只求值一次
+value = type(mgr).__enter__(mgr)    # 进入;特殊方法在“类型”上查到(不走实例属性,见 ch05)
+ok = True
+try:
+    VAR = value                     # ← as VAR 绑定的是 __enter__ 的返回值,不是 mgr 本身
+    BODY
+except:                             # body 抛了异常
+    ok = False
+    if not type(mgr).__exit__(mgr, *sys.exc_info()):
+        raise                       # __exit__ 返回假值 → 异常继续向上抛
+finally:
+    if ok:                          # 正常结束 / return / break / continue 都走这里
+        type(mgr).__exit__(mgr, None, None, None)
+```
+
+把这段记牢,§四后面所有行为都能自己推出来,不用背:
+
+- **`__enter__` 进入时跑一次,`__exit__` 退出时必跑**——这就是 `finally` 的保证,等价于 Go 的 `defer`、Java 的 try-with-resources。
+- **`as` 绑的是 `__enter__()` 的返回值**。`open()` 的 `__enter__` 恰好 `return self`,所以 `as fp` 是文件;但别的 manager 可能返回别的东西(见下面 `@contextmanager` 的 `yield x`)。
+- **body 里 `return`/`break` 也会触发 `__exit__`**——因为它在 `finally` 里。这是高频追问点。
+- **`__exit__` 收到异常三元组,返回 `True` 吞掉、`False`/`None` 放行**——比 `defer` 多出的能力。
+
+> 一句话收口:**`with` 后面那个东西,「值」不重要,「它有没有 `__enter__`/`__exit__`」才重要。** 凡满足这条协议的对象,都能放进 `with`。
+
 异常时的行为是重点:`__exit__` 仍会被调用,且收到异常信息 `(exc_type, exc_val, exc_tb)`;**返回 `True` 表示"我处理了,吞掉异常",返回 `False`/`None` 表示"异常继续传播"**:
 
 ```python
@@ -144,6 +173,26 @@ print(events)   # ['enter', 'body', 'exit(ValueError)', 'caught']
 
 注意顺序:异常发生 → `__exit__` 先被调用(拿到异常)→ 因返回 False,异常继续传播 → 外层 `except` 捕获。这就是为什么用 `with open(...)` 永远不会漏关文件,哪怕读的过程中报错。
 
+### 什么对象能放进 `with`:标准库目录
+
+判断标准只有一条:**实现了 `__enter__`/`__exit__`**(`hasattr(x, "__enter__")` 可验)。凡是「成对操作:开↔关、锁↔解、进↔出」的,标准库基本都做成了上下文管理器:
+
+| 对象 | 进入(`__enter__`)做什么 | 退出(`__exit__`)做什么 |
+|---|---|---|
+| `open(path)` | 打开文件,`as` 拿到文件对象 | `close()` |
+| `threading.Lock()` / `RLock` / `Semaphore` | `acquire()` 加锁 | `release()` 解锁 |
+| 多数 DB 连接 `conn` | 开启事务 | 正常 `commit` / 异常 `rollback` |
+| `conn.cursor()` | 交出游标 | 关闭游标 |
+| `tempfile.TemporaryFile()` / `TemporaryDirectory()` | 建临时文件/目录 | 用完自动删除 |
+| `unittest.mock.patch(target)` | 打补丁,`as` 拿到 mock | 还原被替换的对象 |
+| `pytest.raises(ValueError)` | — | 断言块内确实抛了该异常 |
+| `contextlib.suppress(Err)` | — | 吞掉指定异常 |
+| `contextlib.redirect_stdout(buf)` | 替换 `sys.stdout` | 还原 |
+| `decimal.localcontext()` | 复制当前数值上下文 | 还原精度设置 |
+| `asyncio.Lock()`(配 `async with`) | `await acquire()` | `release()` |
+
+看到这堆五花八门的用法别慌——它们**全是同一条协议的实例**。你不需要逐个记,记住协议 + 「成对操作」这个直觉即可。
+
 ### `contextlib`:更轻量的写法
 
 不想写整个类时,用 `@contextmanager` 把一个生成器变成上下文管理器——`yield` 之前是 `__enter__`,之后是 `__exit__`:
@@ -153,9 +202,11 @@ from contextlib import contextmanager, suppress
 
 @contextmanager
 def tag(name):
-    print(f"<{name}>", end="")    # 进入
-    yield                          # 这里把控制权交给 with body
-    print(f"</{name}>", end="")   # 退出(放 finally 里可保证异常时也执行)
+    print(f"<{name}>", end="")    # yield 之前 = __enter__
+    try:
+        yield                      # 把控制权交给 with body
+    finally:
+        print(f"</{name}>", end="")   # yield 之后放进 finally = __exit__,异常时也清理
 
 with tag("b"):
     print("hi", end="")
@@ -166,7 +217,43 @@ with suppress(ZeroDivisionError):  # 优雅吞掉指定异常
 # 不报错,继续往下
 ```
 
-实务里 `@contextmanager` 用得比手写类多。要管理多个/动态数量的资源,用 `contextlib.ExitStack`。
+> **`@contextmanager` 最常见的 bug**:清理代码没包 `try/finally`,直接写在 `yield` 后面。一旦 body 抛异常,异常会从 `yield` 处重新抛出,后面的清理代码被**跳过**——资源照样泄漏。手写类不会有这问题(`__exit__` 由解释器保证调用),但生成器版要你自己用 `try/finally` 兜住。
+
+实务里 `@contextmanager` 用得比手写类多。
+
+### 多资源与动态数量:`with A, B`、`ExitStack`、`closing`
+
+```python
+# 1) 多个资源:逗号分隔,等价于嵌套 with;退出按“后进先出”(先关 fb,再关 fa)
+with open("a") as fa, open("b") as fb:
+    ...
+# 3.10+ 还能加括号换行,长列表更好读:
+with (
+    open("a") as fa,
+    open("b") as fb,
+):
+    ...
+
+# 2) 数量运行期才知道 → contextlib.ExitStack:动态登记,退出时统一反序清理
+from contextlib import ExitStack
+with ExitStack() as stack:
+    files = [stack.enter_context(open(p)) for p in paths]
+    # 即使开到一半某个 open 失败,前面已登记的都会被正确关闭
+    ...
+
+# 3) 对象只有 .close()、没有 __enter__/__exit__ → contextlib.closing 包一层
+from contextlib import closing
+from urllib.request import urlopen
+with closing(urlopen(url)) as resp:   # urlopen 的旧接口靠 closing 才好关
+    data = resp.read()
+```
+
+`ExitStack` 是「数量不定」场景的标准答案;`closing` 把「只有 `close()`」的老对象也纳入 `with` 的保护伞——这两个一起,把「什么能放进 `with`」的边界又往外推了一圈。
+
+### 两个资深陷阱
+
+- **`__enter__` 里抛异常 → `__exit__` 不会被调用。** 因为资源还没拿到手,自然不用还。推论:如果 `__enter__` 分多步获取资源(先连 A 再连 B),中途失败时前面拿到的要你**自己**回滚——`__exit__` 帮不了你。
+- **`as` 拿到的是 `__enter__` 的返回值,不一定是 `with` 后面那个对象。** `open()`/锁的 `__enter__` 返回 self 或资源,所以看起来「`as` 就是那个对象」;但 `@contextmanager` 里 `as` 拿到的是 `yield x` 的 `x`。别想当然。
 
 ### 异步孪生:`async for` / `async with` 背后的协议
 
@@ -246,3 +333,18 @@ print(list(g()))
 
 **Q7. `async with` / `async for` 和同步版的区别?背后是哪些 dunder?**
 它们是同步协议的异步孪生,一一对应:`async with` → `__aenter__`/`__aexit__`(返回 awaitable,由事件循环 await),`async for` → `__aiter__`/`__anext__`(耗尽抛 `StopAsyncIteration`),`async def`+`yield` 是 async 生成器。只能用在 `async def` 内,作用是「在 `await` 点让出控制权」(并发策略见第 13 章)。
+
+**Q8. 什么对象能放进 `with`?怎么判断?**
+凡实现了 `__enter__`/`__exit__` 的对象都行(`hasattr(x, "__enter__")` 可验)。标准库里文件 `open`、锁 `Lock`、DB 连接/事务、`tempfile`、`mock.patch`、`pytest.raises`、`suppress`、`redirect_stdout` 等都是。只有 `close()`、没有协议方法的老对象,用 `contextlib.closing` 包一层;数量运行期才知道,用 `contextlib.ExitStack` 动态登记。
+
+**Q9(猜输出).**
+```python
+class Ctx:
+    def __enter__(self): return self
+    def __exit__(self, *exc): print("exit")
+def f():
+    with Ctx():
+        return 1
+print(f())
+```
+先打印 `exit`,再打印 `1`。`with` 展开成 `try/finally`,body 里的 `return` 也会先触发 `__exit__` 再真正返回——这正是 `with` 能保证清理的原因。
