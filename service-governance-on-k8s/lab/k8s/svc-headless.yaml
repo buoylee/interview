@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: echo-headless
+spec:
+  clusterIP: None        # ← headless:DNS 直接回「所有 ready pod 的 IP 列表」,不是一個 VIP
+  selector:
+    app: echo
+  ports:
+    - port: 8080
+      targetPort: 8080

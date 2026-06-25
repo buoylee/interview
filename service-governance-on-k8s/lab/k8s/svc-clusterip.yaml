@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: echo-clusterip
+spec:
+  # 普通 ClusterIP:DNS 回「一個 VIP」,kube-proxy(L4)在握手時釘一個 pod。
+  # 這就是 demo 1「pinned」打的目標。
+  selector:
+    app: echo
+  ports:
+    - port: 8080
+      targetPort: 8080
