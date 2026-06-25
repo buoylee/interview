@@ -457,7 +457,7 @@ git commit -m "docs(nginx): ch06 Nginx 層限流(limit_req burst/nodelay/limit_c
 **Interfaces:**
 - Consumes: ch06 `limit_req`。
 
-- [ ] **Step 1: 寫 `nginx.conf`**:`limit_req_zone $binary_remote_addr zone=z:10m rate=2r/s;`;`location /strict/`(無 burst)、`location /burst/`(`burst=5 nodelay`);都 `limit_req_status 429;`,後端用 `return 200 ok`。
+- [ ] **Step 1: 寫 `nginx.conf`**:`limit_req_zone $binary_remote_addr zone=z:10m rate=1r/s;`;`location /strict/`(無 burst)、`location /burst/`(`burst=5 nodelay`);都 `limit_req_status 429;`。**注意(phase 陷阱):不能在被限流的 location 裡直接用 `return 200`**——`return` 在 rewrite phase 短路,早於 `limit_req` 所在的 preaccess phase,會讓限流完全失效;改成 `proxy_pass` 到同檔內一個 `listen 8080` 的 dummy server(它 `return 200 ok`),讓請求走到 access phase 才被 `limit_req` 攔。strict 與 burst 用各自獨立的 zone 避免互相消耗 token。
 
 - [ ] **Step 2: 寫 `docker-compose.yml`**:單 nginx,`8080:80`。
 
