@@ -68,6 +68,92 @@ with order_processing_time.time():
 orders_created.labels(status="success").inc()
 ```
 
+## 并发资源饱和监控
+
+FastAPI 生产环境最常见的「CPU 正常、P99 爆炸」根因,恰好是 `top` 看不见的那半张脸:anyio 线程池令牌耗尽、事件循环被阻塞、连接池检出数打满。本节给出可直接粘贴的 `prometheus_client` 埋点代码,配合 [capstone §4 速查表](../../performance-tuning-roadmap/03-observability/07-concurrent-resource-saturation.md) 食用。
+
+### 线程池 + 事件循环滞后
+
+运行期的线程池状态和事件循环延迟都是「拉取时难取」的对象——在 `/metrics` 处理协程里直接调用会有上下文绑定问题。标准做法是**用一个后台采样协程统一刷新**:
+
+```python
+# 用一个后台采样协程统一刷新「拉取时」难取的运行期指标(避免在 /metrics 处理协程里取 loop 绑定对象)
+import anyio.to_thread, asyncio, threading
+from prometheus_client import Gauge
+
+TP_BORROWED = Gauge("app_threadpool_borrowed_tokens", "anyio 线程池在用线程数")
+TP_TOTAL    = Gauge("app_threadpool_total_tokens", "anyio 线程池容量上限")
+TP_WAITING  = Gauge("app_threadpool_tasks_waiting", "排队等令牌的协程数(饱和领先指标)")
+LOOP_LAG    = Gauge("asyncio_event_loop_lag_seconds", "事件循环单拍滞后(实际睡眠-预期)")
+PY_THREADS  = Gauge("app_python_threads", "当前 Python 线程数")
+
+async def sample_concurrency(interval: float = 0.5):
+    loop = asyncio.get_running_loop()
+    while True:
+        t0 = loop.time()
+        await asyncio.sleep(interval)
+        LOOP_LAG.set(loop.time() - t0 - interval)            # 多睡的部分 = 循环被卡住的时间
+        s = anyio.to_thread.current_default_thread_limiter().statistics()
+        TP_BORROWED.set(s.borrowed_tokens); TP_TOTAL.set(s.total_tokens); TP_WAITING.set(s.tasks_waiting)
+        PY_THREADS.set(threading.active_count())
+```
+
+`app_threadpool_tasks_waiting` 是**饱和领先指标**:等待数从 0 变正说明线程池已满、同步 `def` 端点在排队,比利用率指标早发出信号。`anyio.to_thread.current_default_thread_limiter().statistics()` 的三个字段(`borrowed_tokens`/`total_tokens`/`tasks_waiting`)对应 [fastapi-ops/01-foundation A6](../01-foundation/README.md) 里分析的 40 令牌上限。
+
+### 在 lifespan 挂起采样协程
+
+```python
+# 在 lifespan 里挂起采样协程
+@asynccontextmanager
+async def lifespan(app):
+    task = asyncio.create_task(sample_concurrency())
+    yield
+    task.cancel()
+```
+
+### 连接池持续监控
+
+连接池的「一次性排查」对比（如何在 shell 里临时检查连接数）见 [python-data/02-connection-pooling.md](../../python-data/02-connection-pooling.md)。本节给出的是**持续 Prometheus 监控**方案——每次 `/metrics` 拉取时采样：
+
+```python
+# 连接池「持续」监控(对比 python-data/02 的一次性排查)
+from prometheus_client import Gauge
+DB_CHECKED_OUT = Gauge("app_db_pool_checked_out", "已借出连接数")
+DB_OVERFLOW    = Gauge("app_db_pool_overflow", "溢出连接数(超过 pool_size 的临时连接)")
+def collect_db_pool(engine):           # AsyncEngine 也用 engine.pool
+    p = engine.pool
+    DB_CHECKED_OUT.set(p.checkedout()); DB_OVERFLOW.set(p.overflow())
+```
+
+`AsyncEngine` 和同步 `Engine` 均通过 `engine.pool` 访问连接池对象；`checkedout()` 返回已借出连接数，`overflow()` 返回超过 `pool_size` 的临时连接数，该值 > 0 即说明连接池饱和。
+
+### 运行时指标无需手写
+
+`prometheus_client` 默认已注册 `ProcessCollector` 和 `GCCollector`，`/metrics` 端点直接暴露：
+- `process_open_fds` — 进程打开的文件描述符数
+- `process_resident_memory_bytes` — RSS 内存
+- `python_gc_collections_total` — 各代 GC 次数
+
+**无需手写这些指标**；若要关闭默认注册，传 `registry=CollectorRegistry()` 给 `make_asgi_app()`。
+
+### 配套 PromQL / 告警
+
+```promql
+app_threadpool_tasks_waiting > 0                 # 同步 def 端点在排队(for: 30s → P2)
+asyncio_event_loop_lag_seconds > 0.1             # 事件循环被阻塞(头号坑)
+app_db_pool_overflow > 0                         # pool_size 已用尽、开始借临时连接 = 连接池饱和
+```
+
+三条告警均建在**饱和度/溢出**上，而非利用率——原因见 [capstone §2](../../performance-tuning-roadmap/03-observability/07-concurrent-resource-saturation.md)（等待数是领先指标，利用率是滞后指标）。
+
+---
+
+**延伸阅读：**
+- 连接池一次性排查对比：[python-data/02-connection-pooling.md](../../python-data/02-connection-pooling.md)
+- 三语言速查表 + 通用告警范式：[performance-tuning-roadmap/03-observability/07-concurrent-resource-saturation.md](../../performance-tuning-roadmap/03-observability/07-concurrent-resource-saturation.md)
+
+---
+
 ## PromQL 核心语法
 
 ### 必会查询
