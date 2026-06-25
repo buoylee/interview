@@ -52,7 +52,7 @@ request: cpu=200m  memory=512Mi
 limit:   cpu=1000m memory=900Mi   # 内存留 ~30% 余量；CPU limit 宽设允许突发
 ```
 
-JVM 堆需配 `-XX:MaxRAMPercentage=75`（cgroup 感知模式），否则 JVM 看宿主 16 GiB 设堆 → 超出 limit → OOMKill。Go / Rust 进程通常 cgroup 感知，但需确认有无大缓存 / mmap 使用。
+JVM 堆需配 `-XX:MaxRAMPercentage=75`（cgroup 感知模式），否则 JVM 看宿主 16 GiB 设堆 → 超出 limit → OOMKill。**Go 默认不感知 cgroup**：`GOMAXPROCS` 读宿主核数（容器限 2 核仍开宿主核数个 P，过度上下文切换），需 `automaxprocs` 或手设；内存要显式 `GOMEMLIMIT`（Go 1.19+）。Rust 无托管运行时，但分配器同样不会自动按 cgroup 限内存。
 
 **QoS 三档快速参考**：
 

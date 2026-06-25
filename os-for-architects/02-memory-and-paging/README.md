@@ -23,7 +23,7 @@
 | GC ↔ page fault | "缺页多 / GC 停顿久，调 JVM 参数" | 大堆绑定 NUMA node（`numactl --membind`）；限制堆大小，让 page cache 能和 JVM 共存；服务拆小避免单进程堆过大与 OS cache 抢内存 |
 | RSS 只增不降 | "可能有内存泄漏，上 profiler 查" | 设计期定内存预算基线（冷启动 RSS + 业务峰值增量）；监控 RSS 设告警阈值；选有 arena 收缩能力的 allocator（如 tcmalloc/jemalloc）应对 fragmentation |
 | mmap / 共享内存 | "mmap 是 IO 加速手段" | 选数据库引擎时看它是否用 mmap（如 LMDB/RocksDB mmap-mode）；mmap 绕过 write buffer 但不绕 page cache，持久化语义要单独分析 |
-| OOM score | "OOMKill 杀了关键进程，很惨" | 给关键服务设 `oom_score_adj`（降分）+ 容器 memory.oom_kill_disable 联合使用；多容器共节点时设计 QoS class（Guaranteed/Burstable/BestEffort）决定谁先被杀 |
+| OOM score | "OOMKill 杀了关键进程，很惨" | 给关键服务设 `oom_score_adj` 降分（cgroup v1；v2 改用 `memory.oom.group`）；多容器共节点时用 QoS class（Guaranteed/Burstable/BestEffort）决定谁先被杀（容器场景一般不禁 OOMKill，否则进程 hang 更糟） |
 
 ---
 
@@ -34,7 +34,7 @@
 ```
 memory limit ≥ 堆（-Xmx / runtime.MemLimit）
              + 堆外（native memory：Netty direct buffer / mmap / JNI）
-             + 栈（线程数 × 栈帧深度，Java 默认 512K–1M/线程）
+             + 栈（线程数 × 每线程栈，HotSpot 64 位默认约 1MB，`-Xss` 可调）
              + page cache 余量（读密集服务建议 20–30% limit 预留）
              + 系统开销（OS 自身 ~50–100 MB）
 ```

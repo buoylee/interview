@@ -23,7 +23,7 @@
 | **上下文切换有成本**（每次 cs 消耗 μs 级 CPU，切换频率由线程数驱动） | cs 高 → "线程开太多" | 用核数 + Little 定律反推线程池 / worker 数上限，**定容量而非拍脑袋**；目标：cs 率不随负载爆炸 |
 | **CPU 密集 vs IO 密集**（us 反映纯算力，wa 反映阻塞等待） | us 高 → CPU 密集；wa 高 → IO 密集 | 据此选并发模型：CPU 密集 → 多进程（绕 GIL）或 goroutine + 核绑定；IO 密集 → 协程 / 异步 / 线程池，worker 数可远超核数 |
 | **CFS CPU quota 限流**（cgroup `cpu.cfs_quota_us` 控制容器每调度周期可用 CPU 时间） | "被 throttle 了" → limit 调大 | CPU limit 是 **throttle 陷阱**：高并发 burst 会耗尽 quota 导致 P99 尖刺；设计时 request = 保底，limit 留 headroom，关注 `container_cpu_cfs_throttled_seconds_total` |
-| **NUMA 跨节点内存延迟**（多路服务器上，访问远端 NUMA 节点内存延迟是本地 2-3×） | numastat 显示跨节点访问多 | 大内存、高并发进程**绑核绑 NUMA 节点**（`taskset` / `numactl`）；Kubernetes 用 TopologyManager + `SingleNUMANode` 策略消除跨 NUMA 开销 |
+| **NUMA 跨节点内存延迟**（多路服务器上，访问远端 NUMA 节点内存延迟约本地 1.5-2×） | numastat 显示跨节点访问多 | 大内存、高并发进程**绑核绑 NUMA 节点**（`taskset` / `numactl`）；Kubernetes 用 TopologyManager + `SingleNUMANode` 策略消除跨 NUMA 开销 |
 | **内核态 vs 用户态时间**（`sy` 高说明系统调用/中断/切换开销占用 CPU） | sy 高 → 系统调用太频繁 | 批量 IO（`writev` / `sendfile`）、减少 `syscall` 数、io_uring 绕同步 syscall；设计时评估调用路径的 syscall 密度 |
 | **进程/线程 vs 协程的调度粒度**（OS 调度单位是线程；协程在用户态调度，无 cs 代价） | 看到协程 → "省内存" | 协程仅适合 IO 密集且**无 blocking call**的路径；混入 CPU 密集 / 同步 blocking 会饿死调度器；设计时明确**每类任务走哪条调度路径** |
 

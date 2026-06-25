@@ -20,7 +20,7 @@
 |---|---|---|
 | 连接 = fd + 内核发/收缓冲 + TCP 状态队列 | "CLOSE_WAIT / TIME_WAIT 堆积，定位到没关连接或主动关连接方" | 设计期算好：长连 vs 短连、连接池复用、fd 上限和池大小；让 CLOSE_WAIT 根本无法堆积 |
 | epoll / reactor 事件驱动 | "C10K 问题，用 epoll 能撑高并发" | 选型判断：IO 密集 + 高并发 → reactor 单线程/小线程池；CPU 密集 → 线程每连接；混合场景 → 多 reactor；**在架构阶段定下来，不是优化阶段** |
-| backlog / accept queue 半连接+全连接队列 | "队列满了丢连接，`net.core.somaxconn` 调大" | 设计时量化：backlog = 峰值 QPS × RTT（秒）；不设 → 流量尖刺静默丢包；配合限流/背压让队列可见而非静默溢出 |
+| backlog / accept queue 半连接+全连接队列 | "队列满了丢连接，`net.core.somaxconn` 调大" | 设计时量化：backlog 容纳"已握手待 accept"的连接，按峰值瞬时新建突发估、至少 1024（不是 QPS×RTT —— 那是 Little 估在途连接数）；不设 → 流量尖刺静默丢包；配合限流/背压让队列可见而非静默溢出 |
 | 端口号 / fd 数量上限 | "端口耗尽，`ss -s` 看 TIME_WAIT；fd 超 ulimit 报 too many open files" | 客户端侧：连接池复用源端口；规划 `ulimit -n`（每连接 1 fd）、本地端口范围 `ip_local_port_range`；多实例部署时 fd 总量 = 池大小 × worker 数，提前核算 |
 
 ---
@@ -60,7 +60,7 @@
 | **每请求新建连接** | 大量 TIME_WAIT 堆积，端口耗尽，连接建立延迟（TCP 三次握手 + TLS 握手）叠加到业务延迟 | 连接池 + 长连接；gRPC/HTTP/2 天然复用 |
 | **连接池大小拍脑袋**（固定写 10 / 100） | 池太小 → 等连接排队；池太大 → fd 超 ulimit crash；两头都崩 | Little 定律先算，再观测调参，不要靠经验猜 |
 | **不设超时，任连接堆积** | 下游慢或断开 → 上游线程/goroutine 永久阻塞持有连接 → 池耗尽 → 雪崩 | connect / read / idle 三个超时都要设；配合 circuit breaker |
-| **backlog 不设 / 用默认** | 流量尖刺时半连接队列溢出，静默丢包，表现为神秘超时；开发环境从不复现 | backlog = 峰值 QPS × RTT，至少 1024；配限流保护上游 |
+| **backlog 不设 / 用默认** | 流量尖刺时半连接队列溢出，静默丢包，表现为神秘超时；开发环境从不复现 | backlog 按瞬时新建突发估，至少 1024；配限流保护上游 |
 
 ---
 
