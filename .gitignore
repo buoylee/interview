@@ -6,6 +6,8 @@
 # 本地工具生成物(非内容)
 .codegraph/
 .antigravitycli/
+.claude/worktrees/
+.superpowers/
 
 # Obsidian: 排除个人 UI 状态,保留 vault 配置/插件/主题
 .obsidian/workspace.json
