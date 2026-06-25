@@ -17,7 +17,7 @@
 | CPU 用率 | 稳定在 20–60%,没有飙升迹象 |
 | P99 延迟 | 突然或渐进爬升,甚至断崖式跳变 |
 | 错误率 | 开始出现 503 / 429 / timeout |
-| `top` 显示 | idle 百分比高,没有 `wa` 堆积 |
+| `top` 显示 | idle 百分比高,`wa` 通常不高(等待发生在用户态,不是内核 I/O) |
 
 **为什么 CPU 不高?** 核心在于:阻塞 I/O 不烧 CPU。
 
@@ -127,7 +127,17 @@ Linux 层的 `us/sy/wa` 分解和 `netstat backlog` 分析见 [`linux-handson/07
 
 ## §4 三语言对照速查表(Python / Go / Java)
 
-(见 Task 2 / 下一节补充)
+| 资源 | Python | Go | Java | 建议标准指标名 |
+|---|---|---|---|---|
+| 事件循环/反应式循环延迟 | 后台 task 量 loop 漂移 → `asyncio_event_loop_lag_seconds`;`loop.slow_callback_duration` | **无对应物**(runtime 自动扩 M);只有 `go_sched_latencies_seconds` | Netty `SingleThreadEventExecutor.pendingTasks()`;Reactor `boundedElastic`;WebFlux「别阻塞 loop」 | `process.runtime.*` |
+| 线程池/调度饱和 | `current_default_thread_limiter().statistics().tasks_waiting`/`.borrowed_tokens` | 自建 `app_worker_inflight` + `db.Stats().WaitCount` | `executor.queued`/`executor.active`/`executor.rejected`;Tomcat `tomcat.threads.busy` | `app_*`(无 OTel 约定);Python:`app_threadpool_tasks_waiting`/`app_threadpool_borrowed_tokens`/`app_threadpool_total_tokens`;Go:`app_worker_inflight`/`app_db_pool_wait_count_total` |
+| 连接池 | `engine.pool.checkedout()`/`.overflow()` 或 asyncpg `pool.get_idle_size()`;自建:`app_db_pool_checked_out`/`app_db_pool_overflow` | `db.Stats()`:`InUse`/`Idle`/`WaitCount`/`WaitDuration`;自建:`app_db_pool_in_use` | HikariCP `hikaricp.connections.active`/`.idle`/`.pending` | `db.client.connection.count{state}`、`db.client.connection.pending_requests` |
+| 运行时(GC/线程数) | `threading.active_count()`;`python_gc_collections_total`/`process_open_fds`(prometheus_client 默认) | `go_goroutines`/`go_threads`/`go_gc_duration_seconds` | JVM threads/GC via Micrometer/Actuator | `process.runtime.*` |
+| 自建 semaphore/worker pool | 自建 Gauge | 自建 Gauge(channel len / semaphore 持有数) | 自建 Gauge / `ExecutorServiceMetrics` | `app_*` |
+
+> **Go 为何「事件循环行」无对应物**:Go 运行时采用 G-M-P 调度模型,M(OS 线程)由运行时按需动态创建和销毁,不存在固定容量的「事件循环线程」可被占满。阻塞型系统调用会触发运行时自动增派 M,使其他 goroutine 继续并行执行。因此 Go 的饱和信号不在「循环延迟」,而在调度延迟(`go_sched_latencies_seconds`)和 goroutine 数量异常增长——与 Python asyncio 的单线程事件循环模型根本不同。
+
+落地参考:Java 连接池全套监控见 [`../09a-database/04-connection-pool-monitor.md`](../09a-database/04-connection-pool-monitor.md);Go 连接池字段释义(`InUse`/`Idle`/`WaitCount`/`WaitDuration`)见 [`../../golang/stdlib/03-database-sql/`](../../golang/stdlib/03-database-sql/README.md);Python asyncio 慢回调调试见 [`../06b-python-debugging/02-asyncio-debugging.md`](../06b-python-debugging/02-asyncio-debugging.md)。
 
 ---
 
@@ -137,7 +147,7 @@ Linux 层的 `us/sy/wa` 分解和 `netstat backlog` 分析见 [`linux-handson/07
 
 这不是品味问题,而是时序上的必然。利用率是**同步**指标——资源满了才 100%;饱和度(等待数)是**领先**指标——过载一开始队列就动了,可能在用户感知到慢之前几十秒就触发。
 
-USE 方法论和 RED 方法论对饱和度的定义见 [`performance-tuning-roadmap/01-methodology/02-use-method.md`](../01-methodology/02-use-method.md) 与 [`../01-methodology/03-red-golden-signals.md`](../01-methodology/03-red-golden-signals.md)。
+USE 方法论和 RED 方法论对饱和度的定义见 [`performance-tuning-roadmap/01-methodology/02-use-method.md`](../01-methodology/02-use-method.md) 与 [`performance-tuning-roadmap/01-methodology/03-red-golden-signals.md`](../01-methodology/03-red-golden-signals.md)。
 
 ### 通用 PromQL 模板(语言无关)
 
@@ -174,7 +184,28 @@ histogram_quantile(0.99, rate(<wait_seconds_bucket>[5m])) > 0.05
 
 ## §6 端到端诊断树
 
-(见 Task 2 / 下一节补充)
+**场景**:下游某 API 变慢 → 上游协程/线程/连接被占住不放 → 回压逐层堆积。以下决策树从现象出发,每个分支给出「确认指标 + 会看到什么」,帮助你快速定位饱和层。
+
+```
+现象:P99 爆炸,但 `top` 显示 CPU 没满
+├─ ① 边缘在排队? → 看 `$request_time` ≫ `$upstream_response_time`(见 nginx/10-observability-debugging.md)
+│     或 accept queue:`ss -lnt` 的 Recv-Q 接近 Send-Q(见 linux-handson/06-networking)
+├─ ② 事件循环被阻塞?(Python/Node)→ `asyncio_event_loop_lag_seconds` 飙高
+│     → 找在 async def 里跑的同步阻塞调用(回扣 fastapi-ops/01 A5)
+├─ ③ 线程池饱和? → `tasks_waiting`(Py)/`executor.queued`(Java)持续 > 0
+│     → 同步 def 端点过多 / 池太小(回扣 A6 的 40 令牌)
+├─ ④ DB 连接池枯竭? → `pending`/`WaitCount` 涨;再看 DB 侧 `Threads_running`
+│     高=真业务压力,低=连接被慢查 hang 住堆积(见 mysql-handson/11-ops-and-troubleshooting)
+└─ ⑤ 下游慢回压? → 自建 worker/semaphore 的 inflight 触顶 + 下游 P99 涨
+      → 别调大池(只是把队列挪到下游),该限流/隔离/async 化(见 concurrency-capacity/07-overload-backpressure)
+```
+
+参考链接:
+- ① [nginx/10-observability-debugging.md](../../nginx/10-observability-debugging.md) · [linux-handson/06-networking](../../linux-handson/06-networking/README.md)
+- ④ [mysql-handson/11-ops-and-troubleshooting](../../mysql-handson/11-ops-and-troubleshooting/README.md)
+- ⑤ [concurrency-capacity/07-overload-backpressure](../../concurrency-capacity/07-overload-backpressure/README.md)
+
+**逐层都在问同一个问题——「哪个有界队列满了,而它的饱和系统层看不见」。**
 
 ---
 
