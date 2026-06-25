@@ -130,14 +130,14 @@ Linux 层的 `us/sy/wa` 分解和 `netstat backlog` 分析见 [`linux-handson/07
 | 资源 | Python | Go | Java | 建议标准指标名 |
 |---|---|---|---|---|
 | 事件循环/反应式循环延迟 | 后台 task 量 loop 漂移 → `asyncio_event_loop_lag_seconds`;`loop.slow_callback_duration` | **无对应物**(runtime 自动扩 M);只有 `go_sched_latencies_seconds` | Netty `SingleThreadEventExecutor.pendingTasks()`;Reactor `boundedElastic`;WebFlux「别阻塞 loop」 | `process.runtime.*` |
-| 线程池/调度饱和 | `current_default_thread_limiter().statistics().tasks_waiting`/`.borrowed_tokens` | 自建 `app_worker_inflight` + `db.Stats().WaitCount` | `executor.queued`/`executor.active`/`executor.rejected`;Tomcat `tomcat.threads.busy` | `app_*`(无 OTel 约定);Python:`app_threadpool_tasks_waiting`/`app_threadpool_borrowed_tokens`/`app_threadpool_total_tokens`;Go:`app_worker_inflight`/`app_db_pool_wait_count_total` |
+| 线程池/调度饱和 | `anyio.to_thread.current_default_thread_limiter().statistics().tasks_waiting`/`.borrowed_tokens` | 自建 `app_worker_inflight` + `db.Stats().WaitCount` | `executor.queued`/`executor.active`/`executor.rejected`;Tomcat `tomcat.threads.busy` | `app_*`(无 OTel 约定);Python:`app_threadpool_tasks_waiting`/`app_threadpool_borrowed_tokens`/`app_threadpool_total_tokens`;Go:`app_worker_inflight`/`app_db_pool_wait_count_total` |
 | 连接池 | `engine.pool.checkedout()`/`.overflow()` 或 asyncpg `pool.get_idle_size()`;自建:`app_db_pool_checked_out`/`app_db_pool_overflow` | `db.Stats()`:`InUse`/`Idle`/`WaitCount`/`WaitDuration`;自建:`app_db_pool_in_use` | HikariCP `hikaricp.connections.active`/`.idle`/`.pending` | `db.client.connection.count{state}`、`db.client.connection.pending_requests` |
 | 运行时(GC/线程数) | `threading.active_count()`;`python_gc_collections_total`/`process_open_fds`(prometheus_client 默认) | `go_goroutines`/`go_threads`/`go_gc_duration_seconds` | JVM threads/GC via Micrometer/Actuator | `process.runtime.*` |
 | 自建 semaphore/worker pool | 自建 Gauge | 自建 Gauge(channel len / semaphore 持有数) | 自建 Gauge / `ExecutorServiceMetrics` | `app_*` |
 
 > **Go 为何「事件循环行」无对应物**:Go 运行时采用 G-M-P 调度模型,M(OS 线程)由运行时按需动态创建和销毁,不存在固定容量的「事件循环线程」可被占满。阻塞型系统调用会触发运行时自动增派 M,使其他 goroutine 继续并行执行。因此 Go 的饱和信号不在「循环延迟」,而在调度延迟(`go_sched_latencies_seconds`)和 goroutine 数量异常增长——与 Python asyncio 的单线程事件循环模型根本不同。
 
-落地参考:Java 连接池全套监控见 [`../09a-database/04-connection-pool-monitor.md`](../09a-database/04-connection-pool-monitor.md);Go 连接池字段释义(`InUse`/`Idle`/`WaitCount`/`WaitDuration`)见 [`../../golang/stdlib/03-database-sql/`](../../golang/stdlib/03-database-sql/README.md);Python asyncio 慢回调调试见 [`../06b-python-debugging/02-asyncio-debugging.md`](../06b-python-debugging/02-asyncio-debugging.md)。
+落地参考:Java 连接池全套监控见 [`../09a-database/04-connection-pool-monitor.md`](../09a-database/04-connection-pool-monitor.md);Go 连接池字段释义(`InUse`/`Idle`/`WaitCount`/`WaitDuration`)见 [`../../golang/stdlib/03-database-sql/README.md`](../../golang/stdlib/03-database-sql/README.md);Python asyncio 慢回调调试见 [`../06b-python-debugging/02-asyncio-debugging.md`](../06b-python-debugging/02-asyncio-debugging.md)。
 
 ---
 
