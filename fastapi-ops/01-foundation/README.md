@@ -280,6 +280,8 @@ app = FastAPI(lifespan=lifespan)
 
 记住这个 `yield` 上下两半:**上半在进程启动时跑一次,下半在进程优雅关闭时跑一次。** 这正好对接 Part B 的 systemd——`systemctl stop` 发 SIGTERM,你的 `yield` 下半就有机会排空连接、关池,而不是被硬杀。
 
+> **再往下一层:`lifespan.shutdown` 这个事件,是谁、在什么时候发出来的?** 不是信号处理器直接发的。链路是:进程收到 SIGTERM(systemd/docker stop,或 gunicorn master graceful stop 发给 worker;裸跑时 Ctrl+C 是 SIGINT)→ uvicorn 在 `serve()` 启动时早已 `loop.add_signal_handler(SIGTERM/SIGINT, handle_exit)` 装好处理器 → `handle_exit` **只把 `should_exit` 翻成 True**(信号处理器里不做异步清理,只拨一个标志位,因为 `shutdown()` 是协程、要 `await`)→ uvicorn 主循环 `main_loop` 每 ~0.1s tick 一次,发现 `should_exit` 就跳出 → 紧接着 `await Server.shutdown()`:**先关监听 socket(B2 那段)→ 排空在途 → 最后才发 `lifespan.shutdown` 触发这个 `yield` 下半。** 所以「优雅关机」不是同步打断,而是「拨标志 → 事件循环下一拍自己收摊」。**这也正好回扣 A5:若循环被阻塞调用卡死,`main_loop` 这一拍都 tick 不动,连 `should_exit` 都没人看 → shutdown 触发不了 → 等满 `--graceful-timeout` 被 SIGKILL 硬杀。循环被堵,连关机都关不干净。**(连按两次 Ctrl+C 会把 `force_exit` 置 True,跳过排空直接退。)
+
 ---
 
 ## Part B · 不用 Docker,在 Linux 上正经部署
@@ -566,6 +568,7 @@ B7 末尾说过:裸机下「主动探活」弱,要靠外部监控打 `/health/re
 到这里「**把 FastAPI 装进一个能优雅起停、非 root、瘦身**的镜像」就齐了。再往上的**编排**(K8s Pod/Deployment/Service/滚动更新/HPA 扩缩)是另一个大题,你已有专门 track,本章不重复:
 
 - 容器编排、K8s 对象模型、滚动更新 → [`cloud-native`](../../cloud-native/) / [`cloud-native-landscape`](../../cloud-native-landscape/)
+- **分布式/容器优雅停机的完整机制**(本章只讲单实例;摘流量 vs SIGTERM 竞态、`preStop`、滚动不掉容量、长连接排空)→ [`distribution/zero-downtime-release`](../../distribution/zero-downtime-release/)
 - **容器 cgroup CPU 限制对 Python/Java 的影响**(`os.cpu_count()` 读到的是宿主机核数不是 cgroup 配额,worker 数别照宿主机核数配)→ [`fastapi-ops/09-system-tuning`](../09-system-tuning/)
 
 > 收口:**容器化 = 换壳(systemd→runtime、nginx→Ingress)不换芯(gunicorn+UvicornWorker 原样);多阶段瘦身、exec-form 保信号、非 root、探活交给编排。** 把芯看住,容器只是把 Part B 那套搬进了一个可移植的盒子。
