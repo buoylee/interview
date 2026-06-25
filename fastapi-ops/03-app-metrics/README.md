@@ -104,6 +104,7 @@ async def sample_concurrency(interval: float = 0.5):
 
 ```python
 # 在 lifespan 里挂起采样协程
+from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app):
     task = asyncio.create_task(sample_concurrency())
@@ -113,7 +114,7 @@ async def lifespan(app):
 
 ### 连接池持续监控
 
-连接池的「一次性排查」对比（如何在 shell 里临时检查连接数）见 [python-data/02-connection-pooling.md](../../python-data/02-connection-pooling.md)。本节给出的是**持续 Prometheus 监控**方案——每次 `/metrics` 拉取时采样：
+连接池的「一次性排查」对比（如何在 shell 里临时检查连接数）见 [python-data/02-connection-pooling.md](../../python-data/02-connection-pooling.md)。本节给出的是**持续 Prometheus 监控**方案。`collect_db_pool` 是普通函数，本身不会被自动调用——由调用方决定触发时机。最简单的做法：把 `engine` 传进上面的 `sample_concurrency` 后台协程，在它的循环里追加一行 `collect_db_pool(engine)`，让连接池和线程池/事件循环共用同一个采样节拍；或把它包成 Prometheus 自定义 collector 在 `/metrics` 拉取时执行。
 
 ```python
 # 连接池「持续」监控(对比 python-data/02 的一次性排查)
