@@ -1,7 +1,8 @@
-# 01 — FastAPI 生产化部署(裸机)+ uvicorn 内脏
+# 01 — FastAPI 生产化部署(裸机 + 容器)+ uvicorn 内脏
 
 > 核心问题:一个「能跑」的 `uvicorn app:app` 和一个「能上生产」的 FastAPI,差在哪?
-> 本章不用 Docker,讲清楚两件事:**uvicorn 内部到底怎么工作**,以及**怎么在一台 Linux 上把它跑成开机自启、崩溃自愈、能优雅关机的正经服务**。
+> 本章讲清三件事:**uvicorn 内部到底怎么工作**、**怎么在一台 Linux 上把它跑成开机自启/崩溃自愈/优雅关机的正经服务(裸机,Part B)**,以及**怎么把同一套装进容器(主流那条路,Part B′)**。
+> 顺序是故意的:**先把裸机的部署原语(进程模型、守护、信号、优雅关机)讲透,再容器化**——因为容器只是把「守护层」从 systemd 换成 runtime/编排,跑你代码的内核(gunicorn+worker)一个字都没变。理解了裸机,容器就是「换壳不换芯」。
 > 这是后续所有章节(监控、追踪、压测、调优)共用的载体项目。
 
 ---
@@ -462,6 +463,113 @@ async def ready():
 
 ---
 
+## Part B′ · 主流那条路:把同一套装进容器
+
+> Part B 是「不上 Docker 的正经做法」。但 2026 年更主流的是**容器化 + 编排**。好消息是:容器化**不是另起炉灶**。
+
+**一句话定调:换壳不换芯。** 跑你代码的内核(`gunicorn + N×UvicornWorker`,Part A/B7 那套)一个字都不变;变的只有外面两层——**守护层**从 systemd 换成容器 runtime(docker/containerd)+ 编排器(K8s),**入口层**从本机 nginx 换成 Ingress / 云 LB。把这句记牢,下面全是细节。(完整的「裸机层 ↔ 容器层」对应表见 Part E,这里只讲**怎么把它装进镜像**。)
+
+### B′1 Dockerfile 多阶段构建:为什么非要两段
+
+最容易写错的是「一段到底」:一个镜像里又装编译器、又装依赖、又跑代码。问题是**编译器和 build 缓存全被打进了生产镜像**——又大、攻击面又广、还可能把构建期的东西泄漏出去。
+
+正解是**多阶段(multi-stage)**:builder 段有编译器、负责把依赖装好;runtime 段只把「装好的依赖 + 你的代码」搬过来,基于 `slim` 基础镜像,**不带编译器**。
+
+> 对标 Java 你秒懂:这跟 fat jar 用 jib / distroless 做多阶段、把 JDK 留在构建期、运行期只带 JRE 是同一个思路。
+
+```dockerfile
+# ---------- ① builder 段:有编译器,在独立 venv 里装依赖 ----------
+FROM python:3.12-slim AS builder
+
+# asyncpg / uvloop / httptools 这些都带 C 扩展,装的时候要编译
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential
+
+RUN python -m venv /opt/venv            # 装进一个独立目录,等下整个搬走
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt   # "uvicorn[standard]" gunicorn fastapi ...
+
+# ---------- ② runtime 段:只带运行期要的,不带编译器 ----------
+FROM python:3.12-slim AS runtime
+
+RUN useradd --create-home --uid 1000 appuser     # 非 root 跑(对标 B3 的 User=appuser)
+
+COPY --from=builder /opt/venv /opt/venv          # 只搬装好的依赖,编译器留在 builder 段
+ENV PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /app
+COPY --chown=appuser:appuser . .
+
+USER appuser                                     # 切非 root(见 B′3)
+EXPOSE 8000
+
+# exec form(JSON 数组)→ gunicorn 直接当 PID 1,亲自收 SIGTERM(关键,见 B′2)
+CMD ["gunicorn", "app:app", \
+     "-k", "uvicorn.workers.UvicornWorker", \
+     "-w", "4", "--bind", "0.0.0.0:8000", \
+     "--timeout", "30", \
+     "--max-requests", "2000", "--max-requests-jitter", "200", \
+     "--graceful-timeout", "30"]
+```
+
+两个跟裸机不一样的细节:
+
+- **bind 从 unix socket 改成 `0.0.0.0:8000` 的 TCP**:裸机时 nginx 和 gunicorn 同机,走 unix socket 最快;容器里入口(Ingress / 另一个容器)在网络的另一头,得 bind TCP 端口暴露出去。
+- **没有 systemd 那一坨**:守护交给容器 runtime,镜像里只管「把进程跑起来」。
+
+> **镜像里还要 venv 吗?** 容器本身就隔离了系统 Python,所以 venv **不是为了隔离**——它是为了让 builder 段把全部依赖塞进**一个目录**,runtime 段一行 `COPY` 整个搬走,干净可控。这是多阶段的常用手法,不是多此一举。
+
+### B′2 容器里的头号深坑:PID 1 与信号 ⭐
+
+> **资深分水岭。这题能讲清,面试官就知道你真容器化过、而不是抄了个 Dockerfile。** 它直接接 A8 的 lifespan、B3 的优雅关机。
+
+回顾 A8/B3:优雅关机靠 `SIGTERM` → 触发 lifespan 的 `yield` 下半 → 排空连接、关池。在容器里,`docker stop`(以及 K8s 删 Pod)同样是**先发 SIGTERM、宽限期(默认 10s)后再 SIGKILL**——机制和 systemd 一模一样。
+
+但容器里有个 systemd 没有的陷阱:**你 CMD 启动的进程就是容器里的 PID 1,而 Linux 的 PID 1 有特殊信号语义**——
+
+> 内核对普通进程「没装 handler 的信号就执行默认动作(SIGTERM→终止)」;但**对 PID 1 不走这套**:PID 1 只响应它**显式注册了 handler** 的信号,没注册的直接被忽略。
+
+这就分出两种写法,生死攸关:
+
+- ✅ **`CMD ["gunicorn", ...]`(exec form,JSON 数组)** → gunicorn master **直接当 PID 1**。它是个正经 master,显式处理 SIGTERM(优雅停 worker)→ lifespan shutdown 正常触发 → 连接池排空。对了。
+- ❌ **`CMD gunicorn ...`(shell form,字符串)** → Docker 实际跑的是 `/bin/sh -c "gunicorn ..."`,**PID 1 是 sh**。sh 不转发 SIGTERM 给子进程 gunicorn → gunicorn 永远收不到停止信号 → **lifespan 的 `yield` 下半永远不跑** → 等满 10s 宽限期被 SIGKILL 硬杀,连接被粗暴掐断。
+
+**这就是「容器优雅关机失效」最常见的根因**:不是 lifespan 写错了,是信号根本没传到。现象很好认:`docker stop` 每次都卡满 10 秒才退、日志里看不到 shutdown 段执行。
+
+两个解法:
+
+1. **CMD 一律用 exec form**(上面 Dockerfile 那样),让 gunicorn 亲自当 PID 1。
+2. 进程树更复杂(你的进程还 fork 别的子进程)时,加一个 **init 进程当 PID 1** 帮你转发信号 + 回收僵尸:`docker run --init`(用内置 tini),或镜像里 `ENTRYPOINT ["tini", "--"]`。gunicorn 自己会 reap 它的 worker,所以单纯 gunicorn 不强制要 tini,但加了更稳。
+
+> 一句话:**exec form 让真正干活的 master 当 PID 1,SIGTERM 才能直达,A8 的优雅关机在容器里才成立。**
+
+### B′3 非 root + .dockerignore + 层缓存:三个必做的小事
+
+- **非 root 跑**(上面 `USER appuser`):默认 root 跑容器,一旦逃逸权限被放大。对标 B3 systemd 的 `User=appuser`,容器里同理——给个 uid 跑业务,别用 root。
+- **`.dockerignore`**:把 `.venv/ .git/ __pycache__/ tests/ *.md` 排掉,否则它们被塞进 build context——既拖慢构建,又可能把本地 `.env`、密钥泄漏进镜像。
+- **层缓存顺序**(上面 Dockerfile 已体现):先 `COPY requirements.txt` + 装依赖,**再** `COPY . .` 你的代码。这样改业务代码时,依赖层命中缓存不重装——和 Maven 先拉 dependency 层、再 copy 源码一个道理。
+
+### B′4 健康检查:裸机弱的那块,容器补上了
+
+B7 末尾说过:裸机下「主动探活」弱,要靠外部监控打 `/health/ready`。**容器编排正好补上这块**——K8s 的 `readinessProbe` / `livenessProbe`(或 Dockerfile 的 `HEALTHCHECK`)由 runtime/kubelet **主动定时探**你 B7 写的那两个端点:
+
+- `livenessProbe` 打 `/health/live` 挂了 → 重启容器(对标 systemd `Restart=on-failure`,但更智能)。
+- `readinessProbe` 打 `/health/ready` 没就绪 → 把这个 Pod 从 Service 摘掉、不给它导流量(开源版 nginx 做不到主动探,这里白拿)。
+
+所以你 B7 那两个端点不是白写——**裸机给外部监控用,容器给 kubelet 用,接口同一个,探的人换了**。
+
+### B′5 编排不在本章 —— 指过去
+
+到这里「**把 FastAPI 装进一个能优雅起停、非 root、瘦身**的镜像」就齐了。再往上的**编排**(K8s Pod/Deployment/Service/滚动更新/HPA 扩缩)是另一个大题,你已有专门 track,本章不重复:
+
+- 容器编排、K8s 对象模型、滚动更新 → [`cloud-native`](../../cloud-native/) / [`cloud-native-landscape`](../../cloud-native-landscape/)
+- **容器 cgroup CPU 限制对 Python/Java 的影响**(`os.cpu_count()` 读到的是宿主机核数不是 cgroup 配额,worker 数别照宿主机核数配)→ [`fastapi-ops/09-system-tuning`](../09-system-tuning/)
+
+> 收口:**容器化 = 换壳(systemd→runtime、nginx→Ingress)不换芯(gunicorn+UvicornWorker 原样);多阶段瘦身、exec-form 保信号、非 root、探活交给编排。** 把芯看住,容器只是把 Part B 那套搬进了一个可移植的盒子。
+
+---
+
 ## Part C · 生产踩坑框 ⚠️
 
 > **在路由里写了阻塞调用** → 卡死整个事件循环,这 worker 所有并发一起凉(A5)。FastAPI 头号坑。
@@ -479,6 +587,12 @@ async def ready():
 > **FastAPI 配成同步 worker** → 异步应用必须用 ASGI/uvicorn worker,错配成普通同步 WSGI worker 会让异步代码退化甚至报错。
 
 > **整片用同步 `def` 端点** → 它们全挤 anyio 默认线程池(40 封顶,见 A6),高并发慢同步 I/O 会占满线程池、新请求排队:典型现象是 CPU 没满但 QPS 上不去、P99 爆。解法:重 I/O 端点 async 到底,或按需调大 `total_tokens`。
+
+> **容器 CMD 用 shell form** → PID 1 变成 `sh`,不转发 SIGTERM,gunicorn 收不到停止信号,lifespan 优雅关机失效,`docker stop` 每次等满 10s 被 SIGKILL 硬杀(B′2)。CMD 一律用 exec form 数组,或加 `--init`/tini。
+
+> **在容器里再塞 systemd / 还 bind unix socket** → 容器世界里守护和入口交给 runtime/编排,镜像里重复一套 systemd 是经典反模式(systemd-in-container);unix socket 也没了「同机 nginx」这个邻居,改 bind TCP `0.0.0.0:8000`。
+
+> **root 跑容器 / 没写 `.dockerignore`** → 逃逸放大权限;build context 把 `.env`/`.git` 带进镜像泄漏密钥。给 `USER appuser` + 写 `.dockerignore`(B′3)。
 
 ---
 
@@ -501,6 +615,9 @@ async def ready():
 - `--max-requests` 干嘛?→ worker 处理 N 个请求后自动重启,缓解内存泄漏;配 jitter 避免同时重启。
 - uvloop / httptools 为什么快?→ uvloop 基于 libuv(C),httptools 是 C 写的 HTTP 解析,替掉纯 Python 的慢实现。
 - 优雅关机怎么做?→ systemd `stop` 发 SIGTERM → uvicorn 触发 lifespan 的 shutdown 段排空/关池 → `TimeoutStopSec` 内不退才 SIGKILL。
+- 容器化和裸机比,跑代码那层变了吗?→ **没变**,还是 gunicorn+UvicornWorker(芯)。变的是守护层 systemd→容器 runtime/编排、入口 nginx→Ingress。换壳不换芯。
+- Dockerfile 为什么要多阶段?→ builder 段带编译器装依赖,runtime 段只 `COPY` 装好的依赖、基于 slim,镜像小、攻击面小(对标 Java distroless/jib)。
+- 容器里 `docker stop` 优雅关机有时失效,为什么?→ CMD 用了 shell form,PID 1 是 `sh` 不转发 SIGTERM,真正的 gunicorn 收不到,lifespan shutdown 不触发,等满宽限期被 SIGKILL。改 exec form 数组(或 `--init`/tini)。
 
 **架构师**
 
@@ -514,7 +631,8 @@ async def ready():
 **一句话记忆点**
 
 > uvicorn = ASGI 服务器,在 socket 上讲 HTTP、翻成 `await app(scope,receive,send)` 调你的 FastAPI,跑在单线程事件循环上,`--workers` 靠多进程绕 GIL。
-> 裸机正经部署 = **venv(隔离)→ gunicorn+UvicornWorker(跑代码绕 GIL)→ systemd(自启/自愈/优雅关/限资源/日志,替代 Docker)→ nginx(TLS/缓冲/静态)**。
+> 裸机正经部署 = **venv(隔离)→ gunicorn+UvicornWorker(跑代码绕 GIL)→ systemd(自启/自愈/优雅关/限资源/日志)→ nginx(TLS/缓冲/静态)**。
+> 容器化部署 = **多阶段瘦身镜像 → exec-form CMD 让 gunicorn 当 PID 1 保信号 → 非 root → 守护/探活交给 runtime/编排(systemd→runtime、nginx→Ingress)**;换壳不换芯,芯还是 gunicorn+UvicornWorker。
 
 **裸机 ↔ Docker/K8s 对应**(你说不用 Docker,但这个对应是架构师考点)
 
@@ -547,5 +665,7 @@ async def ready():
 - [ASGI 规范](https://asgi.readthedocs.io/)
 - [Gunicorn Settings](https://docs.gunicorn.org/en/stable/settings.html)
 - [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/)
+- [Docker 多阶段构建](https://docs.docker.com/build/building/multi-stage/)
+- [Docker 与 PID 1 / `--init`(tini)](https://docs.docker.com/engine/reference/run/#specify-an-init-process)
 
 ➡️ 下一章:[`02-system-metrics`](../02-system-metrics/) — 服务慢/挂,第一时间看什么系统指标。
