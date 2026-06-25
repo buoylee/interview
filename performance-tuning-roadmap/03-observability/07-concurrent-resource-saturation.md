@@ -129,7 +129,7 @@ Linux 层的 `us/sy/wa` 分解和 `netstat backlog` 分析见 [`linux-handson/07
 
 | 资源 | Python | Go | Java | 建议标准指标名 |
 |---|---|---|---|---|
-| 事件循环/反应式循环延迟 | 后台 task 量 loop 漂移 → `asyncio_event_loop_lag_seconds`;`loop.slow_callback_duration` | **无对应物**(runtime 自动扩 M);只有 `go_sched_latencies_seconds` | Netty `SingleThreadEventExecutor.pendingTasks()`;Reactor `boundedElastic`;WebFlux「别阻塞 loop」 | `process.runtime.*` |
+| 事件循环/反应式循环延迟 | 后台采样协程测 loop 漂移 → `asyncio_event_loop_lag_seconds`;`loop.slow_callback_duration` | **无对应物**(runtime 自动扩 M);只有 `go_sched_latencies_seconds` | Netty `SingleThreadEventExecutor.pendingTasks()`;Reactor `boundedElastic`;WebFlux「别阻塞 loop」 | `process.runtime.*` |
 | 线程池/调度饱和 | `anyio.to_thread.current_default_thread_limiter().statistics().tasks_waiting`/`.borrowed_tokens` | 自建 `app_worker_inflight` + `db.Stats().WaitCount` | `executor.queued`/`executor.active`/`executor.rejected`;Tomcat `tomcat.threads.busy` | `app_*`(无 OTel 约定);Python:`app_threadpool_tasks_waiting`/`app_threadpool_borrowed_tokens`/`app_threadpool_total_tokens`;Go:`app_worker_inflight`/`app_db_pool_wait_count_total` |
 | 连接池 | `engine.pool.checkedout()`/`.overflow()` 或 asyncpg `pool.get_idle_size()`;自建:`app_db_pool_checked_out`/`app_db_pool_overflow` | `db.Stats()`:`InUse`/`Idle`/`WaitCount`/`WaitDuration`;自建:`app_db_pool_in_use` | HikariCP `hikaricp.connections.active`/`.idle`/`.pending` | `db.client.connection.count{state}`、`db.client.connection.pending_requests` |
 | 运行时(GC/线程数) | `threading.active_count()`;`python_gc_collections_total`/`process_open_fds`(prometheus_client 默认) | `go_goroutines`/`go_threads`/`go_gc_duration_seconds` | JVM threads/GC via Micrometer/Actuator | `process.runtime.*` |
