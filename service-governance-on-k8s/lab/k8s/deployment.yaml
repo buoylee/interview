@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: echo
+  template:
+    metadata:
+      labels:
+        app: echo
+    spec:
+      containers:
+        - name: echo
+          image: echolab:dev
+          imagePullPolicy: Never   # 用 kind load 進去的本地鏡像,別去 registry 拉
+          args: ["server"]
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            # h2c.NewHandler 也答 HTTP/1.1,所以 kubelet 的 httpGet 探針能用
+            httpGet:
+              path: /
+              port: 8080
+            periodSeconds: 2

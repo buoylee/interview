@@ -1,0 +1,7 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: svc-gov-lab
+# 單節點就足夠看現象:pinning 是 kube-proxy 在「連接」上釘 pod,
+# 和節點數無關,3 個 echo 副本落在同一節點也照樣示範。
+nodes:
+  - role: control-plane
