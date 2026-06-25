@@ -1,0 +1,7 @@
+services:
+  nginx:
+    image: nginx:1.25-alpine
+    ports:
+      - "18082:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
