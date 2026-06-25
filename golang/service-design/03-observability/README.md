@@ -107,4 +107,74 @@ logger.InfoContext(ctx, "user fetched", "user.id", id)   // 从 ctx 取 trace_id
 
 > **可观测性三支柱:Metrics(聚合数字 QPS/错误率/P99——整体健康+告警)、Trace(单请求完整路径——定位跨服务哪一环慢/错)、Log(离散事件细节);trace_id 把三者串通**。载体是 **context**——trace 上下文挂在 ctx 上一路传,跨服务经 HTTP header(W3C traceparent)/gRPC metadata 传播,所以「ctx 首参一路下传」是命门(断 ctx=断 trace)。用 **OpenTelemetry**(厂商中立、可换后端)在中间件/拦截器统一开 span、记 metrics(按 RED)、注入 trace_id 到 ctx 和 slog 日志。生产注意采样(全量太贵)、label 基数、异步导出。**原理深挖见 [`observability/`](../../../observability/) track。**
 
+---
+
+## 8. 并发资源饱和监控落地(Go 实战)
+
+> 本节是 [并发资源饱和监控 capstone](../../../performance-tuning-roadmap/03-observability/07-concurrent-resource-saturation.md) § 4 Go 列的展开。capstone 给了三语言对照速查表,这里补完代码细节。
+
+### 8.1 连接池监控:db.Stats() → Prometheus
+
+Go 的 `database/sql` 在 `db.Stats()` 里暴露了完整的连接池状态([字段详见 `golang/stdlib/03-database-sql`](../../stdlib/03-database-sql/README.md))。用 `GaugeFunc` / `CounterFunc` 在 Prometheus 拉取时实时读取,无需后台 goroutine 定期推:
+
+```go
+// ① db.Stats() -> Prometheus(GaugeFunc/CounterFunc,拉取时实时读)
+prometheus.MustRegister(
+    prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: "app_db_pool_in_use", Help: "在用连接数"},
+        func() float64 { return float64(db.Stats().InUse) }),
+    prometheus.NewCounterFunc(prometheus.CounterOpts{Name: "app_db_pool_wait_count_total", Help: "等待连接累计次数(领先指标)"},
+        func() float64 { return float64(db.Stats().WaitCount) }),
+)
+// sql.DBStats 还有 Idle / WaitDuration / OpenConnections / MaxOpenConnections
+```
+
+`app_db_pool_wait_count_total` 单调递增——它的导数(每秒等待次数)是连接池压力的**领先指标**,比 `InUse` 更早告警。
+
+### 8.2 Go runtime 内建指标:client_golang go collector
+
+`prometheus/client_golang` 的 `collectors.NewGoCollector` 把 Go runtime 指标直接接入 Prometheus,无需手写采集逻辑:
+
+```go
+// ② client_golang go collector:内建运行时指标
+import "github.com/prometheus/client_golang/prometheus/collectors"
+reg := prometheus.NewRegistry()
+reg.MustRegister(collectors.NewGoCollector(
+    collectors.WithGoCollectorRuntimeMetrics(collectors.MetricsScheduler, collectors.MetricsGC),
+))
+// 暴露 go_goroutines / go_threads / go_sched_latencies_seconds / go_gc_duration_seconds
+```
+
+关键指标含义:
+
+| 指标 | 看什么 |
+|---|---|
+| `go_goroutines` | goroutine 总数;单调上升 = 泄漏 |
+| `go_threads` | 系统线程数(M 数量);Go runtime 自动管理 |
+| `go_sched_latencies_seconds` | goroutine 在 run queue 等待时间;p99 升高 = 调度压力 |
+| `go_gc_duration_seconds` | GC STW 时间;影响尾延迟 |
+
+### 8.3 自建 worker pool / semaphore 的 inflight gauge
+
+当你用 channel 实现信号量限流时,需要自己暴露 inflight 任务数——runtime 不会替你计:
+
+```go
+// ③ 自建 worker pool / semaphore 的 inflight gauge
+inflight := prometheus.NewGauge(prometheus.GaugeOpts{Name: "app_worker_inflight", Help: "在途任务数"})
+prometheus.MustRegister(inflight)
+sem := make(chan struct{}, limit)
+// acquire: sem <- struct{}{}; inflight.Inc()
+// release: <-sem;            inflight.Dec()
+```
+
+### 8.4 Go 与 Python/Java 的关键差异
+
+**Go runtime 在 goroutine 阻塞 syscall 时自动扩 M**,所以「固定线程池被挤满」这种 Python/Java 故障模式在 Go 基本不存在——Python 受 GIL 约束、线程池有上限(`ThreadPoolExecutor`);Java 在虚拟线程前也有固定线程池瓶颈。Go 侧的有界资源主要是:
+
+- **连接池**(`db.SetMaxOpenConns` 限制,超出阻塞等待)→ 看 `app_db_pool_wait_count_total`
+- **自建 semaphore/channel**(`make(chan struct{}, limit)`)→ 看 `app_worker_inflight`
+
+调度压力看 `go_sched_latencies_seconds`,goroutine 泄漏看 `go_goroutines` 单调上升。pprof 深挖(goroutine/mutex/block profile)见 [`golang/concurrency/09-pitfalls-tuning`](../../concurrency/09-pitfalls-tuning/README.md)。
+
+---
+
 ← 上一章 [`02 中间件与横切`](../02-middleware/README.md) ｜ 下一章 → [`99 面试卡`](../99-interview-cards/README.md):服务骨架、gRPC vs REST、中间件、可观测性速查。｜ 回 [`service-design` 索引](../README.md)
