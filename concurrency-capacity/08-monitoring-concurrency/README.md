@@ -118,3 +118,5 @@
 > ```
 
 > **指进**:指标/日志/trace 体系 → [`observability/`](../../observability/) 与 [`performance-tuning-roadmap/03-observability`](../../performance-tuning-roadmap/03-observability/);告警与 on-call → [`…/03-observability/06-alerting-oncall.md`](../../performance-tuning-roadmap/03-observability/06-alerting-oncall.md);日志怎么写 → [`logging/`](../../logging/)。
+
+> **落地实现(export 代码 / 三语言对照 / 诊断树)见** [`performance-tuning-roadmap/03-observability/07-concurrent-resource-saturation`](../../performance-tuning-roadmap/03-observability/07-concurrent-resource-saturation.md)。
