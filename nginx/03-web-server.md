@@ -279,7 +279,7 @@ server {
 
 **`fastcgi_params` 和 `fastcgi_param`**:`fastcgi_params` 是 Nginx 預置的標準環境變數映射文件(定義 `REQUEST_METHOD`、`SERVER_NAME`、`HTTP_HOST` 等)。`SCRIPT_FILENAME` 是告訴 php-fpm「要執行哪個 PHP 文件」的關鍵變數,必須手動設定。
 
-**`$document_root$fastcgi_script_name`** vs **`$request_filename`**:兩者通常等價,但 `$request_filename` 更安全(已處理 `alias` 路徑的情況)。
+**`$document_root$fastcgi_script_name`** vs **`$request_filename`**:純 `root` 場景兩者通常等價。**用 `alias` 時兩種寫法都可能算錯**——`$document_root` 取的是 alias 值、`$fastcgi_script_name` 仍是完整 URI,拼起來會路徑錯位;`$request_filename` 在 `alias` 配正則 location / `try_files` 時也有已知坑。所以 **PHP 根目錄優先用 `root` 而非 `alias`**(呼應 ch01 §4 對 `alias` 的告誡)。
 
 **`try_files $uri =404`**(腳本注入防護):不加這行,請求 `/uploads/photo.jpg/attack.php` 可能被 php-fpm 執行 `photo.jpg` 裡的 PHP 程式碼——因為 php-fpm 的 `cgi.fix_pathinfo` 默認開啟時會把 `/uploads/photo.jpg` 當成腳本、`/attack.php` 當 `PATH_INFO`。`try_files $uri =404` 確保只有真實存在的 `.php` 文件才傳給 php-fpm。
 

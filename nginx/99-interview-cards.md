@@ -126,7 +126,7 @@
 - **499**:不是後端的錯——**客戶端先斷開**了(客戶端自己超時比後端短、用戶取消)。常因後端慢到客戶端等不及。
 
 **關鍵區分**:
-- 502 vs 504:`$upstream_connect_time` 有值(連上了)→ 504;無值/連接失敗 → 502。
+- 502 vs 504:**主要看 error_log 指紋**——`connect() failed`/`connection refused`/`upstream prematurely closed`/`invalid header` → **502**;`upstream timed out … while reading response header` → **504**。輔助:504 的 `$upstream_connect_time` 有值且**很小**(連上了)、`$upstream_response_time`≈`proxy_read_timeout`(卡在讀回應超時);別用「connect_time 有沒有值」當判據——502 連線被拒/連線超時時 connect_time 也可能有值。
 - 499 vs 504:都是後端慢,差在**誰先放棄**——客戶端先放棄 → 499;Nginx 的 `proxy_read_timeout` 先到期(客戶端還在等)→ 504。
 - 日誌看 `$upstream_status` 為空(`-`)+ `$status` 是 5xx → Nginx 沒從後端拿到合法回應(502/504)。」
 
