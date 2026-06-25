@@ -336,6 +336,8 @@ python3 -m venv /opt/myapp/venv
 - `--preload`:master 先 import 应用再 fork worker,省内存(写时复制共享)、加快启动;代价是改代码要重启 master,且 fork 后某些资源(DB 连接、随机种子)要在 worker 里重建。
 - `--graceful-timeout 30`:收到停止信号后,给 worker 30s 排空在途请求再杀。
 
+> **底层:graceful 关机第一步是「关监听 socket」,不是「慢慢接完再关」。** 收到 SIGTERM,gunicorn master 先 `close()` 掉监听 socket、再给 worker 发 SIGTERM(源码 `arbiter.stop()` 顺序:关 LISTENERS → kill_workers(SIGTERM) → 等 graceful_timeout → SIGKILL);uvicorn 的 `Server.shutdown()` 随即 `server.close()` 把监听 fd 从事件循环摘掉——**这一刻起就不再 `accept()` 新连接**,内核 accept 队列里没取走的连接被 RST、新 SYN 打来直接 connection refused。所以 `--graceful-timeout` 那 30s **只用来排空「已经进门的在途请求」**:已建立的 keep-alive 连接会被打上 `Connection: close`(这发响应完即关、不再服务下一个请求),真正在处理的请求给它跑完。换句话说——**它管的是「进了门的请求等多久」,不是「还接不接新请求」:新请求在关 socket 那一刻就被挡在门外了。** 现实里还要前面的 nginx/LB 先停止导流(readiness 转 fail),否则关 socket 瞬间在路上的 SYN 会吃 RST。
+
 ### B3 systemd:把它变成一个正经服务(本章重点)
 
 **这才是「不用 Docker 但要正经」的灵魂。** 没有 Docker,靠谁做开机自启、崩溃自愈、优雅关机、限资源、收日志?答案是 systemd——现代 Linux 的 PID 1。
@@ -614,7 +616,7 @@ B7 末尾说过:裸机下「主动探活」弱,要靠外部监控打 `/health/re
 - 为什么前面要放 nginx?→ 缓冲慢客户端(防 slowloris 占住事件循环)、TLS 终止、发静态、限流。
 - `--max-requests` 干嘛?→ worker 处理 N 个请求后自动重启,缓解内存泄漏;配 jitter 避免同时重启。
 - uvloop / httptools 为什么快?→ uvloop 基于 libuv(C),httptools 是 C 写的 HTTP 解析,替掉纯 Python 的慢实现。
-- 优雅关机怎么做?→ systemd `stop` 发 SIGTERM → uvicorn 触发 lifespan 的 shutdown 段排空/关池 → `TimeoutStopSec` 内不退才 SIGKILL。
+- 优雅关机怎么做?→ systemd `stop` 发 SIGTERM → **先关监听 socket(不再 `accept()` 新连接)** → uvicorn 触发 lifespan 的 shutdown 段排空在途/关池 → `TimeoutStopSec`(对应 gunicorn `--graceful-timeout`)内不退才 SIGKILL。注意:graceful-timeout 只排空「已进门的在途请求」,不是「还接新请求」。
 - 容器化和裸机比,跑代码那层变了吗?→ **没变**,还是 gunicorn+UvicornWorker(芯)。变的是守护层 systemd→容器 runtime/编排、入口 nginx→Ingress。换壳不换芯。
 - Dockerfile 为什么要多阶段?→ builder 段带编译器装依赖,runtime 段只 `COPY` 装好的依赖、基于 slim,镜像小、攻击面小(对标 Java distroless/jib)。
 - 容器里 `docker stop` 优雅关机有时失效,为什么?→ CMD 用了 shell form,PID 1 是 `sh` 不转发 SIGTERM,真正的 gunicorn 收不到,lifespan shutdown 不触发,等满宽限期被 SIGKILL。改 exec form 数组(或 `--init`/tini)。
