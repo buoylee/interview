@@ -526,3 +526,18 @@ try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
 | Go | goroutine + channel | errgroup | context.WithTimeout |
 | Python | asyncio | asyncio.gather | asyncio.timeout |
 | Node.js | Promise | Promise.all | AbortController |
+
+---
+
+## 十、Reactor boundedElastic 饱和监控
+
+WebFlux/Reactor 的核心纪律与 Netty EventLoop 同源：**绝不在 event loop 线程上做阻塞调用**。必须调用外部阻塞 API（JDBC、遗留同步客户端）时，要通过 `.subscribeOn(Schedulers.boundedElastic())` 把阻塞活儿卸载到有界弹性线程池，再监控这个池的饱和状态：
+
+```java
+// 阻塞调用要 .subscribeOn(Schedulers.boundedElastic())；监控这个有界弹性池的饱和：
+// 依赖 reactor-core-micrometer
+Scheduler monitored = Micrometer.timedScheduler(Schedulers.boundedElastic(), meterRegistry, "boundedElastic");
+// 关注其执行/排队计时器；池满会让阻塞任务排队 → 反应式链路尾延迟上升
+```
+
+**告警含义**：`boundedElastic` 的排队计时器持续增长 = 阻塞任务提交速率超过池的处理能力，反应式链路的 P99 尾延迟开始上升，最终传导到前端响应时间。告警应建在排队耗时百分位数（饱和信号），而非吞吐量本身。完整的三语言饱和监控对比见 → [并发资源饱和监控 capstone](../03-observability/07-concurrent-resource-saturation.md)

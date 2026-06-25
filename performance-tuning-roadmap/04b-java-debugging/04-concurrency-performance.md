@@ -161,6 +161,20 @@ monitor.scheduleAtFixedRate(() -> {
 // 3. rejectedCount > 0 → 已经开始拒绝任务
 ```
 
+### 接入 Micrometer / Prometheus
+
+上面的日志监控适合开发调试；生产环境应把指标导出到 Prometheus，统一告警。Micrometer 的 `ExecutorServiceMetrics` 一行接入：
+
+```java
+// 把 ThreadPoolExecutor 接入 Micrometer（Spring Boot 下自动导出到 /actuator/prometheus）
+ExecutorServiceMetrics.monitor(meterRegistry, executor, "biz-pool");
+// 得到 executor.active / executor.queued / executor.pool.size / executor.completed / executor.rejected
+
+// Web 容器线程池（Tomcat）Actuator 自动埋：tomcat.threads.busy / tomcat.threads.current / tomcat.threads.config.max
+```
+
+**关键告警原则**：告警建在 `executor.queued`/`executor.rejected`（**饱和**信号），而不是 `executor.active`（利用率）。`executor.active` 高只说明线程在工作，队列积压才代表处理能力已触顶、请求开始排队或被拒绝。连接池饱和监控同理，详见 → [并发资源饱和监控 capstone](../03-observability/07-concurrent-resource-saturation.md)
+
 ---
 
 ## 3. False Sharing
