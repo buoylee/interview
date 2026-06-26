@@ -38,7 +38,7 @@ Java 里你调 `FileOutputStream.write(buf)`，Go 里你调 `os.File.Write(buf)`
 
 2. **触发指令**：x86-64 叫 `syscall`，aarch64 叫 `svc #0`（Supervisor Call）。CPU 收到这条指令，立刻：
    - 把当前用户态指令地址（PC）和栈指针存到特定寄存器/内核栈
-   - 查 IDT（中断描述表）/ 异常向量表，找到 syscall 处理入口
+   - x86-64 从 `IA32_LSTAR` MSR 直接读取内核入口地址，**不经过 IDT**——IDT/异常向量表是硬件中断与 CPU 异常（缺页、除零）的入口，不是 `syscall` 指令的路径；aarch64 上 `svc #0` 跳到 `VBAR_EL1` 指向的异常向量基址
    - 把 CPU 特权级从 Ring 3（用户态）切到 Ring 0（内核态）
    - 跳到内核 `entry_SYSCALL_64`（x86-64）或 `el0_svc`（aarch64）入口函数
 
@@ -211,7 +211,7 @@ procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----
  0  0      0 7189608    144 511428    0    0 17500     0  177  829  0  1 99  0  0
 ```
 
-**看点**：`cs` 列——第一行 31（第一个样本，系统刚启动 vmstat 时基本闲置），第二行 829（第二个 1 秒采样，包含了磁盘 I/O 触发的大量上下文切换；`bi`=17500 块/秒对应）。`in` 是每秒中断次数（177），注意 `cs` 总比 `in` 大——一次中断可能触发多次切换（唤醒多个等待者）。
+**看点**：`cs` 列——第一行 31（`vmstat 1 2` 的第一行是自系统启动以来的均值，不是 1 秒采样，容器刚起所以低），第二行 829（第二个 1 秒采样，包含了磁盘 I/O 触发的大量上下文切换；`bi`=17500 块/秒对应）。`in` 是每秒中断次数（177），注意 `cs` 总比 `in` 大——一次中断可能触发多次切换（唤醒多个等待者）。
 
 → **回链**：`linux-handson/03-process-model`（`/proc/[pid]/status` 里的 `voluntary_ctxt_switches` / `nonvoluntary_ctxt_switches` 与本原语直接对应）
 
@@ -311,13 +311,8 @@ apt-get update -qq && apt-get install -y -qq gcc procps >/dev/null 2>&1
 cat > /tmp/threads.c <<"EOF"
 #include <pthread.h>
 #include <unistd.h>
-void* worker(void* a){ sleep(10); return 0; }
-int main(){
-  pthread_t t1, t2;
-  pthread_create(&t1, 0, worker, 0);
-  pthread_create(&t2, 0, worker, 0);
-  sleep(5); return 0;
-}
+void* w(void* a){ sleep(10); return 0; }
+int main(){ pthread_t t1,t2; pthread_create(&t1,0,w,0); pthread_create(&t2,0,w,0); sleep(5); }
 EOF
 gcc /tmp/threads.c -o /tmp/threads -lpthread
 /tmp/threads &
