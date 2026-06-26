@@ -119,14 +119,42 @@ ssh -L 5432:pg.internal:5432 bastion
 | `ssh -v host` | verbose,排查連不上 |
 | `ssh-keygen -t ed25519 -f KEY` | 產生金鑰對 |
 
+`ssh -v` 排查時看常見訊號:
+
+| 日誌片段 | 訊號 | 排查方向 |
+|---|---|---|
+| `Reading configuration data` | 讀 config | 是否吃到預期 `~/.ssh/config` |
+| `Connecting to host port` | DNS/TCP 連線 | 主機名、端口、防火牆 |
+| `kex_exchange_identification` / `SSH2_MSG_KEX` | key exchange | 協議/中間設備 |
+| `Offering public key` | 嘗試私鑰 | 是否用了正確 key |
+| `Authentication succeeded` | 認證成功 | 後面才是遠端 session 問題 |
+| `Permission denied` | 認證失敗訊號 | key、使用者、server `authorized_keys`;不一定是固定階段 |
+
+`ssh -G host` 印「最後生效」的 config,包含預設值與展開後結果:
+
+| 欄位 | 意思 |
+|---|---|
+| `hostname` | 最終連到哪個主機 |
+| `user` | 最終登入使用者 |
+| `port` | 最終端口 |
+| `identityfile` | 會嘗試的私鑰 |
+| `proxyjump` | 是否走跳板機 |
+
+> 小坑:`ssh -G` 不會真的連線,適合先確認 config 展開結果。
+
 **⚡ 驗證**:
 ```bash
 mkdir -p ~/.ssh
 ssh-keygen -t ed25519 -f /tmp/testkey -N '' -q    # 產生金鑰對(無密碼)
 ls /tmp/testkey*                                   # 預期:testkey(私鑰)+ testkey.pub(公鑰)
 ssh-keygen -lf /tmp/testkey.pub                    # 預期:指紋 "256 SHA256:... (ED25519)"
-printf 'Host demo\n  HostName 1.2.3.4\n  User bob\n  Port 2222\n' >> ~/.ssh/config
-ssh -G demo | grep -E '^(hostname|user|port) '     # 預期:hostname 1.2.3.4 / user bob / port 2222
+cat >/tmp/demo-ssh-config <<'EOF'
+Host demo
+  HostName 1.2.3.4
+  User bob
+  Port 2222
+EOF
+ssh -F /tmp/demo-ssh-config -G demo | grep -E '^(hostname|user|port) '     # 預期:hostname 1.2.3.4 / user bob / port 2222
 ```
 
 ### ssh 隧道(需對端,記命令形態)
@@ -145,6 +173,23 @@ ssh -D 1080 host                       # SOCKS 代理
 | `rsync -avz ... host:/dst/` | 加 `z` 壓縮(走網路時) |
 | `rsync -av --delete src/ dst/` | 鏡像:目標多的也刪 ⚠️ |
 | `rsync -avn src/ dst/` | `-n` dry-run,先看會做什麼 |
+
+`rsync --progress` 一行進度這樣讀:
+
+```text
+      1,048,576  50%   10.00MB/s    0:00:01 (xfr#1, to-chk=2/5)
+```
+
+| 片段 | 意思 | 怎麼判讀 |
+|---|---|---|
+| `1,048,576` | 已傳 bytes | 單檔目前進度 |
+| `50%` | 單檔完成比例 | 不是整個目錄比例 |
+| `10.00MB/s` | 當前傳輸速度 | 看網路/磁碟瓶頸 |
+| `0:00:01` | 估算剩餘時間 | 小檔很多時波動大 |
+| `xfr#1` | 第幾個實際傳輸的檔案 | 沒變代表大多檔案被跳過 |
+| `to-chk=2/5` | 剩餘待檢查項 / 總項目 | 粗看整批同步還有多少項要掃 |
+
+> 小坑:目錄尾斜線很重要:`src/` 傳內容,`src` 傳整個目錄名。
 
 **⚡ 驗證**(本地目錄就能驗):
 ```bash
