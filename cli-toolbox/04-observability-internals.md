@@ -130,6 +130,22 @@
 | `strace -T -tt -p PID` | 每 syscall 標耗時 + 時間戳 |
 | `strace -y -p PID` | 把 fd 顯示成**檔名/連接**(超好用) |
 
+如果看到一行 syscall,按形狀拆:
+
+```text
+10:00:00.123456 openat(AT_FDCWD, "/etc/passwd", O_RDONLY) = 3 <0.000123>
+```
+
+| 片段 | 意思 | 怎麼判讀 |
+|---|---|---|
+| `10:00:00.123456` | syscall 發生時間 | `-tt` 才有,用來對齊日誌 |
+| `openat(AT_FDCWD, "/etc/passwd", O_RDONLY)` | syscall 名與參數 | 看進程向內核要什麼 |
+| `= 3` | 返回值 | 非負通常成功;fd 也常在這裡出現 |
+| `= -1 ENOENT` | 失敗 + errno | 直接指出缺檔、權限、連線失敗等原因 |
+| `<0.000123>` | syscall 耗時 | `-T` 才有;找慢 syscall |
+
+> 小坑:`strace` 會拖慢目標進程;生產短抓即放。
+
 **⚡ 驗證**(需 `--cap-add=SYS_PTRACE`):
 ```bash
 strace -c -f bash -c 'ls / >/dev/null'    # 預期:結束時印出 syscall 統計表(openat/read/write 次數)
@@ -149,6 +165,24 @@ kill %1
 | `lsof +D /path` | 誰在用某目錄下的檔案 |
 | `lsof -u user` | 某使用者開的檔案 |
 | `lsof \| grep deleted` | **刪了卻還被開著**的檔案 |
+
+如果看到 `lsof` 表頭,這樣讀:
+
+```text
+COMMAND PID USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
+sleep  1234 root  cwd    DIR  0,123     4096    2 /tmp
+sleep  1234 root    1w   REG  0,123      100   99 /tmp/app.log
+```
+
+| 欄位 | 意思 | 怎麼判讀 |
+|---|---|---|
+| `COMMAND` / `PID` / `USER` | 進程、PID、使用者 | 先定位誰開著 |
+| `FD` | file descriptor | `cwd` 工作目錄,`txt` 程式本體,`1w` stdout 以寫入開啟 |
+| `TYPE` | 對象類型 | `REG` 檔案,`DIR` 目錄,`IPv4/IPv6` socket |
+| `SIZE/OFF` | 檔案大小或 offset | 看日誌是否還在增長 |
+| `NAME` | 檔名或連線 | 看到 `(deleted)` 代表刪了但 fd 還開著 |
+
+> 小坑:磁碟滿但 `du` 算不出來,`lsof | grep deleted` 常用來快速找出已刪除但仍開著的檔案。
 
 **⚡ 驗證(含「deleted-but-open」經典坑復現)**:
 ```bash
@@ -171,6 +205,26 @@ exec 3>&-                    # 關閉 fd 3(這一步才真正釋放空間)
 | `cat /proc/PID/status` | 狀態 / RSS / 線程數 |
 | `cat /proc/PID/limits` | **生效中**的 ulimit |
 | `ls -l /proc/PID/{cwd,exe}` | 工作目錄 / 可執行檔 |
+
+`/proc/PID/status` 常看這幾行:
+
+```text
+State:  S (sleeping)
+VmRSS:  12345 kB
+Threads:  8
+voluntary_ctxt_switches:  100
+nonvoluntary_ctxt_switches:  20
+```
+
+| 欄位 | 意思 | 怎麼判讀 |
+|---|---|---|
+| `State` | 進程狀態 | `R/S/D/Z` 對應 `ps STAT` 第一字母 |
+| `VmRSS` | 常駐集大小 | 粗看進程常駐記憶體;可能含共享頁面 |
+| `Threads` | 線程數 | 暴增可能是線程洩漏或池子失控 |
+| `voluntary_ctxt_switches` | 主動讓出 CPU 次數 | 常見於等 IO/鎖/睡眠,只能當方向訊號 |
+| `nonvoluntary_ctxt_switches` | 被排程器搶走 CPU 次數 | CPU 競爭高時可能上升,也只能當方向訊號 |
+
+> 小坑:`VmSize` 是虛擬地址空間,不等於真實佔用;看記憶體優先看 `VmRSS`。
 
 **⚡ 驗證**:
 ```bash
