@@ -1,16 +1,65 @@
-# Linux 学习 → 已迁移到 `linux-handson/`
+# Linux 底层原语 Primer
 
-> 这个目录早期是一些零散笔记 + 几个空文件。系统化的 Linux 学习/面试课程已重建在 **[`../linux-handson/`](../linux-handson/)**。
+> **一句话定位**:教「所有 OS 课假设你懂、但没人认真讲过」的底层原语——指针/虚拟地址/syscall/fd/futex 这一层——作为 `linux-handson/` 的词汇底座。
 
-## 去哪学
+---
 
-➡️ **[`linux-handson/`](../linux-handson/)** —— 资深全栈「够用且能答」定位的动手课:
+## 三层拓扑关系
 
-- 主线:**内核是资源管理者,每种资源一章**(进程 / 内存 / I/O / 网络)。
-- 形态:每章七段式(原理 → 动手 → 面试速记)+ 真 VM 沙箱 + 99 面试卡。
-- 设计 spec:[`docs/superpowers/specs/2026-05-31-linux-learning-path-design.md`](../docs/superpowers/specs/2026-05-31-linux-learning-path-design.md)
+```
+   os-for-architects/          ← 原语 → 架构决策(薄镜头):为什么这样选型、这样设计)
+         ▲ 坐其上
+   linux-handson/              ← 机制·能答·能排查(动手课):假设原语已懂,教怎么用/怎么排查)
+         ▲ 坐其上
+   linux/  (本 track)          ← 底层原语本身:它是什么、黑盒里发生什么、怎么亲眼看到
+```
 
-## 旧笔记
+**三者边界**
+
+| track | 问的问题 | 深度 |
+|-------|----------|------|
+| `linux/`(本 track) | 原语本身是什么?黑盒里发生什么?怎么证明? | C/OS 内核视角,补齐空白层 |
+| `linux-handson/` | 怎么用?命令是什么?面试怎么答?怎么排查? | 动手 + 七段式 + VM 沙箱 |
+| `os-for-architects/` | 原语如何影响架构决策? | 原语 → 设计取舍(薄镜头,不重讲原语) |
+
+读法建议:先读本 track 补概念底座 → 再去 `linux-handson/` 对应章动手 → 最后 `os-for-architects/` 拉到架构层。
+
+---
+
+## 怎么读本 track 的每个原语
+
+每个原语遵循**三层模板**:
+
+**① 你视角(Java/Go 桥)**
+你在 Java/Go/Python 里已经隐式用了这个原语的上层封装,先把桥接点说清楚。
+
+**② 黑盒内部(必有)**
+内核/CPU 层面真正发生什么:数据结构、状态转换、谁拷贝了什么、谁唤醒了谁。这一层**每个原语都有**——没有 ② 的原语讲解是不完整的。
+
+**③ 砸实(透明证据,非作业)**
+能干净复现的原语给出**真实可跑命令**及预期输出(strace / /proc / perf 等);无法 5 行内干净复现的原语以 ② 为主,不强行造题。实跑结果从真机采集,禁止伪造。
+
+---
+
+## 章节目录
+
+| 章 | 主题 | 核心原语 |
+|----|------|----------|
+| [01 内存原语](./01-memory-primitives/) | 指针·虚拟地址·页·page fault·brk/mmap·malloc·VSZ/RSS | 虚拟地址空间、MMU/TLB、匿名页/文件映射、缺页中断、堆扩张与归还、内存计量 |
+| [02 执行原语](./02-execution-primitives/) | syscall·用户↔内核切换·中断·上下文切换·栈帧·进程vs线程 | syscall 指令、特权级切换、硬件中断 vs 软件中断、调度器上下文切换、内核栈/用户栈、task_struct |
+| [03 IO 原语](./03-io-primitives/) | fd·fd表·inode·阻塞/非阻塞·内核缓冲·epoll·一切皆文件 | 文件描述符表、VFS/inode、write 的内核缓冲路径、epoll 红黑树+就绪链表、零拷贝 |
+| [04 并发原语](./04-concurrency-primitives/) | 原子/CAS·futex·signal·条件变量·内存屏障 | CAS 与 Lock 前缀、futex 内核等待队列、信号异步交付、条件变量语义、store/load 屏障 |
+
+---
+
+## 扩展位(撞到再加)
+
+**05 链接装载原语**(`linux/05-link-load-primitives/`, 尚未编写)
+预留给:编译/链接流程、目标文件、符号表、`.so` 动态链接、ELF 格式、`ldd`、`LD_LIBRARY_PATH`、`dlopen`。撞到「为什么找不到 .so」类问题时再写。
+
+---
+
+## 旧笔记去向
 
 原来的 `basic.md`、`memory.md`、`好用命令.md` 已移到 [`_archive/`](./_archive/) 保留。
 它们的内容(`top`/`free`/`VIRT`/`VSZ`/`RES`/`RSS` 等)已被新课更完整地覆盖:
