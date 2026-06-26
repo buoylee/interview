@@ -28,7 +28,7 @@
 
 | 命令 | 作用 |
 |---|---|
-| `git reflog` | 看 HEAD 移動歷史(每行一個 `HEAD@{n}`) |
+| 🔧 `git reflog` | 看 HEAD 移動歷史(每行一個 `HEAD@{n}`) |
 | `git reset --hard HEAD@{2}` | **回到 2 步之前**的狀態 |
 | `git branch recover HEAD@{1}` | 把某個歷史點重建成分支 |
 
@@ -40,7 +40,7 @@
 
 | 命令 | 作用 |
 |---|---|
-| `git bisect start` | 開始 |
+| 🔧 `git bisect start` | 開始 |
 | `git bisect bad` | 標記「當前是壞的」 |
 | `git bisect good v1.2` | 標記「這個老版本是好的」 |
 | (git 自動 checkout 中間提交,你測,標 `good`/`bad`) | 二分逼近 |
@@ -55,7 +55,7 @@
 
 | 命令 | 作用 | 底層一兩句 |
 |---|---|---|
-| `git blame file` | 每行**最後**由誰、哪個提交改的 | 追責 / 找上下文 |
+| 🔧 `git blame file` | 每行**最後**由誰、哪個提交改的 | 追責 / 找上下文 |
 | `git log -S '字串'` | **pickaxe**:哪個提交**引入或刪除**了這個字串 | 找「這段邏輯/這個 bug 從哪來」的神器 |
 | `git log -p -- file` | 某檔案的**完整變更歷史**(帶 diff) | — |
 | `git log -L :funcName:file` | 某**函數**的演變史 | 看一個函數怎麼變成今天這樣 |
@@ -112,6 +112,68 @@ git diff           / --staged       # 工作區 / 暫存區 的改動
 git diff main...feature             # feature 自分叉以來的改動
 git log --oneline --graph --all     # 可視化分支拓撲
 git show <sha>                      # 看某個提交的完整內容
+```
+
+---
+
+## 🔧 主力命令深講 + 速驗
+
+> git 最適合自驗——在 `/tmp` 造個**拋棄式 repo**,連「誤 reset 救回」都能親手復現。**先建環境**(後面用例都基於它):
+
+```bash
+cd /tmp && rm -rf gitlab && mkdir gitlab && cd gitlab && git init -q
+git config user.email t@t.co && git config user.name tester
+for v in v1 v2 v3; do echo $v > f; git add f; git commit -qm "c-$v"; done
+git log --oneline      # 預期:三個提交 c-v3 / c-v2 / c-v1
+```
+
+### reflog — 後悔藥(誤 reset 救回)
+
+```bash
+git reset --hard HEAD~2     # 模擬誤操作:退回 c-v1,丟了 v2/v3
+cat f                        # 預期:v1
+git reflog | head -3         # 預期:HEAD@{1} 指向 reset 前的 c-v3
+git reset --hard HEAD@{1}    # 救回!
+cat f                        # 預期:v3 ← 找回來了
+```
+
+### log -S / blame — 找「哪個提交動的」
+
+```bash
+git log -S v2 --oneline      # 預期:引入(c-v2)與刪除(c-v3)"v2" 的提交
+git blame f                  # 預期:當前行標記為最後改它的提交(c-v3)
+git log -p -- f | head -20   # 預期:f 的變更歷史(帶 diff)
+```
+
+### bisect — 二分揪 bug(全自動)
+
+```bash
+# 假設「f 含 v3」是 bug,用 bisect run 自動找出第一個壞提交
+git bisect start HEAD HEAD~2          # bad=HEAD(含 v3),good=兩步前
+git bisect run sh -c '! grep -q v3 f' # 測試:含 v3 → 回非 0(bad)
+# 預期:印出 "c-v3 ... is the first bad commit"
+git bisect reset
+```
+
+### commit --amend — 改最後一次提交
+
+```bash
+git commit --amend -m 'c-v3-renamed'   # 改最後提交的訊息
+git log --oneline | head -1            # 預期:c-v3-renamed
+```
+> `rebase -i HEAD~3` 是**互動式**(開編輯器選 squash/reword/drop),沙盒裡可手動試;這裡用非互動的 `--amend` 驗證「改歷史」的最小形式。
+
+### ⚡ 配角速驗(`stash` / `revert` / `diff`)
+
+```bash
+echo wip >> f
+git stash                    # 收起改動
+git status -s                # 預期:無輸出(乾淨)
+git stash pop                # 取回
+git status -s                # 預期: M f(改動回來)
+git checkout -- f            # 丟棄改動
+git revert --no-edit HEAD    # 反做最後一次提交(產生新的反向提交)
+git log --oneline | head -2  # 預期:頂部多一個 Revert 提交
 ```
 
 ---

@@ -21,7 +21,7 @@
 | 命令 | 作用 | 底層一兩句 |
 |---|---|---|
 | `uptime` | 看 1 / 5 / 15 分鐘 load | 三個數看**趨勢**:遞增=正在惡化,遞減=高峰已過 |
-| `top` / `htop` | 即時總覽(load + CPU + mem + 進程) | `htop` 更直觀但需安裝;`top` 人人有 |
+| 🔧 `top` / `htop` | 即時總覽(load + CPU + mem + 進程) | `htop` 更直觀但需安裝;`top` 人人有 |
 | `nproc` | 看有幾顆邏輯 CPU | **load 要除以核心數才有意義** |
 
 **判讀心法**:`load average` 不是百分比,是「進程數」。
@@ -59,7 +59,7 @@
 
 | 命令 | 作用 |
 |---|---|
-| `vmstat 1` | 每秒刷:`r`(等CPU)`b`(阻塞)、`si/so`(swap)、`us/sy/id/wa/st` —— **首選總覽** |
+| 🔧 `vmstat 1` | 每秒刷:`r`(等CPU)`b`(阻塞)、`si/so`(swap)、`us/sy/id/wa/st` —— **首選總覽** |
 | `mpstat -P ALL 1` | **每顆核**分開看(揪出「單核打滿、其餘閒」的單線程瓶頸) |
 | `pidstat 1` | 按**進程**看 CPU(到底是誰) |
 
@@ -69,7 +69,7 @@
 
 | 命令 | 作用 | 底層一兩句 |
 |---|---|---|
-| `free -h` | 看記憶體用量 | **只看 `available`**,別看 `free`(見下) |
+| 🔧 `free -h` | 看記憶體用量 | **只看 `available`**,別看 `free`(見下) |
 | `vmstat 1` | 看 `si`/`so`(swap in/out) | **有 swap 換進換出 = 記憶體真的不夠了**的鐵證 |
 | `ps aux --sort=-%mem \| head` | 誰最吃記憶體 | 快速揪 top 記憶體大戶 |
 | `pmap -x PID` | 一個進程的記憶體分佈 | 看是堆、棧、還是 mmap 的檔案 |
@@ -89,7 +89,7 @@
 
 | 命令 | 作用 | 底層一兩句 |
 |---|---|---|
-| `iostat -xz 1` | 每秒看每個磁碟的詳細 IO | 看 `%util`、`await`、`r/s w/s`(見下) |
+| 🔧 `iostat -xz 1` | 每秒看每個磁碟的詳細 IO | 看 `%util`、`await`、`r/s w/s`(見下) |
 | `iotop` | 哪個**進程**在狂讀寫 | 需 root;直接揪元兇 |
 | `df -h` | 看分區**剩多少空間** | 「磁碟滿」先查它(詳見 **06**) |
 | `df -i` | 看 **inode** 是否用盡 | 空間還很多卻寫不進 = inode 耗盡(小檔太多) |
@@ -138,6 +138,99 @@ free -h                # 7. 記憶體 / available
 ```
 
 > 工具多半在 `sysstat` 與 `procps` 套件裡(`vmstat`/`mpstat`/`pidstat`/`iostat`/`sar`)。沒裝就 `apt install sysstat` / `yum install sysstat`。
+
+---
+
+## 🔧 主力命令深講 + 速驗
+
+> 性能工具的數字「沒負載時都很閒」很正常;想看數字動起來,用下面 `yes > /dev/null &` 造個 CPU 負載再觀察。**先進 README 的沙盒。**
+
+### top — 即時總覽 + 互動鍵
+
+`top` 跑起來後按這些鍵(這才是 top 的精髓):
+
+| 按鍵 | 作用 |
+|---|---|
+| `P` | 按 CPU 排序(預設) |
+| `M` | 按**記憶體**排序 |
+| `1` | 展開**每顆核**分開看 |
+| `H` | 顯示**線程**(而非進程) |
+| `c` | 顯示完整命令列 |
+| `k` | 殺進程(輸入 PID) |
+| `q` | 退出 |
+
+腳本/批量模式(不互動):
+
+| 寫法 | 作用 |
+|---|---|
+| `top -b -n1` | 跑一次就退,可管道 / 存檔 |
+| `top -b -n1 -o %MEM` | 按記憶體排序輸出 |
+| `top -p PID` | 只盯某個進程 |
+
+**⚡ 驗證**:
+```bash
+top -b -n1 | head -12      # 預期:load/任務/CPU/記憶體摘要 + 進程表頭
+# 想看 us 飆到 100:造個燒 CPU 的循環再看
+yes > /dev/null &
+top -b -n1 | head -5       # 預期:%Cpu 區 us 接近 100,yes 在最頂
+kill %1
+```
+
+### vmstat — 一行看 CPU / 記憶體 / IO 全局
+
+| 寫法 | 作用 |
+|---|---|
+| `vmstat 1` | 每秒刷新(持續) |
+| `vmstat 1 5` | 每秒一次,**共 5 次**後停 |
+| `vmstat -w` | 寬格式,欄位不擠 |
+| `vmstat -s` | 記憶體統計總覽 |
+
+欄位記成 4 組:`r b`(等CPU/阻塞數)、`si so`(swap 換進出,非零=記憶體不足)、`bi bo`(塊設備讀寫)、`us sy id wa st`(CPU 構成,同第 2 節)。
+
+**⚡ 驗證**:
+```bash
+vmstat 1 3       # 預期:刷 3 行後停;看最右 us/sy/id/wa 欄
+```
+
+### free — 記憶體用量(只看 available)
+
+| 寫法 | 作用 |
+|---|---|
+| `free -h` | 人類可讀(自動 K/M/G) |
+| `free -m` | 固定以 MB 顯示 |
+| `free -s 2` | 每 2 秒刷一次 |
+
+**⚡ 驗證**:
+```bash
+free -h          # 預期:Mem 行;重點看 "available" 欄(不是 "free" 欄)
+```
+
+### iostat — 磁碟 IO 飽和度
+
+| 寫法 | 作用 |
+|---|---|
+| `iostat -xz 1` | 擴展統計(`-x`)、隱藏無活動設備(`-z`)、每秒刷 |
+| `iostat -xz 1 3` | 刷 3 次後停 |
+| `iostat -dx` | 只看磁碟設備 |
+
+看哪幾欄:`await`(單次延遲 ms,**最重要**)、`%util`(繁忙度)、`r/s w/s`(IOPS)。
+
+**⚡ 驗證**:
+```bash
+iostat -xz 1 2 | tail -15    # 預期:每個磁碟一行;看 await / %util 欄
+```
+
+### ⚡ 配角速驗(`uptime` / `nproc` / `mpstat` / `pidstat` / `df` / `dmesg`)
+
+```bash
+uptime                  # 預期:結尾 "load average: x.xx, x.xx, x.xx"
+nproc                   # 預期:核心數(拿來除 load)
+mpstat -P ALL 1 1       # 預期:每顆核一行 + all 匯總
+pidstat 1 1             # 預期:各進程 %usr / %system
+df -h /                 # 預期:根分區空間使用率
+df -i /                 # 預期:根分區 inode 使用率
+dmesg -T 2>/dev/null | grep -i oom | tail   # 預期:通常無輸出(容器內 dmesg 可能權限不足,需 --privileged 或主機跑)
+```
 
 ---
 

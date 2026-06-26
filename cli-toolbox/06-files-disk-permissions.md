@@ -23,7 +23,7 @@
 
 | 命令 | 作用 |
 |---|---|
-| `find . -name '*.log'` | 按檔名找(`-iname` 忽略大小寫) |
+| 🔧 `find . -name '*.log'` | 按檔名找(`-iname` 忽略大小寫) |
 | `find . -type f -size +100M` | 找大於 100M 的**檔案** |
 | `find . -mtime -1` | **24 小時內**改過的(`-mmin -10` = 10 分鐘內) |
 | `find . -name '*.tmp' -delete` | 找到並刪除 |
@@ -42,7 +42,7 @@
 | `df -h` | 各分區剩多少空間 | **「磁碟滿」第一條** |
 | `df -i` | 各分區 **inode** 用量 | 空間夠卻寫不進 → 多半 inode 耗盡(小檔海) |
 | `df -hT` | 同上 + 檔案系統**類型** | 看是 ext4/xfs/overlay |
-| `du -sh *` | 當前目錄下**各項**大小 | `-s`=匯總 `-h`=人類可讀 |
+| 🔧 `du -sh *` | 當前目錄下**各項**大小 | `-s`=匯總 `-h`=人類可讀 |
 | `du -sh * \| sort -rh \| head` | **揪空間大戶 top-N** | `sort -rh` = 按人類可讀大小逆序 |
 | `ncdu` | 互動式磁碟分析 | 上下鍵鑽進去看,最直觀(需安裝) |
 
@@ -61,7 +61,7 @@
 
 | 命令 | 作用 |
 |---|---|
-| `chmod 644 file` | 擁有者讀寫、其他人唯讀(一般檔案) |
+| 🔧 `chmod 644 file` | 擁有者讀寫、其他人唯讀(一般檔案) |
 | `chmod 755 file` | 加可執行(腳本、目錄要 `x` 才能進) |
 | `chmod +x script.sh` | 只加執行位 |
 | `chmod -R 755 dir/` | 遞迴 |
@@ -111,6 +111,89 @@
 | `tar -tzf x.tar.gz` | 只**列出內容**不解開 |
 
 > 記憶:`czf`=create、`xzf`=extract、`tzf`=list。`z`=gzip,換 `j`=bzip2、`J`=xz。
+
+---
+
+## 🔧 主力命令深講 + 速驗
+
+> 先進 README 的沙盒。以下用例自帶造檔,跑完即丟。
+
+### find — 找檔案 + 批量處理
+
+| 寫法 | 作用 |
+|---|---|
+| `find . -name '*.log'` / `-iname` | 按檔名(忽略大小寫) |
+| `find . -type f` / `-type d` | 只找檔案 / 目錄 |
+| `find . -size +100M` / `-size -1k` | 按大小 |
+| `find . -mtime -1` / `-mmin -10` | 1 天 / 10 分鐘內改過 |
+| `find . -maxdepth 1` | 不遞迴進子目錄 |
+| `find . -empty` | 空檔案 / 空目錄 |
+| `find . -name '*.tmp' -delete` | 找到並刪 |
+| `find . -type f -exec cmd {} +` | 對結果跑命令(`+` 批量 / `\;` 逐個) |
+
+**⚡ 驗證**:
+```bash
+mkdir -p /tmp/ft/sub && touch /tmp/ft/a.log /tmp/ft/b.txt /tmp/ft/sub/c.log
+find /tmp/ft -name '*.log'              # 預期:/tmp/ft/a.log 和 /tmp/ft/sub/c.log
+find /tmp/ft -maxdepth 1 -name '*.log'  # 預期:只 /tmp/ft/a.log
+find /tmp/ft -type d                    # 預期:/tmp/ft 與 /tmp/ft/sub
+find /tmp/ft -name '*.txt' -delete; find /tmp/ft -name '*.txt'   # 預期:第二條無輸出(已刪)
+```
+
+### du / df — 看空間
+
+| 寫法 | 作用 |
+|---|---|
+| `du -sh dir` | 目錄總大小 |
+| `du -ah dir \| sort -rh \| head` | 各檔大小降序 top-N |
+| `du -h --max-depth=1 dir` | 只展開一層 |
+| `df -h` | 各分區空間 |
+| `df -i` | 各分區 inode |
+| `df -hT` | 加檔案系統類型 |
+
+**⚡ 驗證**:
+```bash
+du -sh /tmp/ft                     # 預期:/tmp/ft 總大小
+du -ah /tmp/ft | sort -rh | head   # 預期:各檔/目錄大小降序
+df -h /                            # 預期:根分區 Size/Used/Avail/Use%
+df -i /                            # 預期:根分區 inode 使用量
+```
+
+### chmod / chown — 權限
+
+| 寫法 | 作用 |
+|---|---|
+| `chmod 644 / 755 file` | 數字法設權限 |
+| `chmod +x` / `-x file` | 加 / 去執行位 |
+| `chmod u+x,g-w,o=r file` | 符號法(精細調某一組) |
+| `chmod -R 755 dir` | 遞迴 |
+| `chown user:group file` (`-R`) | 改擁有者(需 root) |
+
+**⚡ 驗證**:
+```bash
+touch /tmp/perm.sh
+ls -l /tmp/perm.sh           # 預期:-rw-r--r--(644,新建預設)
+chmod 755 /tmp/perm.sh
+ls -l /tmp/perm.sh           # 預期:-rwxr-xr-x
+chmod -x /tmp/perm.sh
+ls -l /tmp/perm.sh           # 預期:x 位被拿掉 → -rw-r--r--
+# chown 需 root + 已存在的用戶,例:chown nobody:nogroup /tmp/perm.sh
+```
+
+### ⚡ 配角速驗(`stat` / `ln` / `tar` / `file` / `lsblk`)
+
+```bash
+stat /tmp/perm.sh            # 預期:Inode、Access/Modify/Change 三種時間戳
+echo hi > /tmp/orig
+ln -s /tmp/orig /tmp/soft    # 軟連結
+ls -l /tmp/soft             # 預期:/tmp/soft -> /tmp/orig
+ln /tmp/orig /tmp/hard       # 硬連結
+ls -li /tmp/orig /tmp/hard  # 預期:兩者「inode 號相同」(最左欄)
+tar -czf /tmp/a.tgz -C /tmp orig
+tar -tzf /tmp/a.tgz         # 預期:列出 orig
+file /tmp/a.tgz             # 預期:gzip compressed data
+lsblk 2>/dev/null | head    # 預期:塊設備樹(容器內可能只見 overlay/host 盤)
+```
 
 ---
 

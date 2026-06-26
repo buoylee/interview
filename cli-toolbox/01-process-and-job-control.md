@@ -42,10 +42,10 @@
 
 | 命令 | 作用 | 底層一兩句 |
 |---|---|---|
-| `pgrep -af 字串` | 按**命令列**找,並印出完整命令列 | `-f` = 比對整條命令列;`-a` = 印出來肉眼確認 |
+| 🔧 `pgrep -af 字串` | 按**命令列**找,並印出完整命令列 | `-f` = 比對整條命令列;`-a` = 印出來肉眼確認 |
 | `pgrep -u user 名` | 按使用者 + 程式名找 | — |
 | `ps -ef \| grep '[n]ginx'` | 萬用找法(任何欄位) | `[n]ginx` 讓 grep **不匹配自己**(它命令列裡是 `[n]ginx`) |
-| `ps aux` / `ps -ef` | 列全部進程(兩種風格) | `aux`=BSD 風、`-ef`=System V 風,看慣一種即可 |
+| 🔧 `ps aux` / `ps -ef` | 列全部進程(兩種風格) | `aux`=BSD 風、`-ef`=System V 風,看慣一種即可 |
 | `ps -eo pid,ppid,pgid,sid,tty,stat,comm` | 自訂欄位,看歸屬關係 | 一眼看穿原語 1 的四層:PID/PPID/PGID/SID/TTY |
 | `pstree -p` | 進程樹(看父子) | 看清「誰 fork 了誰」,排查孤兒/失控子進程 |
 | `top -p PID` / `lsof -p PID` | 盯單一進程的資源 / 開啟的檔案 | `lsof` 詳見 **04** |
@@ -58,7 +58,7 @@
 
 | 命令 | 作用 | 底層一兩句 |
 |---|---|---|
-| `kill PID` | 禮貌終止 | 預設發 `SIGTERM`(15),**可被捕獲**做清理(關連接、flush 日誌) |
+| 🔧 `kill PID` | 禮貌終止 | 預設發 `SIGTERM`(15),**可被捕獲**做清理(關連接、flush 日誌) |
 | `kill -9 PID` | 強殺 | `SIGKILL`,**不可捕獲/忽略**;但殺不掉 `D`(不可中斷睡眠)與 `Z`(已死) |
 | `kill -HUP PID` | 「重載」 | 很多 daemon(nginx)用 `SIGHUP` 觸發**重讀配置**,不是殺 |
 | `kill -- -PGID` | 殺**整個進程組** | 負號 = 進程組;一刀帶走「它 fork 的一串子孫」 |
@@ -126,6 +126,109 @@ ps -eo pid,ppid,stat,comm | awk '$3 ~ /^Z/'
 ```
 
 > 一句話:**孤兒換爹照樣活;殭屍是「沒人收屍」的空殼,要嘛父進程收,要嘛殺父讓 init 收。**
+
+---
+
+## 🔧 主力命令深講 + 速驗
+
+> 上面是「掃一眼」;這裡把標 🔧 的主力命令展開:好用參數 + 一個能立刻跑的驗證。**先進 README 的沙盒。**
+
+### ps — 看進程的瑞士刀
+
+| 寫法 | 作用 |
+|---|---|
+| `ps aux` | 全部進程,BSD 風(帶 `%CPU`/`%MEM`/`STAT`) |
+| `ps -ef` | 全部進程,SysV 風(帶 `PPID`,看父子) |
+| `ps -eo pid,ppid,pgid,sid,tty,stat,comm` | **自訂欄位**,只看你要的 |
+| `ps -p PID` | 只看某個 PID |
+| `ps --sort=-%cpu \| head` | 按 CPU 降序揪大戶(`-%mem` 同理) |
+| `ps -T -p PID` | 看某進程的**線程**(每線程一行) |
+| `ps -o pid,ni,pri,comm -p PID` | 看優先級(`ni` nice / `pri`) |
+
+**⚡ 驗證**:
+```bash
+sleep 300 &
+ps -o pid,ppid,stat,comm -p $!      # 預期:STAT=S(睡眠),COMMAND=sleep
+ps aux --sort=-%mem | head -3       # 預期:表頭 + 記憶體前 2 名
+kill $!
+```
+
+### pgrep / pkill — 按命令列找與殺
+
+| 寫法 | 作用 |
+|---|---|
+| `pgrep -af 字串` | 按整條命令列找,印 PID + 命令列 |
+| `pgrep -u root sshd` | 限使用者 + 程式名 |
+| `pgrep -n / -o 名` | 只要**最新** / **最舊**那一個 |
+| `pgrep -c 名` | 只回**數量** |
+| `pkill -f 字串` | 按命令列**批量殺** |
+| `pkill -TERM -f 字串` | 指定信號殺(預設就是 TERM) |
+
+**⚡ 驗證**:
+```bash
+sleep 300 &
+pgrep -af sleep         # 預期:印出 "<PID> sleep 300"
+pkill -f 'sleep 300'    # 殺掉
+pgrep -af sleep         # 預期:無輸出(已殺乾淨)
+```
+
+### kill — 發信號(不只是「殺」)
+
+`kill` 的「參數」其實就是**信號**(信號表見上)。重點是發「對的信號」:
+
+| 寫法 | 作用 |
+|---|---|
+| `kill PID` | 發 `TERM`(禮貌終止,可捕獲善後) |
+| `kill -9 PID` | 發 `KILL`(強殺,不可捕獲) |
+| `kill -HUP PID` | 觸發多數 daemon 的「重載配置」 |
+| `kill -- -PGID` | 殺**整個進程組**(負號) |
+| `kill -l` | 列出所有信號名 / 編號 |
+
+**⚡ 驗證(親眼看「TERM 可被捕獲、KILL 不行」)**:
+```bash
+# 開一個「捕獲 TERM」的進程
+bash -c 'trap "echo 收到TERM正在善後; exit" TERM; sleep 300' &
+sleep 1
+kill -TERM $!     # 預期:印出 "收到TERM正在善後" 後才退出 ← 信號被捕獲
+
+# 對比:KILL 攔不住
+bash -c 'trap "echo 這行不會印" TERM; sleep 300' &
+kill -9 $!        # 預期:直接消失,trap 來不及執行
+```
+
+### job control(`&` / `jobs` / `bg` / `fg`)
+
+**⚡ 驗證(放後台 → 查 → 調回 → 掛起 → 再放後台)**:
+```bash
+sleep 300 &
+jobs -l            # 預期:[1]+ <PID> Running  sleep 300
+fg %1              # 調回前台(畫面卡住,因 sleep 在前台跑)
+#  ↑ 此時按 Ctrl+Z → 預期:[1]+ Stopped  sleep 300(掛起)
+bg %1              # 預期:[1]+ sleep 300 &(回後台繼續跑)
+kill %1
+```
+> `fg`/`bg`/`Ctrl+Z` 需**互動式終端**(沙盒裡直接敲沒問題;寫進腳本不行)。
+
+### ⚡ 配角速驗(`nice` / `renice` / `pstree` / `setsid` / 找殭屍)
+
+```bash
+# nice / renice:看優先級數字
+nice -n 10 sleep 300 &
+ps -o pid,ni,comm -p $!        # 預期:NI=10
+renice -n 15 -p $!             # 預期:... old priority 10, new priority 15
+kill $!
+
+# pstree:當前 shell 的進程樹
+pstree -p $$ | head            # 預期:bash(<PID>)─┬─... 樹狀圖
+
+# setsid:看它脫離終端(TTY=?、PPID=1)
+setsid sleep 300
+ps -o pid,ppid,sid,tty,comm -C sleep   # 預期:有一行 TTY=?、PPID=1
+pkill -f 'sleep 300'
+
+# 找殭屍(平時通常沒有;造殭屍的完整實驗見 linux-handson/03 實驗2)
+ps -eo pid,ppid,stat,comm | awk '$3 ~ /^Z/'   # 預期:無輸出(沒殭屍才正常)
+```
 
 ---
 

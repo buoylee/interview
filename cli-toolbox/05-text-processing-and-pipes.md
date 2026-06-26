@@ -19,7 +19,7 @@
 
 ---
 
-## 1. `grep` —— 篩選行
+## 1. 🔧 `grep` —— 篩選行
 
 | 命令 | 作用 |
 |---|---|
@@ -37,7 +37,7 @@
 
 ---
 
-## 2. `awk` —— 按欄位處理(最該學的一個)
+## 2. 🔧 `awk` —— 按欄位處理(最該學的一個)
 
 `awk` 自動把每行切成欄位 `$1 $2 …`(`$0` 是整行)。你只要說「**對每行做什麼**」,需要的話再加「**最後 END 做什麼**」。
 
@@ -54,7 +54,7 @@
 
 ---
 
-## 3. `sed` —— 流編輯
+## 3. 🔧 `sed` —— 流編輯
 
 | 命令 | 作用 |
 |---|---|
@@ -128,6 +128,57 @@ kubectl get pods -o json | jq '.items[].metadata.name' # 配 k8s(見 08)
 ```
 
 > 對應的 YAML 版工具是 `yq`(語法近似)。
+
+---
+
+## 🔧 主力命令深講 + 速驗
+
+> `grep`/`awk`/`sed` 的常用參數見上方 §1–3;這裡補幾個沒提的,重點是**每個都能立刻驗證**。先造個樣本檔:
+
+```bash
+printf 'alice 30 dev\nbob 25 ops\ncarol 35 dev\nbob 25 ops\n' > /tmp/t.txt
+```
+
+### grep 速驗(補:`-w` 整詞、`-l` 只印檔名、`-q` 靜默看 exit code、`-P` PCRE)
+
+```bash
+grep dev /tmp/t.txt           # 預期:alice / carol 兩行
+grep -c dev /tmp/t.txt        # 預期:2
+grep -n bob /tmp/t.txt        # 預期:2:bob... / 4:bob...
+grep -v dev /tmp/t.txt        # 預期:bob 兩行
+grep -o '[0-9]\+' /tmp/t.txt | head -1   # 預期:30(只印匹配的數字)
+```
+
+### awk 速驗(補:`-v var=值` 傳變數、`NF` 欄位數、`$NF` 最後一欄)
+
+```bash
+awk '{print $1}' /tmp/t.txt              # 預期:alice/bob/carol/bob
+awk '$2>28 {print $1}' /tmp/t.txt         # 預期:alice/carol
+awk '{s+=$2} END{print s}' /tmp/t.txt     # 預期:115
+awk '{c[$3]++} END{for(k in c) print k,c[k]}' /tmp/t.txt   # 預期:dev 2 / ops 2
+awk -F: '{print $1}' /etc/passwd | head -3   # 預期:root/daemon/bin
+```
+
+### sed 速驗(補:`-E` 擴展正則、`&` 引用整段匹配)
+
+```bash
+echo 'hello world' | sed 's/world/sed/'      # 預期:hello sed
+printf 'a\nb\nc\nd\n' | sed -n '2,3p'         # 預期:b / c
+sed '/ops/d' /tmp/t.txt                       # 預期:只剩 alice / carol
+echo 'price 100' | sed -E 's/[0-9]+/&元/'     # 預期:price 100元
+```
+
+### ⚡ 配角速驗(`sort`/`uniq`/`cut`/`tr`/`wc`/`xargs`/`jq`/`tee`)
+
+```bash
+cut -d' ' -f3 /tmp/t.txt | sort | uniq -c | sort -rn   # 預期:dev 2、ops 2(top-N 套路)
+seq 1 100 | wc -l                       # 預期:100
+echo 'a,b,c' | cut -d, -f2              # 預期:b
+echo 'Hello' | tr 'a-z' 'A-Z'           # 預期:HELLO
+echo '1 2 3' | xargs -n1 echo           # 預期:1 / 2 / 3(各一行)
+echo '{"items":[{"name":"x"},{"name":"y"}]}' | jq -r '.items[].name'   # 預期:x / y
+echo hi | tee /tmp/tee.txt              # 預期:螢幕印 hi,且 /tmp/tee.txt 也存了 hi
+```
 
 ---
 

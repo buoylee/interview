@@ -22,7 +22,7 @@
 
 | 命令 | 作用 | 底層一兩句 |
 |---|---|---|
-| `strace -p PID` | attach 到一個**正在跑**的進程 | 看它此刻卡/忙在哪個 syscall |
+| 🔧 `strace -p PID` | attach 到一個**正在跑**的進程 | 看它此刻卡/忙在哪個 syscall |
 | `strace -f cmd` | 啟動並跟蹤(含 fork 出的子進程) | `-f` = follow,不然子進程的看不到 |
 | `strace -c -p PID` | **統計**各 syscall 次數 / 耗時 | 找熱點:誰被狂調、誰最慢(性能排查神器) |
 | `strace -T -tt -p PID` | 每個 syscall 標**耗時**+時間戳 | 揪「慢在哪一次調用」 |
@@ -47,7 +47,7 @@
 
 | 命令 | 作用 | 底層一兩句 |
 |---|---|---|
-| `lsof -p PID` | 一個進程開的**所有 fd**(檔案、socket、pipe) | 進程內部「碰著什麼」一覽 |
+| 🔧 `lsof -p PID` | 一個進程開的**所有 fd**(檔案、socket、pipe) | 進程內部「碰著什麼」一覽 |
 | `lsof -i :8080` | 誰在用 8080 | 「端口被佔」最快查法(也見 **03**) |
 | `lsof -i TCP:ESTABLISHED` | 所有已建立的 TCP 連接 | — |
 | `lsof +D /var/log` | 誰在用這個**目錄**下的檔案 | 「umount 說 device busy」時揪元兇 |
@@ -108,6 +108,85 @@
 ```
 
 > 一句話:**`ps` 定狀態 → `strace` 定 syscall → `/proc/stack` 定內核棧 → `lsof` 定對象。** 四步把「卡住」從「玄學」變成「具體卡在某次 `read`」。
+
+---
+
+## 🔧 主力命令深講 + 速驗
+
+> ⚠️ **`strace`/`ltrace` 在預設 docker 沙盒會被 seccomp 擋**(`ptrace` 無權限)。跑 strace 的驗證請用:
+> ```bash
+> docker run --rm -it --cap-add=SYS_PTRACE ubuntu bash
+> ```
+> `lsof` 與 `/proc` 不需要這個 cap,普通沙盒就能跑。
+
+### strace — 看 syscall
+
+| 寫法 | 作用 |
+|---|---|
+| `strace -p PID` | attach 到正在跑的進程 |
+| `strace -f cmd` | 啟動並跟蹤(含子進程) |
+| `strace -c cmd` | **統計**各 syscall 次數/耗時 |
+| `strace -e trace=openat,read cmd` | 只看指定 syscall(降噪) |
+| `strace -T -tt -p PID` | 每 syscall 標耗時 + 時間戳 |
+| `strace -y -p PID` | 把 fd 顯示成**檔名/連接**(超好用) |
+
+**⚡ 驗證**(需 `--cap-add=SYS_PTRACE`):
+```bash
+strace -c -f bash -c 'ls / >/dev/null'    # 預期:結束時印出 syscall 統計表(openat/read/write 次數)
+# attach 看 sleep 卡在哪
+sleep 60 &
+timeout 2 strace -p $! 2>&1 | head        # 預期:看到 clock_nanosleep(... ← 卡在睡眠;2 秒自動結束
+kill %1
+```
+
+### lsof — 看一個進程開了什麼
+
+| 寫法 | 作用 |
+|---|---|
+| `lsof -p PID` | 進程開的所有 fd |
+| `lsof -i :8080` | 端口被誰佔 |
+| `lsof -i TCP:ESTABLISHED` | 已建立的連接 |
+| `lsof +D /path` | 誰在用某目錄下的檔案 |
+| `lsof -u user` | 某使用者開的檔案 |
+| `lsof \| grep deleted` | **刪了卻還被開著**的檔案 |
+
+**⚡ 驗證(含「deleted-but-open」經典坑復現)**:
+```bash
+sleep 300 &
+lsof -p $! | head            # 預期:sleep 的 fd 列表(cwd/txt/0,1,2)
+kill $!
+
+exec 3>/tmp/held.log         # 開 fd 3 指向一個檔案
+rm /tmp/held.log             # 刪掉它(但 fd 還開著)
+lsof -p $$ | grep held.log   # 預期:".../held.log (deleted)" ← 空間還沒釋放!
+exec 3>&-                    # 關閉 fd 3(這一步才真正釋放空間)
+```
+
+### /proc/<pid>/ — cat 即可,不需工具
+
+| 寫法 | 作用 |
+|---|---|
+| `cat /proc/PID/cmdline \| tr '\0' ' '` | 完整命令列(參數用 `\0` 分隔) |
+| `ls -l /proc/PID/fd` | 開的 fd(symlink 指向檔案/socket) |
+| `cat /proc/PID/status` | 狀態 / RSS / 線程數 |
+| `cat /proc/PID/limits` | **生效中**的 ulimit |
+| `ls -l /proc/PID/{cwd,exe}` | 工作目錄 / 可執行檔 |
+
+**⚡ 驗證**:
+```bash
+sleep 300 &
+cat /proc/$!/cmdline | tr '\0' ' '; echo           # 預期:sleep 300
+ls -l /proc/$!/fd                                   # 預期:0/1/2 等 fd symlink
+grep -E 'State|VmRSS|Threads' /proc/$!/status       # 預期:State: S (sleeping)、VmRSS、Threads: 1
+kill $!
+```
+
+### ⚡ 配角速驗(`dmesg` / `journalctl`)
+
+```bash
+dmesg -T 2>/dev/null | tail -5    # 預期:內核訊息尾部(容器內可能權限不足或為空)
+journalctl -k -n 5 2>/dev/null    # 預期:plain 容器無 systemd → 可能無 journal;有 systemd 環境才有內容(見 07)
+```
 
 ---
 

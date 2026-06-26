@@ -30,7 +30,7 @@
 
 | 命令 | 作用 | 底層一兩句 |
 |---|---|---|
-| `ss -tlnp` | 看本機在**監聽**哪些 TCP 端口 + 哪個進程 | `t`=tcp `l`=listening `n`=數字(不反解) `p`=進程 |
+| 🔧 `ss -tlnp` | 看本機在**監聽**哪些 TCP 端口 + 哪個進程 | `t`=tcp `l`=listening `n`=數字(不反解) `p`=進程 |
 | `ss -tnp` | 看**已建立**的 TCP 連接 | 排查「連去了哪、誰連我」 |
 | `ss -s` | 連接狀態**摘要** | 一眼看各狀態總數(TIME_WAIT 爆了一目了然) |
 | `ss -tn state time-wait` | 按**連接狀態**過濾 | `ss` 比 `netstat` 強的地方:能 filter |
@@ -64,7 +64,7 @@
 
 | 命令 | 作用 | 底層一兩句 |
 |---|---|---|
-| `dig +short name` | 解析域名(乾淨輸出) | 直接問 DNS server,**不走** `/etc/hosts` |
+| 🔧 `dig +short name` | 解析域名(乾淨輸出) | 直接問 DNS server,**不走** `/etc/hosts` |
 | `dig name @8.8.8.8` | 指定**用哪個 DNS server** 解 | 排查「是不是本機 DNS 配置壞了」 |
 | `dig +trace name` | 從根域一步步追解析過程 | 看到底卡在哪一級 |
 | `getent hosts name` | 走**系統完整解析路徑** | 含 `/etc/hosts` + `nsswitch`——**和應用看到的一致** |
@@ -78,7 +78,7 @@
 
 | 命令 | 作用 |
 |---|---|
-| `curl -v https://x` | 看完整握手 + 請求/回應 header(排查首選) |
+| 🔧 `curl -v https://x` | 看完整握手 + 請求/回應 header(排查首選) |
 | `curl -I https://x` | **只看回應 header**(狀態碼、重定向、快取) |
 | `curl -s -o /dev/null -w '%{http_code} %{time_total}\n' url` | 只要狀態碼 + 總耗時(腳本化探活) |
 | `curl -w '@-' ...`(配 timing 模板) | 拆解 DNS / 連接 / TLS / 首字節各段耗時——**揪「慢在哪一段」** |
@@ -94,12 +94,103 @@
 
 | 命令 | 作用 |
 |---|---|
-| `tcpdump -i any -nn port 8080` | 抓所有網卡上 8080 的包,不反解 IP/端口 | 
+| 🔧 `tcpdump -i any -nn port 8080` | 抓所有網卡上 8080 的包,不反解 IP/端口 | 
 | `tcpdump -i any host 1.2.3.4` | 只抓跟某 IP 的往來 |
 | `tcpdump -i any -nn -w cap.pcap port 8080` | **存檔**,拖去 Wireshark 細看 |
 | `tcpdump -i any -A port 8080` | 以 ASCII 印出內容(看明文 HTTP) |
 
 > `-nn` = 不把 IP 反解成域名、不把端口反解成服務名(快、不卡)。心法:**`tcpdump` 是最後手段**——能用 `ss`/`curl` 判出來就別抓包;真要抓,複雜分析就 `-w` 存檔交給 Wireshark。
+
+---
+
+## 🔧 主力命令深講 + 速驗
+
+> 網路驗證要有「對端」;沙盒裡用**本機監聽(`nc -lk`)+ ping 自己**就能自給自足。**先進 README 的沙盒**(部分用例需容器有外網)。
+
+### ss — 端口與連接
+
+| 寫法 | 作用 |
+|---|---|
+| `ss -tlnp` | TCP + 監聽 + 數字 + 進程 |
+| `ss -tunlp` | 連 **UDP** 一起看(`u`) |
+| `ss -tnp` | **已建立**的 TCP 連接 |
+| `ss -s` | 各狀態**摘要**(TIME_WAIT 爆沒爆) |
+| `ss -tn state established` | 按連接狀態過濾 |
+| `ss -tnp 'dport = :443'` | 按端口過濾 |
+
+助記:`t`cp · `u`dp · `l`isten · `n`umeric · `p`rocess · `a`ll。
+
+**⚡ 驗證**:
+```bash
+nc -lk 8080 &                  # 起一個監聽 8080 的服務
+ss -tlnp | grep 8080           # 預期:LISTEN ... :8080 ... users:(("nc",pid=...))
+kill %1
+```
+
+### dig — DNS 查詢
+
+| 寫法 | 作用 |
+|---|---|
+| `dig +short name` | 只要結果(乾淨) |
+| `dig name @1.1.1.1` | 指定 DNS server |
+| `dig name MX` / `TXT` / `NS` | 指定記錄類型 |
+| `dig +trace name` | 從根域逐級追 |
+| `dig -x 1.2.3.4` | 反向解析(IP → 域名) |
+
+**⚡ 驗證**(需外網):
+```bash
+dig +short example.com         # 預期:一個或多個 IP
+dig example.com MX +short      # 預期:MX 記錄(或空行)
+```
+
+### curl — HTTP 瑞士刀
+
+| 寫法 | 作用 |
+|---|---|
+| `curl -v URL` | 看握手 + 請求/回應 header |
+| `curl -I URL` | 只看回應 header |
+| `curl -L URL` | 跟隨重定向 |
+| `curl -s -o /dev/null -w '%{http_code}\n' URL` | 只要狀態碼 |
+| `curl -H 'K: V' -d 'body' -X POST URL` | 加 header / body / 方法 |
+| `curl --resolve host:443:IP URL` | 繞過 DNS 強連某 IP |
+
+**⚡ 驗證**(需外網):
+```bash
+curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' https://example.com
+# 預期:200 0.xxxs
+curl -sI https://example.com | head -1     # 預期:HTTP/... 200
+```
+
+### tcpdump — 抓包
+
+| 寫法 | 作用 |
+|---|---|
+| `tcpdump -i any` | 抓所有網卡 |
+| `tcpdump -nn` | 不反解 IP / 端口(快) |
+| `tcpdump port 80` / `host 1.2.3.4` / `icmp` | 過濾表達式 |
+| `tcpdump -c 10` | 抓 10 個包就停 |
+| `tcpdump -w cap.pcap` / `-r cap.pcap` | 存檔 / 讀檔 |
+| `tcpdump -A` | 以 ASCII 印內容(看明文 HTTP) |
+
+**⚡ 驗證**:
+```bash
+tcpdump -i any -nn -c 3 icmp &     # 抓 3 個 ICMP 包就停(背景)
+sleep 1
+ping -c 3 127.0.0.1                # 製造 ICMP 流量
+# 預期:tcpdump 印出 3 行 ICMP echo request/reply 後自動結束
+```
+
+### ⚡ 配角速驗(`ping` / `nc` / `getent` / `traceroute`)
+
+```bash
+ping -c 3 127.0.0.1            # 預期:3 個 reply,0% packet loss
+getent hosts example.com      # 預期:IP + 主機名(走系統解析路徑,需外網)
+nc -lk 9000 &                 # 起一個監聽
+sleep 1
+nc -zv 127.0.0.1 9000         # 預期:... port 9000 ... succeeded!
+kill %1
+traceroute -m 5 1.1.1.1       # 預期:逐跳列出(需外網;容器內可能受限)
+```
 
 ---
 

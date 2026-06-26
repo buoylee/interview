@@ -18,7 +18,7 @@
 
 | 命令 | 作用 | 底層一兩句 |
 |---|---|---|
-| `systemctl status nginx` | 看狀態 + 最近幾行日誌 | **最高頻**;一眼看 active/failed + PID + 退出碼 |
+| 🔧 `systemctl status nginx` | 看狀態 + 最近幾行日誌 | **最高頻**;一眼看 active/failed + PID + 退出碼 |
 | `systemctl start/stop/restart nginx` | 起 / 停 / 重啟 | restart = 真的停再起 |
 | `systemctl reload nginx` | **重讀配置但不中斷服務** | 服務需支援(底層常是發 `SIGHUP`);比 restart 溫和 |
 | `systemctl enable --now nginx` | 設開機自啟**並立即啟動** | `enable` 只設自啟;`--now` 順便 start |
@@ -35,7 +35,7 @@
 
 | 命令 | 作用 |
 |---|---|
-| `journalctl -u nginx` | 某服務的全部日誌 |
+| 🔧 `journalctl -u nginx` | 某服務的全部日誌 |
 | `journalctl -u nginx -f` | **跟隨**(實時) |
 | `journalctl -u nginx -e` | 直接跳到**最尾部**(看最新錯誤) |
 | `journalctl -u nginx --since "1 hour ago"` | 按時間窗 |
@@ -103,6 +103,75 @@ systemctl start myapp  →  失敗
 ├─ systemctl cat myapp         看「完整生效」的 unit(改對地方了嗎)
 ├─ 一直 Restart 循環？         journal 裡看每次崩的原因;先 stop 止血
 └─ systemd-analyze blame       開機很慢?看哪個服務拖的
+```
+
+---
+
+## 🔧 主力命令深講 + 速驗
+
+> ⚠️ **這章驗證需要「有 systemd 的環境」**:plain `docker run ubuntu` 沒跑 systemd(PID 1 是 bash 不是 systemd)。請在**你的 linux-handson VM / WSL / 雲主機**裡跑(這些本來就是 systemd)。下面凡是 `start/stop` 的請用 root。
+
+### systemctl — 服務生命週期
+
+| 寫法 | 作用 |
+|---|---|
+| `systemctl status 服務` | 狀態 + 最近日誌 |
+| `systemctl start/stop/restart 服務` | 起/停/重啟 |
+| `systemctl reload 服務` | 不斷服務重讀配置 |
+| `systemctl enable --now 服務` | 開機自啟 + 立即啟動 |
+| `systemctl is-active / is-enabled 服務` | 腳本化探測 |
+| `systemctl list-units --type=service` | 列服務(`--state=failed` 只看掛的) |
+| `systemctl cat / show 服務` | 看生效的 unit / 所有屬性 |
+| `systemctl daemon-reload` | 改完 unit 檔重載 |
+
+**⚡ 驗證 A(唯讀,安全)**:
+```bash
+systemctl is-system-running             # 預期:running(或 degraded)
+systemctl list-units --type=service --state=running | head   # 預期:跑著的服務列表
+systemctl is-active cron 2>/dev/null || echo inactive        # 預期:active 或 inactive
+```
+
+**⚡ 驗證 B(端到端:造臨時服務 → 啟動 → 看日誌 → 清掉)**:
+```bash
+cat >/etc/systemd/system/hello.service <<'EOF'
+[Unit]
+Description=hello test
+[Service]
+ExecStart=/bin/sh -c 'echo hello from systemd; sleep 2'
+EOF
+systemctl daemon-reload
+systemctl start hello
+journalctl -u hello --no-pager | tail -3     # 預期:看到 "hello from systemd"
+# 清理:
+systemctl stop hello; rm /etc/systemd/system/hello.service; systemctl daemon-reload
+```
+
+### journalctl — 服務日誌
+
+| 寫法 | 作用 |
+|---|---|
+| `journalctl -u 服務` | 某服務全部日誌 |
+| `journalctl -u 服務 -f` / `-e` | 跟隨 / 跳到尾部 |
+| `journalctl -u 服務 --since "1 hour ago"` | 按時間窗 |
+| `journalctl -p err -b` | 本次開機的 error 級以上 |
+| `journalctl -k` | 內核訊息 |
+| `journalctl -n 50 --no-pager` | 最近 50 條 |
+| `journalctl --disk-usage` | 佔用磁碟 |
+
+**⚡ 驗證**:
+```bash
+journalctl -n 10 --no-pager       # 預期:最近 10 條日誌
+journalctl -p err -b --no-pager | tail   # 預期:本次開機的錯誤(可能為空)
+journalctl --disk-usage           # 預期:Archived and active journals take up XXM
+```
+
+### ⚡ 配角速驗(`systemd-run` / `systemd-analyze`)
+
+```bash
+systemd-run --on-active=2 /bin/touch /tmp/sd-done   # 2 秒後執行一次(需 root)
+sleep 3; ls -l /tmp/sd-done                          # 預期:檔案存在(transient timer 跑過了)
+systemd-analyze 2>/dev/null                          # 預期:Startup finished in ... 開機耗時
+systemd-analyze blame 2>/dev/null | head             # 預期:各服務啟動耗時降序
 ```
 
 ---

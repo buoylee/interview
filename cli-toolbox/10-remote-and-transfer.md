@@ -21,7 +21,7 @@
 
 | 命令 | 作用 |
 |---|---|
-| `ssh user@host -p 2222 -i ~/.ssh/key` | 指定端口 / 私鑰登入 |
+| 🔧 `ssh user@host -p 2222 -i ~/.ssh/key` | 指定端口 / 私鑰登入 |
 | `ssh-keygen -t ed25519` | 產生金鑰對 |
 | `ssh-copy-id user@host` | 把公鑰裝到對端 → **免密登入** |
 | `ssh -J bastion user@internal` | 經**跳板機**連內網主機(ProxyJump) |
@@ -67,7 +67,7 @@ ssh -L 5432:pg.internal:5432 bastion
 |---|---|
 | `scp file host:/path/` | 傳單檔到遠端(`-r` 傳目錄) |
 | `scp host:/path/file ./` | 從遠端拉回 |
-| `rsync -avz src/ host:/dst/` | **增量同步**:只傳差異(`a`保留屬性 `v`詳細 `z`壓縮) |
+| 🔧 `rsync -avz src/ host:/dst/` | **增量同步**:只傳差異(`a`保留屬性 `v`詳細 `z`壓縮) |
 | `rsync -avz --progress src/ host:/dst/` | 顯示進度 |
 | `rsync -avz --delete src/ host:/dst/` | **鏡像**:目標多出來的也刪 ⚠️ |
 | `rsync -avzn src/ host:/dst/` | `-n` = **dry-run**,先看會傳什麼 |
@@ -77,7 +77,7 @@ ssh -L 5432:pg.internal:5432 bastion
 
 ---
 
-## 4. `tmux`(跑長任務 + 可重連)
+## 4. 🔧 `tmux`(跑長任務 + 可重連)
 
 | 操作 | 命令 / 按鍵 |
 |---|---|
@@ -102,6 +102,88 @@ ssh -L 5432:pg.internal:5432 bastion
 | 同步一個大目錄到伺服器 | `rsync -avz --progress src/ host:/dst/` |
 | 跑幾小時的任務怕斷線 | `tmux new -s job`,`Ctrl+b d` 脫離 |
 | 管多台機器、免密 + 別名 | 配好 `~/.ssh/config` + `ssh-copy-id` |
+
+---
+
+## 🔧 主力命令深講 + 速驗
+
+> 隧道 / scp 需要對端;沙盒裡能自驗的是 `ssh-keygen`、`ssh -G`(解析 config)、本地 `rsync`、`tmux` 後台會話。先進 README 沙盒。
+
+### ssh — 連線 + config
+
+| 寫法 | 作用 |
+|---|---|
+| `ssh user@host -p PORT -i KEY` | 指定端口 / 私鑰 |
+| `ssh -J bastion user@internal` | 經跳板機(ProxyJump) |
+| `ssh -G host` | **印出對 host 生效的完整配置**(排查 config) |
+| `ssh -v host` | verbose,排查連不上 |
+| `ssh-keygen -t ed25519 -f KEY` | 產生金鑰對 |
+
+**⚡ 驗證**:
+```bash
+mkdir -p ~/.ssh
+ssh-keygen -t ed25519 -f /tmp/testkey -N '' -q    # 產生金鑰對(無密碼)
+ls /tmp/testkey*                                   # 預期:testkey(私鑰)+ testkey.pub(公鑰)
+ssh-keygen -lf /tmp/testkey.pub                    # 預期:指紋 "256 SHA256:... (ED25519)"
+printf 'Host demo\n  HostName 1.2.3.4\n  User bob\n  Port 2222\n' >> ~/.ssh/config
+ssh -G demo | grep -E '^(hostname|user|port) '     # 預期:hostname 1.2.3.4 / user bob / port 2222
+```
+
+### ssh 隧道(需對端,記命令形態)
+
+```bash
+ssh -L 5432:db-internal:5432 bastion   # 本地←遠端:本機 localhost:5432 → 內網 db
+ssh -R 8080:localhost:3000 host        # 本地→遠端:把本機 3000 暴露成遠端 8080
+ssh -D 1080 host                       # SOCKS 代理
+```
+
+### rsync — 增量同步
+
+| 寫法 | 作用 |
+|---|---|
+| `rsync -av src/ dst/` | 保留屬性 + 詳細;增量(只傳差異) |
+| `rsync -avz ... host:/dst/` | 加 `z` 壓縮(走網路時) |
+| `rsync -av --delete src/ dst/` | 鏡像:目標多的也刪 ⚠️ |
+| `rsync -avn src/ dst/` | `-n` dry-run,先看會做什麼 |
+
+**⚡ 驗證**(本地目錄就能驗):
+```bash
+mkdir -p /tmp/src && echo a >/tmp/src/a.txt && echo b >/tmp/src/b.txt
+rsync -av /tmp/src/ /tmp/dst/         # 同步(尾斜線=傳內容)
+ls /tmp/dst                            # 預期:a.txt b.txt
+echo c >/tmp/src/c.txt
+rsync -av /tmp/src/ /tmp/dst/         # 預期:只傳 c.txt(增量,輸出只列 c.txt)
+rsync -avn --delete /tmp/src/ /tmp/dst/   # 預期:dry-run 列出將同步/刪除什麼,但不真做
+```
+
+### tmux — 可重連會話
+
+| 操作 | 命令 |
+|---|---|
+| 新建(後台) | `tmux new -d -s 名` |
+| 列出 | `tmux ls` |
+| 連回 | `tmux attach -t 名` |
+| 脫離(在會話內) | `Ctrl+b` `d` |
+| 殺會話 | `tmux kill-session -t 名` |
+
+**⚡ 驗證**(非互動,後台會話):
+```bash
+tmux new -d -s demo                          # 後台建會話
+tmux ls                                       # 預期:demo: 1 windows ...
+tmux send-keys -t demo 'echo hi > /tmp/tmux-out' Enter    # 往會話發命令
+sleep 1; cat /tmp/tmux-out                    # 預期:hi(會話內真的執行了)
+tmux kill-session -t demo                     # 清理
+```
+> 互動版:`tmux new -s x` → 按 `Ctrl+b d` 脫離 → `tmux attach -t x` 回到原畫面。
+
+### ⚡ 配角速驗(`scp` / `ssh-copy-id` —— 需對端)
+
+```bash
+# 以下需真的遠端主機,這裡只列命令形態:
+# scp file user@host:/path/        傳檔上去(-r 傳目錄)
+# scp user@host:/path/file ./      拉回來
+# ssh-copy-id user@host            把公鑰裝到對端 → 免密
+```
 
 ---
 
