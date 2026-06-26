@@ -7,9 +7,9 @@
 ## 三层拓扑关系
 
 ```
-   os-for-architects/          ← 原语 → 架构决策(薄镜头):为什么这样选型、这样设计)
+   os-for-architects/          ← 原语 → 架构决策(薄镜头:为什么这样选型、这样设计)
          ▲ 坐其上
-   linux-handson/              ← 机制·能答·能排查(动手课):假设原语已懂,教怎么用/怎么排查)
+   linux-handson/              ← 机制·能答·能排查(动手课:假设原语已懂,教怎么用/怎么排查)
          ▲ 坐其上
    linux/  (本 track)          ← 底层原语本身:它是什么、黑盒里发生什么、怎么亲眼看到
 ```
@@ -45,9 +45,9 @@
 
 | 章 | 主题 | 核心原语 |
 |----|------|----------|
-| [01 内存原语](./01-memory-primitives/) | 指针·虚拟地址·页·page fault·brk/mmap·malloc·VSZ/RSS | 虚拟地址空间、MMU/TLB、匿名页/文件映射、缺页中断、堆扩张与归还、内存计量 |
-| [02 执行原语](./02-execution-primitives/) | syscall·用户↔内核切换·中断·上下文切换·栈帧·进程vs线程 | syscall 指令、特权级切换、硬件中断 vs 软件中断、调度器上下文切换、内核栈/用户栈、task_struct |
-| [03 IO 原语](./03-io-primitives/) | fd·fd表·inode·阻塞/非阻塞·内核缓冲·epoll·一切皆文件 | 文件描述符表、VFS/inode、write 的内核缓冲路径、epoll 红黑树+就绪链表、零拷贝 |
+| [01 内存原语](./01-memory-primitives/) | 指针·虚拟地址·页·page fault·brk/mmap·malloc·VSZ/RSS | 虚拟地址空间、MMU/TLB、匿名映射(`MAP_ANONYMOUS`)、缺页异常、堆扩张与归还、内存计量 |
+| [02 执行原语](./02-execution-primitives/) | syscall·用户↔内核切换·中断·上下文切换·栈帧·进程vs线程 | syscall 指令、特权级切换、硬件中断 vs 软件陷入(syscall)、调度器上下文切换、内核栈/用户栈、task_struct |
+| [03 IO 原语](./03-io-primitives/) | fd·fd表·inode·阻塞/非阻塞·内核缓冲·epoll·一切皆文件 | 文件描述符表、VFS/inode、write→page cache→writeback 路径、epoll 红黑树+就绪链表 |
 | [04 并发原语](./04-concurrency-primitives/) | 原子/CAS·futex·signal·条件变量·内存屏障 | CAS 与 Lock 前缀、futex 内核等待队列、信号异步交付、条件变量语义、store/load 屏障 |
 
 ---

@@ -187,7 +187,7 @@ docker run --rm arm64v8/ubuntu:22.04 bash -c 'kill -l'
 - 9) `SIGKILL`、19) `SIGSTOP`：不可捕获，直接由内核处理。
 - 15) `SIGTERM`：可捕获，标准「请优雅退出」信号。
 - 2) `SIGINT`：键盘 `Ctrl+C` 的信号，也可捕获。
-- 32、33 号跳过（内核保留）；34–64 为实时信号，支持排队不丢失。
+- 32、33 号由 glibc/NPTL 线程实现占用（故用户态 `SIGRTMIN` 从 34 起）；34–64 为实时信号，支持排队不丢失。
 
 → **回链**：`linux-handson/03-process-model`（进程信号与 `/proc/<pid>/status` 的 `SigCgt` 字段，以及 graceful shutdown 实测）
 
