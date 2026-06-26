@@ -151,6 +151,25 @@ find /tmp/ft -name '*.txt' -delete; find /tmp/ft -name '*.txt'   # 預期:第二
 | `df -i` | 各分區 inode |
 | `df -hT` | 加檔案系統類型 |
 
+`df -h` 看空間,`df -i` 看 inode,兩個都可能滿:
+
+```text
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/vda1        40G   35G  5.0G  88% /
+
+Filesystem      Inodes IUsed  IFree IUse% Mounted on
+/dev/vda1      2621440 20000 2601440    1% /
+```
+
+| 命令 | 看什麼 | 怎麼判讀 |
+|---|---|---|
+| `df -h` | block 空間 | `Use%` 高 = 容量快滿 |
+| `df -i` | inode 數量 | 小檔太多會 inode 滿,即使 GB 還夠也寫不進 |
+| `Avail` / `IFree` | 剩餘空間/剩餘 inode | 這兩欄才是還能不能寫 |
+| `Mounted on` | 掛載點 | 確認滿的是哪個分區 |
+
+> 小坑:報 `No space left on device` 不一定是 GB 滿,也可能是 inode 滿。
+
 **⚡ 驗證**:
 ```bash
 du -sh /tmp/ft                     # 預期:/tmp/ft 總大小
@@ -169,6 +188,24 @@ df -i /                            # 預期:根分區 inode 使用量
 | `chmod -R 755 dir` | 遞迴 |
 | `chown user:group file` (`-R`) | 改擁有者(需 root) |
 
+`ls -l` 第一欄拆開看:
+
+```text
+-rwxr-xr-x 1 root root 123 Jun 26 10:00 app.sh
+```
+
+| 片段 | 意思 | 怎麼判讀 |
+|---|---|---|
+| `-` | 檔案類型 | `-` 普通檔,`d` 目錄,`l` 軟連結 |
+| `rwx` | owner 權限 | 檔案擁有者能讀/寫/執行 |
+| `r-x` | group 權限 | 同組使用者能讀/執行 |
+| `r-x` | others 權限 | 其他人能讀/執行 |
+| `1` | hard link 數 | 目錄或硬連結場景會變大 |
+| `root root` | owner / group | 權限排查要配這兩欄 |
+| `123` | 大小 bytes | `ls -lh` 會變成人類可讀 |
+
+> 小坑:目錄的 `x` 代表能進入/穿越目錄;只有 `r` 沒 `x` 很多操作仍會失敗。
+
 **⚡ 驗證**:
 ```bash
 touch /tmp/perm.sh
@@ -181,6 +218,25 @@ ls -l /tmp/perm.sh           # 預期:x 位被拿掉 → -rw-r--r--
 ```
 
 ### ⚡ 配角速驗(`stat` / `ln` / `tar` / `file` / `lsblk`)
+
+`stat` 的三種時間不要混:
+
+| 欄位 | 意思 | 常見用途 |
+|---|---|---|
+| `Access` | 上次讀取時間 | 誰最近讀過;很多系統會弱化更新 |
+| `Modify` | 檔案內容上次修改 | 排查內容何時變了 |
+| `Change` | metadata 上次改變 | chmod/chown/rename/link 也會更新 |
+
+`lsblk` 看塊設備樹:
+
+| 欄位 | 意思 | 怎麼判讀 |
+|---|---|---|
+| `NAME` | 設備名 | 樹狀縮排表示磁碟、分區、LVM 關係 |
+| `SIZE` | 容量 | 對照 `df` 看分區是否掛上 |
+| `TYPE` | 類型 | `disk` 磁碟,`part` 分區,`lvm` 邏輯卷 |
+| `MOUNTPOINTS` | 掛載點 | 空白代表目前沒掛載 |
+
+> 小坑:`Modify` 是內容變,`Change` 是 inode metadata 變;不是建立時間。`lsblk` 不同版本可能顯示 `MOUNTPOINT` 或 `MOUNTPOINTS`。
 
 ```bash
 stat /tmp/perm.sh            # 預期:Inode、Access/Modify/Change 三種時間戳
