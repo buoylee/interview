@@ -187,6 +187,26 @@ kill %1
 
 欄位記成 4 組:`r b`(等CPU/阻塞數)、`si so`(swap 換進出,非零=記憶體不足)、`bi bo`(塊設備讀寫)、`us sy id wa st`(CPU 構成,同第 2 節)。
 
+如果看到完整表頭,按區塊這樣讀:
+
+```text
+procs -----------memory---------- ---swap-- -----io---- -system-- -------cpu-------
+ r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st gu
+```
+
+| 區塊 | 欄位 | 怎麼讀 |
+|---|---|---|
+| `procs` | `r` | **runnable / run queue**:可執行進程數,包含正在跑 + 已準備好但排隊等 CPU。長期大於 CPU 核心數 = CPU 排隊 |
+| `procs` | `b` | blocked:阻塞進程數,常見是等磁碟/NFS 等 IO |
+| `memory` | `swpd` | 已用 swap 大小;單看不嚇人,要配下面 `si/so` |
+| `memory` | `free` `buff` `cache` | 空閒、buffer、page cache;`free` 低不一定缺記憶體,Linux 會拿空閒記憶體做快取 |
+| `swap` | `si` `so` | swap in/out。**持續非零 = 記憶體壓力真的來了**,性能容易掉很快 |
+| `io` | `bi` `bo` | block in/out:塊設備讀/寫;配 `wa` 高一起看,通常指向磁碟 IO |
+| `system` | `in` `cs` | interrupts / context switches:中斷與上下文切換;`cs` 異常高常見於線程切換太頻繁 |
+| `cpu` | `us` `sy` `id` `wa` `st` `gu` | user / system / idle / iowait / steal / guest;`wa` 高看 IO,`st` 高看雲主機宿主搶 CPU |
+
+> 小坑:`vmstat 1` 的**第一行數字通常是開機以來平均**,實戰判讀看第二行之後的即時值。
+
 **⚡ 驗證**:
 ```bash
 vmstat 1 3       # 預期:刷 3 行後停;看最右 us/sy/id/wa 欄
