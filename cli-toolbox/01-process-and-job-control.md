@@ -145,6 +145,38 @@ ps -eo pid,ppid,stat,comm | awk '$3 ~ /^Z/'
 | `ps -T -p PID` | 看某進程的**線程**(每線程一行) |
 | `ps -o pid,ni,pri,comm -p PID` | 看優先級(`ni` nice / `pri`) |
 
+如果看到這種輸出,按欄位這樣讀:
+
+```text
+  PID  PPID  PGID   SID TTY      STAT COMMAND
+ 1234  1200  1234  1200 pts/0    S+   sleep
+```
+
+| 欄位 | 意思 | 怎麼判讀 |
+|---|---|---|
+| `PID` | 進程自己的 ID | 後續 `kill`、`lsof -p`、`strace -p` 都靠它 |
+| `PPID` | 父進程 ID | 子進程失控時,先找誰生了它 |
+| `PGID` | 進程組 ID | `kill -- -PGID` 會打整組,不是單一 PID |
+| `SID` | session ID | 判斷它還歸不歸某個登入會話/終端管 |
+| `TTY` | 控制終端 | `?` 常見於 daemon 或脫離終端的進程 |
+| `STAT` | 進程狀態碼 | 第一個字母看狀態,後綴看前台/多線程/優先級 |
+| `COMMAND` | 程式名 | 只看程式名;要看完整參數用 `args` 或 `ps -ef` |
+
+`STAT` 最常見:
+
+| 代碼 | 意思 | 怎麼判讀 |
+|---|---|---|
+| `R` | running / runnable | 正在跑或等 CPU |
+| `S` | sleeping | 正常睡眠,在等事件 |
+| `D` | uninterruptible sleep | 常見是卡 IO;`kill -9` 也不一定立刻有用 |
+| `T` | stopped | 被 `Ctrl+Z` 或信號停住 |
+| `Z` | zombie | 子進程已死,等父進程 `wait()` 回收 |
+| `+` | foreground process group | 前台進程組,會吃到終端的 `Ctrl+C` |
+| `s` | session leader | 會話頭頭 |
+| `l` | multi-threaded | 多線程進程 |
+
+> 小坑:`ps -C name` 只認程式名,不認參數;找命令列字串用 `pgrep -af` 或 `ps -ef | grep`。
+
 **⚡ 驗證**:
 ```bash
 sleep 300 &
