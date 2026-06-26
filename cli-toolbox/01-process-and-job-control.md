@@ -94,6 +94,8 @@
 | `D` | **不可中斷睡眠** | **卡在 IO**!`kill -9` 都殺不掉。一堆 `D` = 磁碟/NFS 出事(見 **02** 的 `wa`) |
 | `Z` | 殭屍(defunct) | 已死、等父回收。見下節 |
 | `T` | 停止 / 被追蹤 | 被 `Ctrl+Z` 或 debugger 停住 |
+| `<` | high priority | 優先級較高(常見於 nice 值較低) |
+| `N` | low priority | 優先級較低(常見於 nice 值較高) |
 | 後綴 `+` `s` `<` `N` `l` | 前台組 / session leader / 高優先 / 低優先 / 多線程 | `s`=會話頭頭、`<`=被調高優先級 |
 
 **優先級(nice 值,-20 最高 ~ 19 最低)**:
@@ -173,6 +175,8 @@ ps -eo pid,ppid,stat,comm | awk '$3 ~ /^Z/'
 | `Z` | zombie | 子進程已死,等父進程 `wait()` 回收 |
 | `+` | foreground process group | 前台進程組,會吃到終端的 `Ctrl+C` |
 | `s` | session leader | 會話頭頭 |
+| `<` | high priority | 優先級較高(常見於 nice 值較低) |
+| `N` | low priority | 優先級較低(常見於 nice 值較高) |
 | `l` | multi-threaded | 多線程進程 |
 
 > 小坑:`ps -C name` 只認程式名,不認參數;找命令列字串用 `pgrep -af` 或 `ps -ef | grep`。

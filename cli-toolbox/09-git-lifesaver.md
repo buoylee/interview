@@ -150,6 +150,10 @@ A  new.txt
 `git diff` 看 hunk:
 
 ```text
+diff --git a/app.py b/app.py
+index e69de29..4b825dc 100644
+--- a/app.py
++++ b/app.py
 @@ -10,2 +10,3 @@
 -old line
 +new line
@@ -157,6 +161,10 @@ A  new.txt
 
 | 片段 | 意思 |
 |---|---|
+| `diff --git a/app.py b/app.py` | 這次 diff 比較的檔案 |
+| `index e69de29..4b825dc` | 舊/新 blob id,可用來精準定位內容版本 |
+| `--- a/app.py` | 舊檔 |
+| `+++ b/app.py` | 新檔 |
 | `-10,2` | 舊檔從第 10 行開始,共 2 行 |
 | `+10,3` | 新檔從第 10 行開始,共 3 行 |
 | `-old line` | 刪掉的行 |

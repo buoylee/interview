@@ -130,8 +130,8 @@ LISTEN 0      128          0.0.0.0:8080      0.0.0.0:*     users:(("nc",pid=1234
 | 欄位 | 意思 | 怎麼判讀 |
 |---|---|---|
 | `State` | TCP 狀態 | `LISTEN` 是服務在聽;`ESTAB` 是已連上 |
-| `Recv-Q` | 接收隊列 | `LISTEN` 時是已完成、等 `accept()` 的連線數;已連線時才偏向未讀 bytes |
-| `Send-Q` | 發送隊列 / backlog | `LISTEN` 時常是 backlog 上限;已連線時是未送出/未確認 bytes |
+| `Recv-Q` | 接收隊列 / backlog 壓力 | `LISTEN` 時粗看目前 listen backlog 佔用;`ESTAB` 時才偏向未讀 bytes |
+| `Send-Q` | 發送隊列 / backlog 上限 | `LISTEN` 時常是 listen backlog 上限;`ESTAB` 時是未送出/未確認 bytes |
 | `Local Address:Port` | 本機地址與端口 | `0.0.0.0:8080` = 所有網卡都聽 |
 | `Peer Address:Port` | 對端地址與端口 | `*` 常見於監聽 socket |
 | `users:(("nc",pid=1234,fd=3))` | 佔用 socket 的進程、PID、fd | 端口被佔時直接看這欄 |

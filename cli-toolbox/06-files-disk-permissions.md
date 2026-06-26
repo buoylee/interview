@@ -83,6 +83,9 @@
 | 命令 | 作用 | 底層一兩句 |
 |---|---|---|
 | `lsblk` | 塊設備樹(磁碟/分區/掛載點) | 看「有哪些盤、掛在哪」 |
+| `MAJ:MIN` | 主/次設備號 | 內核識別設備用,日常排查通常只作識別 |
+| `RM` | removable | `1` 常見於可移除設備 |
+| `RO` | read-only | `1` 表示唯讀設備 |
 | `mount /dev/sdb1 /mnt` | 掛載 | 臨時掛;開機自動掛要寫 `/etc/fstab` |
 | `umount /mnt` | 卸載 | 報 `target is busy` → 有進程在用 |
 | `fuser -m /mnt` | **誰在用這個掛載點** | `umount` 不掉時揪元兇(或 `lsof +D /mnt`) |
@@ -232,8 +235,11 @@ ls -l /tmp/perm.sh           # 預期:x 位被拿掉 → -rw-r--r--
 | 欄位 | 意思 | 怎麼判讀 |
 |---|---|---|
 | `NAME` | 設備名 | 樹狀縮排表示磁碟、分區、LVM 關係 |
+| `MAJ:MIN` | 主/次設備號 | 內核識別設備用,日常排查通常只作識別 |
 | `SIZE` | 容量 | 對照 `df` 看分區是否掛上 |
 | `TYPE` | 類型 | `disk` 磁碟,`part` 分區,`lvm` 邏輯卷 |
+| `RM` | removable | `1` 常見於可移除設備 |
+| `RO` | read-only | `1` 表示唯讀設備 |
 | `MOUNTPOINTS` | 掛載點 | 空白代表目前沒掛載 |
 
 > 小坑:`Modify` 是內容變,`Change` 是 inode metadata 變;不是建立時間。`lsblk` 不同版本可能顯示 `MOUNTPOINT` 或 `MOUNTPOINTS`。
