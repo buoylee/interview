@@ -167,6 +167,26 @@ free -h                # 7. 記憶體 / available
 | `top -b -n1 -o %MEM` | 按記憶體排序輸出 |
 | `top -p PID` | 只盯某個進程 |
 
+如果看到 `top` 頂部摘要,按區塊這樣讀:
+
+```text
+top - 10:00:00 up 3 days,  2 users,  load average: 0.42, 0.60, 0.55
+Tasks: 120 total,   1 running, 119 sleeping,   0 stopped,   0 zombie
+%Cpu(s): 12.0 us,  3.0 sy,  0.0 ni, 80.0 id,  5.0 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem :  16000 total,   2000 free,   9000 used,   5000 buff/cache
+MiB Swap:   2048 total,   2048 free,      0 used.   6000 avail Mem
+```
+
+| 區塊 | 怎麼讀 |
+|---|---|
+| `load average` | 1/5/15 分鐘平均排隊量;要除以 CPU 核心數看 |
+| `Tasks` | `running` 多看 CPU,`zombie` 非 0 看父進程回收問題 |
+| `%Cpu(s)` | `us` 應用算,`sy` 內核忙,`id` 空閒,`wa` 等 IO,`st` 被宿主偷 CPU |
+| `Mem` | `used` 含 cache 口徑,別只盯 `free` |
+| `Swap` | `used` 上升不一定正在抖;要配 `vmstat si/so` 看是否持續換頁 |
+
+> 小坑:`top` 裡單個進程 `%CPU` 在多核機可超過 100%;總 CPU 行才是全機比例。
+
 **⚡ 驗證**:
 ```bash
 top -b -n1 | head -12      # 預期:load/任務/CPU/記憶體摘要 + 進程表頭
@@ -220,6 +240,25 @@ vmstat 1 3       # 預期:刷 3 行後停;看最右 us/sy/id/wa 欄
 | `free -m` | 固定以 MB 顯示 |
 | `free -s 2` | 每 2 秒刷一次 |
 
+如果看到這種輸出,重點看 `available`:
+
+```text
+              total        used        free      shared  buff/cache   available
+Mem:           16Gi       9.0Gi       1.5Gi       200Mi       5.5Gi       6.0Gi
+Swap:         2.0Gi          0B       2.0Gi
+```
+
+| 欄位 | 意思 | 怎麼判讀 |
+|---|---|---|
+| `total` | 物理記憶體總量 | 容量基準 |
+| `used` | 已使用記憶體 | 包含多種口徑,別單獨當壓力證據 |
+| `free` | 完全空著的記憶體 | Linux 會故意讓它低,拿去做 cache |
+| `buff/cache` | buffer + page cache | 可回收,通常不是壞事 |
+| `available` | 估算可立刻給應用的量 | **最該看**;低才是真緊 |
+| `Swap used` | 已放到 swap 的量 | 配 `vmstat si/so` 判斷是否正在頻繁換頁 |
+
+> 小坑:`free` 很低不等於缺記憶體;`available` 低 + `si/so` 持續非零才危險。
+
 **⚡ 驗證**:
 ```bash
 free -h          # 預期:Mem 行;重點看 "available" 欄(不是 "free" 欄)
@@ -234,6 +273,23 @@ free -h          # 預期:Mem 行;重點看 "available" 欄(不是 "free" 欄)
 | `iostat -dx` | 只看磁碟設備 |
 
 看哪幾欄:`await`(單次延遲 ms,**最重要**)、`%util`(繁忙度)、`r/s w/s`(IOPS)。
+
+如果看到磁碟行,這幾欄最有用:
+
+```text
+Device            r/s     w/s   rkB/s   wkB/s  await  aqu-sz  %util
+nvme0n1          5.00   80.00  640.00 9000.00   2.50    0.30  35.00
+```
+
+| 欄位 | 意思 | 怎麼判讀 |
+|---|---|---|
+| `r/s` `w/s` | 每秒讀/寫 IO 次數 | IOPS 壓力 |
+| `rkB/s` `wkB/s` | 每秒讀/寫吞吐 | 大檔/掃描型壓力 |
+| `await` | 單次 IO 平均等待 ms | **延遲核心指標**;飆高表示請求等太久 |
+| `aqu-sz` | 平均隊列長度 | 長期升高 = IO 排隊 |
+| `%util` | 設備忙碌比例 | HDD 接近 100% 多半飽和;NVMe 要配 `await` 看 |
+
+> 小坑:SSD/NVMe 能並行,`%util` 高不一定壞;`await` 高才更像使用者真的在等。
 
 **⚡ 驗證**:
 ```bash
