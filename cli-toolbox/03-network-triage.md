@@ -120,6 +120,24 @@
 
 助記:`t`cp · `u`dp · `l`isten · `n`umeric · `p`rocess · `a`ll。
 
+如果看到 `ss -tlnp` 輸出,按欄位這樣讀:
+
+```text
+State  Recv-Q Send-Q Local Address:Port Peer Address:Port Process
+LISTEN 0      128          0.0.0.0:8080      0.0.0.0:*     users:(("nc",pid=1234,fd=3))
+```
+
+| 欄位 | 意思 | 怎麼判讀 |
+|---|---|---|
+| `State` | TCP 狀態 | `LISTEN` 是服務在聽;`ESTAB` 是已連上 |
+| `Recv-Q` | 接收隊列 | `LISTEN` 時是已完成、等 `accept()` 的連線數;已連線時才偏向未讀 bytes |
+| `Send-Q` | 發送隊列 / backlog | `LISTEN` 時常是 backlog 上限;已連線時是未送出/未確認 bytes |
+| `Local Address:Port` | 本機地址與端口 | `0.0.0.0:8080` = 所有網卡都聽 |
+| `Peer Address:Port` | 對端地址與端口 | `*` 常見於監聽 socket |
+| `users:(("nc",pid=1234,fd=3))` | 佔用 socket 的進程、PID、fd | 端口被佔時直接看這欄 |
+
+> 小坑:沒有 `-n` 時會反查域名/服務名,排查時可能變慢且干擾判讀。
+
 **⚡ 驗證**:
 ```bash
 nc -lk 8080 &                  # 起一個監聽 8080 的服務
@@ -136,6 +154,26 @@ kill %1
 | `dig name MX` / `TXT` / `NS` | 指定記錄類型 |
 | `dig +trace name` | 從根域逐級追 |
 | `dig -x 1.2.3.4` | 反向解析(IP → 域名) |
+
+如果看到完整 `dig` 輸出,先看這幾段:
+
+```text
+;; ANSWER SECTION:
+example.com.        300     IN      A       93.184.216.34
+
+;; Query time: 20 msec
+;; SERVER: 1.1.1.1#53(1.1.1.1)
+```
+
+| 欄位/段落 | 意思 | 怎麼判讀 |
+|---|---|---|
+| `ANSWER SECTION` | DNS 回答本體 | 有答案時看這段;沒有時再看狀態碼,可能是 NXDOMAIN 或 NOERROR 空回答 |
+| `300` | TTL 秒數 | 快取多久;切 DNS 時它決定舊值殘留時間 |
+| `A` / `CNAME` / `MX` | 記錄類型 | `A` 是 IPv4,`CNAME` 是別名,`MX` 是郵件 |
+| `Query time` | 查詢耗時 | 高了看 DNS server 或網路 |
+| `SERVER` | 實際詢問的 DNS server | 確認是不是問到預期 resolver |
+
+> 小坑:`dig` 直接問 DNS;應用實際解析還可能受 `/etc/hosts` 和 `nsswitch` 影響,要用 `getent hosts` 對照。
 
 **⚡ 驗證**(需外網):
 ```bash
@@ -154,6 +192,22 @@ dig example.com MX +short      # 預期:MX 記錄(或空行)
 | `curl -H 'K: V' -d 'body' -X POST URL` | 加 header / body / 方法 |
 | `curl --resolve host:443:IP URL` | 繞過 DNS 強連某 IP |
 
+排慢請把時間拆開看:
+
+```bash
+curl -s -o /dev/null -w 'dns=%{time_namelookup} tcp=%{time_connect} tls=%{time_appconnect} first=%{time_starttransfer} total=%{time_total}\n' https://example.com
+```
+
+| 欄位 | 意思 | 慢了看哪 |
+|---|---|---|
+| `time_namelookup` | DNS 解析完成時間 | DNS / resolver |
+| `time_connect` | TCP 連線完成時間 | 網路路徑 / 防火牆 / 端口 |
+| `time_appconnect` | TLS 握手完成時間 | 憑證 / TLS / 中間代理 |
+| `time_starttransfer` | 首 byte 回來時間 | 後端處理慢最常看這個 |
+| `time_total` | 整次請求總時間 | 使用者體感總耗時 |
+
+> 小坑:`time_starttransfer` 包含 DNS/TCP/TLS、代理與服務端排隊;適合估算「首 byte 前總等待」,不是精準後端耗時。
+
 **⚡ 驗證**(需外網):
 ```bash
 curl -s -o /dev/null -w '%{http_code} %{time_total}s\n' https://example.com
@@ -171,6 +225,22 @@ curl -sI https://example.com | head -1     # 預期:HTTP/... 200
 | `tcpdump -c 10` | 抓 10 個包就停 |
 | `tcpdump -w cap.pcap` / `-r cap.pcap` | 存檔 / 讀檔 |
 | `tcpdump -A` | 以 ASCII 印內容(看明文 HTTP) |
+
+如果看到 TCP 包,拆成這幾段:
+
+```text
+10:00:00.123456 IP 10.0.0.1.54321 > 10.0.0.2.80: Flags [S], seq 100, win 64240, length 0
+```
+
+| 片段 | 意思 | 怎麼判讀 |
+|---|---|---|
+| `10:00:00.123456` | 抓到包的時間 | 對齊應用日誌時間 |
+| `10.0.0.1.54321 > 10.0.0.2.80` | 來源 IP/端口 到 目的 IP/端口 | 箭頭看方向 |
+| `Flags [S]` | TCP flag | `S` SYN,`.` ACK,`F` FIN,`R` RST,`P` PUSH |
+| `seq` / `ack` | TCP 序號/確認號 | 深查重傳/亂序時用 |
+| `length` | payload 長度 | `0` 常見於握手/ACK 控制包 |
+
+> 小坑:排查連線先加 `-nn`;不反解名字,輸出更快更準。
 
 **⚡ 驗證**:
 ```bash
