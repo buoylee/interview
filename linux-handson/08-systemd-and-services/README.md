@@ -102,6 +102,24 @@ journalctl -b                          # 本次开机以来
 
 **journald vs 文件日志**:journald 结构化、带元数据、统一查询/按服务过滤;传统应用仍可能直接写 `/var/log/*.log` 文件,那就要配 **logrotate** 切割归档,否则磁盘写满(接 `05`:别 `rm` 在写的日志,logrotate 用 `copytruncate`)。
 
+**「结构化、带元数据」具体长啥样**:每条日志不是一行字符串,而是一袋 `KEY=value` 字段。`journalctl -o verbose -n 1` 把一条摊开给你看:
+
+```bash
+journalctl -u myapp -o verbose -n 1
+# MESSAGE=...                ← 应用自己打的内容(等价你写进文件的那行)
+# PRIORITY=3                 ← err 级(0=emerg … 7=debug)
+# _PID=1234  _UID=1000       ← _ 前缀字段
+# _SYSTEMD_UNIT=myapp.service
+# _BOOT_ID=...  _HOSTNAME=...
+```
+
+关键:**`_` 前缀的字段是 journald 从 `/proc` 现场贴上去的「可信字段」,应用伪造不了**(应用只能控制 `MESSAGE`/`PRIORITY` 这类无下划线字段)。所以你能放心按 `_SYSTEMD_UNIT=` / `_PID=` 过滤、定位是哪个服务哪个进程——这正是文件日志做不到的:文件里「来源」全靠应用自觉写,journald 里是内核态事实。
+
+```bash
+journalctl _SYSTEMD_UNIT=myapp.service   # 按可信字段过滤(等价 -u myapp)
+journalctl _PID=1234                      # 只看某进程,不管它打到哪
+```
+
 ### 2.8 timer 替代 cron(简述)
 
 `.timer` + `.service` 做定时任务,比 cron 多了:日志(journald)、依赖、资源限制、错过补跑(`Persistent=true`)。`systemctl list-timers` 看。
