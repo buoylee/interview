@@ -102,7 +102,72 @@ $ cat /sys/fs/cgroup/memory.max       # 限制,如 536870912 (512M),max=不限
 $ cat /sys/fs/cgroup/memory.current   # 当前用量
 ```
 
+**这两个对应 `free` 的哪两列?**(高频疑惑)
+
+| cgroup v2 | ≈ `free` 的 | 坑 |
+|-----------|------------|-----|
+| `memory.max` | `total`(上限) | 值=`max` 表不限 → 回退看宿主 |
+| `memory.current` | `used` **+** `buff/cache`(混在一起) | **含 page cache**,不是纯应用占用 |
+
+注意:cgroup **没有现成的 `available` 列**。`memory.current` 把「真占用」和「可回收 cache」捆在一起了(等于 `free` 的 `used + buff/cache`),所以 **`memory.max − memory.current` 会低估可用量**——那块 cache 跟 2.3 一样可立即回收。
+
+要正确算容器的 available,得从 `memory.stat` 把可回收部分捞回来:
+
+```console
+$ grep -E '^(anon|file|slab_reclaimable) ' /sys/fs/cgroup/memory.stat
+anon 314572800           # 匿名页=堆/栈,真占用、不可回收
+file 157286400           # page cache,可回收
+slab_reclaimable 8388608
+```
+
+```
+容器 available ≈ memory.max − memory.current + file (+ slab_reclaimable)
+              （= 上限 − 当前 + 可回收 cache）
+```
+
+**实务:别手算,用感知 cgroup 的工具**——`docker stats`(USAGE 已减掉可回收 cache、给接近真占用,LIMIT=`memory.max`)、K8s 用 `kubectl top pod`、宿主机上 `systemd-cgtop -m` 按 cgroup 排序。
+
 > 完整的容器机制(namespaces/cgroups)在 `09` 展开,这里先记住「容器里别信 `free`,要看 cgroup」。
+
+### 2.8 容器里怎么分析 Java 内存(NMT + 两种 OOM)
+
+承上:容器里 `free`/`top` 读的是宿主机,分析 Java 内存得换工具。**错不在「进容器」**(`kubectl exec` 进去很对),错在进去看 `free`——看 cgroup 文件或用 `jcmd` 才对。
+
+**第一步:先分清是哪种 OOM**(根因相反,工具不同):
+
+| 症状 | 本体 | 谁杀的 | 查哪 |
+|------|------|--------|------|
+| `java.lang.OutOfMemoryError: Java heap space` | **堆**满 | JVM 自己抛,容器**没死** | heap dump / `-Xmx` / GC 日志 |
+| 容器 `OOMKilled`、**exit 137** | **RSS** 超 `memory.max` | 内核 cgroup OOM | NMT 查堆外,容器日志常无 OOM 字样 |
+
+判断:`kubectl describe pod` 看到 `Reason: OOMKilled` / exit 137 → cgroup(堆外撑爆);容器 stdout 有 `OutOfMemoryError` → 堆满。
+
+回顾本章核心公式:`RSS = 堆 + Metaspace + 线程栈 + DirectByteBuffer + JIT code cache + GC 结构`。**`-Xmx512m` 还 137,就是堆外那堆把 RSS 顶过了 cgroup。**
+
+**第二步:NMT 是看堆外的正门**(`free` 看不到堆外,`jcmd` 能)。启动加 `-XX:NativeMemoryTracking=summary`,然后:
+
+```console
+$ jcmd 1 VM.native_memory summary        # 容器里 JVM 多半是 PID 1
+Total: committed=1.4GB
+-  Java Heap (committed=512MB)            # 堆
+-  Class    (committed=80MB)              # Metaspace ← 类多/动态代理会涨
+-  Thread   (committed=200MB)             # 线程栈 ← 线程数×~1MB,池爆会涨
+-  Code     (committed=60MB)              # JIT code cache
+-  Internal (committed=300MB)             # DirectByteBuffer 常落这 ← Netty/NIO
+```
+
+`committed` 总和 ≈ RSS,能跟 `memory.current` 对上就闭环了——哪格大就治哪格。配套:`jcmd 1 GC.heap_dump /tmp/h.hprof`(拉到本机用 MAT 离线分析堆)、`jstat -gc 1 1000`(看 GC 是不是回收不掉)。
+
+**第三步:确认 JVM 感知 cgroup**(没这个前面全白搭):
+
+```console
+$ java -XX:+PrintFlagsFinal -version | grep -E 'MaxHeapSize|MaxRAMPercentage'
+# 容器里跑,确认堆按 512M(cgroup)算,不是按宿主 16G
+```
+
+Java 8u191+/10+ 默认 `-XX:+UseContainerSupport`;设 `-XX:MaxRAMPercentage=75` 留 25% 给堆外,避免 137。
+
+**工具进不去的坑**:镜像是 JRE/distroless 没 `jcmd` → 换 JDK 镜像 / sidecar 共享 PID namespace / 用 `jattach` 静态二进制;从宿主跨 namespace 连不上 → 直接 `kubectl exec` 进去对 PID 1 跑;要看「谁在狂 new」用 async-profiler `-e alloc`。
 
 ---
 
@@ -204,6 +269,8 @@ sudo dmesg -T | grep -iE 'out of memory|killed process' | tail
 - **什么是 OOM killer、怎么选进程?** 内存真不够时内核按 `oom_score`(占用 + adj)挑一个杀掉救系统;被杀进程 exit 137。
 - **容器 OOMKilled 但宿主机内存充足为什么?** cgroup 限制小于实际用量;传统工具/老运行时读宿主机内存,没感知 cgroup → 超限。
 - **VSZ 2G 但 RSS 200M 正常吗?** 正常,按需分页:申请虚拟地址不等于占物理内存,写到才缺页分配。
+- **容器里 `memory.current` 等于 `free` 的哪列?容器 available 怎么算?** `memory.max`≈`total`、`memory.current`≈`used+buff/cache`(含可回收 cache,**非** available);available ≈ `memory.max − memory.current + memory.stat.file`,或直接信 `docker stats` / `kubectl top`。
+- **容器里怎么分析 Java 内存?** 先用 exit 137(堆外撑爆 cgroup)vs `OutOfMemoryError`(堆满)分清方向;堆外用 `jcmd VM.native_memory` 拆格、堆用 heap dump,前提 `-XX:MaxRAMPercentage` 让 JVM 感知 cgroup;`free` 全程别看。
 
 ---
 

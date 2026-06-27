@@ -150,7 +150,16 @@ SYN 到 ──► [半连接队列] ──握手完成──► [全连接队列
 **全连接队列满**（应用 `accept()` 太慢）：
 - 默认行为：**丢掉握手第 3 次的 ACK**，客户端重传，还满就放弃
 - 可改 `net.ipv4.tcp_abort_on_overflow=1` 变成发 RST（快速失败）
-- **观察**：`ss -lnt` 显示的 `Recv-Q` 就是当前全连接队列长度
+- **观察**：`ss -lnt` 下，LISTEN 那行的两栏**不是字节，是队列**：
+
+  | 栏 | LISTEN socket | 已建立连接（ESTAB） |
+  |---|---|---|
+  | `Recv-Q` | **当前**全连接队列长度（堆了几个等 `accept()`） | 收到但应用还没 `read()` 的字节数 |
+  | `Send-Q` | **上限** = `min(backlog, somaxconn)` | 已发出但对端还没 ACK 的字节数 |
+
+  同样两栏，**意思由 State 决定**：LISTEN 时一个"当前队列长"、一个"队列上限"；ESTAB 时才是收/发字节。所以监控看的是 **LISTEN 行 `Recv-Q` 逼近 `Send-Q` = 全连接队列快满**（应用 `accept()` 跟不上）。这也解释了为什么一个闲置服务的 `Send-Q` 恒等于 128——那是 backlog 上限（默认 `somaxconn`），不是流量。
+
+> ⚠️ 别把 LISTEN 的 `Send-Q` 当成"待发数据"。LISTEN socket **从不收发应用数据**——`accept()` 会为每条连接生成一个独立的子 socket（见 §2.3），收发和回包全走子 socket。母体 socket 没有"发送"这回事，那一栏才被复用来存 backlog 上限。
 
 **半连接队列满**：
 - 默认：丢弃 SYN
