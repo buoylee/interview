@@ -8,7 +8,7 @@
 
 ## 怎么读
 
-- **线性通读**(推荐第一遍):00 → 23 顺序读。00–01 建立"一切皆对象 + 名字即绑定"的总纲,后面所有"陷阱"都从这里长出来;跳过会反复卡。
+- **线性通读**(推荐第一遍):00 → 24 顺序读。00–01 建立"一切皆对象 + 名字即绑定"的总纲,后面所有"陷阱"都从这里长出来;跳过会反复卡。
 - **按主题跳读**(复习/查漏):直接进对应章,每章自带"导引 + Java/Go 对照框 + 章末面试卡",可独立读。
 - **面试前突击**:先扫 `99-interview-cards.md`,卡壳的知识点回到对应章补。
 
@@ -42,6 +42,7 @@
 | 21 | [编码面试工具箱](21-coding-interview-toolkit.md) | heapq/bisect/deque、sorted(key=)、复杂度、切片技巧 |
 | 22 | [Python↔C 边界](22-python-c-boundary.md) | 缓冲区协议、memoryview、struct/array、ctypes/cffi |
 | 23 | [数据访问(桥接章)](23-data-access-bridge.md) | 选型决策树、事务/N+1/池一句话;深度 → python-data/ |
+| 24 | [设计模式:消失/换形/仍需](24-design-patterns.md) | GoF 在 Python 里的命运;registry/工厂/观察者/插件的原语写法 |
 | 99 | [面试卡](99-interview-cards.md) | 各章高频题汇总 + 猜输出 drill 合集 |
 
 ## 与仓库其他目录的关系
