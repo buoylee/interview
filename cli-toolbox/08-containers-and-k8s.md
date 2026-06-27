@@ -94,6 +94,34 @@ sudo nsenter -t $PID -n tcpdump -i any -nn port 8080
 | `docker stats --no-stream` | 資源快照(不刷屏) |
 | `docker top 容器` | 容器內進程 |
 
+`docker ps` 先看狀態與端口:
+
+```text
+CONTAINER ID   IMAGE   COMMAND                  STATUS          PORTS                  NAMES
+abc123         nginx   "nginx -g 'daemon of…"   Up 10 seconds   0.0.0.0:8080->80/tcp   demo
+```
+
+| 欄位 | 意思 | 怎麼判讀 |
+|---|---|---|
+| `CONTAINER ID` | 容器短 ID | 後續 `logs/exec/inspect` 可用 |
+| `IMAGE` | 來源鏡像 | 先確認版本/tag 對不對 |
+| `COMMAND` | 容器啟動命令 | 被截斷時用 `docker inspect` 看完整 |
+| `STATUS` | 容器狀態 | `Up` 正常,`Exited` 看 exit code,`Restarting` 看崩潰循環 |
+| `PORTS` | 端口映射 | `8080->80` = 宿主 8080 轉容器 80 |
+| `NAMES` | 容器名 | 人類操作最常用 |
+
+`docker stats` 看資源:
+
+| 欄位 | 意思 | 怎麼判讀 |
+|---|---|---|
+| `CPU %` | CPU 使用率 | 多核下可超過 100% |
+| `MEM USAGE / LIMIT` | 已用記憶體 / 限額 | 接近 limit 時看 OOM 風險 |
+| `NET I/O` | 網路收/發 | 粗看流量方向 |
+| `BLOCK I/O` | 磁碟讀/寫 | 找刷盤容器 |
+| `PIDS` | 進程/線程數 | 暴增可能是 fork/線程失控 |
+
+> 小坑:`docker ps` 預設不顯示已退出容器;排查崩潰要加 `-a`。
+
 **⚡ 驗證**(宿主機):
 ```bash
 docker run -d --name demo nginx                    # 起一個 nginx
@@ -115,6 +143,32 @@ docker rm -f demo                                  # 清理
 | `kubectl exec -it x -- sh` | 進 Pod |
 | `kubectl get x -o yaml` / `-o json` | 完整定義(配 `jq`/`yq`) |
 | `kubectl port-forward x 8080:80` | 本地轉發進 Pod |
+
+`kubectl get pods` 先看這幾欄:
+
+```text
+NAME    READY   STATUS             RESTARTS   AGE
+api-0   0/1     CrashLoopBackOff   5          3m
+```
+
+| 欄位 | 意思 | 怎麼判讀 |
+|---|---|---|
+| `READY` | ready containers / total containers | `0/1` 表示容器未通過 ready |
+| `STATUS` | Pod 當前階段/原因 | `Running` 不等於 ready;`CrashLoopBackOff` 看上次崩潰日誌 |
+| `RESTARTS` | 重啟次數 | 持續增加 = 容器反覆崩 |
+| `AGE` | Pod 存活時間 | 很小且重啟多,多半正在抖 |
+
+`describe` 的 Events 看這樣:
+
+| 欄位 | 意思 | 怎麼判讀 |
+|---|---|---|
+| `Type` | `Normal` 或 `Warning` | 先看 Warning |
+| `Reason` | 機器可讀原因 | `FailedScheduling`、`BackOff`、`Pulled` |
+| `Age` | 發生時間/頻率 | 看是否仍在重複 |
+| `From` | 哪個 controller/kubelet 報的 | 區分調度、拉鏡像、節點問題 |
+| `Message` | 人類可讀原因 | 真正排查線索 |
+
+> 小坑:Pod `Running` 只代表容器進程在跑;服務能不能接流量要看 `READY`。
 
 **⚡ 驗證**(需叢集):
 ```bash

@@ -127,6 +127,53 @@ for v in v1 v2 v3; do echo $v > f; git add f; git commit -qm "c-$v"; done
 git log --oneline      # 預期:三個提交 c-v3 / c-v2 / c-v1
 ```
 
+### 常見輸出怎麼讀
+
+`git status -sb` 的短狀態:
+
+```text
+## main...origin/main [ahead 1, behind 2]
+ M app.py
+A  new.txt
+?? scratch.txt
+```
+
+| 片段 | 意思 | 怎麼判讀 |
+|---|---|---|
+| `## main...origin/main` | 本地分支與 upstream | 確認正在跟哪個遠端分支比 |
+| `ahead 1` | 本地多 1 個提交 | 還沒 push |
+| `behind 2` | 遠端多 2 個提交 | 需要 pull/rebase |
+| ` M app.py` | 工作區修改 | 左欄空,右欄 `M` = 未暫存 |
+| `A  new.txt` | 暫存區新增 | 左欄 `A` = 已 staged |
+| `?? scratch.txt` | 未追蹤 | Git 還沒管理 |
+
+`git diff` 看 hunk:
+
+```text
+diff --git a/app.py b/app.py
+index e69de29..4b825dc 100644
+--- a/app.py
++++ b/app.py
+@@ -10,2 +10,3 @@
+-old line
++new line
+```
+
+| 片段 | 意思 |
+|---|---|
+| `diff --git a/app.py b/app.py` | 這次 diff 比較的檔案 |
+| `index e69de29..4b825dc` | 舊/新 blob id,可用來精準定位內容版本 |
+| `--- a/app.py` | 舊檔 |
+| `+++ b/app.py` | 新檔 |
+| `-10,2` | 舊檔從第 10 行開始,共 2 行 |
+| `+10,3` | 新檔從第 10 行開始,共 3 行 |
+| `-old line` | 刪掉的行 |
+| `+new line` | 新增的行 |
+
+`git log --oneline --graph` 左邊符號看分支形狀:`*` 是提交,線條表示分叉/合併,括號裡是 branch/tag/HEAD 指標。
+
+> 小坑:`git status -s` 是兩欄狀態:左欄 staged,右欄 unstaged。
+
 ### reflog — 後悔藥(誤 reset 救回)
 
 ```bash

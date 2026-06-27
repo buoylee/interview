@@ -151,6 +151,21 @@ grep -o '[0-9]\+' /tmp/t.txt | head -1   # 預期:30(只印匹配的數字)
 
 ### awk 速驗(補:`-v var=值` 傳變數、`NF` 欄位數、`$NF` 最後一欄)
 
+`awk` 先把每行切欄位,內建變數這樣讀:
+
+| 變數 | 意思 | 常用法 |
+|---|---|---|
+| `$0` | 整行 | 原樣輸出或整行匹配 |
+| `$1` `$2` | 第 1/第 2 欄 | `awk '{print $1}'` 取第一欄 |
+| `$NF` | 最後一欄 | 日誌欄位數不固定時很常用 |
+| `NF` | 本行欄位數 | 過濾欄位不足的髒資料 |
+| `NR` | 目前第幾行 | 跳過表頭:`NR>1` |
+| `FS` | input separator | `-F:` 等價於設定它 |
+| `OFS` | output separator | 控制 `print a,b` 中間用什麼隔開 |
+| `-v name=value` | 從命令列傳變數 | `awk -v min=28 '$2>min {print $1}'` |
+
+> 小坑:預設按連續空白切欄;簡單 CSV 可用 `awk -F,`,但含引號/跳脫/換行的複雜 CSV 別硬靠它。
+
 ```bash
 awk '{print $1}' /tmp/t.txt              # 預期:alice/bob/carol/bob
 awk '$2>28 {print $1}' /tmp/t.txt         # 預期:alice/carol
@@ -169,6 +184,22 @@ echo 'price 100' | sed -E 's/[0-9]+/&元/'     # 預期:price 100元
 ```
 
 ### ⚡ 配角速驗(`sort`/`uniq`/`cut`/`tr`/`wc`/`xargs`/`jq`/`tee`)
+
+`sort | uniq -c | sort -rn` 輸出是「次數在前」:
+
+```text
+      2 dev
+      2 ops
+```
+
+| 片段 | 意思 | 怎麼判讀 |
+|---|---|---|
+| `2` | 這個值出現次數 | 排序後可當 top-N |
+| `dev` | 被統計的值 | 可能是 IP、狀態碼、使用者、錯誤類型 |
+| 第一個 `sort` | 讓相同值相鄰 | `uniq` 只合併相鄰重複行 |
+| `sort -rn` | 按數字逆序排 count | 最大量排最前 |
+
+> 小坑:漏掉第一個 `sort`,`uniq -c` 只統計連在一起的重複,結果會錯。
 
 ```bash
 cut -d' ' -f3 /tmp/t.txt | sort | uniq -c | sort -rn   # 預期:dev 2、ops 2(top-N 套路)

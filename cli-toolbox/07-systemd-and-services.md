@@ -124,6 +124,24 @@ systemctl start myapp  →  失敗
 | `systemctl cat / show 服務` | 看生效的 unit / 所有屬性 |
 | `systemctl daemon-reload` | 改完 unit 檔重載 |
 
+`systemctl status` 先看三塊:
+
+```text
+Loaded: loaded (/etc/systemd/system/app.service; enabled)
+Active: failed (Result: exit-code) since Fri 2026-06-26 10:00:00 CST
+Main PID: 1234 (code=exited, status=1/FAILURE)
+```
+
+| 欄位 | 意思 | 怎麼判讀 |
+|---|---|---|
+| `Loaded` | unit 檔是否被讀到、是否 enabled | `disabled` 不代表現在沒跑,只代表不自啟 |
+| `Active` | 當前狀態 | `active` 跑著,`failed` 掛了,`activating` 卡啟動中 |
+| `Result` | systemd 判定結果 | `exit-code` 看退出碼,`timeout` 看啟動超時 |
+| `Main PID` | 主進程 PID | 已退出時會配 `code/status` |
+| `status=1/FAILURE` | 進程退出碼 | 先看服務自己的日誌解釋這個碼 |
+
+> 小坑:改 unit 檔後沒 `systemctl daemon-reload`,狀態裡仍可能是舊定義。
+
 **⚡ 驗證 A(唯讀,安全)**:
 ```bash
 systemctl is-system-running             # 預期:running(或 degraded)
@@ -157,6 +175,22 @@ systemctl stop hello; rm /etc/systemd/system/hello.service; systemctl daemon-rel
 | `journalctl -k` | 內核訊息 |
 | `journalctl -n 50 --no-pager` | 最近 50 條 |
 | `journalctl --disk-usage` | 佔用磁碟 |
+
+`journalctl` 一行日誌拆法:
+
+```text
+Jun 26 10:00:00 host app[1234]: failed to bind port
+```
+
+| 片段 | 意思 | 怎麼判讀 |
+|---|---|---|
+| `Jun 26 10:00:00` | 時間 | 用 `--since` / `--until` 收窄 |
+| `host` | 主機名 | 多機匯總時很重要 |
+| `app[1234]` | journal 顯示的來源標記/PID | 可輔助比對來源進程,但不保證等於 `Main PID` |
+| `failed to bind port` | 日誌正文 | 真正錯誤通常在這裡 |
+| `-p err` | 查詢時的優先級過濾 | 不是日誌片段本身;只看 error 以上時用 |
+
+> 小坑:服務剛重啟過時,加 `-b` 看本次開機,加 `-u 服務` 避免被其他日誌淹掉。
 
 **⚡ 驗證**:
 ```bash
