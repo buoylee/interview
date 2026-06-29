@@ -4,7 +4,13 @@
 
 ---
 
+> **🧱 本篇用到的底层原语,没把握先补:** 中断(硬/软中断) · 上下文 → [`linux/02-执行原语`](../../linux/02-execution-primitives/);DMA/零拷贝靠的 fd 与内核缓冲 → [`linux/03-IO 原语`](../../linux/03-io-primitives/);`si` 软中断 + 网卡队列指标 → [`metrics-decoder/01-cpu` 原語 B](../../metrics-decoder/01-cpu.md) 与 [`metrics-decoder/04-network`](../../metrics-decoder/04-network.md)
+
+---
+
 ## 1. Socket Buffer（sk_buff）
+
+> **你视角(30 秒):** 你 `recv()` 还没读到数据时,数据在哪?在内核替这条连接准备的**接收缓冲区(rmem)**里躺着;你 `send()` 的数据也不是立刻上网线,先进**发送缓冲区(wmem)**,由协议栈慢慢发。这俩缓冲区就是「应用」和「网卡」之间的蓄水池:太小会直接限制吞吐(TCP 窗口 ≤ 缓冲区),太大则吃内存——下面 `tcp_rmem/tcp_wmem` 调的就是这两个池子。
 
 `sk_buff` 是 Linux 内核网络子系统的核心数据结构，每个网络数据包在内核中都表示为一个 `sk_buff`：
 
@@ -85,6 +91,8 @@ sysctl net.ipv4.tcp_window_scaling=1
 
 ## 2. 内核收包完整流程
 
+> **你视角(30 秒):** 这张图就是「一个包从网线到你 `recv()`」的全程,里面的**硬中断/软中断**正是你之前看不懂的那对:网卡 DMA 把包丢进 Ring Buffer 后,**拉硬中断**喊一嗓子「有货」(②③,极短),真正解析协议栈的重活交给 **NET_RX 软中断 / NAPI**(④⑤)慢慢干,最后放进 §1 的接收缓冲区等你来取(⑦⑧)。一句话:§1 的缓冲区是「货架」,这一节是「上货流水线」。
+
 这是理解网络性能的核心知识点。以下是一个数据包从网卡到应用层的完整旅程：
 
 ```
@@ -157,6 +165,8 @@ ethtool -S eth0 | grep -i drop
 ifconfig eth0 | grep dropped
 ```
 
+**→ 中断这对原语没吃透**(轮询 vs 中断、为何拆 top/bottom half):[`linux/02-执行原语` 原语三](../../linux/02-execution-primitives/) + [`metrics-decoder/01-cpu` 原語 B](../../metrics-decoder/01-cpu.md)
+
 ---
 
 ## 3. 内核发包流程
@@ -202,6 +212,8 @@ ip link set eth0 txqueuelen 10000
 ---
 
 ## 4. 网卡多队列与 RSS
+
+> **你视角(30 秒):** 接 §2——默认下,**哪个 CPU 接了网卡硬中断,后续那坨软中断(协议栈重活)就压在同一个核上**。流量一大,这一个核的 `si`(软中断)先打到 100%、其他核还闲着,这就是「单核 si 瓶颈」。**RSS** 是网卡硬件层面把不同连接的包分到多个队列→多个核;**RPS/RFS** 是没有多队列网卡时用软件把这活分散到多核。本质都是「别让一个核扛下所有收包」。
 
 ### 问题
 
