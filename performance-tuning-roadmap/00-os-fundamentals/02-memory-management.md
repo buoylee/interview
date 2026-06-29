@@ -4,7 +4,13 @@
 
 ---
 
+> **🧱 本篇用到的底层原语,没把握先补:** 虚拟地址 · 页表 · 缺页(page fault) · brk/mmap → [`linux/01-内存原语`](../../linux/01-memory-primitives/);`RSS/VIRT/Swap/缺页率/OOM` 这些内存指标怎么读 → [`metrics-decoder/02-memory`](../../metrics-decoder/02-memory.md)
+
+---
+
 ## 1. 虚拟内存：为什么需要
+
+> **你视角(30 秒):** 你 `new` / `make` 出来的对象地址(打印出个 `0x7f3c...`)是个**假地址**——虚拟地址。每个进程都以为自己独占整条地址空间、互不打架,这就是「虚拟内存」给的隔离。但 CPU 真访问内存得用物理地址,中间靠**页表**把虚拟翻译成物理(按 4KB 一页翻),表太大就分多级、还在 CPU 里加个缓存叫 **TLB**。如果你访问的那一页**还没在物理内存里**,CPU 就触发一次**缺页(Page Fault)**陷进内核补页——只动内存是 minor(快),要去磁盘读是 major(慢,毫秒级)。下面 §2/§3 讲的就是这条「虚拟→页表/TLB→缺页」链路。
 
 每个进程都以为自己独占全部内存空间，这是虚拟内存机制提供的抽象。
 
@@ -152,6 +158,9 @@ pidstat -r 1 -p <pid>
 
 **性能影响**：Java 服务启动时 Minor Fault 很多是正常的（JVM 分配堆内存）。但运行期间出现大量 Major Fault 通常意味着内存不足触发了 Swap。
 
+**→ 深挖黑盒**(虚拟地址/页表/缺页在内核里怎么走、怎么亲眼看到):[`linux/01-内存原语`](../../linux/01-memory-primitives/)
+**→ 这些指标怎么读**(`VmRSS/VmSize`、`min_flt/maj_flt`):[`metrics-decoder/02-memory`](../../metrics-decoder/02-memory.md)
+
 ---
 
 ## 4. Swap 机制
@@ -204,6 +213,8 @@ sysctl vm.swappiness=1
 
 ## 5. OOM Killer
 
+> **你视角(30 秒):** 内存真不够时,Linux 不会优雅地「分配失败让你处理」——它早把内存**超额借**给了大家(每个进程都以为自己内存很多),等真兑现不出来,内核就派 **OOM Killer** 挑一个进程**直接杀掉**抢回内存。你的 Java 进程「莫名其妙消失、日志里没有异常栈」,十有八九就是被它杀了(`dmesg | grep -i oom` 能看到)。容器里更常见:cgroup 给的内存上限一到就在**容器内**触发 OOM,和宿主机整体满不满无关。
+
 当内存真正耗尽（且 Swap 也不够或已关闭）时，内核的 OOM Killer 会选择一个进程杀掉以释放内存。
 
 ### 评分机制
@@ -243,6 +254,8 @@ journalctl -k | grep -i "oom"
 ```
 
 **常见误区**：把所有服务都设为 -1000 是没有意义的。OOM 的根因是内存不够，设置 -1000 只是避免被杀，但系统仍然会因为内存不足而表现异常。正确做法是合理规划内存用量。
+
+**→ 架构视角**(OOM / cgroup 内存上限如何影响容器资源规划):[`os-for-architects/05-隔离与 cgroups`](../../os-for-architects/05-isolation-and-cgroups/)
 
 ---
 
