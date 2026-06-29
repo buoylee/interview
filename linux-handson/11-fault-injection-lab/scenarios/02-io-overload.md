@@ -14,8 +14,12 @@
 ## 二、布置现场
 ```bash
 # 用 fio 造精确的随机写压力(比 stress-ng --hdd 更可控)
+# ⚠️ 别写 /tmp:很多发行版(含 OrbStack / 新版 Ubuntu)的 /tmp 是 tmpfs(RAM)。
+#    写 tmpfs = 写内存 → 全程 %util=0、%wa=0、没有 D 进程,只有 %system 升高,
+#    iostat 设备表直接空——你压的是内存不是磁盘。先 `findmnt /tmp` 确认;
+#    用 /var/tmp(FHS 保证落盘、绝不会是 tmpfs)最稳。
 fio --name=load --rw=randwrite --bs=4k --size=256M --numjobs=2 \
-    --iodepth=16 --time_based --runtime=60 --direct=1 --filename=/tmp/fiotest &
+    --iodepth=16 --time_based --runtime=60 --direct=1 --filename=/var/tmp/fiotest &
 ```
 ⚠️ 跑完别看揭晓。现象:
 > `load` 和[场景 01](./01-cpu-saturation.md) 一样高,但这次 CPU 是闲的,系统却很卡。
@@ -31,10 +35,18 @@ fio --name=load --rw=randwrite --bs=4k --size=256M --numjobs=2 \
 
 ### ① I/O 型的标志
 ```bash
-uptime                         # load 高
-top -bn1 | head -8             # 但 %us 低、id 不低?看 %wa 高!且有 D 状态进程
+uptime                         # load 高(这是过去 1/5/15 分钟的移动平均,会滞后于现在)
+top -bn2 -d1 | tail -16        # 必须取两次,只读"第二屏":%us 低、看 %wa 高 + D 状态进程
 ```
+> ⚠️ **别用 `top -bn1`**:top 算 CPU% 靠两次读 `/proc/stat` 做差分,`-n1` 只采样一次 →
+> 每进程 `%CPU` 全是 `0.0`(排序失效,只浮出 systemd,fio 反而看不到)、`%Cpu(s)` 那行
+> 显示的是**开机至今平均**(机器大多闲置 → 永远给你 `~97 id, 0.0 wa`),会骗你以为系统是闲的。
+> 所以要 `top -bn2 -d1` 读第二屏,差分出来的才是当下。
+
 **`%wa` 高 + `D`(不可中断睡眠,通常等 I/O)进程 = I/O 型**。CPU 其实闲着——这就是「不能只看 load 就喊加机器」的原因。
+> 📐 **`%wa` 是 `id`(空闲)的子集**:CPU 闲下来时,若有进程正卡在等磁盘就把这段闲置记成 `wa`,否则记成 `id`。所以 **「`id` 高 + `wa` 低」和「`wa` 高」一样都说明 CPU 不是瓶颈** —— 差别只在内核有没有给这段空闲贴上「在等 I/O」的标签。光从 `id` 高、`us` 低,就已经能下「不是 CPU 型」的结论了,不必非等 `wa` 高。
+> 🖥️ **而这个标签在多核 / VM 里经常贴不准**:① iowait 是 per-CPU 计的,等盘的进程和真正空闲的核常常不是同一颗 → 多核会系统性少算;② multipass/QEMU 里真正的设备等待发生在宿主 hypervisor,guest 算不到 → `%wa` 常接近 `0`;③ 笔电 VM 的虚拟盘多半被**宿主 RAM 缓存**吃掉(host writeback),I/O 其实不慢、压根没等待可记 —— 想真压出来要加 `--fdatasync=1` 强制落盘。
+> 👉 **所以别盯 top 的 `%wa`,真正可靠的 I/O 型信号是:`us` 低 + 下面 `iostat -xz` 的 `%util` 接近 100 / `await` 飙高 + 有 `D` 状态进程。**
 
 ### ② 确认磁盘饱和
 ```bash
@@ -81,7 +93,7 @@ iostat -xz 1 3                 # %util/await 回落
 
 ## 七、收尾 + 公开复盘
 ```bash
-pkill fio 2>/dev/null; rm -f /tmp/fiotest
+pkill fio 2>/dev/null; rm -f /var/tmp/fiotest
 ```
 「日志同步刷盘拖垮服务」「备份任务抢 IO 导致在线超时」是高频事故。原理深挖见 [`05 I/O 与文件`](../../05-io-and-files/)(缓冲/直接 I/O、fsync、iostat 指标)。
 

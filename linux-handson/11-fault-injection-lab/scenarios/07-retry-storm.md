@@ -11,6 +11,9 @@
 - **惊群效应**:一个事件唤醒所有等待者,但只有一个能处理,其余白忙。
 
 ## 二、布置现场
+
+> 🔧 **`tc … netem` 是什么**:`netem`(network emulator)是 `tc`(流量控制)下的「烂网络模拟器」,对网卡**故意**注入丢包/延迟/乱序。`loss 30%` = 随机丢 30% 的包,`delay 50ms 20ms` = 每包加 50ms±20ms 延迟;作用在 `lo`(loopback,即 `127.0.0.1`)——所以连本地 redis 也照丢。这就是**故障注入**:不等真网络出包,自己造一个坏下游来观察雪崩。
+
 ```bash
 # 1) 给本机网络注入 30% 丢包 + 抖动(模拟下游不稳)
 sudo tc qdisc add dev lo root netem loss 30% delay 50ms 20ms
@@ -50,11 +53,21 @@ python3 /tmp/retry.py backoff
 <details>
 <summary>四、揭晓 + 破案点</summary>
 
-### ② 看 TCP 重传
+### ② 看底层:丢包与重传
+> 术语(`TcpRetransSegs`/`ss -ti`/`nstat`)在 [`06 网络`](../../06-networking/README.md) 「看单连接质量与重传」一节有讲,这里直接用,分三层看:
 ```bash
-nstat -az | grep -i retrans          # TcpRetransSegs 等,丢包导致内核层重传
-ss -ti | grep -A1 6379               # 单连接的 retrans 计数、rtt
+# A) 最直接——netem 实际丢了几个包(丢包本身):
+tc -s qdisc show dev lo              # 看输出里的 "dropped N"
+
+# B) TCP 全机重传总账(取差值):
+nstat -n                            # 设基准
+python3 /tmp/retry.py naive         # 制造流量
+nstat | grep -i retrans             # 这次新增的 TcpRetransSegs
+
+# C) 单连接的 retrans/rtt(短命连接要趁活着抓):
+ss -ti dst :6379                    # 多半空 → 压测时 `while :; do ss -ti dst :6379; done` 狂刷才抓得到
 ```
+> 三层各看一面:`tc -s` = **丢包本身**,`nstat` = **TCP 全机重传**,`ss -ti` = **单连接重传/rtt**。丢包越高,B 的 `TcpRetransSegs` 涨得越快——这就是「内核在补救丢包」的证据。
 
 ### ③ 根因
 重试本身没错,错在**没退避、没抖动、没上限、没熔断**:

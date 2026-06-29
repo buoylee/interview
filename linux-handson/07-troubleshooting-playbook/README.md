@@ -131,6 +131,8 @@ sudo lsof +L1                     # 已删除但仍被持有的文件(接 05,磁
 
 > 🧪 在 `multipass shell linux-lab` 里跑。这一章的「动手」就是**复现经典故障并按分层路径排查**。
 
+> 📖 **输出字段看不懂?** 这些命令顶部那串缩写有逐字段词典在反查层(`cli-toolbox/`):`top` 的 `us/sy/wa/hi/si/st`、`vmstat` 的各列、`iostat` 的 `await/%util/aqu-sz` → [`cli-toolbox/02`](../../cli-toolbox/02-performance-and-resource-triage.md);`ss` 的 `State/Recv-Q/Send-Q`、`TIME_WAIT`/`CLOSE_WAIT` → [`cli-toolbox/03`](../../cli-toolbox/03-network-triage.md)。
+
 **案例 1:CPU 100%(CPU 型过载)**
 ```bash
 stress-ng --cpu 2 --timeout 40s &
@@ -151,15 +153,28 @@ iostat -xz 1 3               # ④ %util/await 飙升 → 确认 I/O 瓶颈(接 
 ```
 对比案例 1:load 都高,但案例 2 的 CPU 是闲的,瓶颈在磁盘。**这就是为什么不能只看 load 就喊「CPU 不够,加机器」。**
 
-**案例 3:进程「卡住」,用 strace 看它停在哪**
+**案例 3:进程「卡住」,定位它停在哪个 syscall**
 ```bash
 mkfifo /tmp/p
-cat /tmp/p & P=$!            # cat 阻塞在 read,等管道数据
-sudo strace -p $P 2>&1 | head -3    # 看到 read(3,  ← 卡在这个 syscall
-sudo lsof -p $P | grep /tmp/p       # 3 号 fd 指向 /tmp/p,真相大白
-echo "data" > /tmp/p                # 喂数据,cat 读到后退出
+cat /tmp/p & P=$!                       # cat 阻塞在 read,等管道数据
+sleep 0.2
+
+# ① 不靠 strace 也能瞬间看出卡在哪(直接读 /proc,没有 attach 时机问题)
+cat /proc/$P/wchan; echo                # → pipe_read:睡在内核「读管道」函数里
+grep State /proc/$P/status              # → State: S (sleeping)
+sudo cat /proc/$P/syscall               # → 首字段=syscall号(read:x86-64 是 0、arm64 是 63),次字段 0x3 = fd 3
+
+# ② fd 3 到底指向谁?
+sudo lsof -p $P | grep /tmp/p           # → 3 号 fd 指向 /tmp/p,真相大白
+
+# ③ 想用 strace 亲眼看到 read 返回:先后台挂上,再喂数据
+sudo timeout 3 strace -p $P -e trace=read 2>&1 &   # 后台 attach,只跟 read
+sleep 0.3
+echo "data" > /tmp/p                    # 喂数据 → strace 打印 read(3, "data\n", …)=5,cat 读完退出
+wait
 rm -f /tmp/p
 ```
+> ⚠️ **别用 `strace -p $P | head` 然后干等。** strace 只能打印它「亲眼见证边界」的 syscall,而 cat 早在 attach **之前**就卡进了 read(),所以你只会看到 `attached` 然后一片死寂——它在等 read **返回**那一刻才打印,单终端顺序跑时喂数据的那行又轮不到执行,于是只能 `Ctrl-C`。要「立刻」知道卡在哪,读 `/proc/$P/syscall`(当前 syscall 号 + 参数)和 `/proc/$P/wchan`(睡在哪个内核函数)最稳;strace 擅长抓 syscall 的**参数/返回值**,所以要**先挂上、再制造让它返回的事件**(这里就是后台 attach 后再 `echo`)。
 
 **案例 4:跑一遍「第一分钟」体检**
 ```bash
@@ -186,7 +201,7 @@ vmstat 1 3; echo ---; free -m; echo ---; ss -s
 
 - **`load average` 是什么?load 高一定是 CPU 高吗?** 是 R + D 状态任务数的平均,不只是 CPU;load 高 + `%wa` 高 + 一堆 D = 在等 I/O,CPU 可能闲着。
 - **一台机器变慢/CPU 100%,你的排查步骤?** uptime 看 load → top 看是 CPU(us/sy)还是等 IO(wa) → pidstat 锁定进程 → top -H 锁定线程 → 对 Java 用 nid 映射到 jstack → 定位代码。
-- **进程卡住了怎么查?** `ps` 看状态(D? `wchan`?)→ `strace -p` 看停在哪个 syscall → `lsof -p` 看相关 fd 指向什么。
+- **进程卡住了怎么查?** `ps`/`/proc/PID/status` 看状态(D? `wchan`?)→ `/proc/PID/syscall` 或 `strace -p` 看停在哪个 syscall(strace 要等 syscall **返回**才打印,对已经卡住的进程优先读 `/proc`)→ `lsof -p` 看相关 fd 指向什么。
 - **USE 方法是什么?** 对每种资源查 Utilization(使用率)、Saturation(饱和/排队)、Errors(错误)。
 - **「第一分钟」会敲哪些命令?** uptime、dmesg、vmstat、mpstat、pidstat、iostat、free、ss、top。
 

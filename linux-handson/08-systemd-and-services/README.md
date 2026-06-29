@@ -124,6 +124,23 @@ journalctl _PID=1234                      # 只看某进程,不管它打到哪
 
 `.timer` + `.service` 做定时任务,比 cron 多了:日志(journald)、依赖、资源限制、错过补跑(`Persistent=true`)。`systemctl list-timers` 看。
 
+### 2.9 systemd 是 k8s 的单机原型(接 09 容器)
+
+你上 k8s 后几乎不写 `.service`,容易以为 systemd 过时了。反了:**k8s 在集群层做的事,正是 systemd 在单机做的事**——同一套概念,换了作用域。
+
+| systemd(单机) | k8s(集群) | 同一个原语 |
+|---|---|---|
+| `Restart=always` 崩溃自愈 | restartPolicy / Deployment 控制器 | 期望状态 + 自愈 |
+| `enable` 开机自启 | Deployment 期望副本数 | 声明式「应该在跑」 |
+| `MemoryMax=` / `CPUQuota`(接 `04`) | requests/limits | **同一个 cgroup** |
+| watchdog / `WatchdogSec=` | liveness probe | 健康检查 + 重启 |
+| `After=` / `Requires=` 依赖 | initContainers / readiness 门控 | 启动顺序与依赖 |
+| `journalctl -u`(§2.7) | `kubectl logs` | 接管 stdout + 贴元数据 |
+
+> **所以学 systemd 不是学「旧东西」,是学 k8s 那套自愈/限额/依赖/日志的最小原型**。概念你在单机吃透了,上 k8s 只是同样的东西分布式化(接 `09`、`system-design` / `cloud-native`)。
+
+而且有一处 k8s **永远替代不了** systemd:**运行 k8s 的那台机器本身**。kubelet、containerd 就是 systemd unit;节点 `NotReady` 时 k8s 自身已经不可信,只能登机 `systemctl status kubelet` / `journalctl -u kubelet`(§2.7)。**k8s 救不了承载 k8s 的主机,只有 systemd 能。** 这就是为什么你从「容器里的乘客」走向资深时,这章躲不掉。
+
 ---
 
 ## 三、怎么看(命令 + 真实输出怎么读)
