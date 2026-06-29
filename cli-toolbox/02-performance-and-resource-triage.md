@@ -46,6 +46,10 @@
 | `id` | idle | CPU 真的閒著 |
 | `st` | steal | **虛擬機被宿主搶走的時間**(雲上高 = 鄰居吵/超賣,該換規格) |
 | `ni` | nice | 被調過 nice 值的 user 時間 |
+| `hi` | hardirq | **硬中斷**佔 CPU(網卡/磁碟控制器發 IRQ);持續高 = 設備中斷風暴,看 `cat /proc/interrupts`、考慮中斷親和/RPS |
+| `si` | softirq | **軟中斷**佔 CPU(中斷下半部,最常見是收發網路封包走協定堆疊);高 = 網路 PPS 大,看 `cat /proc/softirqs`。背後的「上半部/下半部」機制見 [`linux/02-execution-primitives`](../linux/02-execution-primitives/) |
+
+> ⚠️ `si` 撞名:`top` 的 `si` 是 **softirq(軟中斷)**;`vmstat` 的 `si` 是 **swap-in(從磁碟換頁進記憶體)**,兩者毫無關係——看到 `si` 先認清是哪個工具的。
 
 **按瓶頸分流(這是本章的核心)**:
 
@@ -181,7 +185,7 @@ MiB Swap:   2048 total,   2048 free,      0 used.   6000 avail Mem
 |---|---|
 | `load average` | 1/5/15 分鐘平均排隊量;要除以 CPU 核心數看 |
 | `Tasks` | `running` 多看 CPU,`zombie` 非 0 看父進程回收問題 |
-| `%Cpu(s)` | `us` 應用算,`sy` 內核忙,`id` 空閒,`wa` 等 IO,`st` 被宿主偷 CPU |
+| `%Cpu(s)` | `us` 應用算,`sy` 內核忙,`id` 空閒,`wa` 等 IO,`st` 被宿主偷 CPU,`hi`/`si` 硬/軟中斷(`si` 高多半網路忙;完整見 §2 表) |
 | `Mem` | `used` 含 cache 口徑,別只盯 `free` |
 | `Swap` | `used` 上升不一定正在抖;要配 `vmstat si/so` 看是否持續換頁 |
 
