@@ -4,6 +4,10 @@
 
 ---
 
+> **🧱 本篇用到的底层原语,没把握先补:** fd · VFS/inode · write→page cache→回写路径 · 阻塞 I/O → [`linux/03-IO 原语`](../../linux/03-io-primitives/);`%util/await/iowait/r/s·w/s` 这些磁盘指标怎么读 → [`metrics-decoder/03-disk-io`](../../metrics-decoder/03-disk-io.md)
+
+---
+
 ## 1. 块设备模型
 
 Linux 将磁盘抽象为**块设备**，所有 I/O 操作都以块为单位。从应用到磁盘的 I/O 路径：
@@ -102,6 +106,8 @@ xfs_info /dev/sdb1
 
 ## 3. Page Cache
 
+> **你视角(30 秒):** 你以为 `write()` 把数据写进了磁盘?不——绝大多数情况它只写进了内存里的一层缓存叫 **Page Cache** 就立刻返回了(所以快),真正落盘是内核**稍后**后台批量做的。读也一样:第一次读穿到磁盘(慢),数据顺手留在 Page Cache,第二次直接从内存拿(快)。这解释了两件你常困惑的事:① `free` 里内存「几乎被吃光」很正常,大半是 Page Cache、随时可回收;② `write()` 返回 ≠ 数据安全,断电会丢——要安全得显式 `fsync`(见 §6)。
+
 Page Cache 是 Linux 最重要的 I/O 优化机制，它在内存中缓存磁盘数据：
 
 ```
@@ -154,6 +160,9 @@ free -h
 ```
 
 **生产经验**：如果 `dirty_ratio` 设置过大，突然大量脏页回写时会导致 I/O 风暴，影响在线服务。数据库服务器通常降低 `dirty_ratio` 到 5-10%。
+
+**→ 深挖黑盒**(write→page cache→脏页回写这条路径在内核里怎么走):[`linux/03-IO 原语`](../../linux/03-io-primitives/)
+**→ 这些指标怎么读**(`free` 的 cache 行、脏页 `Dirty`):[`metrics-decoder/03-disk-io`](../../metrics-decoder/03-disk-io.md)
 
 ---
 
@@ -249,6 +258,8 @@ echo "none" > /sys/block/nvme0n1/queue/scheduler
 ---
 
 ## 6. fsync 与 fdatasync
+
+> **你视角(30 秒):** 接着 §3——既然 `write()` 只到 Page Cache,那「写完了」其实不保证断电不丢。`fsync(fd)` 就是那句「现在,真的,给我落到磁盘介质上,落完再返回」,代价就是它**必须等磁盘**,慢。数据库的命根子(redo log / WAL)每次提交都得 `fsync` 一次,所以「每秒能 commit 多少」很大程度上就是「磁盘每秒能 fsync 多少」——这也是为什么 DB 对磁盘 fsync 延迟极度敏感。
 
 `write()` 只保证数据到达 Page Cache，不保证到达磁盘。要保证数据持久化，需要显式刷盘：
 
