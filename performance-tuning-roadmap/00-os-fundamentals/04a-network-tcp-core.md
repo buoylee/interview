@@ -4,6 +4,10 @@
 
 ---
 
+> **🧱 本篇用到的底层原语,没把握先补:** Socket · 内核收发包 · sk_buff → 同章 [`04b Socket 与内核网络`](./04b-network-socket-kernel.md);`ss` 看连接状态/队列 → [`metrics-decoder/04-network`](../../metrics-decoder/04-network.md)
+
+---
+
 ## 1. TCP/IP 四层模型
 
 ```
@@ -32,6 +36,12 @@ OSI 七层                  TCP/IP 四层              示例协议/数据
 ---
 
 ## 2. 三次握手详解
+
+> **你视角(30 秒):** 服务端 `listen()` 之后,内核替你维护了**两个排队队列**,握手的包先在这排队,你的 `accept()` 才从队尾取走连接:
+> - **半连接队列(SYN Queue)**:收到 SYN、还没完成三次握手的连接放这。被 SYN Flood 打满 → 新连接握不上手。
+> - **全连接队列(Accept Queue)**:三次握手已完成、等你 `accept()` 取走的连接放这。应用 `accept()` 太慢 → 这个队列溢出 → 连接被丢/被拒。
+>
+> 记住这俩队列,下面 `tcp_max_syn_backlog`、`somaxconn`、各种 `*Overflows` 指标才有归属。
 
 ```
     客户端                                 服务端
@@ -191,6 +201,8 @@ sysctl net.ipv4.tcp_tw_reuse=1
 ```
 
 **最佳实践**：与其优化 TIME_WAIT，不如使用**连接池**（HTTP Keep-Alive、数据库连接池）减少短连接。
+
+**→ 这些状态/队列怎么看**(`ss -ant` 状态分布、Accept Queue 溢出):[`metrics-decoder/04-network`](../../metrics-decoder/04-network.md)
 
 ---
 
