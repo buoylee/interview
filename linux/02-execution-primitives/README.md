@@ -152,6 +152,8 @@ exit_group(0)                           = ?                                # 退
 
 类比：网卡中断到来 → Top half 把数据包 DMA 地址记下来就返回（微秒级）→ Bottom half 的 `NAPI`/软中断把包从网卡 buffer 取出、走协议栈（可以睡眠等锁）。
 
+> **一句破误解:** 这里的「软中断(softirq)」**不是硬件触发的中断**,而是内核自己一套**固定几类的高优先级待办队列**(`NET_RX`/`NET_TX`/`TIMER`…)。硬中断的 top half 只是去队列上「打个标记:有活」,内核在硬中断返回时、或在专门的 `ksoftirqd` 内核线程里把这些待办跑掉。名字里的「中断」是历史包袱——读成「内核的延后处理任务」就不会和硬件中断混了。
+
 > **本原语无 ③**：在 Docker Desktop / macOS aarch64 宿主机上，容器内 `/proc/interrupts` 为空文件（Docker 虚拟化层不向容器暴露宿主机中断表）。真实 Linux 裸机上 `cat /proc/interrupts` 会看到每个 CPU 核上各中断线的累计触发次数。若在真实 Linux 上运行，可用 `watch -n1 cat /proc/interrupts` 观察网卡 IRQ 在收包时实时递增。
 
 → **回链**：`linux-handson/03-process-model`（驱动模型/设备 I/O 时中断的角色）
