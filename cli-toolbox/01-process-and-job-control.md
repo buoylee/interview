@@ -98,6 +98,8 @@
 | `N` | low priority | 優先級較低(常見於 nice 值較高) |
 | 後綴 `+` `s` `<` `N` `l` | 前台組 / session leader / 高優先 / 低優先 / 多線程 | `s`=會話頭頭、`<`=被調高優先級 |
 
+> **`STAT` 是多個符號黐埋讀的**:第一粒先係主狀態(`R`/`S`/`D`/`Z`/`T`),後面是修飾(`+` 前台、`l` 多線程、`<`/`N` 優先級)。例:`Sl+` = 睡眠 + 多線程 + 前台組,**只是狀態描述,不是錯誤**。想連線程一起看「到底卡在等什麼」,見下節 `wchan`。
+
 **優先級(nice 值,-20 最高 ~ 19 最低)**:
 
 | 命令 | 作用 |
@@ -106,6 +108,64 @@
 | `renice -n 5 -p PID` | 改一個**正在跑**的進程的優先級 |
 
 > `nice` 數字越大越「謙讓」(搶不過別人 CPU)。跑批量/備份任務時設高 nice 值,避免拖垮線上服務。
+
+---
+
+## 4.5 看線程卡在哪:`ps -L` + `wchan`(等鎖 / 等事件判讀)
+
+進程**在跑卻像卡住**時,要看的不是進程整體,而是**每一條線程到底睡在哪**。一條命令:
+
+```bash
+ps -L -p PID -o tid,stat,wchan:24
+# -L     展開線程(每線程一行,tid=線程 id);等同另一種寫法 ps -T
+# wchan  wait channel = 線程「睡在內核哪個函數」= block 在哪;:24 給足欄寬別把函數名截掉
+```
+
+典型輸出(像你貼的這種):
+
+```text
+   TID STAT WCHAN
+468058 Sl+  futex_wait
+468019 Sl+  wait_woken
+```
+
+**第一步:`STAT` 逐粒讀,第一粒先係主狀態。** `Sl+` = `S`(可中斷睡眠)+ `l`(多線程)+ `+`(前台組)——不是錯誤,只是「一條前台多線程程式裡睡緊的線程」。
+
+**第二步:`wchan` 告訴你「睡在等什麼」。** 常見值:
+
+| wchan | 睡在哪個原語 | 判讀 |
+|---|---|---|
+| `futex_wait` | **futex**(Linux 鎖 / 條件變數的底層原語) | **等鎖,或等 condition signal**。Java `synchronized`/`ReentrantLock`、Go `sync.Mutex`/channel/`WaitGroup` park 線程,底層全落到 futex |
+| `wait_woken` | 通用 wait queue 的喚醒路徑 | **等一個事件到來**(部分 socket / tty / condvar 走這條) |
+| `ep_poll` / `do_epoll_wait` | epoll | 等 IO 事件(網路服務最常見,event loop 在這睡) |
+| `do_sys_poll` / `pipe_read` | poll / 管道 | 等 fd 可讀(等對端寫) |
+| `*nanosleep`(如 `hrtimer_nanosleep`) | 計時器 | 純 `sleep` / 定時器在等時間到 |
+| `0` 或 `-` | 沒睡 | **正在跑**(配 `STAT=R`) |
+
+> futex 怎麼運作(無爭用時純 userspace 改個數字、爭不到才入內核睡、release 才 `futex_wake` 叫醒)→ [`linux/04-concurrency-primitives`](../linux/04-concurrency-primitives/README.md) 原語「futex」。
+
+**判讀心法:全部 `S` + `futex_wait`/`wait_woken` = 線程都閒置泊住等嘢,正常樣,不是卡死。** 怎麼分「正常閒等」vs「死鎖」:
+
+- **連敲幾次**(進程跑得快就放迴圈裡連抓):`tid` + `wchan` **一直在變** → 正常在等工作來;**永遠凍在同一個 `futex_wait` 不動** → 疑似死鎖 / 搶不到鎖。
+- 要知「等緊邊段碼」就進語言層:Python `py-spy dump --pid PID`、Java `jstack PID`、通用 `cat /proc/PID/task/TID/stack`(需權限)。
+- **真要驚的是 `D`**(不可中斷睡眠,見上表)——那是卡 IO,不是閒等;`futex_wait` + `S` 不可怕。
+
+**⚡ 驗證**(自己造一個「線程泊住等鎖」的現場):
+```bash
+# 純 sleep:單線程,睡在計時器(不是 futex)
+sleep 300 &
+ps -L -p $! -o tid,stat,wchan:24   # 預期:1 行,STAT=S,wchan 是 nanosleep 類
+kill %1
+
+# 多線程等鎖:主線程占住鎖,2 條子線程搶不到 → futex_wait
+python3 -c 'import threading,time
+lock=threading.Lock(); lock.acquire()
+for _ in range(2): threading.Thread(target=lock.acquire, daemon=True).start()
+time.sleep(300)' &
+ps -L -p $! -o tid,stat,wchan:24   # 預期:3 行;2 條子線程 STAT=S、wchan=futex_wait
+kill %1
+```
+> `wchan` 欄要靠 `procps` 的 `ps`;沒有就直接 `cat /proc/PID/task/*/wchan` 讀同一個值。函數名隨架構 / 內核略有不同(實測 arm64 上 `sleep` 顯示 `__arm64_sys_nanosleep`),**認類別即可**。
 
 ---
 
@@ -145,6 +205,7 @@ ps -eo pid,ppid,stat,comm | awk '$3 ~ /^Z/'
 | `ps -p PID` | 只看某個 PID |
 | `ps --sort=-%cpu \| head` | 按 CPU 降序揪大戶(`-%mem` 同理) |
 | `ps -T -p PID` | 看某進程的**線程**(每線程一行) |
+| `ps -L -p PID -o tid,stat,wchan:24` | 看每條**線程睡在哪**(`wchan`=block 在哪);判等鎖 / 死鎖,見 §4.5 |
 | `ps -o pid,ni,pri,comm -p PID` | 看優先級(`ni` nice / `pri`) |
 
 如果看到這種輸出,按欄位這樣讀:
