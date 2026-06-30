@@ -93,6 +93,46 @@ unlock():
         futex(FUTEX_WAKE)  ← 唤醒等待者
 ```
 
+**内核里到底排在哪里：futex key → hash bucket → waiter queue**
+
+futex 不是「先创建一个内核锁对象，再让线程去抢」。用户态能看到的主体仍然只是一个整数地址 `uaddr`，例如 `lock_word`。内核不会预先创建锁对象，只在 wait/wake syscall 路径上介入：
+
+```text
+用户态 lock_word 地址 uaddr
+  └─ futex(FUTEX_WAIT / FUTEX_WAKE, uaddr, ...)
+       └─ 内核根据 uaddr 算出 futex key
+            └─ key hash 到某个 bucket
+                 └─ bucket 里挂着 waiter 节点，按 futex key 匹配
+```
+
+- **private futex**：只在同一进程内使用，key 大致由「当前进程的地址空间 + `uaddr`」标识。
+- **shared futex**：跨进程共享内存使用，key 必须能指向同一个共享映射背后的对象，否则两个进程看见的虚拟地址可能不同。
+- **waiter**：睡眠线程会作为一个等待节点挂进对应 bucket；队列里可能混有不同 key 的 waiter，wake 时按 key 过滤。它不在 run queue 上抢 CPU。
+- **wake**：`FUTEX_WAKE(uaddr, n)` 用同一个 key 找到 bucket，筛出匹配 key 的 waiter，取出最多 `n` 个，把它们唤醒为「可运行候选」。被唤醒不等于已经拿到锁；醒来的线程还要回用户态重新 CAS 竞争 `lock_word`。
+
+**为什么 `FUTEX_WAIT` 必须带 expected value**
+
+`FUTEX_WAIT(uaddr, expected)` 进内核后第一件事不是睡，而是重新检查：
+
+```text
+if (*uaddr != expected):
+    return EAGAIN   # 值已经变了，不睡
+else:
+    enqueue waiter and sleep
+```
+
+这个检查和把 waiter 挂进队列不是两个能被同一个 key 的 wake 插进来的松散步骤。内核会在对应 futex bucket 的同步保护下完成检查与入队：如果 wake 已经先发生，`WAIT` 会看到值已变化并返回 `EAGAIN`；如果值仍等于 `expected`，waiter 已经入队，后续 `FUTEX_WAKE` 就能按同一个 key 找到它。
+
+这个检查是防 **lost wakeup（错过唤醒）** 的关键。否则会出现这样的竞态：
+
+```text
+T2: CAS(lock_word, 0, 1) 失败，准备睡眠
+T1: unlock，把 lock_word 改成 0，并 futex_wake(addr)
+T2: 如果不检查 expected，可能在 wake 已经发生后才睡进去，然后再也没人叫醒它
+```
+
+有 expected 检查后，T2 进入内核时会看到 `lock_word != 1`，直接返回用户态重试 CAS，而不是睡过头。
+
 **架构取舍**：futex 的关键设计决策是「乐观先走用户态」——因为实际场景中大多数 lock/unlock 是无争用的（临界区很短），把 100% 的锁都做成 syscall 浪费巨大。futex 让高频无争用路径零内核开销，只在真正需要等待时才付出 syscall 代价。
 
 glibc 的 `pthread_mutex_t`、Java HotSpot 的 thin lock / biased lock、Go `sync.Mutex` 全部基于此机制（Go 不走 glibc/pthreads 封装，而是自己实现 futex-like 原语、直接通过 `syscall` 调 Linux `futex(2)`）。
