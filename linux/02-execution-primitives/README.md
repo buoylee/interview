@@ -184,6 +184,44 @@ Linux 里进程和线程都是 `task_struct`（下一个原语会细说），切
 
 3. **恢复下一个任务的状态**：从 `task_struct` 里取出上次保存的寄存器值，写回 CPU。
 
+#### 寄存器 + 栈指针：为什么能从原地继续跑
+
+把一个线程暂停后再恢复，核心不是把整段代码「重新跑一遍」，而是把 CPU 当时的**现场**存下来。现场最关键的是三类东西：
+
+| 状态 | 里面是什么 | 恢复时起什么作用 |
+|---|---|---|
+| `rip` / PC（指令指针） | 下一条要执行的机器指令地址 | CPU 知道从哪一行机器码继续跑 |
+| `rsp` / SP（栈指针） | 当前线程调用栈的栈顶位置 | CPU 知道当前函数的局部变量、返回地址、调用链从哪里找 |
+| 通用寄存器 | 当前计算的中间值、函数参数、返回值、临时指针 | CPU 知道刚才算到一半的值是什么 |
+
+关键点:**栈的内容没有被拷贝走。** 每个线程自己的栈本来就在内存里,函数调用链、局部变量、返回地址都还躺在那里。上下文切换时真正要保存的是「从哪里恢复」和「CPU 手上那点现场」:
+
+```text
+线程 A 跑到 bar() 中间:
+
+内存里的 A 栈:
+  [main 的栈帧]
+  [foo  的栈帧]
+  [bar  的栈帧]  ← rsp 指向这里附近
+
+CPU 寄存器:
+  rip = bar() 里下一条指令
+  rsp = A 栈当前栈顶
+  rax/rbx/... = bar() 算到一半的临时值
+
+切到线程 B:
+  保存 A 的 rip/rsp/寄存器
+  载入 B 的 rip/rsp/寄存器
+
+再切回线程 A:
+  恢复 A 的 rip/rsp/寄存器
+  CPU 从 bar() 那条指令继续执行,就像刚才只是暂停了一下
+```
+
+所以「栈指针」不是整条栈,只是指向栈顶的一个地址;「寄存器快照」也不是保存整个进程,只是保存 CPU 手上正在用的少量状态。完整的程序数据仍在进程地址空间里。
+
+再精确一点:上下文切换发生在**内核态**。用户线程进入内核时,入口代码会把用户态的 `rip`/`rsp`/寄存器保存到内核栈上的 trap frame 里;调度器切换时再保存当前任务的**内核栈指针**到 `task_struct.thread`。下次排到这个任务时,内核先恢复它的内核栈,再一路返回用户态,最后把用户态 `rip`/`rsp` 等寄存器还原。面试或排查时可以先用简化模型:「保存 PC + SP + 寄存器,栈内容留在内存」。
+
 **主动切换 vs 抢占：**
 
 | 切换类型 | 触发条件 | 典型场景 |
@@ -259,6 +297,10 @@ Java 里 `StackOverflowError` 是递归太深导致的，Go 里 goroutine 的栈
 每个 OS 线程（或 Go 的 M，即 OS thread）都有独立的栈空间，默认 8 MB（Linux 默认）。1000 个线程 → 8 GB 仅用于栈——这就是「线程池为什么不能无限大」的最直接原因。
 
 Go goroutine 的初始栈只有 2–8 KB，可动态扩展（Go 运行时在堆上分配新栈段，复制旧内容），这是 goroutine 能开几十万个而不耗尽内存的关键。
+
+**Java 对照：JVM stack 和 OS stack**
+
+HotSpot 的普通 Java platform thread 基本对应一个 OS native thread。Java 方法调用产生的 Java frame 通常落在这条 native thread 的 OS stack 上,只是 frame 的格式由 JVM 定义:局部变量表、操作数栈、动态链接、返回地址等。OS/CPU 只看到 native stack、`rsp`/SP、返回地址和寄存器保存;JVM 才知道哪些字节是 Java frame。完整的 Java Heap / Stack 如何映射到 OS 进程虚拟地址空间,见 [`../../performance-tuning-roadmap/04a-java-profiling/01-jvm-memory-model.md`](../../performance-tuning-roadmap/04a-java-profiling/01-jvm-memory-model.md)。
 
 ### ③ 砸实
 

@@ -6,6 +6,70 @@
 
 ---
 
+## 0. JVM 内存建立在 OS 进程虚拟地址空间上
+
+JVM 不是脱离操作系统单独存在的内存世界。OS 看到的是一个普通的 `java` 进程:一整片虚拟地址空间、若干 native thread、若干 `mmap` / `malloc` 出来的内存区域。JVM 在这片地址空间里再划出 Java Heap、线程栈、Metaspace、Code Cache、Direct Memory 等运行时区域。
+
+```text
+OS 视角: java 进程的虚拟地址空间
+
+高地址
+┌──────────────────────────────────────┐
+│ Thread stack: Java main thread        │  ← OS native thread stack
+│ Thread stack: GC / JIT / worker       │
+├──────────────────────────────────────┤
+│ Shared libs / libjvm.so / libc        │
+├──────────────────────────────────────┤
+│ Code Cache                            │  ← JIT 编译后的机器码
+├──────────────────────────────────────┤
+│ Metaspace                             │  ← 类元数据,native memory
+├──────────────────────────────────────┤
+│ Direct Memory / mmap                  │  ← DirectByteBuffer、Netty 等常见
+├──────────────────────────────────────┤
+│ Java Heap                             │  ← JVM 自管对象区,GC 管
+├──────────────────────────────────────┤
+│ Native heap                           │  ← JVM / JNI / libc malloc
+└──────────────────────────────────────┘
+低地址
+```
+
+### Java Heap 不是 OS heap 的简单包装
+
+OS 里的 `[heap]` 通常指进程通过 `brk` 扩展出来、给 libc `malloc/free` 使用的 native heap。Java Heap 更准确地说是 JVM 向 OS 申请的一大片虚拟内存区域（常见实现会用 `mmap` / reserve / commit），然后 JVM 自己在里面做对象分配、分代/region 管理、GC 移动和压缩。
+
+```text
+new User()
+  → JVM 在 Java Heap 里分配 User 对象
+  → OS 只看到 java 进程某些虚拟页被映射/触碰/RSS 增加
+```
+
+OS 不知道 `User`、`String`、对象头、引用关系和 GC root。OS 只按 page / mapping / RSS 管内存;JVM 才知道 Java 对象能不能回收、能不能搬家。
+
+### Java Stack 通常建立在 OS native thread stack 上
+
+HotSpot 的普通 Java platform thread 基本对应一个 OS native thread。创建 Java 线程时,JVM 底层会创建 native thread,OS 为这条线程准备 native stack;Java 方法调用产生的 Java frame、JVM runtime frame、JNI/native frame 通常都落在这条 native stack 上。
+
+```text
+OS native thread stack
+┌──────────────────────────────┐
+│ native frame: libc / JNI      │
+│ JVM runtime frame             │
+│ Java frame: main()            │
+│ Java frame: service()         │
+│ Java frame: dao()             │
+└──────────────────────────────┘
+```
+
+所以可以这样记:
+
+- **Stack 侧**:Java stack 通常是 JVM 在 OS native thread stack 上定义的 Java 方法栈格式。同一块内存,OS/CPU 只认识栈指针、返回地址、寄存器保存;JVM 才认识局部变量表、操作数栈、动态链接、返回地址等 Java frame 结构。
+- **Heap 侧**:Java Heap 不是 OS heap 的简单包装,而是 JVM 在 OS 虚拟内存里自管的一片对象区。
+- **排查侧**:`-Xmx` 只限制 Java Heap;进程 RSS 还包括 Metaspace、Code Cache、Direct Memory、线程栈、native heap、共享库和 page cache 影响。所以容器 memory limit 不能只按 `-Xmx` 估。
+
+> OS 虚拟地址空间、`[heap]` / `[stack]` / `mmap` 的底层图见 [`../../linux/01-memory-primitives/README.md`](../../linux/01-memory-primitives/README.md);OS 线程栈和栈帧怎么工作见 [`../../linux/02-execution-primitives/README.md`](../../linux/02-execution-primitives/README.md)。
+
+---
+
 ## 1. 堆结构详解
 
 JVM 堆（Heap）是对象分配的主战场，采用分代设计：
