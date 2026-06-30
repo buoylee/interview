@@ -22,6 +22,16 @@
 
 Java 里你调 `FileOutputStream.write(buf)`，Go 里你调 `os.File.Write(buf)`——底层最终都落到同一件事：**用一条特殊指令让 CPU 跳进内核**。这条路叫 syscall（系统调用）。libc 的 `write()`、`read()`、`mmap()` 函数只是入口登记台，真正的门在 `syscall` 指令这一步。
 
+这里的 **libc** 是「C 标准库 + POSIX/Linux 常用函数」在用户态的一套实现，不是 Linux 内核本身。常见实现有 GNU/Linux 上的 `glibc`、Alpine Linux 常见的 `musl`、Android 的 `bionic`。它给程序员一个普通函数接口，比如 `write(fd, buf, len)`；函数内部再按 CPU/内核约定把参数和 syscall 编号放进寄存器，最后执行真正进内核的那条指令。
+
+#### 寄存器最小模型
+
+寄存器可以先理解成 CPU 内部少量、极快的「工作格子」。CPU 正在用的值会临时放在这些格子里：函数参数、返回值、计算到一半的中间值、下一条指令地址、当前栈顶地址。内存像桌面上的大文件柜，容量大但远；寄存器像 CPU 手边的便签，数量少但拿取最快。
+
+所以 syscall 里说「把参数放进寄存器」，本质是用户程序和内核之间有一套调用约定：x86-64 上 `write(fd, buf, len)` 的三个参数放在 `rdi` / `rsi` / `rdx`，syscall 编号放在 `rax`；aarch64 上参数放在 `x0` / `x1` / `x2`，编号放在 `x8`。内核入口代码不会去读 C 语言里的参数名，而是按这套约定直接从寄存器里取值。
+
+上下文切换也离不开寄存器。一个任务被暂停时，CPU 当前的 `rip` / PC（下一条指令地址）、`rsp` / SP（当前栈顶）、通用寄存器（临时值、参数、返回值）都要保存起来。切回来时恢复这些寄存器，CPU 才能像刚才只是暂停了一下那样继续执行。栈和堆的大块内存不会被复制，保存的是「从哪里继续」和「CPU 手上那点现场」。
+
 ### ② 黑盒内部
 
 **syscall 是用户态程序进入内核的唯一合法通道。**
@@ -34,7 +44,7 @@ Java 里你调 `FileOutputStream.write(buf)`，Go 里你调 `os.File.Write(buf)`
 
 每一步拆开看：
 
-1. **libc 是薄封装**：`write()` 函数体只有几行——把参数放进寄存器（x86-64: `rdi`/`rsi`/`rdx`；aarch64: `x0`/`x1`/`x2`），把 syscall 编号放进 `rax`（x86-64）或 `x8`（aarch64），然后执行一条指令。这条指令就是真正的触发器。
+1. **libc 是薄封装**：对 `write()` 这类系统调用包装函数来说，函数体核心只有几步——把参数放进寄存器（x86-64: `rdi`/`rsi`/`rdx`；aarch64: `x0`/`x1`/`x2`），把 syscall 编号放进 `rax`（x86-64）或 `x8`（aarch64），然后执行一条指令。这条指令就是真正的触发器。`printf()`、`malloc()` 这种库函数会更复杂，但它们一旦需要让内核做 I/O、映射内存等事情，最后仍然要走 syscall。
 
 2. **触发指令**：x86-64 叫 `syscall`，aarch64 叫 `svc #0`（Supervisor Call）。CPU 收到这条指令，立刻：
    - 把当前用户态指令地址（PC）和栈指针存到特定寄存器/内核栈
@@ -92,7 +102,57 @@ exit_group(0)                           = ?                                # 退
 
 ### ① 你视角
 
-你知道 Go 的 goroutine 比 Java 的 OS 线程轻——部分原因就是 goroutine 调度在用户态完成，不走 syscall。但凡涉及 I/O，无论 goroutine 还是线程，都得走一次用户→内核→用户的切换，而这个切换是有代价的。代价从哪来？
+你知道 Go 的 goroutine 比传统 Java platform thread（一个 Java 线程通常对应一个 OS 线程）轻——部分原因就是 goroutine 调度在用户态完成，不走内核调度器。但这不等于 Go 不进内核：但凡涉及文件 I/O、网络 I/O、进程创建、内存映射等内核能力，无论 goroutine 还是线程，都得走 syscall。Go 省下来的主要是「大量 goroutine 等待/恢复/互相切换」时，不必把每个等待单元都交给内核线程调度。
+
+两条路径分开看：
+
+```text
+需要内核能力：
+  goroutine → Go runtime → syscall/epoll/read/write → Linux 内核
+
+只是在 goroutine 之间切换：
+  goroutine A 暂停 → Go runtime 记录状态 → 同一个 OS 线程继续跑 goroutine B
+  （这一段通常不需要 syscall，也不触发内核 context switch）
+```
+
+**到底省在哪里？** 不是把必须的内核工作省掉，而是把「等待者的管理」从内核线程调度里搬到 Go runtime。
+
+传统阻塞线程模型里，一个线程读网络但暂时没数据：
+
+```text
+OS 线程 A 调 read(fd)
+  → 进内核
+  → 内核发现没数据，把线程 A 挂起
+  → 内核 schedule() 另一个线程
+  → fd 可读后，内核唤醒线程 A
+  → 线程 A 重新被内核调度上 CPU
+```
+
+这里每个等待者都是一个内核调度对象。10 万个等待连接，就意味着内核要知道并管理大量睡眠/唤醒/调度对象。
+
+Go 网络 I/O 的常见路径是非阻塞 fd + runtime netpoller（Linux 上基于 `epoll`）：
+
+```text
+goroutine G1 想读 fd
+  → Go runtime 尝试非阻塞 read
+  → 没数据时返回 EAGAIN
+  → runtime 把 G1 park 在用户态等待队列
+  → 同一个 OS 线程继续跑 G2/G3/G4
+
+少量 OS 线程通过 epoll_wait 批量等很多 fd
+  → 一次进内核可以等成千上万个 fd
+  → fd 可读后，runtime 把对应 G 放回 runnable 队列
+```
+
+所以减少的是：
+
+| 省下来的东西 | 为什么能省 |
+|---|---|
+| goroutine A → goroutine B 的切换 syscall | runtime 自己保存/恢复 goroutine 状态，不调用内核 `schedule()` |
+| 每个等待连接一个阻塞 OS 线程 | goroutine 只是用户态对象，fd 等待由 `epoll` 批量管理 |
+| 大量内核线程睡眠/唤醒/抢占成本 | 内核只看见少量 OS 线程，Go runtime 在用户态调度大量 goroutine |
+
+没省掉的是：真正 `read`/`write` 数据、`epoll_wait` 等待事件、创建进程、`mmap` 内存这些内核能力仍然要 syscall。Go 的收益来自「用较少的内核交互管理大量等待任务」，不是来自「I/O 不用内核」。
 
 ### ② 黑盒内部
 
@@ -107,12 +167,12 @@ exit_group(0)                           = ?                                # 退
 
 **量化参考**：一次 syscall 往返（含切换）大约 **50–500 ns**，与具体 CPU 和 KPTI 开启状态有关。相比之下，L1 缓存访问约 1 ns，内存访问约 100 ns——一次 syscall 的成本相当于若干次内存访问。
 
-**这个代价催生了两类架构优化：**
+**这个代价催生了几类架构优化：**
 
 | 优化手段 | 动机 | 原理 |
 |---|---|---|
 | `writev` / `sendmsg` | 合并多次 `write` 为一次 syscall | 减少切换次数，同样数据量更少 syscall |
-| `io_uring`（Linux 5.1+） | 完全异步，批量提交，无 syscall | 用户态 ring buffer 共享给内核，提交/消费不走切换 |
+| `io_uring`（Linux 5.1+） | 异步、批量提交，减少每次 I/O 都 syscall | 用户态 ring buffer 共享给内核；setup/唤醒仍要 syscall，开启 SQPOLL 等模式时可进一步避开每次提交的 syscall |
 | `vDSO`（虚拟 DSO） | 某些只读 syscall（如 `gettimeofday`）在用户态完成 | 内核把数据映射到用户空间，读时无需切换 |
 
 > 本原语无 ③（无干净 5 行复现能直接量化单次切换成本；真正的基准测试需要 perf/BPF 等工具，超出本章边界）。
@@ -343,7 +403,7 @@ Java 里 `Process` 和 `Thread` 是完全不同的类，Go 里有 goroutine 和 
 
 **内核线程调度看 LWP**：`ps` 显示的 PID 是进程 ID，LWP（Light Weight Process）是内核分配给每个 task_struct 的 ID。同一进程的多个线程有相同 PID 但不同 LWP。
 
-**Go goroutine ≠ 内核线程**：goroutine 是 Go runtime 在用户态实现的 **M:N 调度**——N 个 goroutine 映射到 M 个 OS 线程（`GOMAXPROCS` 控制 M 的数量，通常等于 CPU 核数）。Go runtime 有自己的调度器（`runtime.schedule()`），goroutine 的切换不走内核 `schedule()`，不产生上下文切换的内核代价。Go goroutine 的暂停（如 channel 等待）是 Go runtime 把 goroutine 从 OS 线程上摘下来、换上另一个 goroutine 来跑，OS 层面看到的那个 OS 线程一直在跑，没有切换。
+**Go goroutine ≠ 内核线程**：goroutine 是 Go runtime 在用户态实现的 **M:N 调度**——N 个 goroutine（G）映射到 M 个 OS 线程（M），中间由 P（processor）控制可并行执行 Go 代码的额度。`GOMAXPROCS` 控制的是 P 的数量，通常等于 CPU 核数，不是 OS 线程 M 的精确数量。Go runtime 有自己的调度器（`runtime.schedule()`），goroutine 的切换不走内核 `schedule()`，不产生上下文切换的内核代价。Go goroutine 的暂停（如 channel 等待）是 Go runtime 把 goroutine 从 OS 线程上摘下来、换上另一个 goroutine 来跑，OS 层面看到的那个 OS 线程一直在跑，没有切换；如果某个 goroutine 真正阻塞在 syscall 里，runtime 可以把 P 挪给别的 OS 线程继续跑其他 goroutine。
 
 ### ③ 砸实
 

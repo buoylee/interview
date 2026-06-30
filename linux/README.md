@@ -41,7 +41,7 @@
 
 ---
 
-## 章节目录
+## 已完成章节
 
 | 章 | 主题 | 核心原语 |
 |----|------|----------|
@@ -49,13 +49,21 @@
 | [02 执行原语](./02-execution-primitives/) | syscall·用户↔内核切换·中断·上下文切换·栈帧·进程vs线程 | syscall 指令、特权级切换、硬件中断 vs 软件陷入(syscall)、调度器上下文切换、内核栈/用户栈、task_struct |
 | [03 IO 原语](./03-io-primitives/) | fd·fd表·inode·阻塞/非阻塞·内核缓冲·epoll·一切皆文件 | 文件描述符表、VFS/inode、write→page cache→writeback 路径、epoll 红黑树+就绪链表 |
 | [04 并发原语](./04-concurrency-primitives/) | 原子/CAS·futex·signal·条件变量·内存屏障 | CAS 与 Lock 前缀、futex 内核等待队列、信号异步交付、条件变量语义、store/load 屏障 |
+| [05 链接装载原语](./05-link-load-primitives/) | ELF·静态/动态链接·`.so` 装载·符号解析 | ELF section/segment、目标文件/符号表/重定位、`ld-linux`、库搜索路径、`LD_PRELOAD`、`dlopen` |
+| [06 网络内核原语](./06-network-kernel-primitives/) | socket 内核对象·listen/accept/connect·SYN/accept queue·socket buffer·`sk_buff`·NAPI 到协议栈 | socket fd、backlog、receive/send buffer、`sk_buff`、软中断、NAPI、epoll ready 语义 |
+| [07 容器与 cgroup 原语](./07-container-cgroup-primitives/) | namespace·cgroup·CPU quota·memory limit·OOMKill·容器内 `/proc` 视角 | 容器进程模型、PID/mount/net/user namespace、cgroup v2、CPU throttling、memory OOM、overlayfs |
+| [08 权限与安全原语](./08-permission-security-primitives/) | UID/GID·effective UID·文件权限·setuid·capabilities·seccomp/AppArmor/SELinux | real/effective UID、目录权限、umask、setuid/sticky bit、capability、user namespace、seccomp、LSM |
+| [09 时间与定时器原语](./09-time-timer-primitives/) | wall clock vs monotonic·NTP 调时·timer/sleep/timeout | `CLOCK_REALTIME`、`CLOCK_MONOTONIC`、vDSO、sleep/wakeup、timerfd、deadline、分布式时钟偏差 |
+| [10 观测与内核 tracing 原语](./10-observability-kernel-primitives/) | `/proc`/`/sys`·tracepoint·kprobe/uprobe·perf event·eBPF·call stack 采样 | procfs/sysfs、ptrace/strace、perf event、tracepoint、kprobe/uprobe、eBPF、观测成本 |
 
 ---
 
-## 扩展位(撞到再加)
+## 推荐阅读顺序
 
-**05 链接装载原语**(`linux/05-link-load-primitives/`, 尚未编写)
-预留给:编译/链接流程、目标文件、符号表、`.so` 动态链接、ELF 格式、`ldd`、`LD_LIBRARY_PATH`、`dlopen`。撞到「为什么找不到 .so」类问题时再写。
+1. **先读 01-04**：补齐内存、执行、IO、并发这四类所有 Linux 问题都会反复用到的基础原语。
+2. **再读 05-06**：理解程序如何被装载、网络请求如何从网卡进入应用线程。
+3. **接着读 07-08**：把容器资源限制和权限安全边界补上。
+4. **最后读 09-10**：理解 timeout/clock 语义,以及 perf/eBPF/trace 工具到底在看什么。
 
 ---
 
