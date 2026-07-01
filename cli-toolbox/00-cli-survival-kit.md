@@ -8,7 +8,7 @@
 
 ## 收口地圖
 
-日常 CLI 生存層只回答 7 件事：
+日常 CLI 生存層只回答 8 件事：
 
 ```text
 ① 怎麼裝工具        apt / dpkg
@@ -18,6 +18,7 @@
 ⑤ shell 怎麼接線    $? / > / 2>&1 / |
 ⑥ 東西怎麼打包      tar / gzip / zip
 ⑦ 我在哪、我是誰    date / uname / id / env
+⑧ 資訊從哪來        /etc /proc /sys /var/log
 ```
 
 > 心法：先把「終端現場、輸入輸出、命令來源、工具安裝」穩住，再談排查。
@@ -250,12 +251,51 @@ env | cut -d= -f1 | sort | head  # 只看變數名，避免把 secret 值印出�
 
 ---
 
+## 8. 常用命令背後的系統文件
+
+> 先用命令拿摘要；命令不夠細、環境太精簡、或命令結果和應用行為不一致時，再直接看文件。
+
+| 想知道 | 先用命令 | 背後 / 可直接看的文件 | 什麼時候直接看文件 |
+|---|---|---|---|
+| 什麼發行版 | `cat /etc/os-release` | `/etc/os-release` | 裝工具前判斷該用 `apt` / `dnf` / `apk` / `pacman` |
+| 主機名 | `hostname` | `/etc/hostname` | 查靜態 hostname；容器裡 hostname 可能是 runtime 注入 |
+| 使用者與組 | `whoami` / `id` | `/etc/passwd`、`/etc/group` | 查 uid/gid/group 對應；不要把 `/etc/passwd` 當密碼文件 |
+| 命令路徑 | `type cmd` / `command -v cmd` | `$PATH`、`/usr/bin`、`/usr/local/bin` | 懷疑跑到錯版本、alias、函數、venv 裡的命令 |
+| DNS 解析 | `getent hosts name` / `dig name` | `/etc/hosts`、`/etc/resolv.conf`、`/etc/nsswitch.conf` | `dig` 有結果但應用連不上；本機 hosts 或解析順序可能不同 |
+| CPU 資訊 | `lscpu` / `nproc` | `/proc/cpuinfo`、`/proc/stat` | 精簡環境沒 `lscpu`；想看 CPU 原始欄位或累計時間 |
+| 記憶體 | `free -h` | `/proc/meminfo` | 想看 `MemAvailable`、cache、swap 原始值；容器限制另看 `/sys/fs/cgroup` |
+| load average | `uptime` | `/proc/loadavg` | 腳本採樣；注意 load 要和 CPU 核數一起看 |
+| 掛載與磁碟 | `df -h` / `mount` | `/proc/mounts`、`/etc/fstab` | 分清「現在已掛載」和「開機自動掛載」；改 `/etc/fstab` 要小心 |
+| 進程細節 | `ps` / `lsof` | `/proc/<pid>/cmdline`、`fd/`、`limits`、`environ`、`cwd` | 查進程真實參數、打開的 fd、生效限制、工作目錄、環境變數 |
+| 服務與日誌 | `systemctl status` / `journalctl` | `/etc/systemd/system/`、`/lib/systemd/system/`、`/var/log/` | 沒有 journald、服務 unit 有覆蓋、或應用直接寫文件日誌 |
+| 內核與設備 | `uname -a` / `dmesg -T` | `/proc/version`、`/sys/`、`/dev/` | 查內核版本、設備狀態、cgroup、block/net class 等低層資訊 |
+
+三條使用原則：
+
+```text
+1. /etc  多是配置:系統怎麼被設定。
+2. /proc 多是內核運行時狀態:現在正在發生什麼。
+3. /sys  多是設備 / 內核子系統視圖:硬體、cgroup、block、net 等。
+```
+
+高頻判斷：
+
+```text
+命令看摘要     -> uptime / free / df / hostname / id
+文件看真相     -> /etc/os-release, /proc, /sys, systemd unit, /var/log
+行為不一致時   -> 對照命令輸出和背後文件,尤其 DNS、PATH、容器資源限制
+```
+
+> 這節只是入口索引。進程內部細節見 `04-observability-internals.md`；DNS 見 `03-network-triage.md`；systemd 見 `07-systemd-and-services.md`。
+
+---
+
 ## 和 CORE-SET 的關係
 
 `00-cli-survival-kit.md` 是每天操作層：
 
 ```text
-裝工具、確認命令來源、保存終端現場、看輸出、接 stdout/stderr、打包、確認身份位置
+裝工具、確認命令來源、保存終端現場、看輸出、接 stdout/stderr、打包、確認身份位置、知道資訊從哪來
 ```
 
 `CORE-SET.md` 是工程排查層：
