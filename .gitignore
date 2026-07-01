@@ -6,6 +6,7 @@
 # 本地工具生成物(非内容)
 .codegraph/
 .antigravitycli/
+.agents/
 .claude/worktrees/
 .superpowers/
 

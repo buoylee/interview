@@ -109,6 +109,7 @@ Linux 裡進程、socket、設備都被當「檔案 / fd」對待——所以 `l
 | # | 章 | 一句話 |
 |---|---|---|
 | 00 | 本頁(索引) | 反查表 + 3 條跨域心法 |
+| ⭐ | [**CORE-SET 一屏總覽**](CORE-SET.md) | 全部主力命令 + 肌肉記憶參數 + 「忘了怎麼查」反射,一屏,每行跳回下面各章詳解 |
 | 01 | [進程與作業控制](01-process-and-job-control.md) | 放後台 / 找 / 殺 / 信號 / 優先級 / 殭屍 |
 | 02 | [性能與資源排查](02-performance-and-resource-triage.md) | CPU·load·us/sy/wa / 記憶體 / IO,黑盒看哪卡 |
 | 03 | [網路排查](03-network-triage.md) | 連通性 / 端口 `ss` / DNS / `tcpdump` / 隧道 |
