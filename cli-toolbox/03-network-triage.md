@@ -293,15 +293,60 @@ ping -c 3 127.0.0.1                # 製造 ICMP 流量
 # 預期:tcpdump 印出 3 行 ICMP echo request/reply 後自動結束
 ```
 
-### ⚡ 配角速驗(`ping` / `nc` / `getent` / `traceroute`)
+### nc (Netcat) — 網路瑞士刀
 
+`nc` 可以扮演客戶端（發送請求）或伺服器端（監聽請求），在排查連接埠通不通時極其常用。
+
+| 寫法 | 作用 | 參數解釋 |
+|---|---|---|
+| `nc -zv 127.0.0.1 8080` | **探針模式**：測試 TCP 8080 埠是否有開 | `-z` 只掃描不傳送資料，`-v` 顯示詳細日誌 (verbose) |
+| `nc -lk 8080` | **監聽模式**：在本機啟動一個 TCP 8080 埠監聽服務 | `-l` 監聽模式 (listen)，`-k` 連線中斷後繼續維持監聽 (keep-alive) |
+| `nc -uv 127.0.0.1 8080` | 測試 **UDP** 連接埠 | `-u` 使用 UDP 協定 |
+
+> 💡 **TCP 掃描成功與失敗的輸出**：
+> - **成功**：`Connection to 127.0.0.1 8080 port [tcp/*] succeeded!`
+> - **失敗**：`nc: connect to 127.0.0.1 port 8080 (tcp) failed: Connection refused` (服務沒開) 或卡住逾時 (防火牆攔截)。
+
+**⚡ 驗證**:
 ```bash
-ping -c 3 127.0.0.1            # 預期:3 個 reply,0% packet loss
-getent hosts example.com      # 預期:IP + 主機名(走系統解析路徑,需外網)
-nc -lk 9000 &                 # 起一個監聽
+nc -lk 9000 &                 # 背景啟動監聽 9000
 sleep 1
 nc -zv 127.0.0.1 9000         # 預期:... port 9000 ... succeeded!
 kill %1
+```
+
+### ping & mtr — 連通性與路由追蹤
+
+這兩個是 **L3 (網路層)** 的工具，用來定位「網路斷在哪裡」或「延遲高在哪裡」。
+
+#### 1. ping — 簡單連通性測試
+```bash
+ping -c 4 8.8.8.8
+```
+* **`-c 4`**：**Count**，只發送 4 次 ICMP 請求就自動結束（Linux 預設會無限 ping 下去）。
+* **重點欄位**：`time=12.3 ms` 代表 RTT（Round Trip Time，來回時間）。高於 100ms 通常體感有明顯延遲。
+
+#### 2. mtr (My Traceroute) — 路由動態診斷
+`mtr` 是 `ping` 和 `traceroute` 的結合體，它會持續發送封包，動態更新每一跳的網路品質。
+```bash
+mtr 8.8.8.8
+```
+*執行後會進入互動式介面，欄位判讀如下：*
+* **`Host`**：每一跳路由器的 IP 或域名。第一跳通常是您的閘道器（Gateway）。
+* **`Loss%`**：丟包率。**這是最關鍵的指標**。如果某個節點開始丟包，且後面所有節點也都丟包，說明該節點是瓶頸。如果只有中間某跳丟包但終點沒丟，通常是該路由器 ICMP 限速，非真實丟包。
+* **`Snt`**：發送的封包總數 (Sent)。
+* **`Last / Avg / Best / Wrst`**：最新 / 平均 / 最好 / 最差的來回延遲時間 (ms)。
+
+**⚡ 驗證**:
+```bash
+ping -c 3 127.0.0.1            # 預期:3 個 reply, 0% packet loss
+# mtr 為互動式指令，排查時手動輸入 `mtr 8.8.8.8` 觀察即可
+```
+
+### ⚡ 配角速驗(`getent` / `traceroute`)
+
+```bash
+getent hosts example.com      # 預期:IP + 主機名(走系統解析路徑,需外網)
 traceroute -m 5 1.1.1.1       # 預期:逐跳列出(需外網;容器內可能受限)
 ```
 
