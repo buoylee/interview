@@ -34,23 +34,65 @@ observability / mysql-handson      症狀/意圖 → 一行命令 → 底層一�
 
 本 track 每個命令都配 **⚡ 驗證**用例,且**帶 `# 預期:` 輸出**——跑一下立刻知道對不對,這才叫快速上手。
 
-建議在一個**拋棄式 Linux 容器**裡跑:乾淨、安全、**退出即銷毀**,且和你 resume 的 Linux 環境一致(別在 mac 上跑,很多工具 mac 沒有或行為不同):
+建議在一個**拋棄式 Linux 容器**裡跑:乾淨、安全,且和你 resume 的 Linux 環境一致(別在 mac 上跑,很多工具 mac 沒有或行為不同)。
+
+### 起手式:補權限旗標,別用光禿禿的 `docker run`
+
+`docker run` 預設用 seccomp 封了 `ptrace`、raw socket——`strace -p`、`tcpdump` 會直接被擋。一開始就把旗標補上,省得學到 04/03 才卡:
 
 ```bash
-# 進一個乾淨的 Ubuntu 容器(exit 後自動銷毀,不留垃圾)
-docker run --rm -it ubuntu bash
+docker run --rm -it \
+  --cap-add=SYS_PTRACE --cap-add=NET_RAW --cap-add=NET_ADMIN \
+  ubuntu bash
 
 # 容器很精簡,一次裝齊本 track 會用到的工具:
 apt update && apt install -y \
   procps psmisc iproute2 lsof strace curl dnsutils net-tools netcat-openbsd \
-  file git tmux rsync jq sysstat ncdu less iputils-ping traceroute mtr-tiny tcpdump iotop
+  file git tmux rsync jq sysstat ncdu less iputils-ping traceroute mtr-tiny tcpdump iotop tldr
 ```
 
 之後每個 `⚡ 驗證` 都**假設你在這個沙盒裡**,不再逐條標 macOS 差異。
 
-> **兩個例外**(那兩章會再說明):
-> - **07 systemd** —— plain `docker run ubuntu` **沒跑 systemd**,驗證要在**有 systemd 的環境**(你的 linux-handson VM / WSL)。
-> - **08 容器與 k8s** —— 驗證本身就是 `docker`/`kubectl`,**在宿主機跑**,不在沙盒內。
+### 不想每次重裝?兩條路
+
+`--rm` = 退出即銷毀,好處是乾淨,代價是**每次重跑 `apt install`(~30s)**。嫌煩選其一:
+
+**路 A ── 持久命名容器(零額外檔案,推薦先用這個)** 去掉 `--rm`,給名字,裝一次留著:
+
+```bash
+# 建一次(工具裝完就留著)
+docker run -it --name clibox \
+  --cap-add=SYS_PTRACE --cap-add=NET_RAW --cap-add=NET_ADMIN ubuntu bash
+# 之後每次重進(工具還在)
+docker start -ai clibox
+# 學完不要了
+docker rm -f clibox
+```
+
+**路 B ── 烤成鏡像(要反覆玩很多次再升級這個)** 存一個 `Dockerfile`,工具烤進去,以後 `run --rm` 也秒開不重裝:
+
+```dockerfile
+FROM ubuntu
+RUN apt update && apt install -y \
+  procps psmisc iproute2 lsof strace curl dnsutils net-tools netcat-openbsd \
+  file git tmux rsync jq sysstat ncdu less iputils-ping traceroute mtr-tiny tcpdump iotop tldr
+```
+
+```bash
+docker build -t clibox .
+docker run --rm -it \
+  --cap-add=SYS_PTRACE --cap-add=NET_RAW --cap-add=NET_ADMIN clibox bash
+```
+
+### 沙盒跑不出來的、要換環境的
+
+| 章 | 為什麼沙盒不行 | 去哪跑 |
+|---|---|---|
+| **07** systemd | plain 容器 PID1 不是 systemd,`systemctl` 報 "failed to connect to bus" | 有 systemd 的環境(linux-handson VM / WSL) |
+| **08** 容器與 k8s | 驗證本身就是 `docker`/`kubectl` | **宿主機**跑,不進沙盒 |
+| **04** `dmesg` | 容器讀不到宿主內核環形緩衝 | 宿主機(找 OOM 也在宿主) |
+| **02** `wa`/`st`/swap `si/so` | 容器裏難人為觸發非零值(見 [metrics-decoder](../metrics-decoder/)) | 讀懂欄位即可,別糾結跑出數字 |
+| **10** ssh 隧道 | 要**第二台 host** 才有意義 | 有兩台機再玩;`rsync`/`tmux` 本地即可 |
 
 ---
 
@@ -66,6 +108,8 @@ apt update && apt install -y \
 | 想抓包看到底發了什麼 / 打個 SSH 隧道 | **03** / **10** |
 | 看一個進程「在幹嘛」(系統調用、開了哪些檔案) | **04** 觀測內幕 |
 | 從一堆日誌 / 文本裡撈出我要的資料 | **05** 文本三劍客與管道 |
+| 讀一個日誌檔排查:定位錯誤 / 看上下文堆疊 / 順 request-id 串請求 | **11** 看日誌檔最佳實踐 |
+| 日誌被輪替壓縮了(`app.log.2.gz`),要跨檔一次搜 | **11** |
 | 磁碟滿了,誰佔的空間 / 找大檔案 | **06** 檔案・磁碟・權限 |
 | 服務起不來 / 看服務日誌 / 設開機自啟 | **07** systemd 與服務 |
 | 容器 / Pod 排查(掛了、進不去、看日誌) | **08** 容器與 k8s |
@@ -120,5 +164,6 @@ Linux 裡進程、socket、設備都被當「檔案 / fd」對待——所以 `l
 | 08 | [容器與 k8s 排查](08-containers-and-k8s.md) | `docker` / `kubectl` 高頻排查命令 |
 | 09 | [git 救命級進階](09-git-lifesaver.md) | `bisect` / `reflog` / `rebase -i` / `stash` / pickaxe |
 | 10 | [遠端與傳輸](10-remote-and-transfer.md) | `ssh` 隧道·config / `scp` / `rsync` / `tmux` |
+| 11 | [看日誌檔的最佳實踐](11-reading-logs.md) | 讀日誌工作流 / `zgrep` 輪替壓縮 / 跨行堆疊 / 時間窗 / request-id 串鏈 / JSON |
 
-> 進度:**全 11 篇(00–10)完成 ✅**,含主力命令深講(完整參數表)+ 每個命令的 ⚡ 驗證用例(帶 `# 預期:` 輸出)。
+> 進度:**全 12 篇(00–11)完成 ✅**,含主力命令深講(完整參數表)+ 每個命令的 ⚡ 驗證用例(帶 `# 預期:` 輸出)。
