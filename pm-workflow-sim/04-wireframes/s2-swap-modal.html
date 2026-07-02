@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>S2 發起換班 · Lo-fi</title>
+<style>
+  body{font-family:-apple-system,"PingFang TC",sans-serif;background:#e8e8e8;margin:0;padding:24px;color:#333}
+  .wrap{display:flex;gap:24px;max-width:1100px;margin:0 auto;align-items:flex-start}
+  .frame{background:#bbb;padding:40px;flex:1;min-width:0}
+  .modal{background:#fff;border:2px solid #999;padding:24px;max-width:440px;margin:0 auto}
+  .annot{width:280px;flex-shrink:0}
+  .annot div{background:#fff8c5;border:1px solid #d4c94a;padding:10px 12px;font-size:13px;margin-bottom:10px;line-height:1.6}
+  .btn{display:inline-block;background:#dde6f5;border:2px solid #5b7fb9;padding:8px 18px;text-decoration:none;color:#234;font-size:14px}
+  .ghost{background:#f2f2f2;border:2px dashed #aaa;color:#666}
+  .field{margin-bottom:16px;font-size:14px}
+  .field label{display:block;margin-bottom:6px;font-weight:600}
+  .input{border:2px dashed #aaa;padding:8px 10px;color:#666;background:#fafafa}
+  .radio{border:2px solid #5b7fb9;background:#eef3fb;padding:8px 10px;margin-bottom:6px}
+  .radio.off{border:2px dashed #aaa;background:#fafafa;color:#777}
+  .hint{font-size:12px;color:#888;margin-top:4px}
+  nav{max-width:1100px;margin:0 auto 16px;font-size:13px}
+  nav a{margin-right:12px}
+  h3{margin:0 0 16px}
+</style>
+</head>
+<body>
+<nav>← <a href="index.html">總覽</a> | <a href="s1-schedule.html">S1</a> · <a href="s3-my-requests.html">S3</a> · <a href="s4-inbox.html">S4</a> · <a href="s5-admin.html">S5</a></nav>
+<div class="wrap">
+  <div class="frame">
+    <div class="modal">
+      <h3>發起換班 — 7/18 (六) 我的班</h3>
+      <div class="field">
+        <label>找誰換?</label>
+        <div class="radio">● 指定同事 &nbsp; <span class="input">小王 ▾</span></div>
+        <div class="radio off">○ 公開徵人(全團隊可見、先接先得)</div>
+      </div>
+      <div class="field">
+        <label>回饋班次(選填)</label>
+        <div class="input">7/19 (日) 小王的班 ▾</div>
+        <div class="hint">不選 = 請對方單向頂班,人情自己還 😄</div>
+      </div>
+      <div class="field">
+        <label>留言(選填)</label>
+        <div class="input">陪產檢,拜託了🙏</div>
+      </div>
+      <div style="text-align:right">
+        <a class="btn ghost" href="s1-schedule.html">取消</a>
+        <a class="btn" href="s3-my-requests.html">送出申請</a>
+      </div>
+      <div class="hint" style="margin-top:10px">送出後小王會收到群組通知;48 小時未響應自動過期。</div>
+    </div>
+  </div>
+  <div class="annot">
+    <div>📌 <b>1</b> 標題帶死上下文「7/18 我的班」——從 S1 特定班次進來,不讓用戶再選一次日期(少一步 = 少一種錯)。</div>
+    <div>📌 <b>2</b> 指定 vs 公開:訪談 C 小陳的社交成本痛點 → 提供私下指定路徑;公開徵人標明「先接先得」,規則寫在按鈕旁,不藏說明頁。</div>
+    <div>📌 <b>3</b> 回饋班次選填 = kickoff Q3 的候選答案(單向頂班允許),等 PRD 評審拍板。</div>
+    <div>📌 <b>4</b> 過期規則直接寫在送出按鈕下方——五問表「失敗/無響應時會怎樣」的答案要讓用戶在操作當下看到。</div>
+  </div>
+</div>
+</body>
+</html>

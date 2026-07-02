@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>OnCall Swap · Lo-fi 線框(模擬 Figma)</title>
+<style>
+  body{font-family:-apple-system,"PingFang TC",sans-serif;background:#e8e8e8;margin:0;padding:24px;color:#333}
+  .note{background:#fff8c5;border:1px solid #d4c94a;padding:12px 16px;max-width:720px;margin:0 auto 24px;font-size:14px;line-height:1.7}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;max-width:960px;margin:0 auto}
+  a.card{display:block;background:#fff;border:2px solid #999;padding:20px;text-decoration:none;color:#333}
+  a.card:hover{border-color:#333}
+  .card h3{margin:0 0 6px;font-size:16px}
+  .card p{margin:0;font-size:13px;color:#777}
+  h1{text-align:center;font-size:20px}
+</style>
+</head>
+<body>
+<h1>🔲 OnCall Swap — Lo-fi 線框 & 可點原型</h1>
+<div class="note">
+  <b>這裡模擬的是 Figma 檔案。</b>真實中:每個「畫面」是 Figma 裡一個 frame,頁面按
+  <code>01 Flow / 02 Wireframe / 03 Prototype</code> 分區;畫面之間的藍色按鈕連結 = Figma prototype 模式的熱區連線。
+  灰框 + 無配色是刻意的(低保真紀律):評審者只能對<b>結構和流程</b>提意見,沒有顏色可挑。
+  右側黃色編號 📌 = 設計師留給評審的說明,對應 Figma 裡的 annotation。
+  <br><br><b>建議走法:S1 → 點自己的班次 → S2 發起 → S3 看申請 → 換帳號視角進 S4 響應 → S5 管理員兜底。</b>
+</div>
+<div class="grid">
+  <a class="card" href="s1-schedule.html"><h3>S1 值班表(首頁)</h3><p>月曆視圖 · 今日值班 · 換班入口 · 含空態/錯誤態變體</p></a>
+  <a class="card" href="s2-swap-modal.html"><h3>S2 發起換班</h3><p>彈窗 · 指定對象 vs 公開徵人 · 回饋班次</p></a>
+  <a class="card" href="s3-my-requests.html"><h3>S3 我的申請</h3><p>狀態流轉:待響應/已生效/被拒/過期/已取消</p></a>
+  <a class="card" href="s4-inbox.html"><h3>S4 收到的申請</h3><p>接受 / 拒絕 · 公開徵人卡片</p></a>
+  <a class="card" href="s5-admin.html"><h3>S5 管理員視圖</h3><p>直接改表 · 變更記錄(audit log)</p></a>
+</div>
+</body>
+</html>

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>S3 我的申請 · Lo-fi</title>
+<style>
+  body{font-family:-apple-system,"PingFang TC",sans-serif;background:#e8e8e8;margin:0;padding:24px;color:#333}
+  .wrap{display:flex;gap:24px;max-width:1100px;margin:0 auto;align-items:flex-start}
+  .frame{background:#fff;border:2px solid #999;padding:20px;flex:1;min-width:0}
+  .annot{width:280px;flex-shrink:0}
+  .annot div{background:#fff8c5;border:1px solid #d4c94a;padding:10px 12px;font-size:13px;margin-bottom:10px;line-height:1.6}
+  .btn{display:inline-block;background:#dde6f5;border:2px solid #5b7fb9;padding:5px 12px;text-decoration:none;color:#234;font-size:13px}
+  .ghost{background:#f2f2f2;border:2px dashed #aaa;color:#666}
+  .tabs{border-bottom:2px solid #ccc;margin-bottom:14px;font-size:14px}
+  .tabs span{display:inline-block;padding:8px 14px}
+  .tabs .on{border:2px solid #ccc;border-bottom:2px solid #fff;margin-bottom:-2px;font-weight:700}
+  .card{border:2px solid #ccc;padding:12px 14px;margin-bottom:10px;font-size:14px}
+  .card.dim{border-style:dashed;color:#888;background:#fafafa}
+  .st{font-size:12px;border:1px solid #999;padding:1px 8px}
+  .st.wait{background:#fff3cd}.st.ok{background:#d9ead9}.st.no{background:#eee}
+  nav{max-width:1100px;margin:0 auto 16px;font-size:13px}
+  nav a{margin-right:12px}
+</style>
+</head>
+<body>
+<nav>← <a href="index.html">總覽</a> | <a href="s1-schedule.html">S1</a> · <a href="s2-swap-modal.html">S2</a> · <a href="s4-inbox.html">S4</a> · <a href="s5-admin.html">S5</a></nav>
+<div class="wrap">
+  <div class="frame">
+    <h3 style="margin-top:0">我的申請</h3>
+    <div class="tabs"><span class="on">進行中 (1)</span><span>歷史</span></div>
+    <div class="card">
+      <b>7/18 (六)</b> 我 → 小王(回饋 7/19)<span class="st wait">⏳ 待小王響應</span>
+      <div style="margin-top:8px;color:#888;font-size:13px">送出於 2 小時前 · 46 小時後過期</div>
+      <div style="margin-top:8px"><a class="btn ghost" href="s1-schedule.html">取消申請</a></div>
+    </div>
+    <div style="border-top:3px double #bbb;margin:20px 0 12px;padding-top:10px;color:#a55;font-size:13px"><b>「歷史」tab 內容示意(狀態機全集):</b></div>
+    <div class="card dim"><b>6/14 (日)</b> 我 → 小王 <span class="st ok">✅ 已生效</span></div>
+    <div class="card dim"><b>5/30 (六)</b> 我 → 小陳 <span class="st no">❌ 被拒絕</span>「那天我也有事」</div>
+    <div class="card dim"><b>5/10 (六)</b> 公開徵人 <span class="st no">⌛ 已過期(無人接)</span></div>
+    <div class="card dim"><b>4/22 (三)</b> 我 → 大熊 <span class="st no">↩️ 已取消</span></div>
+  </div>
+  <div class="annot">
+    <div>📌 <b>1</b> 申請的狀態機全集:待響應 → 已生效 / 被拒絕 / 已過期 / 已取消。<b>每個終態都有卡片長相</b>——工程師畫狀態機的習慣直接變 UI 完整性。</div>
+    <div>📌 <b>2</b> 「46 小時後過期」倒數:讓發起人知道系統會兜底,不用自己追。</div>
+    <div>📌 <b>3</b> 取消只在「待響應」出現(五問表:前置條件=對方未響應)。</div>
+    <div>📌 <b>4</b> 被拒卡片保留對方留言——拒絕要有台階,這是社交成本設計的一部分。</div>
+  </div>
+</div>
+</body>
+</html>

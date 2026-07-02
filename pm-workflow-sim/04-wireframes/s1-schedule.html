@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>S1 值班表 · Lo-fi</title>
+<style>
+  body{font-family:-apple-system,"PingFang TC",sans-serif;background:#e8e8e8;margin:0;padding:24px;color:#333}
+  .wrap{display:flex;gap:24px;max-width:1100px;margin:0 auto;align-items:flex-start}
+  .frame{background:#fff;border:2px solid #999;padding:20px;flex:1;min-width:0}
+  .annot{width:280px;flex-shrink:0}
+  .annot div{background:#fff8c5;border:1px solid #d4c94a;padding:10px 12px;font-size:13px;margin-bottom:10px;line-height:1.6}
+  .bar{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #ccc;padding-bottom:10px;margin-bottom:14px}
+  .btn{display:inline-block;background:#dde6f5;border:2px solid #5b7fb9;padding:6px 14px;text-decoration:none;color:#234;font-size:14px}
+  .ghost{background:#f2f2f2;border:2px dashed #aaa;color:#666}
+  .today{background:#f0f0f0;border:2px solid #333;padding:12px;margin-bottom:14px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  td,th{border:1px solid #ccc;padding:8px;text-align:left}
+  .mine{background:#eef3fb}
+  .tag{font-size:11px;border:1px solid #999;padding:1px 6px;color:#666}
+  .variant{margin-top:28px;border-top:3px double #bbb;padding-top:14px}
+  .variant h4{margin:0 0 8px;color:#a55}
+  .box{border:2px dashed #aaa;padding:24px;text-align:center;color:#777;font-size:14px}
+  nav{max-width:1100px;margin:0 auto 16px;font-size:13px}
+  nav a{margin-right:12px}
+</style>
+</head>
+<body>
+<nav>← <a href="index.html">總覽</a> | <a href="s2-swap-modal.html">S2</a> · <a href="s3-my-requests.html">S3</a> · <a href="s4-inbox.html">S4</a> · <a href="s5-admin.html">S5</a></nav>
+<div class="wrap">
+  <div class="frame">
+    <div class="bar">
+      <b>OnCall Swap</b>
+      <span><a class="btn ghost" href="s3-my-requests.html">我的申請 (1)</a> <a class="btn ghost" href="s4-inbox.html">收到的申請 (2)</a></span>
+    </div>
+    <div class="today">📟 <b>今日值班:小王</b> <span class="tag">7/1</span></div>
+    <div class="bar"><span>◀ 6月</span><b>2026 年 7 月</b><span>8月 ▶</span></div>
+    <table>
+      <tr><th>日期</th><th>值班人</th><th>操作</th></tr>
+      <tr><td>7/14 (二)</td><td>小李</td><td>—</td></tr>
+      <tr class="mine"><td>7/18 (六)</td><td><b>我(阿明)</b></td><td><a class="btn" href="s2-swap-modal.html">發起換班</a></td></tr>
+      <tr><td>7/19 (日)</td><td>小王 <span class="tag">🔁 換班取得</span></td><td>—</td></tr>
+      <tr class="mine"><td>7/25 (六)</td><td><b>我(阿明)</b> <span class="tag">⏳ 換班申請中</span></td><td><a class="btn ghost" href="s3-my-requests.html">查看申請</a></td></tr>
+    </table>
+
+    <div class="variant">
+      <h4>變體:空態(下月還沒排班)</h4>
+      <div class="box">8 月尚未排班<br>排班由管理員(老張)負責,有問題找他 →</div>
+      <h4 style="margin-top:14px">變體:錯誤態</h4>
+      <div class="box">載入失敗 [ 重試 ]</div>
+    </div>
+  </div>
+  <div class="annot">
+    <div>📌 <b>1</b> 「今日值班」置頂:訪談 P4,最高頻查詢是「今天誰值班」,一屏內必見。</div>
+    <div>📌 <b>2</b> 只有<b>自己的班次</b>出現「發起換班」——五問表的前置條件直接畫進 UI,不靠報錯。</div>
+    <div>📌 <b>3</b> 換班取得的班次帶 🔁 標記,對應 audit 可追溯(老張約束)。</div>
+    <div>📌 <b>4</b> 申請中的班次不能再發起(防重複申請),按鈕變「查看申請」。</div>
+    <div>📌 <b>5</b> 空態不是空白:告訴用戶為什麼空、找誰。七態表逼出來的。</div>
+  </div>
+</div>
+</body>
+</html>
