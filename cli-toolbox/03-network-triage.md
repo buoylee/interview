@@ -77,7 +77,7 @@
 
 | 命令 | 作用 | 底層一兩句 |
 |---|---|---|
-| 🔧 `dig +short name` | 解析域名(乾淨輸出) | 直接問 DNS server,**不走** `/etc/hosts` |
+| 🔧 `dig +short name` | 解析域名(乾淨輸出) | 直接問 DNS server,**不走** `/etc/hosts` (若無此命令，用 `apt install dnsutils` 安裝) |
 | `dig name @8.8.8.8` | 指定**用哪個 DNS server** 解 | 排查「是不是本機 DNS 配置壞了」 |
 | `dig +trace name` | 從根域一步步追解析過程 | 看到底卡在哪一級 |
 | `getent hosts name` | 走**系統完整解析路徑** | 含 `/etc/hosts` + `nsswitch`——**和應用看到的一致** |
@@ -188,7 +188,7 @@ lsof -i :8080                  # 預期:印出佔用該端口的 nc 進程資訊
 kill %1
 ```
 
-### dig — DNS 查詢
+### dig — DNS 查詢 (若無此命令，請用 `sudo apt install dnsutils` 安裝)
 
 | 寫法 | 作用 |
 |---|---|
@@ -197,6 +197,10 @@ kill %1
 | `dig name MX` / `TXT` / `NS` | 指定記錄類型 |
 | `dig +trace name` | 從根域逐級追 |
 | `dig -x 1.2.3.4` | 反向解析(IP → 域名) |
+
+> 💡 **命令拆解：`dig +short name`**
+> - **`dig`**：Domain Information Groper，DNS 查詢工具。
+> - **`+short`**：簡短模式。過濾掉所有診斷訊息與統計數據，**只輸出乾淨的解析結果**（如 IP 位址或 CNAME 記錄），非常適合 Shell 腳本自動化處理。
 
 如果看到完整 `dig` 輸出,先看這幾段:
 
