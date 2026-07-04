@@ -113,11 +113,19 @@
 
 ## 🔧 主力命令深講 + 速驗
 
-> ⚠️ **`strace`/`ltrace` 在預設 docker 沙盒會被 seccomp 擋**(`ptrace` 無權限)。跑 strace 的驗證請用:
+> ⚠️ **`strace`/`ltrace` 以及 `/proc/<pid>/stack` 在預設 docker 沙盒會被阻擋**：
+> * `strace` 需要 `ptrace` 系統權限（會被 seccomp 擋住）。
+> * `/proc/<pid>/stack` 因為安全策略（AppArmor/Seccomp 預設會封鎖防禦核心資訊洩露，即使是 `root` 讀取也會報 `Permission denied`）。
+> 
+> 若要在開發測試環境中排除限制，啟動容器時需加上對應參數：
 > ```bash
-> docker run --rm -it --cap-add=SYS_PTRACE ubuntu bash
+> # 推薦：只開放偵錯與 ptrace 相關權限
+> docker run --rm -it --cap-add=SYS_PTRACE --security-opt seccomp=unconfined --security-opt apparmor=unconfined ubuntu bash
+> 
+> # 或者直接使用特權模式（危險，僅限開發）
+> docker run --rm -it --privileged ubuntu bash
 > ```
-> `lsof` 與 `/proc` 不需要這個 cap,普通沙盒就能跑。
+> `lsof` 與 `/proc` 其他普通狀態檔案不需要這些 cap，普通沙盒就能跑。
 
 ### strace — 看 syscall
 
@@ -145,6 +153,34 @@
 | `<0.000123>` | syscall 耗時 | `-T` 才有;找慢 syscall |
 
 > 小坑:`strace` 會拖慢目標進程;生產短抓即放。
+
+#### 💡 常見系統調用（Syscall）速查表
+
+| 類別 | 常用 Syscall | 作用說明 | 備註 / 對應的高層操作 |
+|---|---|---|---|
+| **檔案與目錄** | `openat` / `open` | 打開或創建檔案 | `open("file.txt", ...)` |
+| | `close` | 關閉檔案描述符 (fd) | 關閉檔案/連線 |
+| | `read` / `write` | 從 fd 讀取 / 寫入資料 | 讀寫檔案、終端機輸出、讀寫 Socket |
+| | `stat` / `fstat` / `newfstatat` | 查詢檔案屬性（大小、權限等） | `ls -l` 或檢查檔案是否存在 |
+| | `unlink` | 刪除檔案 | `rm file.txt` |
+| **記憶體管理** | `mmap` / `munmap` | 分配 / 釋放記憶體空間 | `malloc` 申請大記憶體或載入動態連結庫 (`.so`) |
+| | `brk` | 改變資料段邊界 | `malloc` 申請小記憶體時在底層調整堆空間 |
+| **進程與執行緒**| `execve` | 載入並執行新程式 | 終端機執行命令（`strace` 輸出的第一行通常是它） |
+| | `clone` / `fork` | 建立子進程或執行緒 (Thread) | `pthread_create` 或背景執行任務 |
+| | `wait4` / `waitpid` | 等待子進程結束 | 防止產生殭屍進程 (Zombie Process) |
+| | `exit_group` / `exit` | 結束進程/執行緒 | 程式退出 |
+| **網路與通訊** | `socket` | 建立通訊端點 (Socket) | 網路連線準備 |
+| | `connect` | 發起網路連線 | 客戶端向伺服器發起 TCP 連線 |
+| | `accept` | 接受網路連線 | 伺服器監聽並接受連線 |
+| | `sendto` / `recvfrom` | 發送 / 接收網路封包 | TCP/UDP 資料傳輸 |
+| **I/O 多路復用** | `ppoll` / `poll` | 監聽多個 fd 的 I/O 事件 | 有超時參數。Python `serve_forever` 會重複調用它 |
+| | `epoll_create1` / `epoll_wait` | Linux 高效事件監聽（紅黑樹+就緒隊列） | `epoll_wait` 阻塞等待網路事件發生 |
+| **訊號與時間** | `rt_sigaction` | 註冊訊號處理器 | 自訂程式對 Ctrl+C (SIGINT) 等訊號的反應 |
+| | `nanosleep` / `clock_nanosleep`| 讓進程暫停（睡眠）指定時間 | `sleep(10)` |
+
+> 💡 **問：`strace` 能追蹤純 CPU 計算（非內核事件）嗎？**
+> **答：不能。**
+> 如果一個進程在進行純用戶態（Userspace）的運算（例如矩陣乘法、加密解密、純記憶體中的排序），它不會調用任何 syscall。此時 `strace` 會表現為**「卡住/沒有任何新輸出」**，直到程式發起下一個與硬體/系統資源相關的 syscall。若要追蹤此類事件，應使用 `ltrace`（看庫函數調用）或 `perf` / `gdb` / `eBPF`。
 
 **⚡ 驗證**(需 `--cap-add=SYS_PTRACE`):
 ```bash

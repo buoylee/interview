@@ -45,6 +45,7 @@
 | `wa` | iowait | **CPU 閒著在等磁碟 IO** —— 不是 CPU 瓶頸,是 **IO 瓶頸** |
 | `id` | idle | CPU 真的閒著 |
 | `st` | steal | **虛擬機被宿主搶走的時間**(雲上高 = 鄰居吵/超賣,該換規格) |
+| `gu` | guest | **本機替 guest VM 跑 CPU 的時間**;普通 VM/容器多半是 0 |
 | `ni` | nice | 被調過 nice 值的 user 時間 |
 | `hi` | hardirq | **硬中斷**佔 CPU(網卡/磁碟控制器發 IRQ);持續高 = 設備中斷風暴,看 `cat /proc/interrupts`、考慮中斷親和/RPS |
 | `si` | softirq | **軟中斷**佔 CPU(中斷下半部,最常見是收發網路封包走協定堆疊);高 = 網路 PPS 大,看 `cat /proc/softirqs`。背後的「上半部/下半部」機制見 [`linux/02-execution-primitives`](../linux/02-execution-primitives/) |
@@ -85,7 +86,11 @@
 - 真正的不足訊號是**開始用 swap**:`vmstat` 的 `si/so` 持續非零 = 記憶體不夠,在拿磁碟頂,性能會雪崩。
 - **RSS vs VSZ**:`VSZ` 是「虛擬地址空間/承諾」(可能很大但沒真用),`RSS` 是「真正佔的物理記憶體」——**算記憶體看 RSS**。
 
-> 進程突然不見了?多半是 **OOM Killer**。`dmesg -T | grep -i oom` 會告訴你它殺了誰、為什麼。
+> 📦 **容器環境避坑**:
+> 1. **容器內 `free -h` 讀到的是宿主機**: 除非部署了 `lxcfs`，否則容器內 `free` 數據不準。真實可用記憶體看 cgroup，可用 $\approx$ `memory.max` - `memory.current` + `inactive_file` (從 `/sys/fs/cgroup/` 或 `memory.stat` 取得)。容器 OOM 判定的是 Working Set (`Usage - inactive_file`)，可隨時回收的快取不會觸發 OOM。
+> 2. **Java `-Xms=-Xmx` 的平線陷阱**: Java 啟動即佔滿堆空間，導致 `kubectl top` / `docker stats` 永遠顯示一條平線。此時必須用 `jcmd <PID> GC.heap_info` 或 `jstat -gcutil <PID>` 查看 JVM 內部的真實可用記憶體。
+
+> 進程突然不見了?多半是 **OOM Killer**。`dmesg -T | grep -i oom` 會告訴你它殺了誰、為什麼（容器內 `dmesg` 常因權限受限，需在宿主機看，或用 `kubectl describe` / `docker inspect` 直接看 `OOMKilled` 狀態）。
 
 ---
 
@@ -93,18 +98,23 @@
 
 | 命令 | 作用 | 底層一兩句 |
 |---|---|---|
-| 🔧 `iostat -xz 1` | 每秒看每個磁碟的詳細 IO | 看 `%util`、`await`、`r/s w/s`(見下) |
+| 🔧 `iostat -xz 1` | 每秒看每個磁碟的詳細 IO | 看 `%util`、`r_await/w_await`(見下) |
 | `iotop` | 哪個**進程**在狂讀寫 | 需 root;直接揪元兇 |
 | `df -h` | 看分區**剩多少空間** | 「磁碟滿」先查它(詳見 **06**) |
 | `df -i` | 看 **inode** 是否用盡 | 空間還很多卻寫不進 = inode 耗盡(小檔太多) |
 
 **關鍵指標**:
 
-- **`await`(單次 IO 平均延遲，ms)** —— **最該看的飽和訊號**。正常 SSD 個位數 ms;飆到幾十上百 = 磁碟扛不住。
-- **`%util`** —— 設備繁忙時間佔比。傳統機械盤接近 100% = 飽和;但 **NVMe/SSD 能並行,`%util` 99% 未必真飽和**,以 `await` 為準。
-- `r/s` `w/s` = 每秒讀/寫次數(IOPS)。
+- **`r_await` / `w_await`(單次讀/寫平均延遲，ms)** —— **最該看的飽和訊號**。正常 SSD / 雲硬碟應在 0.5ms ~ 5ms 之間；飆到 10ms ~ 20ms 以上 = 磁碟嚴重飽和。
+  * *註：新版 `iostat` 已移除合併的 `await`，改為更精準的讀/寫細分。*
+- **`%util`** —— 設備繁忙時間佔比。傳統機械盤（HDD）接近 100% = 飽和；但 **NVMe/SSD 能並行，`%util` 99% 未必真飽和**，必須以 `r_await/w_await` 為準。
+- `r/s` `w/s` = 每秒讀/寫次數 (IOPS)。對比硬體極限（如 AWS gp3 的 3000 IOPS）可判斷是否被限速。
 
-> 串起來:**`top` 看到 `wa` 高 + `01` 裡一堆 `D` 狀態進程 → `iostat -xz 1` 確認磁碟飽和 → `iotop` 揪出是哪個進程在刷。** 這條 IO 排查鏈最常見。
+> 💡 **指標辨析與工具串聯 (vmstat vs iostat vs pidstat)**:
+> 1. **吞吐量 (`bi/bo`) vs 次數 (`r/s w/s`)**: 
+>    * `vmstat` 的 `bi/bo` 衡量的是**全機總讀寫資料量**（以 block 為單位，Linux 中 1 block $\approx$ 1 KB）。
+>    * `iostat` 的 `r/s w/s` 衡量的是**特定設備的 IO 操作次數 (IOPS)**，次數多不代表資料量大。全機磁碟 `rkB/s` / `wkB/s` 總和 $\approx$ `vmstat` 的 `bi/bo`。
+> 2. **排查遞進鏈**: **`vmstat 1` 看到全機 `bi/bo` 與 `wa` 高 $\rightarrow$ `iostat -xz 1` 定位是哪塊盤 `r_await/w_await` 或 `aqu-sz`（佇列長度）高 $\rightarrow$ `pidstat -d 1` 或 `iotop` 揪出是哪個進程在刷。** 這條 IO 排查鏈最常見。
 
 ---
 
@@ -132,7 +142,7 @@
 
 ```bash
 uptime                 # 1. load 趨勢
-dmesg -T | tail        # 2. 內核有沒有報錯(OOM、IO error、丟包)
+dmesg -T | tail        # 2. 內核有沒有報錯(OOM、IO error、丟包;詳見 04)
 vmstat 1               # 3. CPU/swap/阻塞 總覽
 mpstat -P ALL 1        # 4. 是不是單核打滿
 pidstat 1              # 5. 到底哪個進程在燒
@@ -200,6 +210,68 @@ top -b -n1 | head -5       # 預期:%Cpu 區 us 接近 100,yes 在最頂
 kill %1
 ```
 
+### mpstat — 每顆 CPU 分開看
+
+| 寫法 | 作用 |
+|---|---|
+| `mpstat -P ALL 1` | 每秒看每顆 CPU + `all` 匯總 |
+| `mpstat -P ALL 1 3` | 每秒一次,共 3 次 |
+
+`top` 的 CPU 行是全機匯總,看不出「只有一顆核爆了」。`mpstat -P ALL` 把每顆核拆開:
+
+```text
+CPU    %usr  %sys  %iowait  %irq  %soft  %steal  %idle
+all    35.2   8.3      2.1   0.0    1.5     0.0   52.9
+0      95.0   5.0      0.0   0.0    0.0     0.0    0.0
+1       8.0   3.0      0.0   0.0    0.0     0.0   89.0
+```
+
+| 欄位 | 怎麼讀 |
+|---|---|
+| `CPU=all` | 全機平均,類似 `top` 匯總 |
+| `CPU=0/1/...` | 單顆 CPU;一顆接近 100%、其他很閒 = 單線程瓶頸或中斷集中 |
+| `%usr/%sys/%iowait/%steal` | 對應 `top` 的 `us/sy/wa/st` |
+| `%irq/%soft` | 硬/軟中斷;某顆核特別高時,查 `/proc/interrupts` / `/proc/softirqs` |
+
+> 小坑:單核打滿時,整機平均可能不高。4 核機只有 1 核滿,`all` 可能只顯示 25% 左右,但單線程程式已經卡頂。
+
+**⚡ 驗證**:
+```bash
+mpstat -P ALL 1 1       # 預期:每顆核一行 + all 匯總
+```
+
+### pidstat — 按進程看誰在燒
+
+| 寫法 | 作用 |
+|---|---|
+| `pidstat 1` / `pidstat -u 1` | 每秒按進程看 CPU |
+| `pidstat -u -p PID 1` | 只看某個進程 |
+| `pidstat -u -t -p PID 1` | 展開線程(排查 Java/Go/Python 熱線程) |
+| `pidstat -w -p PID 1` | 看上下文切換(`cswch/s` / `nvcswch/s`) |
+| `pidstat -d -p PID 1` | 看進程級磁碟 IO |
+
+典型輸出:
+
+```text
+UID   PID   %usr  %system  %guest  %wait  %CPU  CPU  Command
+1000 3421  152.0     33.0    0.00   12.0 185.0    0  java
+```
+
+| 欄位 | 怎麼讀 |
+|---|---|
+| `%usr` | 進程在用戶態燒 CPU |
+| `%system` | 進程在內核態花 CPU,常見於 syscall/切換多 |
+| `%wait` | 想跑但等 CPU;高 = CPU 競爭 |
+| `%CPU` | 總 CPU;多核機可超過 100% |
+| `CPU` | 最近跑在哪顆 CPU |
+
+> 小坑:`pidstat 1` 找「哪個進程」;要找「哪條線程」,加 `-t`。Java 進一步用 `top -H`/`pidstat -t` 的 TID 轉 16 進制,去 `jstack` 裡找 `nid`。
+
+**⚡ 驗證**:
+```bash
+pidstat 1 1             # 預期:各進程 %usr / %system / %CPU
+```
+
 ### vmstat — 一行看 CPU / 記憶體 / IO 全局
 
 | 寫法 | 作用 |
@@ -209,7 +281,7 @@ kill %1
 | `vmstat -w` | 寬格式,欄位不擠 |
 | `vmstat -s` | 記憶體統計總覽 |
 
-欄位記成 4 組:`r b`(等CPU/阻塞數)、`si so`(swap 換進出,非零=記憶體不足)、`bi bo`(塊設備讀寫)、`us sy id wa st`(CPU 構成,同第 2 節)。
+欄位記成 4 組:`r b`(等CPU/阻塞數)、`si so`(swap 換進出,非零=記憶體不足)、`bi bo`(塊設備讀寫)、`us sy id wa st gu`(CPU 構成,同第 2 節)。
 
 如果看到完整表頭,按區塊這樣讀:
 
@@ -229,7 +301,7 @@ procs -----------memory---------- ---swap-- -----io---- -system-- -------cpu----
 | `system` | `in` `cs` | interrupts / context switches:中斷與上下文切換;`cs` 異常高常見於線程切換太頻繁 |
 | `cpu` | `us` `sy` `id` `wa` `st` `gu` | user / system / idle / iowait / steal / guest;`wa` 高看 IO,`st` 高看雲主機宿主搶 CPU |
 
-> 小坑:`vmstat 1` 的**第一行數字通常是開機以來平均**,實戰判讀看第二行之後的即時值。
+> 小坑:`vmstat 1` 的**第一行數字通常是開機以來平均**,實戰判讀看第二行之後的即時值。`bi/bo` 只表示有讀寫方向,不代表磁碟已卡;判斷卡不卡要配 `wa` 和 `iostat` 的 `await/%util/aqu-sz`。`st/gu` 是虛擬化視角:`st`=我是 guest,CPU 被宿主搶走;`gu`=我是 host,正在替 guest 跑 CPU。
 
 **⚡ 驗證**:
 ```bash
@@ -300,13 +372,11 @@ nvme0n1          5.00   80.00  640.00 9000.00   2.50    0.30  35.00
 iostat -xz 1 2 | tail -15    # 預期:每個磁碟一行;看 await / %util 欄
 ```
 
-### ⚡ 配角速驗(`uptime` / `nproc` / `mpstat` / `pidstat` / `df` / `dmesg`)
+### ⚡ 配角速驗(`uptime` / `nproc` / `df` / `dmesg`)
 
 ```bash
 uptime                  # 預期:結尾 "load average: x.xx, x.xx, x.xx"
 nproc                   # 預期:核心數(拿來除 load)
-mpstat -P ALL 1 1       # 預期:每顆核一行 + all 匯總
-pidstat 1 1             # 預期:各進程 %usr / %system
 df -h /                 # 預期:根分區空間使用率
 df -i /                 # 預期:根分區 inode 使用率
 dmesg -T 2>/dev/null | grep -i oom | tail   # 預期:通常無輸出(容器內 dmesg 可能權限不足,需 --privileged 或主機跑)

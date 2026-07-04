@@ -48,7 +48,7 @@
 | 🔧 `ps aux` / `ps -ef` | 列全部進程(兩種風格) | `aux`=BSD 風、`-ef`=System V 風,看慣一種即可 |
 | `ps -eo pid,ppid,pgid,sid,tty,stat,comm` | 自訂欄位,看歸屬關係 | 一眼看穿原語 1 的四層:PID/PPID/PGID/SID/TTY |
 | `pstree -p` | 進程樹(看父子) | 看清「誰 fork 了誰」,排查孤兒/失控子進程 |
-| `top -p PID` / `lsof -p PID` | 盯單一進程的資源 / 開啟的檔案 | `lsof` 詳見 **04** |
+| `top -p PID` / `lsof -p PID` | 盯單一進程的資源 / 開啟的檔案 | `top` 詳見 **02**;`lsof` 詳見 **04** |
 
 > **`ps -C` 只認程式名**(`bash`/`sleep`),不認參數——想用命令列字串找,別用 `-C`,用上面 `grep` 那條。
 
@@ -207,6 +207,16 @@ ps -eo pid,ppid,stat,comm | awk '$3 ~ /^Z/'
 | `ps -T -p PID` | 看某進程的**線程**(每線程一行) |
 | `ps -L -p PID -o tid,stat,wchan:24` | 看每條**線程睡在哪**(`wchan`=block 在哪);判等鎖 / 死鎖,見 §4.5 |
 | `ps -o pid,ni,pri,comm -p PID` | 看優先級(`ni` nice / `pri`) |
+
+> **選項速記**:`ps` 有 BSD / SysV 兩套寫法,別混著背。
+>
+> | 寫法 | 拆解 | 意思 |
+> |---|---|---|
+> | `ps aux` | `a` + `u` + `x`(BSD 風,**不加 `-`**) | `a`=也看其他使用者的終端進程,`u`=user-oriented 欄位,`x`=也看無終端進程;合起來≈全部進程 |
+> | `ps -ef` | `-e` + `-f`(SysV 風) | `-e`=every process(全部進程),`-f`=full format(完整欄位) |
+> | `ps -eo ...` | `-e` + `-o 欄位` | `-e`=全部進程,`-o`=output format(自訂輸出欄位) |
+>
+> 日常不用背全表:`aux` 看資源、`-ef` 看父子、`-eo` 自訂欄位。
 
 如果看到這種輸出,按欄位這樣讀:
 
