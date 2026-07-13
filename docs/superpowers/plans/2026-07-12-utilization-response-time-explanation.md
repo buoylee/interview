@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 补足 M/M/1 中利用率与平均响应时间呈非线性关系的原因、推导和边界，并修正直接相关的不准确表述。
+**Goal:** 补足 M/M/1 中利用率与平均响应时间呈非线性关系的原因、推导和边界，并提供面试现场可直接使用的回答模板。
 
-**Architecture:** 只修改现有性能定律文档。公式之后插入“直觉 + Little 定律推导 + 数值例子”，图表之后补模型边界，再同步修正工程启示与容量示例，使整章从数学模型到工程应用保持一致。
+**Architecture:** 只修改现有性能定律文档。公式之后插入“直觉 + Little 定律推导 + 数值例子”，图表之后补模型边界，再同步修正工程启示与容量示例；最后在工程启示之后加入“30 秒回答 + 追问展开 + 回答避坑”，使整章从原理、工程应用自然过渡到面试表达。
 
 **Tech Stack:** Markdown、M/M/1 排队模型、Little 定律、Git 文本校验
 
@@ -14,6 +14,7 @@
 - 不引入超出解释所需的排队论细节。
 - 不将 M/M/1 单服务台模型直接等同于多核 CPU 或线程池。
 - 70%–80% 只能表述为需要结合工作负载和 SLO 验证的经验余量，不能表述为普适定律或固定拐点。
+- 面试回答应能在约 30 秒内说完，不重复完整推导，并保留可供追问展开的技术深度。
 
 ---
 
@@ -163,4 +164,86 @@ Expected: 阅读顺序为“模型定义 → 公式 → 原因与推导 → 倍�
 ```bash
 git add performance-tuning-roadmap/01-methodology/04-performance-laws.md
 git commit -m "docs: explain nonlinear queueing latency"
+```
+
+### Task 2: 增加面试回答模板
+
+**Files:**
+- Modify: `performance-tuning-roadmap/01-methodology/04-performance-laws.md:277-286`
+
+**Interfaces:**
+- Consumes: Task 1 已定义的 `S = 1/μ`、`ρ = λ/μ`、`W = S/(1-ρ)`、80%/90% 倍率和 M/M/1 模型边界
+- Produces: 可直接口述的 30 秒回答，以及针对公式原因和 80% 阈值的两组追问回答
+
+- [ ] **Step 1: 确认当前尚无面试回答小节**
+
+Run:
+
+```bash
+rg -n '^### 面试怎么回答$' performance-tuning-roadmap/01-methodology/04-performance-laws.md
+```
+
+Expected: 无输出，退出码为 1。
+
+- [ ] **Step 2: 在工程启示之后加入面试回答模板**
+
+在“工程启示”的三个项目之后、“容量模型构建”之前加入：
+
+````markdown
+### 面试怎么回答
+
+#### 30 秒回答
+
+> 利用率和响应时间不是线性关系，因为请求到达和服务时间存在波动。资源利用率越高，系统用来消化突发队列的余量 `1 - ρ` 就越小。在 M/M/1 模型中，平均响应时间 `W = S/(1-ρ)`：利用率 80% 时是无排队服务时间的 5 倍，90% 时是 10 倍。因此容量规划不能按 100% 利用率设计，而要结合延迟 SLO 和压测结果预留余量。需要注意，80% 不是所有系统的固定拐点。
+
+#### 面试官追问时
+
+**为什么分母是 `1 - ρ`？**
+
+服务率为 `μ`、到达率为 `λ` 时，系统消化随机积压的净余量是 `μ - λ = μ(1-ρ)`。`ρ` 越接近 1，清空同一段队列所需的时间越长，所以平均响应时间会被倒数关系放大。
+
+**CPU 或线程池也能直接套这个公式吗？**
+
+不能直接套精确倍率。M/M/1 假设单服务台、泊松到达和指数服务时间；多核 CPU、线程池通常需要 M/M/c 或更复杂的模型。但“高利用率叠加波动会放大排队”这个容量规划直觉仍然有用。
+
+#### 回答避坑
+
+- 不要说“CPU 超过 80% 一定会延迟飙升”；80% 只是常见的容量预警区间，不是普适阈值
+- 不要只背公式，要说明随机波动、剩余处理能力和模型假设
+- 不要说 Little 定律能计算吞吐量上限；它描述的是稳态下并发数、吞吐量与延迟的关系
+````
+
+- [ ] **Step 3: 校验面试回答结构和关键边界**
+
+Run:
+
+```bash
+rg -n '^### 面试怎么回答$|^#### 30 秒回答$|^#### 面试官追问时$|^#### 回答避坑$|80% 不是所有系统的固定拐点|M/M/c|Little 定律能计算吞吐量上限' performance-tuning-roadmap/01-methodology/04-performance-laws.md
+```
+
+Expected: 标题、两组追问、边界说明和三个避坑点均有匹配。
+
+Run:
+
+```bash
+git diff --check -- performance-tuning-roadmap/01-methodology/04-performance-laws.md
+```
+
+Expected: 无输出，退出码为 0。
+
+- [ ] **Step 4: 复读面试回答与前后衔接**
+
+Run:
+
+```bash
+sed -n '275,340p' performance-tuning-roadmap/01-methodology/04-performance-laws.md
+```
+
+Expected: 阅读顺序为“工程启示 → 面试怎么回答 → 容量模型构建”；30 秒回答先给结论，追问再补原理和模型边界，避坑项不与正文冲突。
+
+- [ ] **Step 5: 单独提交面试回答补充**
+
+```bash
+git add performance-tuning-roadmap/01-methodology/04-performance-laws.md
+git commit -m "docs: add queueing interview answer"
 ```
