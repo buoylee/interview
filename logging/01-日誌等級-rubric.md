@@ -101,12 +101,13 @@ log.info("order placed, orderId={}", 1001);   // 放行
 log.debug("raw payload={}", payload);          // 被擋掉
 ```
 
-> 🔬 **「能動態調等級」是線上 debug 的關鍵能力。** 三語言都支援不重啟改門檻:
-> - Java/Logback 監看 `logback.xml`(`scan="true"`)或用 `/actuator/loggers` 端點動態調某個 logger 到 DEBUG。
-> - Go 用 `slog.LevelVar`(一個可原子更新的 level 變數)接到一個 HTTP 端點,線上拉桿。
-> - Python 暴露一個內部端點呼叫 `logger.setLevel(...)`。
+> 🔬 **動態調等級是可選的事故排障工具,不是所有服務的必備能力。**
 >
-> 這就是「平時 INFO、出事把某個模組臨時開到 DEBUG 撈完再關」的做法 —— 不用為了一次 debug 重新部署。面試被問「線上問題但日誌不夠細怎麼辦」,答這個。
+> 基線做法是用版本化 config/env 設定 root 與少數 logger override,透過 rolling restart 生效。只有不能重啟且排障 SLA 確有需要,才提供 runtime override。
+>
+> Runtime override 若存在,必須限制 logger namespace 與 level、驗證管理權限、記錄審計、設定 TTL 自動恢復,並同步所有 worker/副本。Python 單一進程中的 `logger.setLevel(...)` 只改該進程,不能視為多 worker 生產方案。
+>
+> 另外,level 只控制 verbosity。不同模塊的 sampling、routing、retention 與 redaction 應使用 filter、handler/collector 與 backend policy;詳見 `05` 的「FastAPI 不同模塊,不只靠 level」。
 
 ---
 
@@ -172,7 +173,7 @@ log.error("save failed");   // ❌ 哪個 user?哪筆訂單?什麼錯?
 - [ ] 心裡有那把尺:FATAL > ERROR > WARN > INFO > DEBUG > TRACE,且知道每級**一句話定義**。
 - [ ] 每次寫 `log.error` 前過一次「**3am 我願意為這條被叫醒嗎?**」——不願意就降級。
 - [ ] 每次寫 `log.info` 前過一次「**事後還原現場我需要它嗎?**」——只是中間值就降 DEBUG。
-- [ ] prod 門檻設 **INFO**;有能力**不重啟把某模組臨時開到 DEBUG**(LevelVar / actuator / 內部端點)。
+- [ ] prod 有明確 root 預設與少數 logger override;具備受控排障策略。Runtime override 若存在,須有權限、審計、TTL 與跨 worker/副本同步。
 - [ ] DEBUG 用參數化(`"%s"`/`"{}"`/slog kv),不用 f-string / 字串拼接。
 
 ---
