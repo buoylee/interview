@@ -4,6 +4,8 @@
 
 理解 CPython 的垃圾回收机制对性能调优至关重要。CPython 使用**引用计数 + 分代 GC** 的混合策略：引用计数处理大部分对象的回收，分代 GC 负责解决引用计数无法处理的循环引用问题。
 
+> 本文是**排查视角**的 GC 速查（工具操作、禁用场景、PyPy 差异）；机制层的系统教学（对象头、pymalloc 与 RSS、GC 生产调优、GIL 与 free-threading）见 [`python/16`](../../python/16-objects-memory-gc-gil.md)。
+
 ## 1. 引用计数机制
 
 CPython 中每个对象都有一个 `ob_refcnt` 字段，记录当前有多少个引用指向它。

@@ -57,12 +57,14 @@
 - **fixture?** 按参数名注入的测试依赖,`yield` 分 setup/teardown。｜pytest
 - **patch 位置?** patch 使用处而非定义处。｜mock
 
-### 并发 / 内部(第 13、15 章)
+### 并发 / 内部(第 13、15、16 章)
 - **GIL?** 同时只一个线程跑字节码;CPU 密集多线程不加速,IO 密集有效;3.14 free-threaded 构建(可选)/子解释器可真并行,见第 13 章。｜GIL
 - **三选一?** CPU→多进程,IO+阻塞→线程,海量 IO/全异步→asyncio。｜选型
 - **async 为何传染?** `await` 只能在 `async` 里,沿调用链蔓延。｜着色
 - **为什么慢?** 解释执行+动态类型+对象开销+GIL;靠 numpy/C 扩展/多进程补。｜性能
 - **GIL vs GC?** 并发控制 vs 内存回收,两码事。｜区分
+- **del 了 RSS 不降?** refcount 归零只还到 pymalloc/free list,不还 OS;arena 高水位 + 对象不搬家无压缩;判泄漏对照 tracemalloc 曲线。｜pymalloc/RSS
+- **GC 造成 P99 尖峰?** gen2 全堆 STW 扫描 O(存活对象);调阈值 / 无环批处理 `disable` / fork 前 `freeze` 防 CoW(Instagram 案例)。｜GC 调优
 
 ## 二、"猜输出" drill 合集(答案已实测)
 

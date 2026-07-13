@@ -2,13 +2,13 @@
 
 > **为什么这章重要**:这是脊柱下半段。[第 15 章](15-cpython-execution-model.md)讲"代码怎么跑",这章讲"对象怎么活、内存怎么收、多线程为什么跑不满多核"。三个最高频的资深/架构师问题——**Python 怎么管内存**、**循环引用会泄漏吗 / `__del__` 可靠吗**、**GIL 到底锁住了什么、怎么放锁**——答案都在这里,而且都得讲到机制层,不能停在"有个引用计数、有个 GIL"。
 >
-> 并发的**选型与实操**(threading/multiprocessing/asyncio 怎么选、worker、任务队列)在[第 13 章](13-concurrency-bridge.md)与 [`../python-concurrency/`](../python-concurrency/);本章只讲 GIL 的**机制**。性能剖析实操在 [`../performance-tuning-roadmap/`](../performance-tuning-roadmap/)。
+> 并发的**选型与实操**(threading/multiprocessing/asyncio 怎么选、worker、任务队列)在[第 13 章](13-concurrency-bridge.md)与 [`../python-concurrency/`](../python-concurrency/);本章只讲 GIL 的**机制**。性能剖析实操在 [`../performance-tuning-roadmap/`](../performance-tuning-roadmap/)。本章讲**机制**;生产内存**排查工具链**(tracemalloc/objgraph/Memray)见 [`06a-python-profiling/02`](../performance-tuning-roadmap/06a-python-profiling/02-python-memory-analysis.md),GC 的**排查视角与 PyPy 差异**见[`同目录 03`](../performance-tuning-roadmap/06a-python-profiling/03-cpython-gc.md)。
 >
 > 环境:CPython **3.11** 实测(基线 3.11.8;§5 分配器/RSS 数字为 3.11.15 容器实测,§2 永生对象对照 3.12)。
 
 ## 一句话心智
 
-**每个对象都背着对象头(引用计数 + 类型指针);内存靠引用计数实时收、分代 GC 偶尔扫一次兜循环;一把 GIL 决定同一时刻只有一个线程在跑字节码——三件事各管各的,却又互相牵动(GIL 存在的一大理由就是保护引用计数)。**
+**每个对象都背着对象头(引用计数 + 类型指针);内存靠引用计数实时收、分代 GC 偶尔扫一次兜循环——但"收"只是回到 CPython 自己的分配器(pymalloc),不等于还给 OS;一把 GIL 决定同一时刻只有一个线程在跑字节码——三件事各管各的,却又互相牵动(GIL 存在的一大理由就是保护引用计数)。**
 
 ## 一、对象头与内存布局
 
@@ -276,6 +276,7 @@ print(f"顺序 {seq:.2f}s  两线程 {par:.2f}s")
 | 对象开销 | 对象头 + 字段;基本类型不装箱 | struct 紧凑,基本类型不装箱 | 一切皆对象,连 int 都带头 |
 | 多核计算 | 线程真并行 | goroutine 真并行 | 受 GIL,需多进程/扩展;3.14 free-threaded(可选)可进程内真并行 |
 | 循环引用 | 天然不怕(追踪式) | 天然不怕 | 引用计数怕,靠分代 GC 补 |
+| 对象搬家/压缩 | 分代物理分区,搬家 + 压缩 | 不搬移(非分代) | **从不搬家、无压缩**,分代只是链表;靠 pymalloc 复用,RSS 滞留在峰值 |
 
 一句话:**Python 用"开发效率"换"运行效率"**,慢的部分交给 C 写的库(numpy/扩展)补。这就是数据/AI 生态在 Python 繁荣的原因——胶水用 Python,重活在 C/CUDA。
 
@@ -301,3 +302,12 @@ print(f"顺序 {seq:.2f}s  两线程 {par:.2f}s")
 
 **Q7. 听说过 free-threading 吗?它怎么去掉 GIL?**
 3.13 实验、**3.14 经 PEP 779 转为官方支持的可选构建**(默认仍带 GIL)。去 GIL 后用 **biased reference counting**(属主线程非原子快路径 + 他线程原子慢路径)+ 每对象锁保护引用计数,单线程约 5–10% 开销,C 扩展需适配。另有子解释器(PEP 734)每解释器独立 GIL 实现进程内并行。
+
+**Q8. 对象都 del 了,进程 RSS 为什么不降?**
+refcount 归零只把 block 还给 pymalloc 的 pool 或类型 free list,通常不还 OS。三根因:**arena 高水位**(1MB arena 里剩一个活对象就整块钉住,且对象从不搬家、无压缩,幸存者没法归拢——实测删 99% 对象 RSS 只降 3%)、**free list 自留**复用、**glibc malloc 也有自己的高水位**(大块 mmap 除外,释放即还)。RSS 反映历史峰值滞留而非当前活对象量;判泄漏还是滞留,对照 RSS 与 tracemalloc 两条曲线。
+
+**Q9. 线上服务周期性 P99 尖峰,怀疑 GC,怎么确认、怎么治?**
+CPython 分代 GC 是 STW 单线程,gen2 全堆扫描 O(存活对象数),千万级对象一次可到百毫秒。先 `gc.set_debug(gc.DEBUG_STATS)` / `gc.callbacks` 计时确认;治:调大阈值(换峰值内存)、确定无环批处理 `gc.disable()`、fork 型服务 `gc.freeze()` 防 CoW 写脏(Instagram:关分代 GC + 冻结,容量 +10%,后贡献为 3.7 的 `gc.freeze()`)。
+
+**Q10. 什么是永生对象(immortal objects)?解决什么问题?**
+3.12(PEP 683)把 None/True/小整数等的 refcount 冻结为哨兵值(`sys.getrefcount(None)` → 4294967295),增减跳过。解决「读也会写」:refcount 抖动把 CoW 共享页写脏、并在 free-threading 下要求原子操作;永生后共享页保持干净,为无 GIL 铺路。
