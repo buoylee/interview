@@ -218,6 +218,8 @@ open fastapi_profile.svg  # macOS
 
 通过火焰图可以看到 `process_data` 内部的调用链，进一步定位到具体是哪个操作最耗时，比如可能是一个嵌套循环或低效的序列化。
 
+> **可运行实验**：使用 PerfShop 的 CPU hotspot 完成 `py-spy` attach、hotspot/reset 双火焰图和 QPS/P99 对比，见 [Python `py-spy` 火焰图实验](../labs/perfshop-p0/PYTHON-FLAMEGRAPH-LAB.md)。
+
 ## 小结
 
 profiling 的核心原则是**先测量再优化**。不要猜测瓶颈在哪里，用工具说话。开发阶段用 cProfile/Scalene 做精确分析，生产环境用 py-spy 做低开销采样。找到热点函数后，再用下一节的内存分析工具或 line_profiler 做逐行级别的深入排查。

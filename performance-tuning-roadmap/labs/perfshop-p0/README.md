@@ -186,7 +186,9 @@ POST /chaos/cpu?duration=60
 
 - CPU profile
 - top 3 热点说明
-- 优化前后 QPS / P99
+- CPU hotspot on / reset 后的 QPS / P99
+
+可运行步骤见：[Python `py-spy` 火焰图实验](./PYTHON-FLAMEGRAPH-LAB.md)。该实验使用现有 CPU hotspot 完成双份 SVG、top 3 热点与 QPS/P99 对比。
 
 ### 场景 3：下游超时
 
