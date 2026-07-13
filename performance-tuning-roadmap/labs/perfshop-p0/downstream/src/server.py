@@ -1,6 +1,5 @@
 import json
 import os
-import resource
 import sys
 import time
 import uuid
@@ -22,6 +21,17 @@ chaos_lock = Lock()
 chaos = {
     "delay_ms": 0,
 }
+
+
+def current_rss_bytes(statm_path="/proc/self/statm", page_size=None):
+    """Return current Linux RSS from /proc, not lifetime peak ru_maxrss."""
+    if page_size is None:
+        page_size = os.sysconf("SC_PAGE_SIZE")
+    with open(statm_path, encoding="ascii") as statm:
+        fields = statm.readline().split()
+    if len(fields) < 2:
+        raise RuntimeError(f"invalid statm data from {statm_path}")
+    return int(fields[1]) * page_size
 
 
 def trace_id_from(headers):
@@ -196,14 +206,14 @@ class Handler(BaseHTTPRequestHandler):
                 lines.append(f'downstream_http_request_duration_seconds_sum{{method="{method}",path="{path}"}} {value}')
                 lines.append(f'downstream_http_request_duration_seconds_count{{method="{method}",path="{path}"}} {http_duration_count[(method, path)]}')
 
-        rss_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        rss_bytes = current_rss_bytes()
         lines.extend([
             "# HELP process_cpu_seconds_total Total user and system CPU time spent in seconds.",
             "# TYPE process_cpu_seconds_total counter",
             f"process_cpu_seconds_total {time.process_time()}",
             "# HELP process_resident_memory_bytes Resident memory size in bytes.",
             "# TYPE process_resident_memory_bytes gauge",
-            f"process_resident_memory_bytes {rss_kb * 1024}",
+            f"process_resident_memory_bytes {rss_bytes}",
             "",
         ])
         body = "\n".join(lines).encode("utf-8")

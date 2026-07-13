@@ -38,7 +38,7 @@ container_cpu_cfs_throttled_seconds_total  # 被节流的总时间
 
 # 内存指标
 container_memory_usage_bytes               # 内存使用量（含 page cache）
-container_memory_working_set_bytes         # 工作集内存（K8s 用这个判 OOM）
+container_memory_working_set_bytes         # 工作集估算（usage 扣除 inactive file cache）
 container_memory_rss                       # RSS 内存
 container_memory_cache                     # page cache
 container_memory_swap                      # swap 使用量
@@ -62,12 +62,15 @@ container_fs_limit_bytes                   # 文件系统总容量
 ```
 # container_memory_usage_bytes vs container_memory_working_set_bytes
 #
-# usage_bytes = RSS + cache（包含可回收的 page cache）
-# working_set_bytes = RSS + 活跃 cache（K8s OOM 判断依据）
+# usage_bytes 包含 RSS、page cache、部分 kernel memory 等 cgroup charge
+# working_set_bytes ≈ usage_bytes - inactive_file，是「较难立即回收」的估算值
 #
-# 监控告警应该基于 working_set_bytes，而不是 usage_bytes
-# 否则你会收到大量假告警——应用只是读了很多文件（page cache 增大）
+# Dashboard/容量趋势通常看 working_set，减少 inactive page cache 噪声
+# 但 OOM 不是按 working_set 判定：memcg reclaim 后仍无法把 charged usage
+# 压回 limit 以下时才触发 OOM；事件以 memory.events / OOMKilled 为准
 ```
+
+因此不要只保留一个内存图：working set 用于趋势与预警，`container_memory_usage_bytes`/cgroup `memory.current` 用于理解实际 charge，`container_memory_rss` 用于区分匿名内存，OOM 事件用于确认事故。
 
 ---
 
@@ -110,7 +113,9 @@ kubectl apply -f https://github.com/kubernetes/kube-state-metrics/releases/lates
 # 关键指标
 kube_pod_status_phase                          # Pod 状态（Pending/Running/Failed）
 kube_pod_container_status_restarts_total        # 容器重启次数
-kube_pod_container_status_terminated_reason     # 终止原因（OOMKilled/Error）
+kube_pod_container_status_terminated_reason          # 当前终止原因（OOMKilled/Error）
+kube_pod_container_status_last_terminated_reason     # 上一次终止原因（OOMKilled/Error）
+kube_pod_container_status_last_terminated_timestamp  # 上一次终止时间
 kube_deployment_spec_replicas                   # 期望副本数
 kube_deployment_status_replicas_available       # 可用副本数
 kube_node_status_condition                      # 节点状态
@@ -118,6 +123,8 @@ kube_pod_container_resource_requests            # 资源 request
 kube_pod_container_resource_limits              # 资源 limit
 kube_horizontalpodautoscaler_status_current_replicas  # HPA 当前副本数
 ```
+
+Pod termination 指标的稳定性与 labels 以 [kube-state-metrics Pod metrics](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/workload/pod-metrics.md) 为准。
 
 ---
 
@@ -431,7 +438,19 @@ spec:
     # Pod OOMKilled
     - alert: PodOOMKilled
       expr: |
-        kube_pod_container_status_terminated_reason{reason="OOMKilled"} > 0
+        max by (namespace, pod, container, uid) (
+          kube_pod_container_status_terminated_reason{reason="OOMKilled"} == 1
+        )
+        or
+        (
+          max by (namespace, pod, container, uid) (
+            kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
+          )
+          and on(namespace, pod, container, uid)
+          max by (namespace, pod, container, uid) (
+            time() - kube_pod_container_status_last_terminated_timestamp < 600
+          )
+        )
       for: 0m
       labels:
         severity: warning
@@ -467,9 +486,13 @@ spec:
     # 内存使用接近 limit
     - alert: ContainerMemoryNearLimit
       expr: |
-        container_memory_working_set_bytes{container!=""}
+        sum by (namespace, pod, container) (
+          container_memory_working_set_bytes{container!=""}
+        )
         /
-        kube_pod_container_resource_limits{resource="memory"}
+        sum by (namespace, pod, container) (
+          kube_pod_container_resource_limits{resource="memory", unit="byte"} > 0
+        )
         > 0.9
       for: 10m
       labels:
@@ -510,6 +533,8 @@ spec:
         summary: "Deployment {{ $labels.deployment }} 可用副本数不足"
         description: "期望 {{ $value }} 个副本但实际可用数不匹配，持续 10 分钟"
 ```
+
+上面的 memory rule 先把 cAdvisor 与 kube-state-metrics 两边聚合到相同的 `namespace,pod,container` labels，避免默认 vector matching 因额外 labels 不同而得到空结果；未设置 memory limit 的容器不会产生该比率，应另由部署策略检查。
 
 ### 8.2 告警分级策略
 

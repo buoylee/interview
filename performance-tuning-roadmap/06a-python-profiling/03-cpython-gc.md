@@ -41,10 +41,12 @@ def process():
     data = [0] * 10_000_000  # 分配 ~80MB 内存
     result = sum(data)
     return result
-    # data 离开作用域，引用计数归零，立即释放 80MB
+    # data 离开作用域，引用计数归零，Python 对象立即释放
 ```
 
-**优点**：对象不再使用时立即回收，内存释放及时，不需要"停顿"。
+**优点**：对象不再使用时通常立即回收，不需要等待循环 GC。
+
+注意：对象释放只表示内存可被 Python allocator 再利用，不保证 RSS 立即下降。allocator 可能保留 arena，供后续分配复用。
 
 **缺点**：无法处理循环引用。
 
@@ -64,8 +66,8 @@ b.partner = a  # b -> a
 
 del a  # a 的引用计数从 2 降到 1（b.partner 还引用着）
 del b  # b 的引用计数从 2 降到 1（a.partner 还引用着）
-# 两个对象的引用计数都是 1，永远不会降到 0
-# 引用计数机制无法回收它们 —— 这就是内存泄漏
+# 两个对象的引用计数都是 1，不会靠引用计数降到 0
+# 它们是 cyclic garbage，等待循环 GC 识别并回收
 ```
 
 这种情况需要分代 GC 来处理。
@@ -74,19 +76,23 @@ del b  # b 的引用计数从 2 降到 1（a.partner 还引用着）
 
 CPython 的分代 GC 专门用于检测和回收循环引用。
 
-### 三代设计
+### 分代设计（版本敏感）
 
 ```python
 import gc
 
-# 查看各代的对象数量和阈值
+# 查看当前 GC trigger counters 和阈值
 print(gc.get_count())      # 例如: (687, 8, 2)
-print(gc.get_threshold())  # 默认: (700, 10, 10)
+print(gc.get_threshold())  # 实际值取决于 Python 版本与运行时配置
 ```
 
-- **第 0 代 (gen0)**：新创建的对象。当 gen0 中的对象数量超过 700 时触发 gen0 GC。
-- **第 1 代 (gen1)**：在 gen0 GC 中存活的对象。每 10 次 gen0 GC 触发一次 gen1 GC。
-- **第 2 代 (gen2)**：在 gen1 GC 中存活的对象。每 10 次 gen1 GC 触发一次 gen2 GC。
+- **第 0 代 (gen0)**：新创建的对象；净分配计数超过当前 `threshold0` 后触发检查。
+- **第 1 代 (gen1)**：在较年轻代 collection 中存活的对象。
+- **第 2 代 (gen2)**：长期存活对象所在的最老一代。
+
+上述三代描述适用于 CPython 3.13 与 3.14.5+；3.14.0–3.14.4 曾移除 gen1 并忽略 `threshold2`，之后的 3.14 patch release 又恢复。promotion 与 threshold 行为可能随版本变化；排查时记录完整 Python 版本，以对应版本文档为准，不要把示例数值当成固定契约。
+
+版本对应行为见 [Python `gc` 官方文档](https://docs.python.org/3/library/gc.html)。
 
 **核心思想**：大部分对象生命周期很短（"朝生暮死"），只需要频繁扫描新生代。长期存活的对象被提升到老年代，减少扫描频率。
 
@@ -107,22 +113,30 @@ print(gc.get_threshold())  # 默认: (700, 10, 10)
 ```python
 import gc
 
-# 查看当前各代对象计数
+# 查看触发自动 collection 使用的计数器；不是对象总数或累计 GC 次数
 print(gc.get_count())  # (687, 8, 2)
 
 # 手动触发全量 GC
 collected = gc.collect()
-print(f"回收了 {collected} 个循环引用对象")
+print(f"发现了 {collected} 个不可达对象（含已回收与不可回收）")
 
 # 调整阈值
 gc.set_threshold(1000, 15, 15)  # 降低 GC 频率
 
-# 查看不可回收的循环引用对象（有 __del__ 的）
-print(gc.garbage)  # Python 3.4+ 大部分情况为空
+# Python 3.4+ 通常为空；DEBUG_SAVEALL 会刻意把所有不可达对象放进来，
+# 少数未正确支持 GC 的 C extension type 也可能留下不可回收对象
+print(gc.garbage)
 
 # 关闭分代 GC
 gc.disable()
 ```
+
+### 监控与诊断不要混用
+
+- `gc.get_count()` 是自动 collection 使用的当前计数器，不是累计 collection 次数。
+- `gc.get_stats()` 才提供各代累计 `collections`、`collected`、`uncollectable`。
+- `gc.collect()` 会主动改变 heap 状态并引入暂停；只用于受控诊断，不要定时调用它充当监控。
+- 生产服务优先使用 `prometheus_client` 默认的 `python_gc_*` counters，接入与多 worker 限制见 [`fastapi-ops/03-app-metrics`](../../fastapi-ops/03-app-metrics/README.md)。
 
 ### 何时禁用 GC
 
@@ -142,7 +156,7 @@ finally:
 禁用 GC 的典型场景：
 - **批量导入/导出**：已知不会产生循环引用，禁用 GC 可以减少 5-10% 的运行时间
 - **Instagram 的实践**：Instagram 曾通过禁用 GC 将 Web 服务器的内存使用降低了 10%（因为 GC 会复制 refcount 导致 copy-on-write 在 fork 后失效）
-- **注意**：禁用 GC 后如果存在循环引用，那些对象将永远不会被回收
+- **注意**：GC 关闭期间产生的循环引用会持续占用内存，直到重新启用自动 GC 或手动 `gc.collect()`
 
 ## 5. weakref — 弱引用
 
@@ -263,4 +277,4 @@ CPython 的引用计数提供了及时的内存回收，分代 GC 补充处理�
 2. 批量操作时可以临时禁用 GC 提升性能
 3. 用 weakref 实现缓存，避免强引用导致的内存泄漏
 4. 不要依赖 `__del__`，用上下文管理器管理资源
-5. 用 `gc.collect()` + `gc.get_count()` 监控 GC 行为
+5. 用 `gc.get_stats()` 或 Prometheus `python_gc_*` counters 监控；仅在受控诊断时手动 `gc.collect()`

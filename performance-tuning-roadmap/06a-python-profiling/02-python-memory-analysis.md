@@ -6,7 +6,7 @@
 
 ## 1. tracemalloc — 标准库内存追踪
 
-tracemalloc 是 Python 3.4+ 内置的内存分配追踪器，能追踪每个内存分配的来源（文件名和行号）。
+tracemalloc 是 Python 3.4+ 内置的内存分配追踪器，能追踪 Python 内存分配器记录的内存块来源（文件名和行号）。它不等于进程全部 RSS：C 扩展的 native allocation、allocator fragmentation、mmap 等可能不会反映在 tracemalloc 统计中。API 与 overhead 说明见 [Python 官方文档](https://docs.python.org/3/library/tracemalloc.html)。
 
 ### 基本用法
 
@@ -266,64 +266,53 @@ print(sys.getsizeof(d))      # 36960（只是 hash table 本身）
 print(asizeof.asizeof(d))    # 1093284（包含所有 key 和 value）
 ```
 
-## 6. 内存快照对比方法论
+## 6. 从生产告警到受控诊断
 
-生产环境排查内存泄漏的标准流程：
+生产常驻监控负责发现 RSS、container working set、OOM 和 GC 趋势；tracemalloc、objgraph、Memray 负责事故期间定位根因。不要把昂贵的 heap 扫描或 snapshot API 当成常驻监控。
 
-```python
-# 在 FastAPI 中暴露内存分析端点（仅限内部使用）
-import tracemalloc
-from fastapi import FastAPI
+先对照两层数据：
 
-app = FastAPI()
-tracemalloc.start(25)
-_snapshot = None
+```text
+RSS 上升 + tracemalloc current 同步上升
+  → Python-tracked allocation 增长；先查 traceback，再区分流量需求、缓存与持有引用
 
-@app.post("/debug/memory/snapshot")
-async def take_snapshot():
-    """压测前调用，记录基线"""
-    global _snapshot
-    _snapshot = tracemalloc.take_snapshot()
-    return {"status": "snapshot taken"}
+RSS 上升 + tracemalloc current 基本稳定
+  → 检查 C 扩展 native allocation、allocator fragmentation、file-backed mmap、其他 worker
 
-@app.get("/debug/memory/diff")
-async def memory_diff():
-    """压测后调用，对比增长"""
-    if _snapshot is None:
-        return {"error": "no baseline snapshot"}
-    current = tracemalloc.take_snapshot()
-    stats = current.compare_to(_snapshot, 'lineno')
-    return {
-        "top_allocations": [
-            {
-                "file": str(stat.traceback),
-                "size_mb": stat.size / 1024 / 1024,
-                "size_diff_mb": stat.size_diff / 1024 / 1024,
-                "count": stat.count,
-                "count_diff": stat.count_diff,
-            }
-            for stat in stats[:20]
-        ]
-    }
+tracemalloc 先上升后稳定
+  → 可能是有上限的缓存或 warm-up；继续观察是否形成平台，而非直接判定泄漏
 ```
 
-操作步骤：
+受控生产诊断必须满足：
 
-1. 服务启动后等待稳态（处理几十个请求后）
-2. 调用 `POST /debug/memory/snapshot` 记录基线
-3. 开始压测，发送大量请求
-4. 调用 `GET /debug/memory/diff` 查看内存增长
-5. 分析结果，找到增长最大的代码位置
-6. 结合 objgraph 分析引用关系，确认是否有泄漏
+1. 选定一个可随时销毁的 replica，先从负载均衡 drain，再锁定同一个 PID；多 worker 间的 snapshot 不能互相比。
+2. 在 baseline 前启动 tracing；启动前已经存在的 allocation 没有 traceback。先用 `tracemalloc.start(1)` 或 `start(5)`，更深 stack 会增加 CPU 和内存开销。
+3. 限定采集时间；snapshot 写入受限目录，离线分析后删除。
+4. 通过受保护的内部控制面触发，不公开 `/debug/memory/*` HTTP endpoint。snapshot 可能阻塞 worker，结果也可能暴露源码路径。
+5. 若 RSS 与 tracemalloc 长期不一致，改用能观察 native allocation 的 Memray，见 [`fastapi-ops/06-profiling`](../../fastapi-ops/06-profiling/README.md)。
+
+完整闭环：
+
+```text
+Prometheus 告警
+  → 确认异常 Pod / PID / worker 数与流量变化
+  → 单 replica 短时 tracemalloc diff
+  → Python allocation 增长：先查 tracemalloc traceback
+  → 锁定 GC-tracked 自定义对象类型后：objgraph 查持有引用
+  → Python allocation 稳定：Memray 查 native allocation
+  → 修复后用相同负载复测，并确认趋势重新形成平台
+```
+
+常驻 FastAPI process/GC 指标见 [`fastapi-ops/03-app-metrics`](../../fastapi-ops/03-app-metrics/README.md)；容器 RSS、working set、OOM 与告警见 [`12-container/03-container-monitoring`](../12-container/03-container-monitoring.md)。
 
 ## 小结
 
 | 工具 | 用途 | 适用阶段 |
 |------|------|---------|
-| tracemalloc | 追踪内存分配来源、快照对比 | 开发/测试 |
+| tracemalloc | 追踪 Python 内存分配来源、快照对比 | 开发/测试/受控生产诊断 |
 | memory_profiler | 逐行内存增量分析 | 开发 |
-| objgraph | 对象引用图、排查循环引用 | 开发/排查 |
+| objgraph | 对象引用图、排查持有引用 | 开发/测试/已 drain replica |
 | pympler.asizeof | 递归计算对象真实大小 | 开发 |
 | pympler.tracker | 跟踪对象数量变化 | 开发/测试 |
 
-实际排查中，通常先用 tracemalloc 做快照对比找到可疑位置，再用 objgraph 分析引用关系确认根因。
+实际排查中，先用常驻指标确认异常范围，再用 tracemalloc traceback 找 allocation 来源。objgraph 只适合 GC 跟踪的容器或自定义对象，无法枚举所有 `str`、`int` 等对象；只有锁定可疑对象类型后才用它分析引用关系。RSS 与 tracemalloc 不一致时转查 native memory，避免把所有 RSS 增长都误判为 Python 对象泄漏。

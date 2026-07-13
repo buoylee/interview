@@ -140,6 +140,8 @@ downstream_http_request_duration_seconds_bucket{method,path}
 
 如果暂时没有语言 SDK，可以先手动输出 Prometheus 文本格式，但最终应接入正式客户端库。
 
+本 lab 运行于 Linux container，`process_resident_memory_bytes` 从 `/proc/self/statm` 读取当前 RSS。它仍是单进程教学实现；FastAPI/Gunicorn 多 worker 的 production 接法见 [`fastapi-ops/03-app-metrics`](../../../fastapi-ops/03-app-metrics/README.md)。
+
 ---
 
 ## 6. 三个入门场景

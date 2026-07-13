@@ -104,11 +104,16 @@ async def profiling_middleware(request: Request, call_next):
 
 ## memray：内存分析
 
+开发/测试环境可由 Memray 启动目标程序：
+
 ```bash
 pip install memray
 
 # 采集内存分配
-memray run -o output.bin python app.py
+memray run -o output.bin app.py
+
+# 以 module 方式启动 ASGI server
+memray run -o uvicorn.bin -m uvicorn main:app
 
 # 生成火焰图
 memray flamegraph output.bin
@@ -117,17 +122,46 @@ memray flamegraph output.bin
 memray table output.bin
 ```
 
+首选在 staging 用相同镜像与负载复现。只有问题无法复现、又必须取得生产证据时，才执行 break-glass 诊断：先从负载均衡摘除一个可随时销毁的 replica，确认没有用户流量后，再对其中的目标 PID 做限时 attach；不要 attach 仍在服务用户流量的 worker。
+
+```bash
+# 只记录 attach 之后发生的 allocation
+memray attach --output output.bin --duration 60 <pid>
+
+# C/C++ stack 也需要时才开启；额外 overhead 更高
+memray attach --native --output native.bin --duration 60 <pid>
+```
+
+带 `--output` 的 attach 注入 tracker 后会立即返回，目标进程仍在后台采集。另等 `--duration` 完整结束并确认 capture file 已关闭后，再运行 reporter：
+
+```bash
+# 默认报告：采集窗口内的 peak allocation
+memray flamegraph -o peak-flamegraph.html output.bin
+memray table -o peak-table.html output.bin
+
+# 泄漏视图：采集结束时仍未释放的 allocation
+memray flamegraph --leaks -o leaks-flamegraph.html output.bin
+memray table --leaks -o leaks-table.html output.bin
+```
+
+`--leaks` 也可能把 pymalloc 保留的 arena 误判成对象泄漏。若必须追踪小 Python 对象，在**已 drain 的可丢弃 replica** 上给 attach 加 `--trace-python-allocators`；它会显著增加 overhead 与 capture size。开发环境也可在启动前设置 `PYTHONMALLOC=malloc`，但不要在 production 服务上为了 profiling 改 allocator 行为。
+
+`memray attach --method auto` 的注入机制取决于 Python/Memray 版本：Python 3.14 可选择 `sys.remote_exec`，其他环境通常使用 gdb/lldb；后两者还要求镜像内有对应 debugger binary。注入方式不会绕过 OS 的跨进程权限检查：Linux container 通常仍需 `CAP_SYS_PTRACE` 或等价权限，并受 `ptrace_scope` 等策略限制。只给已 drain 的诊断 replica 临时授权，不要给所有 production Pod 永久添加该 capability。先用相同镜像在 staging 验证 method、权限与版本兼容性；attach 会向运行中解释器注入代码，失败时可能 crash 或 deadlock，所以目标必须已 drain 且可立即替换。详细限制见 [Memray attach 官方文档](https://bloomberg.github.io/memray/attach.html)。
+
 ### 内存泄漏排查思路
 
 ```
-1. 观察 RSS 增长：python -c "import psutil; ..."
-2. 确认是泄漏还是缓存（重启后恢复 = 泄漏；业务增长 = 正常）
-3. memray 采集两个时间点的内存快照，对比差异
-4. 常见原因：
+1. 从 Prometheus 确认 RSS/working set 是否持续增长，并对照流量、worker 数、缓存 warm-up
+2. 选定异常 Pod 与 PID；重启后恢复不能区分泄漏、缓存或 allocator fragmentation
+3. Python allocation 可疑时先做 tracemalloc diff；RSS 与 tracemalloc 不一致时，短时 `memray attach`
+4. 先用默认 report 看 peak，再用 `--leaks` 看结束时仍存活的 allocation；结合 pymalloc caveat 解读
+5. 常见原因：
    - 全局列表/字典不断 append（事件监听器、缓存未设 TTL）
    - 循环引用（Python GC 能处理，但有延迟）
-   - C 扩展库的内存泄漏（memray 可见）
+   - C 扩展或 native allocator 增长（需要定位到 C/C++ frame 时加 `--native`）
 ```
+
+完整的 RSS ↔ tracemalloc 判断树和受控诊断边界见 [`performance-tuning-roadmap/06a-python-profiling/02-python-memory-analysis`](../../performance-tuning-roadmap/06a-python-profiling/02-python-memory-analysis.md)。
 
 ## asyncio 专项：慢协程检测
 

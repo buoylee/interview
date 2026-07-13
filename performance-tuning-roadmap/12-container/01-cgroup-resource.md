@@ -278,10 +278,12 @@ cat /sys/fs/cgroup/memory/docker/<id>/memory.stat
 # cache 1073741824        # page cache（可回收）
 # mapped_file 536870912   # mmap 文件
 
-# 正确的内存使用指标
-# 实际工作内存 = usage - inactive_file（v1）
-# 实际工作内存 = memory.current - inactive_file（v2）
+# 常用 working set 估算
+# working set ≈ usage - inactive_file（v1）
+# working set ≈ memory.current - inactive_file（v2）
 ```
+
+working set 是减少可回收 file cache 噪声的监控估算，不是 OOM 判定值。memcg 根据 charged usage、reclaim 结果与 memory limit 决定是否 OOM；用 `memory.events` 确认 `oom`/`oom_kill`。字段语义见 [Linux cgroup v2 memory 文档](https://docs.kernel.org/admin-guide/cgroup-v2.html#memory)。
 
 ---
 

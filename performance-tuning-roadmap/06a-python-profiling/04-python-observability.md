@@ -87,6 +87,8 @@ async def metrics():
     )
 ```
 
+这里只演示单进程接入。FastAPI 生产环境的默认 process/GC 指标、多 worker 聚合限制与采样健壮性，统一见 [`fastapi-ops/03-app-metrics`](../../fastapi-ops/03-app-metrics/README.md)；Kubernetes container memory 与 OOM 告警见 [`12-container/03-container-monitoring`](../12-container/03-container-monitoring.md)。本章不重复这些运行手册。
+
 ### 独立 HTTP 服务器暴露指标
 
 ```python

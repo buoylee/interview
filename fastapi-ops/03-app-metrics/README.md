@@ -35,6 +35,8 @@ app = FastAPI()
 Instrumentator().instrument(app).expose(app)
 ```
 
+这是单进程快速接入。多 worker 部署不要让各 worker 分别暴露默认 registry；改用下文的 multiprocess `/metrics`。
+
 自动获得：
 - `http_requests_total` — 请求计数（按 method / handler / status）
 - `http_request_duration_seconds` — 延迟直方图
@@ -81,11 +83,11 @@ FastAPI 生产环境最常见的「CPU 正常、P99 爆炸」根因,恰好是 `t
 import anyio.to_thread, asyncio, threading
 from prometheus_client import Gauge
 
-TP_BORROWED = Gauge("app_threadpool_borrowed_tokens", "anyio 线程池在用线程数")
-TP_TOTAL    = Gauge("app_threadpool_total_tokens", "anyio 线程池容量上限")
-TP_WAITING  = Gauge("app_threadpool_tasks_waiting", "排队等令牌的协程数(饱和领先指标)")
-LOOP_LAG    = Gauge("asyncio_event_loop_lag_seconds", "事件循环单拍滞后(实际睡眠-预期)")
-PY_THREADS  = Gauge("app_python_threads", "当前 Python 线程数")
+TP_BORROWED = Gauge("app_threadpool_borrowed_tokens", "anyio 线程池在用线程数", multiprocess_mode="livesum")
+TP_TOTAL    = Gauge("app_threadpool_total_tokens", "anyio 线程池容量上限", multiprocess_mode="livesum")
+TP_WAITING  = Gauge("app_threadpool_tasks_waiting", "排队等令牌的协程数(饱和领先指标)", multiprocess_mode="livesum")
+LOOP_LAG    = Gauge("asyncio_event_loop_lag_seconds", "事件循环单拍滞后(实际睡眠-预期)", multiprocess_mode="livemax")
+PY_THREADS  = Gauge("app_python_threads", "当前 Python 线程数", multiprocess_mode="livesum")
 
 async def sample_concurrency(interval: float = 0.5):
     loop = asyncio.get_running_loop()
@@ -116,49 +118,106 @@ async def lifespan(app):
 
 ### 连接池持续监控
 
-连接池的「一次性排查」对比（如何在 shell 里临时检查连接数）见 [python-data/02-connection-pooling.md](../../python-data/02-connection-pooling.md)。本节给出的是**持续 Prometheus 监控**方案。`collect_db_pool` 是普通函数，本身不会被自动调用——由调用方决定触发时机。最简单的做法：把 `engine` 传进上面的 `sample_concurrency` 后台协程，在它的循环里追加一行 `collect_db_pool(engine)`，让连接池和线程池/事件循环共用同一个采样节拍；或把它包成 Prometheus 自定义 collector 在 `/metrics` 拉取时执行。
+连接池的「一次性排查」对比（如何在 shell 里临时检查连接数）见 [python-data/02-connection-pooling.md](../../python-data/02-connection-pooling.md)。本节给出的是**持续 Prometheus 监控**方案。`collect_db_pool` 是普通函数，本身不会被自动调用——由调用方决定触发时机。最简单的做法：把 `engine` 传进上面的 `sample_concurrency` 后台协程，在它的循环里追加一行 `collect_db_pool(engine)`，让连接池和线程池/事件循环共用同一个采样节拍。多 worker 时，每个 worker 都由 lifespan 启动采样；不要改成 custom collector，`prometheus_client` multiprocess 模式不支持 custom collector。
 
 ```python
 # 连接池「持续」监控(对比 python-data/02 的一次性排查)
 from prometheus_client import Gauge
-DB_CHECKED_OUT = Gauge("app_db_pool_checked_out", "已借出连接数")
-DB_OVERFLOW    = Gauge("app_db_pool_overflow", "溢出连接数(超过 pool_size 的临时连接)")
+DB_CHECKED_OUT = Gauge("app_db_pool_checked_out", "已借出连接数", multiprocess_mode="livesum")
+DB_OVERFLOW    = Gauge("app_db_pool_overflow", "溢出连接数(超过 pool_size 的临时连接)", multiprocess_mode="livesum")
 def collect_db_pool(engine):           # AsyncEngine 也用 engine.pool
     p = engine.pool
-    DB_CHECKED_OUT.set(p.checkedout()); DB_OVERFLOW.set(p.overflow())
+    DB_CHECKED_OUT.set(p.checkedout()); DB_OVERFLOW.set(max(0, p.overflow()))
 ```
 
-`AsyncEngine` 和同步 `Engine` 均通过 `engine.pool` 访问连接池对象；`checkedout()` 返回已借出连接数，`overflow()` 返回超过 `pool_size` 的临时连接数，该值 > 0 即说明连接池饱和。
+`AsyncEngine` 和同步 `Engine` 均通过 `engine.pool` 访问连接池对象；`checkedout()` 返回已借出连接数，`overflow()` 返回超过 `pool_size` 的临时连接数。`overflow() > 0` 只表示连接池有压力，不代表 `pool_size + max_overflow` 已耗尽；是否饱和还要看 checkout 等待时间与 timeout 次数。
 
 ### 运行时指标无需手写
 
-`prometheus_client` 默认已注册 `ProcessCollector` 和 `GCCollector`，`/metrics` 端点直接暴露：
-- `process_open_fds` — 进程打开的文件描述符数
-- `process_resident_memory_bytes` — RSS 内存
-- `python_gc_collections_total` — 各代 GC 次数
+单进程、默认 registry 下，`prometheus_client` 已注册 `ProcessCollector` 和 `GCCollector`，`/metrics` 直接暴露：
 
-**无需手写这些指标**；若要关闭默认注册，传 `registry=CollectorRegistry()` 给 `make_asgi_app()`。
+```text
+process_cpu_seconds_total
+process_virtual_memory_bytes
+process_resident_memory_bytes
+process_start_time_seconds
+process_open_fds
+process_max_fds
+
+python_gc_collections_total{generation}
+python_gc_objects_collected_total{generation}
+python_gc_objects_uncollectable_total{generation}
+```
+
+`process_*` collector 目前只在 Linux 可用；`python_gc_*` collector 只在 CPython 启用。它们分别回答「当前 Python 进程用了多少资源」和「循环 GC 做过多少工作」，不能单独证明内存泄漏。
+
+CPython 没有 JVM 那种固定 `-Xmx`、Young/Old heap occupancy 与 Full GC 模型，因此不必机械复制 Spring/JVM dashboard；这不等于不监控，而是把 RSS/container/OOM 作为主信号，循环 GC counters 作为相关性信号。
+
+完整指标清单见 [`prometheus_client` Collector 文档](https://prometheus.github.io/client_python/collector/)。
+
+**无需手写这些指标**。单进程若改用空 `CollectorRegistry()`，应用指标也会一起消失；应把所有应用指标显式注册到该 registry，或只从默认 registry 注销不需要的 collector。下文 multiprocess 汇总使用独立 registry 是该模式要求，语义不同。
+
+GC counters 的最低限度查询：
+
+```promql
+# 各代每秒 collection 次数；用于和 CPU、P99 对照，不建议单独 page on-call
+sum by (generation) (rate(python_gc_collections_total[5m]))
+
+# 理论上应长期接近 0；增加时建立调查
+sum by (generation) (increase(python_gc_objects_uncollectable_total[15m]))
+```
+
+默认 collector 没有 GC pause duration。只有已观察到 GC 与 tail latency 同步时，才值得用 `gc.callbacks` 额外记录 Histogram；多数 FastAPI 服务先看 RSS、container memory、CPU 与 P99 已足够。
 
 ### 上生产前:多 worker 与采样健壮性
 
 上面那段是**教学骨架**,直接照抄上生产有两个会咬你的点:
 
-**① 多 worker 必须开 `prometheus_client` multiprocess 模式。** uvicorn/gunicorn 的 worker 数通常 ≈ CPU 核数,每个 worker 是独立进程,各有自己的事件循环、自己的 anyio limiter、自己的这套 Gauge。`prometheus_client` 默认 registry 是**进程级**的——`/metrics` 被抓到哪个 worker,你就只看到那个 worker 的数,`tasks_waiting` 直接误导。生产必须:
+**① 多 worker 的应用指标必须聚合。** 每个 worker 是独立进程，各有自己的事件循环、anyio limiter 和 metrics registry。直接抓 worker 的 `/metrics`，只会看到本次接住 scrape 的 worker，Counter、Histogram 与 Gauge 都可能跳动或漏数。
+
+Kubernetes 最简单的部署是每个 container 一个 ASGI worker，再横向扩 Pod。若必须在同一 container 使用多 worker，只有 supervisor 能在每个 worker 退出时调用 `mark_process_dead()`，才使用下面的 `live*` Gauge 方案；示例以 Gunicorn 为准：
 
 ```python
 # 1) 启动前设环境变量,指向一个可写目录(启动时清空):
 #    export PROMETHEUS_MULTIPROC_DIR=/tmp/prom_multiproc
-# 2) Gauge 显式声明跨进程聚合方式
-from prometheus_client import Gauge, CollectorRegistry, multiprocess
-TP_WAITING = Gauge("app_threadpool_tasks_waiting", "...", multiprocess_mode="livesum")
-# 3) /metrics 用聚合 registry 汇总所有 worker 写出的 .db
-def metrics_registry():
-    reg = CollectorRegistry()
-    multiprocess.MultiProcessCollector(reg)
-    return reg
+# 2) 上面的 Gauge 已显式声明 multiprocess_mode；不要在这里重复注册
+# 3) 自动 HTTP 指标只注册，不调用 .expose(app) 创建逐 worker endpoint
+Instrumentator().instrument(app)
+
+# 4) /metrics 挂载聚合 registry，汇总所有 worker 写出的 .db
+from prometheus_client import CollectorRegistry, make_asgi_app, multiprocess
+
+registry = CollectorRegistry()
+multiprocess.MultiProcessCollector(registry)
+app.mount("/metrics", make_asgi_app(registry=registry))
 ```
 
-`borrowed_tokens` / `tasks_waiting` / `total_tokens` 都用 `multiprocess_mode="livesum"`(对存活 worker 求和:总在用线程、总排队数、有效上限 = workers×40)。注意:multiprocess 模式下 `ProcessCollector` / `GCCollector` 的默认聚合行为受限,需单独处理。
+`borrowed_tokens` / `tasks_waiting` / `total_tokens` 用 `multiprocess_mode="livesum"`（总在用线程、总排队数、有效上限）；事件循环 lag 是延迟值，应按 worker 保留或取 `livemax`，不能相加。
+
+Gunicorn 必须在 worker 退出时清理 live Gauge 文件：
+
+```python
+# gunicorn.conf.py
+from prometheus_client import multiprocess
+
+def child_exit(server, worker):
+    multiprocess.mark_process_dead(worker.pid)
+```
+
+启动前必须清空 `PROMETHEUS_MULTIPROC_DIR`，不要在 Python import 后才设置。目录残留会把前一次进程的数据带进新进程。`live*` 不会自行判断 PID 是否仍存活；若 supervisor 没有等价的 worker-exit hook（例如直接使用 standalone `uvicorn --workers`），worker 重启后会留下 stale Gauge，不能照抄此方案。
+
+部署步骤与限制以 [`prometheus_client` multiprocess 文档](https://prometheus.github.io/client_python/multiprocess/) 为准。
+
+**ProcessCollector / GCCollector 不代表多 worker 服务总量。** multiprocess collector 不会替你把各 worker 的 process RSS 或默认 GC collector 合成可靠总数。分层处理：
+
+```text
+业务 Counter / Histogram / Gauge → prometheus_client multiprocess 聚合
+Pod/container 总内存与 OOM       → cAdvisor + kube-state-metrics
+单 worker RSS / GC               → 指定 PID 的临时诊断信号
+Python / native allocation 根因  → tracemalloc / Memray
+```
+
+容器级 PromQL 与告警统一见 [`performance-tuning-roadmap/12-container/03-container-monitoring`](../../performance-tuning-roadmap/12-container/03-container-monitoring.md)；allocation 诊断见 [`06a-python-profiling/02-python-memory-analysis`](../../performance-tuning-roadmap/06a-python-profiling/02-python-memory-analysis.md)。这里不复制 K8s rules。
 
 **② 采样循环要包 `try/except`。** `while True` 裸跑时,`.statistics()` 万一抛一次,这个 task 就**静默死掉、监控从此冻住而你不知道**(监控自己挂了最危险)。生产版循环体 `try: … except Exception: log.exception(…)`,别让一次异常杀死整个采样器。
 
@@ -167,10 +226,10 @@ def metrics_registry():
 ```promql
 app_threadpool_tasks_waiting > 0                 # 同步 def 端点在排队(for: 30s → P2)
 asyncio_event_loop_lag_seconds > 0.1             # 事件循环被阻塞(头号坑)
-app_db_pool_overflow > 0                         # pool_size 已用尽、开始借临时连接 = 连接池饱和
+app_db_pool_overflow > 0                         # 已借临时连接；压力预警，不等于连接池耗尽
 ```
 
-三条告警均建在**饱和度/溢出**上，而非利用率——原因见 [capstone §2](../../performance-tuning-roadmap/03-observability/07-concurrent-resource-saturation.md)（等待数是领先指标，利用率是滞后指标）。
+线程池等待数与事件循环 lag 可直接表示饱和/阻塞；连接池 overflow 只适合作为压力预警，需再结合 checkout 等待 Histogram 与 timeout Counter 判断真正饱和。通用原则见 [capstone §2](../../performance-tuning-roadmap/03-observability/07-concurrent-resource-saturation.md)。
 
 ---
 
