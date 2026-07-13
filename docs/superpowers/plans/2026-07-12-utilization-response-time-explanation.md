@@ -175,7 +175,7 @@ git commit -m "docs: explain nonlinear queueing latency"
 - Consumes: Task 1 已定义的 `S = 1/μ`、`ρ = λ/μ`、`W = S/(1-ρ)`、80%/90% 倍率和 M/M/1 模型边界
 - Produces: 可直接口述的 30 秒回答，以及针对公式原因和 80% 阈值的两组追问回答
 
-- [ ] **Step 1: 确认当前尚无面试回答小节**
+- [x] **Step 1: 确认当前尚无面试回答小节**
 
 Run:
 
@@ -185,7 +185,7 @@ rg -n '^### 面试怎么回答$' performance-tuning-roadmap/01-methodology/04-pe
 
 Expected: 无输出，退出码为 1。
 
-- [ ] **Step 2: 在工程启示之后加入面试回答模板**
+- [x] **Step 2: 在工程启示之后加入面试回答模板**
 
 在“工程启示”的三个项目之后、“容量模型构建”之前加入：
 
@@ -213,7 +213,7 @@ Expected: 无输出，退出码为 1。
 - 不要说 Little 定律能计算吞吐量上限；它描述的是稳态下并发数、吞吐量与延迟的关系
 ````
 
-- [ ] **Step 3: 校验面试回答结构和关键边界**
+- [x] **Step 3: 校验面试回答结构和关键边界**
 
 Run:
 
@@ -231,7 +231,7 @@ git diff --check -- performance-tuning-roadmap/01-methodology/04-performance-law
 
 Expected: 无输出，退出码为 0。
 
-- [ ] **Step 4: 复读面试回答与前后衔接**
+- [x] **Step 4: 复读面试回答与前后衔接**
 
 Run:
 
@@ -241,7 +241,7 @@ sed -n '275,340p' performance-tuning-roadmap/01-methodology/04-performance-laws.
 
 Expected: 阅读顺序为“工程启示 → 面试怎么回答 → 容量模型构建”；30 秒回答先给结论，追问再补原理和模型边界，避坑项不与正文冲突。
 
-- [ ] **Step 5: 单独提交面试回答补充**
+- [x] **Step 5: 单独提交面试回答补充**
 
 ```bash
 git add performance-tuning-roadmap/01-methodology/04-performance-laws.md
