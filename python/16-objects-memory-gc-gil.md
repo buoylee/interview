@@ -1,6 +1,6 @@
 # 16 · 对象模型 · 内存 · GC · GIL 机制
 
-> **为什么这章重要**:这是脊柱下半段。[第 15 章](15-cpython-execution-model.md)讲"代码怎么跑",这章讲"对象怎么活、内存怎么收、多线程为什么跑不满多核"。三个最高频的资深/架构师问题——**Python 怎么管内存**、**循环引用会泄漏吗 / `__del__` 可靠吗**、**GIL 到底锁住了什么、怎么放锁**——答案都在这里,而且都得讲到机制层,不能停在"有个引用计数、有个 GIL"。
+> **为什么这章重要**:这是脊柱下半段。[第 15 章](15-cpython-execution-model.md)讲"代码怎么跑",这章讲"对象怎么活、内存怎么收、多线程为什么跑不满多核"。四个最高频的资深/架构师问题——**Python 怎么管内存**、**循环引用会泄漏吗 / `__del__` 可靠吗**、**对象都 del 了 RSS 为什么不降**、**GIL 到底锁住了什么、怎么放锁**——答案都在这里,而且都得讲到机制层,不能停在"有个引用计数、有个 GIL"。
 >
 > 并发的**选型与实操**(threading/multiprocessing/asyncio 怎么选、worker、任务队列)在[第 13 章](13-concurrency-bridge.md)与 [`../python-concurrency/`](../python-concurrency/);本章只讲 GIL 的**机制**。性能剖析实操在 [`../performance-tuning-roadmap/`](../performance-tuning-roadmap/)。本章讲**机制**;生产内存**排查工具链**(tracemalloc/objgraph/Memray)见 [`06a-python-profiling/02`](../performance-tuning-roadmap/06a-python-profiling/02-python-memory-analysis.md),GC 的**排查视角与 PyPy 差异**见[`同目录 03`](../performance-tuning-roadmap/06a-python-profiling/03-cpython-gc.md)。
 >
