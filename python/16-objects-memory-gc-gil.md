@@ -52,6 +52,18 @@ sys.getrefcount(a)   # 2 —— 归位
 
 > 对比:Java/Go 是**纯追踪式 GC**,没有 per-object 引用计数,所以没有"立即回收"的确定性,但天然不怕循环引用。Python 反过来:引用计数给了确定性,循环留给 GC 补。
 
+### 永生对象:连 None 的 refcount 都不再动了(PEP 683,3.12)
+
+引用计数有个隐藏成本:**读也会写**。哪怕只是把 `None`、`True`、小整数传来传去,它们的 refcount 也在不停 +1/-1——这会把本可多进程共享的内存页写脏(CoW,§4 生产视角会展开),也是 free-threading 要做原子操作的负担。3.12 起(PEP 683)这类从不该死的对象被标记为**永生(immortal)**:refcount 固定在一个哨兵值上,增减操作直接跳过:
+
+```python
+import sys
+sys.getrefcount(None)   # 3.11 实测: 3714(普通计数,随解释器状态波动)
+sys.getrefcount(None)   # 3.12 实测: 4294967295(2^32-1 哨兵值,不再真实计数)
+```
+
+永生对象读多写零,fork 后的共享页不再被写脏,也为 §7 free-threading 铺了路。
+
 ## 三、weakref:不增加引用计数的引用
 
 普通引用会让 refcount +1、阻止回收。**弱引用(`weakref`)** 指向对象但**不增加引用计数**,对象该回收就回收:
