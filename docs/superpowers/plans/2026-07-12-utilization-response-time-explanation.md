@@ -20,7 +20,7 @@
 ### Task 1: 补足非线性原因并统一工程表述
 
 **Files:**
-- Modify: `performance-tuning-roadmap/01-methodology/04-performance-laws.md:197-275`
+- Modify: `performance-tuning-roadmap/01-methodology/04-performance-laws.md:197-317`
 
 **Interfaces:**
 - Consumes: 本文已有的 `λ`（到达率）、`μ`（服务率）、`ρ = λ / μ`（利用率）、`W`（平均停留时间）与 Little 定律 `L = λW`
@@ -31,10 +31,10 @@
 Run:
 
 ```bash
-rg -n 'CPU 80%|流量翻倍到 90%|排队论告诉我们 70%' performance-tuning-roadmap/01-methodology/04-performance-laws.md
+rg -n 'CPU 80%|流量翻倍到 90%|排队论告诉我们 70%|W = 1/μ\(1-ρ\)|利用率超过 70% 后延迟急剧增长' performance-tuning-roadmap/01-methodology/04-performance-laws.md
 ```
 
-Expected: 找到三处现有表述，分别位于倍率表引导语、工程启示和容量示例；正文尚无“为什么会非线性增长”或“模型边界”小节。
+Expected: 找到倍率表引导语、工程启示、容量示例和文末小结中的旧表述；正文尚无“为什么会非线性增长”或“模型边界”小节，小结仍使用 `W = 1/μ(1-ρ)` 并声称“利用率超过 70% 后延迟急剧增长”。
 
 - [x] **Step 2: 在公式与倍率表之间加入原因、推导和例子**
 
@@ -115,20 +115,27 @@ W  = 1 / (μ - λ)
 - 所以单实例初步规划吞吐量 = 2000 × 0.7 = 1400 req/s
 ```
 
+将文末小结的 M/M/1 行改为：
+
+```markdown
+| M/M/1 | W = 1/[μ(1-ρ)] | 利用率越接近 100%，平均响应时间越被放大 |
+```
+
 - [x] **Step 5: 校验结构、公式和旧表述已清理**
 
 Run:
 
 ```bash
 rg -n '为什么会非线性增长|PASTA|无记忆性|μ - λ = μ\(1 - ρ\)|W  = 1 / \(μ - λ\)|模型边界|流量增加 50%|检查并发数、吞吐量与延迟是否自洽|压测和延迟 SLO' performance-tuning-roadmap/01-methodology/04-performance-laws.md
+rg -n -F '| M/M/1 | W = 1/[μ(1-ρ)] | 利用率越接近 100%，平均响应时间越被放大 |' performance-tuning-roadmap/01-methodology/04-performance-laws.md
 ```
 
-Expected: 九种新增内容全部匹配。
+Expected: 九种正文新增内容和精确的小结行全部匹配。
 
 Run:
 
 ```bash
-rg -n 'CPU 80%|流量翻倍到 90%|排队论告诉我们 70%|计算理论吞吐量上限|单实例最大吞吐量（Little）' performance-tuning-roadmap/01-methodology/04-performance-laws.md
+rg -n 'CPU 80%|流量翻倍到 90%|排队论告诉我们 70%|计算理论吞吐量上限|单实例最大吞吐量（Little）|W = 1/μ\(1-ρ\)|利用率超过 70% 后延迟急剧增长' performance-tuning-roadmap/01-methodology/04-performance-laws.md
 ```
 
 Expected: 无输出，退出码为 1。
@@ -141,7 +148,7 @@ git diff --check -- performance-tuning-roadmap/01-methodology/04-performance-law
 
 Expected: 无输出，退出码为 0。
 
-- [x] **Step 6: 复读修改后的完整排队论与容量示例**
+- [x] **Step 6: 复读修改后的完整排队论、容量示例与文末小结**
 
 Run:
 
@@ -149,7 +156,7 @@ Run:
 sed -n '180,325p' performance-tuning-roadmap/01-methodology/04-performance-laws.md
 ```
 
-Expected: 阅读顺序为“模型定义 → 公式 → 原因与推导 → 倍率表与图 → 模型边界 → 工程启示 → 容量示例”，公式和例子相互一致，没有把 M/M/1 结论泛化为所有 CPU 或线程池的硬阈值。
+Expected: 阅读顺序为“模型定义 → 公式 → 原因与推导 → 倍率表与图 → 模型边界 → 工程启示 → 容量示例 → 文末小结”，公式、例子和小结相互一致；小结使用 `W = 1/[μ(1-ρ)]` 并说明利用率越接近 100% 响应时间越被放大，没有保留 70% 固定拐点，也没有把 M/M/1 结论泛化为所有 CPU 或线程池的硬阈值。
 
 - [x] **Step 7: 单独提交正文修改**
 
