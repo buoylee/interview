@@ -4,7 +4,7 @@
 >
 > 并发的**选型与实操**(threading/multiprocessing/asyncio 怎么选、worker、任务队列)在[第 13 章](13-concurrency-bridge.md)与 [`../python-concurrency/`](../python-concurrency/);本章只讲 GIL 的**机制**。性能剖析实操在 [`../performance-tuning-roadmap/`](../performance-tuning-roadmap/)。
 >
-> 环境:CPython **3.11.8** 实测。
+> 环境:CPython **3.11** 实测(基线 3.11.8;§5 分配器/RSS 数字为 3.11.15 容器实测,§2 永生对象对照 3.12)。
 
 ## 一句话心智
 
@@ -29,7 +29,7 @@ sys.getsizeof([])       # 56   —— 空 list 也有头 + 容量字段
 
 `int` 是**任意精度**的:超过一个 30 位数字就用一个动态数组放多个数字,所以 `getsizeof` 随大小线性增长(每多一段 +4 字节)。这也是为什么 Python 没有整数溢出,代价是大整数运算比 C 的 `int64` 慢。
 
-> 实例的属性存储(`__dict__` vs `__slots__`)、容器(list/dict)的内部布局与扩容,是这层"对象重不重"的延伸:`__slots__` 见本章 §5,dict/list 的紧凑布局与过度分配见第 [02 章](02-builtin-types-data-structures.md)。
+> 实例的属性存储(`__dict__` vs `__slots__`)、容器(list/dict)的内部布局与扩容,是这层"对象重不重"的延伸:`__slots__` 见本章 §6,dict/list 的紧凑布局与过度分配见第 [02 章](02-builtin-types-data-structures.md)。
 
 ## 二、引用计数:99% 的内存是它收的
 
@@ -62,7 +62,7 @@ sys.getrefcount(None)   # 3.11 实测: 3714(普通计数,随解释器状态波�
 sys.getrefcount(None)   # 3.12 实测: 4294967295(2^32-1 哨兵值,不再真实计数)
 ```
 
-永生对象读多写零,fork 后的共享页不再被写脏,也为 §7 free-threading 铺了路。
+永生对象读多写零,fork 后的共享页不再被写脏,也为 §8 free-threading 铺了路。
 
 ## 三、weakref:不增加引用计数的引用
 
@@ -120,7 +120,73 @@ gc.get_threshold()           # (700, 10, 10)
 
 > **收口地图:Java 的 GC 深度在收集器,Python 的在别处。** JVM 面试聊 GC 是聊收集器动物园(CMS/G1/ZGC、并发标记、卡表、停顿目标);CPython 的循环 GC 只是一个不并发、不搬移、不压缩的朴素 mark-sweep,**浅是设计使然**——refcount 已经收掉 99%,它只是兜底。Python 这边的深水区搬了家:**① 分配器层**(pymalloc、RSS 行为,§5)、**② refcount 的涟漪效应**(GIL 的存在理由 §7、CoW 写脏页与永生对象 §2、free-threading 的 biased refcount §8)、**③ 生产调优**(本节)。被问「Python 的 GC 和 JVM 比怎么样」,照这张图答,别顺着收集器话题硬聊。
 
-## 五、`__slots__` 的机制
+## 五、内存模型与分配:对象的一生
+
+refcount 归零"立即回收"——回收到哪儿?**不是还给操作系统。** CPython 与 OS 之间隔着自己的分配器,这一层是「都 del 了,RSS 怎么不降」的全部答案,也是 Python 内存话题真正的深水区。
+
+### 分层图:内存从 OS 到名字
+
+```
+OS 虚拟内存(mmap / brk)
+ └─ CPython 私有堆
+     ├─ pymalloc:arena(1MB,向 OS 整块要)→ pool(16KB,按 size class 切)→ block(装对象)  ← ≤512B 小对象
+     └─ 直接 malloc / mmap                                                                 ← >512B 大对象
+         └─ 对象层:对象头(§1)+ 各类型 free list 复用
+             └─ 名字层:引用绑定(第 01 章)
+```
+
+小对象(≤512 字节——绝大多数 Python 对象都在此列)由 **pymalloc** 管:它一次向 OS 要一整块 **1MB 的 arena**,切成 **16KB 的 pool**,每个 pool 只服务一种大小等级(size class,8 字节一档共 32 档),对象就装在 pool 里的 block 上。大于 512B 的(大 list 的指针数组、长字符串、大 bytes)绕过 pymalloc 直接 malloc/mmap。这些数字都能自己看:`sys._debugmallocstats()` 打印完整的 arena/pool/size class 统计(本节数字即 3.11.15 实测)。
+
+### 一个对象的出生与死亡
+
+`x = MyObj()` 的完整路径:类型的 `tp_alloc` 申请内存 → `PyObject_Malloc` 判断大小 → ≤512B 走 pymalloc(找对应 size class 的 pool,掰一个 block)/ >512B 直接 malloc → 装上对象头、refcount=1 → 名字 `x` 绑定。死亡是反向:refcount 归零 → 调 `tp_dealloc` → block 还给 pool,或者进**类型 free list**——float/list/dict 等高频类型自留一个"对象壳回收池",下次分配同类型直接复用,连 pymalloc 都不用走(`_debugmallocstats` 里能看到 `54 free PyDictObjects`、`66 free PyListObjects` 这类行)。**到此为止,通常不再往下还。**
+
+顺带一个和 Java/Go 都不同的点:Python 对象**全部在堆上**,连函数调用的 frame 都是堆对象——没有"栈上分配/逃逸分析"这回事。
+
+### 反 Java 直觉:三代不是三块内存
+
+JVM 的分代是**物理分区**(eden/survivor/old),对象晋升要真搬家,GC 顺带压缩整理。CPython 的三代**只是三条追踪链表**:晋升 = 把对象从 0 代链表摘下挂到 1 代,对象的内存地址从生到死不变。**从不搬家 → 没有压缩 → 碎片没法整理**,这正是下面 RSS 问题的根源。
+
+### 「都 del 了,RSS 为什么不降?」(实测)
+
+```python
+import gc
+
+def rss_mb():
+    with open("/proc/self/status") as f:          # Linux;容器里实测
+        for line in f:
+            if line.startswith("VmRSS"):
+                return int(line.split()[1]) // 1024
+
+print(f"基线                     RSS = {rss_mb()} MB")   # 8 MB
+objs = [{"i": i} for i in range(2_000_000)]
+print(f"建 200 万小对象          RSS = {rss_mb()} MB")   # 453 MB
+
+survivors = objs[::100]          # 留 1%(2 万个),散落在各个 arena 里
+del objs; gc.collect()
+print(f"del 99%,留 1% 幸存者    RSS = {rss_mb()} MB")   # 438 MB ←← 只回来了 15MB!
+
+del survivors; gc.collect()
+print(f"幸存者也 del             RSS = {rss_mb()} MB")   # 10 MB  —— 全空的 arena 才还得回去
+
+big = b"\x01" * (200 * 1024 * 1024)   # 200MB 大块,>512B 不走 pymalloc
+print(f"建 200MB 大对象          RSS = {rss_mb()} MB")   # 210 MB
+del big
+print(f"del 大对象               RSS = {rss_mb()} MB")   # 10 MB  —— 大块立即还
+```
+
+关键就是中间那行:**删掉 99% 的对象,RSS 只降了 3%**。三个根因,一层一个:
+
+1. **arena 高水位**:pymalloc 只有当一个 arena 里**所有** pool 全空,才把这 1MB 还给 OS。1% 的幸存者均匀散落,几乎每个 arena 里都剩几个活对象——整个 arena 就被钉住。又因为对象从不搬家,没有任何机制把幸存者归拢到少数 arena 里。这就是「删 99% 只降 3%」。
+2. **free list 不还**:float/dict/list 等类型的对象壳留在复用池里等下次,不归还。
+3. **glibc malloc 自己也有高水位**:>512B 走 malloc 的部分,小块释放可能停在 glibc 堆的高水位之下不还 OS(真正的大块走 mmap,释放即归还——所以实测里 200MB 的 bytes del 后立刻回落)。
+
+两条推论,一条给排查、一条给容量:
+
+- **RSS 是「历史峰值的滞留」,不是「当前活对象量」**。判断真泄漏还是滞留/碎片:对照 RSS 曲线与 tracemalloc 曲线——两者同涨是真有对象没放(查无界缓存/全局容器),RSS 高位横盘而 tracemalloc 回落则是滞留,排查手册见 [`../performance-tuning-roadmap/06a-python-profiling/02`](../performance-tuning-roadmap/06a-python-profiling/02-python-memory-analysis.md)。
+- **容量规划按峰值 RSS 留水位**,别按"稳态对象该占多少"想当然;实在要压滞留,思路是别让峰值发生(流式/分批处理),而不是指望 del 之后内存回来。
+
+## 六、`__slots__` 的机制
 
 默认每个实例用一个 `__dict__`(哈希表)存属性,灵活但每个实例都背着一份 dict 开销。`__slots__` 让类为每个声明的属性创建一个 **member descriptor**(C 级的、记录固定偏移的描述符),实例改用紧凑的**固定槽位**存储,省掉 per-instance 的 `__dict__`:
 
@@ -138,7 +204,7 @@ hasattr(Slotted(), "__dict__")   # False                ← 实例没有 __dict_
 - 与 `functools.cached_property`、`@cached_property` 不兼容(它们要往实例 `__dict__` 写缓存);
 - 子类若不声明 `__slots__`,实例又会长出 `__dict__`,省内存的效果就没了。
 
-## 六、GIL 机制:它到底锁住了什么
+## 七、GIL 机制:它到底锁住了什么
 
 **GIL(全局解释器锁)= 一把进程级互斥锁,保证同一时刻只有一个线程在执行 Python 字节码。**
 
@@ -175,7 +241,7 @@ print(f"顺序 {seq:.2f}s  两线程 {par:.2f}s")
 
 > `setswitchinterval` 能调:调大减少切换开销但增大延迟尾巴,调小反之。它**只影响"多久强制让一次锁"**,改变不了"同一时刻只有一个线程跑字节码"的事实——别指望靠它榨出多核 CPU 并行。
 
-## 七、free-threading:真去掉 GIL(3.13t / 3.14)
+## 八、free-threading:真去掉 GIL(3.13t / 3.14)
 
 「Python 多线程跑不满多核」这条结论正在被改写:
 
@@ -185,19 +251,19 @@ print(f"顺序 {seq:.2f}s  两线程 {par:.2f}s")
 
 生产判断:**默认发行版当下仍带 GIL**,要吃 free-threading 的多核红利,得确认构建版本与全部 C 扩展都适配。
 
-## 八、为什么 Python 慢、怎么办(总纲)
+## 九、为什么 Python 慢、怎么办(总纲)
 
 把前两章的机制串起来,纯 Python 计算比 C/Java/Go 慢一两个数量级,四个根因各有出处:
 
 1. **解释执行**:逐条过 eval 循环(第 15 章 §2),没有传统 JIT 把整段编译成机器码;
 2. **动态类型**:每个操作要运行时查类型找方法——但 3.11 的自适应专门化对热路径已部分缓解(第 15 章 §6);
 3. **一切皆对象**:连整数都是带头的堆对象,装箱开销大(本章 §1);
-4. **GIL**:挡住多线程的 CPU 并行(本章 §6)。
+4. **GIL**:挡住多线程的 CPU 并行(本章 §7)。
 
 **怎么办**:
 
 - **重数值计算别用纯 Python**——用 **numpy**(向量化,循环在 C 层跑且常释放 GIL)、Cython、或写成 C 扩展;这些在 C 层执行并能真并行。
-- **CPU 密集并行用多进程**(第 13 章)绕开 GIL,或上 free-threading 构建(§7)。
+- **CPU 密集并行用多进程**(第 13 章)绕开 GIL,或上 free-threading 构建(§8)。
 - **微观惯用法**:热循环里把全局/属性查找提到循环外变成局部(第 15 章 §3 的 `LOAD_FAST` vs `LOAD_GLOBAL`);优先用内置函数与内置类型(C 实现,如 `sum`/`map`/`str.join`);用生成器避免一次性建大列表;用 `set`/`dict` 做成员判断而非 `list`。
 - **但先测量再优化**:用 `cProfile`/`py-spy` 找真正的热点,别凭感觉(实操见 [`../performance-tuning-roadmap/`](../performance-tuning-roadmap/))。
 

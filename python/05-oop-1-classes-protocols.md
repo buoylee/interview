@@ -302,7 +302,7 @@ p = Point(1, 2)
 # p.z = 3   → AttributeError:'Point' object has no attribute 'z'
 ```
 
-适合海量创建的小对象(几十万个点/记录)。代价:没了 `__dict__`,失去动态加属性能力,多继承时也有限制。机制上,`__slots__` 给每个槽名建一个 **member descriptor**(data descriptor,按固定偏移存取),所以它走的正是上面"data 描述符"那条优先路径——详见[第 16 章](16-objects-memory-gc-gil.md) §5。
+适合海量创建的小对象(几十万个点/记录)。代价:没了 `__dict__`,失去动态加属性能力,多继承时也有限制。机制上,`__slots__` 给每个槽名建一个 **member descriptor**(data descriptor,按固定偏移存取),所以它走的正是上面"data 描述符"那条优先路径——详见[第 16 章](16-objects-memory-gc-gil.md) §6。
 
 ## 七、数据模型:用 dunder 接入语言协议
 
