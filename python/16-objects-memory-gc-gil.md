@@ -108,7 +108,17 @@ gc.get_threshold()           # (700, 10, 10)
 
 > **资源清理(关文件/连接/锁)永远用 `with`/上下文管理器(第 [07 章](07-iterators-generators-context-managers.md)),不要依赖 `__del__`。** `__del__` 只适合做"无关紧要的兜底"。
 
-`gc` 模块还可手动干预:`gc.disable()`(确定无环的批处理里关掉省 CPU)、`gc.collect()`(关键点主动回收)、`gc.freeze()`(把当前存活对象移出扫描范围,常用于 fork 前减少 copy-on-write 抖动)。
+### 生产视角:GC 什么时候成延迟元凶
+
+分代 GC 是 **stop-the-world 且单线程**的:扫描时暂停所有 Python 代码。gen0 只扫新对象、微秒级;但 **gen2 是全堆扫描,成本 = O(存活对象数)**——常驻千万级对象的服务(大缓存、大索引),一次 gen2 可到百毫秒级,表现为**周期性 P99 尖峰**:流量越大、分配越快、触发越频。三个真实手段:
+
+- **调大阈值**:`gc.set_threshold(50_000, 20, 20)` 之类,让扫描更稀疏(代价:循环垃圾滞留更久、峰值内存更高)。先用 `gc.set_debug(gc.DEBUG_STATS)` 或 `gc.callbacks` 给每次回收计时,确认尖峰真来自 GC 再动手。
+- **确定无环的批处理直接 `gc.disable()`**:引用计数照常工作,只是没了兜底;短生命周期进程(脚本、任务 worker)风险很低,`gc.collect()` 还可在关键点手动补一刀。
+- **fork 型服务上 `gc.freeze()`**:预加载(gunicorn `--preload`)本想靠 CoW 让 worker 共享父进程内存,但 refcount 一动、整个内存页就被复制,GC 扫描更是把全堆对象头摸一遍——共享页大量写脏,省内存的算盘落空。fork 前 `gc.freeze()` 把当前所有存活对象移出 GC 追踪,worker 里不再扫它们;3.12 的永生对象(§2)更进一步,让 None/小整数连 refcount 都不写。
+
+**Instagram 案例**(经典,可直接讲):他们发现 worker 里 CoW 共享内存持续流失,根因就是 GC 扫描写脏共享页;先粗暴 `gc.set_threshold(0)` 关掉分代 GC,整体容量提升约 10%;后来把「fork 前冻结」这套做法贡献回 CPython,就是 3.7 加入的 `gc.freeze()`。
+
+> **收口地图:Java 的 GC 深度在收集器,Python 的在别处。** JVM 面试聊 GC 是聊收集器动物园(CMS/G1/ZGC、并发标记、卡表、停顿目标);CPython 的循环 GC 只是一个不并发、不搬移、不压缩的朴素 mark-sweep,**浅是设计使然**——refcount 已经收掉 99%,它只是兜底。Python 这边的深水区搬了家:**① 分配器层**(pymalloc、RSS 行为,§5)、**② refcount 的涟漪效应**(GIL 的存在理由 §7、CoW 写脏页与永生对象 §2、free-threading 的 biased refcount §8)、**③ 生产调优**(本节)。被问「Python 的 GC 和 JVM 比怎么样」,照这张图答,别顺着收集器话题硬聊。
 
 ## 五、`__slots__` 的机制
 
