@@ -463,3 +463,171 @@ for (EventExecutor e : group) {
 ```
 
 **告警含义**：`pendingTasks()` 持续增长 = EventLoop 被某个慢/阻塞 handler 拖住。所有绑定到该 EventLoop 的 Channel 都会受影响，表现为连接响应延迟集体升高。这对应 [并发资源饱和 capstone §6](../03-observability/07-concurrent-resource-saturation.md) 的「事件循环被阻塞」分支——修复路径：把耗时操作移交给独立业务线程池（见本文第 5 节）。
+
+---
+
+## 9. 实战案例：高峰期单条长连接偶发发送超时
+
+### 9.1 现场与结论边界
+
+某自研 Netty RPC 客户端与服务端之间维护 10 条长 TCP 连接。请求量升高后，每分钟出现数次发送超时，同一时刻通常只有一条连接异常。已知：
+
+- GC 已排除。
+- 发送端抓包没有找到对应请求。
+- 业务代码确认异步调用过 `flush()`，但没有保存 write promise 的最终结果。
+
+这些证据**不足以断言根因**。`flush()` 被调用只说明发起过刷新动作，不等于 EventLoop 已执行、不等于数据已写入 socket，更不等于对端已 ACK。发送端抓不到请求也只能把怀疑范围前移，仍需先排除抓包所在 network namespace、网卡、过滤条件，以及 TCP 拆包/合包造成的识别误差。
+
+此案例的目标不是猜出历史事故，而是建立一套下次能拿到闭环证据的排查方法。
+
+### 9.2 按边界拆开“发送”
+
+```text
+RPC submit
+  → 连接池选中某条 Channel / 等待槽位
+  → EventLoop task queue
+  → outbound Pipeline / encoder
+  → ChannelOutboundBuffer
+  → SocketChannel.write
+  → kernel TCP Send-Q
+  → qdisc / NIC
+  → 网络
+  → 对端 read / RPC handler
+```
+
+笼统的 `send timeout` 无法说明卡在哪层。至少拆成四类：
+
+1. `channel_acquire_timeout`：等待可用连接或 per-channel in-flight 槽位。
+2. `eventloop_queue_timeout`：任务已提交，但 EventLoop 尚未执行。
+3. `write_timeout`：outbound write/flush 已执行，但 write promise 未完成。
+4. `response_timeout`：write 已成功，等待响应超时。
+
+### 9.3 最小可观测闭环
+
+#### 每个请求保留阶段时间线
+
+耗时统一用 `System.nanoTime()` 计算；墙上时间只用于跨进程日志关联。
+
+```text
+t0 rpc_submit
+t1 eventloop_enter
+t2 transport_write       # 编码完成，进入 transport 前
+t3 transport_flush
+t4 write_future_done
+t5 response_received | timeout
+```
+
+必须监听本次 write 返回的原始 `ChannelFuture`，不能只记录“调用过 flush”：
+
+```java
+long submitNanos = System.nanoTime();
+ChannelFuture future = channel.writeAndFlush(frame);
+
+future.addListener(f -> recordWriteResult(
+    requestId,
+    channel.id().asShortText(),
+    System.nanoTime() - submitNanos,
+    f.isSuccess(),
+    f.isCancelled(),
+    f.cause()
+));
+```
+
+在 promise 由标准 Netty transport 正确完成的前提下，future `success` 表示该 write 已离开 `ChannelOutboundBuffer` 并交给 kernel socket buffer；它不表示 TCP ACK、对端收到或业务处理完成。自研 outbound handler 还要审计是否错误地提前完成、替换或吞掉 promise。基础用法见本文第 3 节。
+
+#### timeout 时输出一条结构化快照
+
+不要在 EventLoop 为每个阶段同步写磁盘。阶段数据先保存在请求上下文和有界环形缓冲区；仅对 slow/failure/timeout 全量输出。快照至少包含：
+
+- 请求：`requestId`、frame bytes、deadline、当前 timeout 类型、各阶段时间与分段耗时。
+- 连接：固定 `channelSlot`（0–9）、`channelId`、connection generation、local/remote IP 和 port、per-channel sequence。
+- 负载：该 Channel 的 in-flight 数、最老请求 age、连接选择前的等待队列深度。
+- 状态：`isOpen()`、`isActive()`、`isWritable()`、`bytesBeforeWritable()`、`bytesBeforeUnwritable()`。
+- 写结果：future 的 `pending/success/failure/cancelled`、`cause`；失败时保留 exception class 和 stack trace。
+- EventLoop：线程名/编号、`pendingTasks()`、最近一次 loop lag。
+- 定时器：deadline 预期触发时间、实际触发时间、timer 所属 executor；防止把 timer 自身延迟误判为网络慢。
+
+`pending_write_bytes` 优先由自建 outbound probe 维护。直接读取 `channel.unsafe().outboundBuffer()` 属于 Netty internal API；若必须使用，应固定 Netty 版本并只在对应 EventLoop 上访问。
+
+#### 持续记录 Channel 与 EventLoop 饱和度
+
+```text
+rpc.client.send.stage.duration{stage}
+rpc.client.timeout.total{stage,cause}
+rpc.client.channel.inflight{peer,slot}
+rpc.client.channel.oldest.inflight{peer,slot}
+netty.channel.writable{peer,slot}
+netty.channel.pending.write.bytes{peer,slot}
+netty.eventloop.pending.tasks{loop}
+netty.eventloop.lag{loop}
+```
+
+- 在 `channelWritabilityChanged` 记录 writable 前后状态、pending bytes、水位线、不可写持续时间。
+- 在 `exceptionCaught`、`channelInactive`、`closeFuture` 和 write failure 记录 Channel 身份及未完成请求数。
+- 从独立 scheduler 每 100ms 向每个 EventLoop enqueue sentinel；`executeNanos - enqueueNanos` 就是 queue lag。持续增长时再限频抓 thread dump/JFR。
+- 指标 label 只使用 `peer`、稳定的 `slot`、`loop`、`stage`、有限枚举 `cause`。`requestId`、`channelId` 只进入日志，避免高基数。
+
+#### 保存每条 TCP 的短期历史
+
+只有 10 条连接时，可以每秒采样一次、保留最近 30–60 秒，timeout 时随快照输出：
+
+- `Send-Q` / `wmem_queued` / `notsent`
+- `unacked` / `retrans`
+- `rtt` / `rto` / `cwnd`
+- 启动时的 `SO_SNDBUF`、`TCP_NODELAY`
+
+native epoll 可读取 `EpollSocketChannel.tcpInfo()`；其他 transport 可按快照中的 local port 用 `ss -tinm` 对应 socket。字段语义见 [`metrics-decoder/04-network.md`](../../metrics-decoder/04-network.md)，单连接重传分析见 [`08-network-io/03-packet-loss-latency.md`](../08-network-io/03-packet-loss-latency.md)。
+
+### 9.4 用证据定位，再选择修复
+
+| 证据签名 | 故障边界 | 确认后的修复 |
+|---|---|---|
+| `t1-t0` 高，EventLoop lag / `pendingTasks` 同时升高；共享该 EventLoop 的其他 Channel 也变慢 | EventLoop 排队或阻塞 | 阻塞 I/O、长计算、锁等待移出 EventLoop；给业务线程池设置有界队列与拒绝策略；不要靠增加连接掩盖阻塞 |
+| 有 `t1`，没有 `t2` | encoder/outbound handler 或其自定义 executor | 查异常和慢 handler；确保 handler 调用 `ctx.write(msg, promise)` 并正确传递 promise |
+| 有 `t2`，没有 `t3` | flush 未继续传播 | 查批量 flush 逻辑和 outbound handler；确保调用 `ctx.flush()`，并用 per-channel `writeSeq/flushSeq` 关联批次 |
+| 有 `t3`，future 长期 pending，pending bytes 上升且 `isWritable=false` | ChannelOutboundBuffer / socket backpressure | 对单 Channel 设置有界 pending bytes/in-flight；连接选择时跳过不可写 Channel；在 `channelWritabilityChanged` 恢复；不要先盲目调高水位线 |
+| future success，但 `Send-Q`/notsent 持续高 | 数据已交给 kernel，但 TCP 尚未排空 | 查对端是否停止读取、receive window、拥塞窗口；小包延迟经证据确认后再评估 `TCP_NODELAY`，不要先扩大 buffer |
+| `unacked`/`retrans` 增长 | 数据曾经发出，但未及时 ACK | 查两端抓包、丢包、MTU、路由、主机/NIC drop；此时“发送端完全没发包”的判断需要重新验证 |
+| future failure | Netty / socket 明确失败 | 直接按 `cause` 处理 closed channel、reset、编码异常等；只看 `exceptionCaught` 不够，outbound 失败可能只落在 promise |
+| future success，随后 response timeout | 服务端处理、返回网络或客户端 read path | 将调查方向移出 send path，沿 response 方向继续分段计时 |
+| 只有某个 slot 的 in-flight、oldest age 或 pending bytes 明显高于其他 9 条 | 负载分配倾斜或 head-of-line blocking | 改为 writable + least-inflight/least-pending 选路；限制单连接并发；若协议一问一答，避免慢请求独占整条连接 |
+
+这里的 9 条健康连接是天然对照组。事故时同时比较 10 条连接的 EventLoop 映射、in-flight、pending bytes 和 TCP_INFO，比只看异常连接更快：
+
+- 同一 EventLoop 上多条连接一起慢，更像 EventLoop 问题。
+- 只有一个 Channel 异常，更像 per-Channel 队列、socket 或对端单连接读停顿。
+- 每次都是同一个固定 slot 异常，更要检查选路、连接代次和服务端连接级状态。
+
+### 9.5 抓包校验
+
+```bash
+nsenter -t "$PID" -n tcpdump -i any -nn -s 0 -B 32768 \
+  'tcp and host <B-IP> and port <PORT>'
+```
+
+- 必须在服务实际 network namespace 内抓，并保存 local port 对应 Channel。
+- 用 TCP 四元组和 sequence number 判断，不要只搜索完整 request payload；TCP 可能拆包、合包。
+- 检查 tcpdump 退出统计中的 `packets dropped by kernel`。
+- 必要时同时抓 `any` 与实际 egress/bond/veth。TSO/GSO 会改变包的外观和大小，但通常不会让正确抓包点完全看不到 outbound skb。
+
+容器抓包与 Wireshark 模式识别见 [`08-network-io/01-tcpdump-wireshark.md`](../08-network-io/01-tcpdump-wireshark.md)。若应用快照仍无法区分“没调用 kernel”还是“kernel 没下发”，再短时使用 eBPF 按 PID/cgroup + 四元组跟踪 `tcp_sendmsg`、`tcp_write_xmit`、`net_dev_queue`、`tcp_retransmit_skb`，不要一开始就上最重的工具。
+
+### 9.6 值班排查顺序
+
+1. 先确认 timeout 分类、`requestId`、`channelSlot/channelId`、connection generation、local port。
+2. 看 `t0..t5`，找第一个缺失或异常变长的阶段。
+3. 比较异常 Channel 与其余 9 条健康连接；同时检查共享 EventLoop 的其他 Channel。
+4. 看 writable、pending bytes、in-flight、EventLoop lag/queue，再看同一 socket 的 `Send-Q`/TCP_INFO。
+5. 校验抓包点和 request 识别方法；不要因为“没看到 payload”直接判定网络或应用无责。
+6. 一次只提出一个根因假设，用最小实验验证后再修复。
+
+### 9.7 上线前故障注入
+
+在测试环境制造四种可控故障，确认日志能产生不同签名：
+
+1. EventLoop handler 人为阻塞：应看到 `t1-t0`、loop lag、`pendingTasks` 上升。
+2. 对端暂停读取：应看到 pending bytes、不可写持续时间、`Send-Q` 上升。
+3. outbound handler 抛异常或故意不转发：应看到阶段缺失或 future failure。
+4. `tc netem` 注入丢包/延迟：应在抓包和 `retrans/rtt` 看到网络层证据，而不是 EventLoop queue lag。
+
+只有这些签名在测试环境被验证过，线上 timeout 快照才真正具备判因能力。

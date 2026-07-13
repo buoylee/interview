@@ -196,14 +196,17 @@ histogram_quantile(0.99, rate(<wait_seconds_bucket>[5m])) > 0.05
 │     → 同步 def 端点过多 / 池太小(回扣 A6 的 40 令牌)
 ├─ ④ DB 连接池枯竭? → `pending`/`WaitCount` 涨;再看 DB 侧 `Threads_running`
 │     高=真业务压力,低=连接被慢查 hang 住堆积(见 mysql-handson/11-ops-and-troubleshooting)
-└─ ⑤ 下游慢回压? → 自建 worker/semaphore 的 inflight 触顶 + 下游 P99 涨
-      → 别调大池(只是把队列挪到下游),该限流/隔离/async 化(见 concurrency-capacity/07-overload-backpressure)
+├─ ⑤ 下游慢回压? → 自建 worker/semaphore 的 inflight 触顶 + 下游 P99 涨
+│     → 别调大池(只是把队列挪到下游),该限流/隔离/async 化(见 concurrency-capacity/07-overload-backpressure)
+└─ ⑥ Netty outbound 卡住? → `flush` 已调用但 write future 未知/未完成,发送端抓不到请求
+      → 按 submit→EventLoop→Pipeline→ChannelOutboundBuffer→kernel Send-Q 分段取证
 ```
 
 参考链接:
 - ① [nginx/10-observability-debugging.md](../../nginx/10-observability-debugging.md) · [linux-handson/06-networking](../../linux-handson/06-networking/README.md)
 - ④ [mysql-handson/11-ops-and-troubleshooting](../../mysql-handson/11-ops-and-troubleshooting/README.md)
 - ⑤ [concurrency-capacity/07-overload-backpressure](../../concurrency-capacity/07-overload-backpressure/README.md)
+- ⑥ [Netty 高峰期单条长连接偶发发送超时排查](../04b-java-debugging/06-netty-performance.md)
 
 **逐层都在问同一个问题——「哪个有界队列满了,而它的饱和系统层看不见」。**
 
