@@ -104,6 +104,8 @@ tcpdump -i eth0 -nn -w /tmp/capture.pcap -C 100 -W 10 port 8080
 # -W 10    最多 10 个文件，循环覆盖
 ```
 
+> 轮转只解决磁盘不无限增长，不保证 timeout 证据不会在工程师回来前被覆盖。随机故障应使用 [无值守取证 Runbook](./06-intermittent-timeout-forensics.md)：timeout 自动 pin 前后时间窗，并配置 dedupe、quota、TTL 和采集丢包监控。
+
 ### 容器环境抓包
 
 ```bash

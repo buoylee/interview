@@ -345,8 +345,8 @@ sysctl net.ipv4.tcp_congestion_control
   │
   ├── Step 1: 确认是网络问题还是应用问题
   │    └── curl -w 看 time_connect vs time_starttransfer
-  │         ├── connect 慢 → 网络问题
-  │         └── firstbyte 慢 → 应用处理慢
+  │         ├── connect 慢 → 优先查 DNS/TCP/TLS/LB 路径
+  │         └── firstbyte 慢 → 查 Server queue/handler/下游，也保留回程与 proxy 证据
   │
   ├── Step 2: 检查丢包
   │    ├── netstat -s | grep retrans（重传统计）
@@ -367,6 +367,8 @@ sysctl net.ipv4.tcp_congestion_control
 ```
 
 ---
+
+> 对随机 request timeout，`netstat`/`ss` 的事后快照只能提供当前或聚合状态，不能单独还原那次请求。需要长期保留 Client、TCP/容器、Server 三层短期历史时，使用 [随机请求超时无值守取证](./06-intermittent-timeout-forensics.md)。
 
 ## 总结
 

@@ -13,6 +13,7 @@
 | 3 | [03-packet-loss-latency.md](./03-packet-loss-latency.md) | 丢包、延迟、MTU、mtr/traceroute |
 | 4 | [04-tls-debugging.md](./04-tls-debugging.md) | 证书链、SNI、cipher、TLS 握手性能 |
 | 5 | [05-io-performance.md](./05-io-performance.md) | iowait、磁盘队列、NFS、Direct I/O |
+| 6 | [06-intermittent-timeout-forensics.md](./06-intermittent-timeout-forensics.md) | 随机 timeout 无值守取证、容器网络、自动 pin、证据判定 |
 
 ---
 
@@ -22,6 +23,7 @@
 
 ```text
 客户端看到超时
+→ 如果故障随机出现，证据是否由 bounded ring 自动保留？
 → 服务端是否收到连接？
 → TCP 是否建连成功？
 → 是否重传、RST、窗口缩小？
@@ -41,6 +43,7 @@
 - 用 mtr/traceroute 判断延迟或丢包位置
 - 用 openssl/curl 排查一个 TLS 证书或握手问题
 - 用 iostat 判断磁盘 I/O 是否排队
+- 为随机 timeout 设计 A/B/C 证据链
 
 ---
 
@@ -53,6 +56,7 @@
 - 一份 TLS 检查输出
 - 一份 I/O 观察记录
 - 一份“应用日志 + 网络证据”的对应关系
+- 不含敏感 payload 的 timeout incident bundle
 
 ---
 
@@ -64,10 +68,10 @@
 | 看到 TIME_WAIT 就调参数 | 先检查连接复用 |
 | 看到某跳丢包就认定故障 | 看后续跳是否持续丢包 |
 | 浏览器能访问就认为证书没问题 | 用 openssl 验证完整证书链 |
+| timeout 后才抓包 | bounded ring + automatic pin |
 
 ---
 
 ## 下一阶段衔接
 
 阶段 8 解决网络和 I/O 证据。阶段 9a、9b 会进入数据库和中间件，它们经常是网络延迟和应用超时的下游根因。
-

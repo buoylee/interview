@@ -621,7 +621,11 @@ nsenter -t "$PID" -n tcpdump -i any -nn -s 0 -B 32768 \
 5. 校验抓包点和 request 识别方法；不要因为“没看到 payload”直接判定网络或应用无责。
 6. 一次只提出一个根因假设，用最小实验验证后再修复。
 
-### 9.7 上线前故障注入
+### 9.7 生产环境无值守保留
+
+本节定义 Netty 专属阶段、Channel 和 EventLoop 证据。随机 timeout 的长期运行方式——Tail Sampling、eBPF 事件、Docker/Kubernetes 网络层、pcap ring 自动 pin、quota/TTL 和 incident bundle——统一见 [`08-network-io/06-intermittent-timeout-forensics.md`](../08-network-io/06-intermittent-timeout-forensics.md)，避免在业务 EventLoop 同步写大量诊断日志。
+
+### 9.8 上线前故障注入
 
 在测试环境制造四种可控故障，确认日志能产生不同签名：
 

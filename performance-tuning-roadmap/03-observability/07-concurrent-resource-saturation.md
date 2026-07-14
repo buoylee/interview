@@ -207,6 +207,7 @@ histogram_quantile(0.99, rate(<wait_seconds_bucket>[5m])) > 0.05
 - ④ [mysql-handson/11-ops-and-troubleshooting](../../mysql-handson/11-ops-and-troubleshooting/README.md)
 - ⑤ [concurrency-capacity/07-overload-backpressure](../../concurrency-capacity/07-overload-backpressure/README.md)
 - ⑥ [Netty 高峰期单条长连接偶发发送超时排查](../04b-java-debugging/06-netty-performance.md)
+- ⑥ 的随机 timeout 若无法人工复现，使用 [无值守跨层取证 Runbook](../08-network-io/06-intermittent-timeout-forensics.md) 自动保留 Client、容器/TCP、Server 证据。
 
 **逐层都在问同一个问题——「哪个有界队列满了,而它的饱和系统层看不见」。**
 
