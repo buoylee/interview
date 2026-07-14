@@ -19,7 +19,7 @@
 
 **非目标：**
 
-- 不永久保存完整 payload；只保留定位所需的元数据、有界采样和经过脱敏的片段。
+- 绝不采集或保存 request/response body、token、cookie、`Authorization` header、TLS session keys 或任何其他 secret；只保留不含秘密的定位元数据和有界传输层信号。
 - 不在应用容器中授予抓包权限；抓包、eBPF 和宿主机网络观察由受控的 node/host collector 完成。
 - 不因单个指标正常就排除网络问题；必须用请求身份和同一时间线上的多层证据互证。
 - 不重复讲解 Netty、`ss`、Docker、Kubernetes、TLS 或 HTTP/2 的通用教程；这里只定义超时取证所需的边界、信号和关联方法。
@@ -111,7 +111,7 @@ t9 handler finish
 t10 response write complete
 ```
 
-必须把 framework/network receive 与 handler start 分开记录。若 `t6` 已出现而 `t8` 很晚，问题在服务端排队或调度；若服务端完全没有 `t6`，才继续沿 B 层连接和网络证据缩小范围。异步框架还应分别记录 EventLoop 回调、业务 executor 提交和执行时间，避免把两类队列合并。
+必须把 framework/network receive 与 handler start 分开记录。若 `t6` 已出现而 `t8` 很晚，问题在服务端排队或调度。只要 A→t6 gap 异常，无论 `t6` 是延迟出现还是缺失，都要检查 B 层连接和网络证据。缺失的 `t6` 只有在服务端埋点覆盖完整且 collection health（采集、导出、采样、保留）已验证健康后，才算“absence 的证据”；否则必须标记为“no evidence / unavailable evidence（无证据／证据不可用）”，不能据此推断请求未到达服务端。异步框架还应分别记录 EventLoop 回调、业务 executor 提交和执行时间，避免把两类队列合并。
 
 同一窗口至少保留这些有界信号：
 
@@ -166,4 +166,4 @@ incident metadata 应保存 pod UID/container ID 到 PID、cgroup、netns inode�
 
 TLS 在 sidecar、Ingress、gateway 或应用终止时，每一段都是不同的 TCP connection generation 和 4-tuple。incident bundle 要分别保存各 hop 的握手/连接错误、代理计数器和时间窗口，不能把入口连接的 ACK 当作后端应用连接的 ACK。
 
-HTTP/2 multiplexing 要同时从请求维度和连接维度判断：单条 stream 的 deadline、`RST_STREAM` 或 handler 延迟不应污染整个 channel 的结论；连接级 `GOAWAY`、flow-control stall、Send-Q 增长或多条 sibling stream 同时失败，才支持把范围提升到 HTTP/2 connection 或 TCP。只有在受控环境且符合密钥和隐私策略时，才把 TLS session keys 加入加密 incident bundle；没有密钥的 pcap 仍然是有效的传输层证据。
+HTTP/2 multiplexing 要同时从请求维度和连接维度判断：单条 stream 的 deadline、`RST_STREAM` 或 handler 延迟不应污染整个 channel 的结论；连接级 `GOAWAY`、flow-control stall、Send-Q 增长或多条 sibling stream 同时失败，才支持把范围提升到 HTTP/2 connection 或 TCP。禁止采集 TLS session keys；没有 session keys 时，加密 pcap 无法提供 payload，但仍然是有效的传输层证据。
