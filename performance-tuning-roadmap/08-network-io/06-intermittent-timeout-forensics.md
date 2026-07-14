@@ -107,6 +107,7 @@ userspace → socket send buffer → TCP/qdisc
 ```
 
 对命中请求连接记录 `socket state`、`Send-Q`、`wmem_queued`、`notsent`、`bytes_sent`、`bytes_acked`、`unacked`、`retrans`、`RTT`、`RTO`、`cwnd`。这些值必须附带采集时刻、network namespace、4-tuple 和 connection generation，才能与 A/C 时间线正确对齐。
+重传或 RTO 增加只能支持 TCP 交付路径存在丢失或确认延迟，不能单独定位到某条物理链路；必须再结合双端 pcap 与 veth/CNI/NIC 等分观察点证据判定范围。
 
 对于数量小且已知的连接池，优先使用 Netty native epoll `TCP_INFO`，在 timeout snapshot 中直接取得目标 socket 的内核状态；其他场景以 local port 为键使用 `ss -tinm` 作为 fallback。`ss` 观察的是 socket/连接，无法识别某个 HTTP/2 stream，不能仅凭它把同一连接上的某条失败 stream 定位为 TCP 故障。
 
