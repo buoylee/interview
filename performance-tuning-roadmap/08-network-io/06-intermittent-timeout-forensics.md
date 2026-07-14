@@ -72,13 +72,14 @@ t5 response headers/complete | timeout
 Netty 埋点使用稳定 stage name，便于不同服务和版本生成同构时间线：
 
 ```text
-rpc_submit, eventloop_enter, transport_write, transport_flush,
+rpc_submit, connection_acquired, eventloop_enter, transport_write, transport_flush,
 write_future_done, response_received | timeout
 ```
 
 | Stage name | Boundary |
 |---|---|
 | `rpc_submit` | t0，请求提交 |
+| `connection_acquired` | t1，连接池/Channel acquire 完成 |
 | `eventloop_enter` | t2，任务开始在 EventLoop 执行 |
 | `transport_write` | t3，进入 transport write |
 | `transport_flush` | flush 发起；与 write 分开记录 |
@@ -88,11 +89,11 @@ write_future_done, response_received | timeout
 采集策略按信号成本分层：
 
 - 全流量记录有界、低基数 metrics，例如各阶段耗时直方图、timeout/错误计数、EventLoop 排队时间和连接池 acquire 延迟。
-- 使用第九节 Collector Tail Sampling pipeline 时，upstream SDK/agent 必须完整 export 候选 traces，典型配置为 `AlwaysOn` 或 `ParentBased(AlwaysOn)`；禁止先做 1–5% head sampling。1–5% 仅表示 Collector 最终对 normal traces 的 retention，slow/error/timeout 的 100% 也只是满足完整性前提时的 policy intent。
+- 使用第九节 Collector Tail Sampling pipeline 时，upstream SDK/agent 推荐使用 pure `AlwaysOn`，完整 export 候选 traces；禁止先做 1–5% head sampling。若必须使用 `ParentBased`，其 `root`、`remote_parent_sampled`、`remote_parent_not_sampled`、`local_parent_sampled`、`local_parent_not_sampled` 五个 delegate 必须全部配置为 `AlwaysOn`；只把 root 设为 `AlwaysOn` 的标准 ParentBased 不符合本 Runbook。1–5% 仅表示 Collector 最终对 normal traces 的 retention，slow/error/timeout 的 100% 也只是满足完整性前提时的 policy intent。
 - 每个失败请求只写一份 structured failure snapshot，包含第二节 allowlisted identity、stage timestamp/duration、deadline、bounded channel/pool state，以及 approved error class/code/normalized stack fingerprint；通过 incident ID 去重。
 - 每个请求的 stage event 先进入进程内 bounded ring，不把无限事件排入 heap；timeout 触发时再将关联窗口导出。
 
-`write_future_done` 成功只说明数据被当前 transport 接受，不能把它解释为 TCP ACK、服务端收到请求或 handler 已执行。连接获取 `t1` 也必须单列，避免把连接池等待误判为网络传输耗时。
+`write_future_done` 成功只说明数据被当前 transport 接受，不能把它解释为 TCP ACK、服务端收到请求或 handler 已执行。`t1-t0`/`connection_acquired-rpc_submit` 固定表示 connection pool/acquire；`t2-t1`/`eventloop_enter-connection_acquired` 固定表示 EventLoop queue，两个区段必须分别计算，禁止合并。
 
 ## 四、Transport/Container B：从用户态到对端内核
 
@@ -166,11 +167,16 @@ Client tuple/netns @ event_time
   → candidate Server pod UID/node/observed tuple
 ```
 
-Timeout trigger 到达时，correlator 在 retention margin 内查询 event-time 对应的 index version，并立即 fan-out protect 到 Client Node 与所有同时命中 index 和 static allowlist 授权的 candidate Server Nodes；不得等待 Trace 或 Server framework event 才开始保护。Server framework receive 可以发送 mirrored server preservation signal 补强已授权 candidate 的定位，但不能成为前窗保护的前置条件。
+Timeout trigger 到达时，correlator 在 retention margin 内查询 event-time 对应的 index version，并且不等待 Trace，立即并行向所有授权 candidates fan-out 两类独立 preservation request：
 
-Event input 只能提供第九节 required identity，绝不能指定任意 Node、candidate 或 filter。Fan-out target 只能来自 time-versioned index 的候选集合与 static allowlist 交集。`peer`/`remote_tuple` 可能是 VIP、NAT 地址或 sidecar，禁止假定它唯一对应一个 Server Node。
+1. 每个 candidate Server pod 内的 authenticated unprivileged process-side evidence exporter，立即 freeze/copy 自己的 Request/C stage ring 与 process-owned TCP ring；它只能读取本进程的 bounded rings、写入 protected staging，不得抓包、加载 eBPF、执行 shell 或接收 filter。
+2. Candidate 所在 Node 的 privileged Node agent，立即 freeze node-owned TCP/eBPF/permitted pcap；它继续独占 host capture 权限。
 
-Mapping stale、ambiguous、unresolved 或 fan-out timeout 时，manifest 必须把对应 Server artifact 标为 `partial` 或 `unavailable`，并记录 index version、mapping age、全部授权 candidates、选中/未命中 Node 与 bounded reason；不能把 Client 端证据包装成完整双端证据。
+Process 与 Node 两类 request 都必须使用 workload identity、mTLS 和 RBAC 验证。Target 只能来自 event-time index ∩ static allowlist，event input 绝不能任意指定 pod、Node 或 filter。Server framework receive 可以发送 mirrored server preservation signal，让本 pod 的 process-side exporter 立即 self-freeze 作为补强，但不能取代 Client-trigger fan-out，也不能扩大授权 target。
+
+Event input 只能提供第九节 required identity，绝不能指定任意 Pod、Node、candidate 或 filter。Fan-out target 只能来自 time-versioned index 的候选集合与 static allowlist 交集。`peer`/`remote_tuple` 可能是 VIP、NAT 地址或 sidecar，禁止假定它唯一对应一个 Server Node。
+
+Mapping stale、ambiguous、unresolved 或 fan-out timeout 时，manifest 必须把对应 Server artifact 标为 `partial` 或 `unavailable`，并记录 index version、mapping age、全部授权 candidates 与 bounded reason。Process exporter unreachable/restarted 或 process fan-out timeout 时，Server Request/C 与 process TCP artifacts 分别标 `partial`/`unavailable`；Node agent 失败时，node TCP/eBPF/pcap artifacts 分别标记。Manifest 必须为 process preservation 与 node preservation 分开记录 target/result/latency/reason，不能把 Client 端证据或其中一个平面的成功包装成完整双端证据。
 
 | Layer | Signal | Common metric/example |
 |---|---|---|
@@ -234,7 +240,7 @@ Bundle admission 必须验证 observation hop、TLS boundary、policy version �
 
 ## 九、Tail Sampling 与 Trigger 契约
 
-OpenTelemetry Collector 通过 Tail Sampling 选择异常 Trace。使用这条 pipeline 时，upstream SDK/agent 对候选 traces 必须完整 export，典型配置为 `AlwaysOn` 或 `ParentBased(AlwaysOn)`；禁止 upstream 先做 1–5% head sampling，否则被丢弃的 error/slow spans 不会到达 Collector。1–5% 是 Collector policy 对 normal traces 的最终 retention。所有属于同一 Trace 的 spans 还必须路由到能做一致决策的同一个 Collector；以下 memory/trace capacity 数值只是 **load-test-sized example**，必须按实际流量压测，不是通用 production sizing：
+OpenTelemetry Collector 通过 Tail Sampling 选择异常 Trace。使用这条 pipeline 时，upstream SDK/agent 必须完整 export 候选 traces，推荐 pure `AlwaysOn`；禁止 upstream 先做 1–5% head sampling，否则被丢弃的 error/slow spans 不会到达 Collector。如果必须使用 `ParentBased`，只有 `root`、`remote_parent_sampled`、`remote_parent_not_sampled`、`local_parent_sampled`、`local_parent_not_sampled` 五个 delegate 全部为 `AlwaysOn` 才符合本 Runbook；标准 ParentBased 即使 root 是 `AlwaysOn`，其 not-sampled parent delegate 仍可能 drop spans，不能视为完整 export。1–5% 是 Collector policy 对 normal traces 的最终 retention。所有属于同一 Trace 的 spans 还必须路由到能做一致决策的同一个 Collector；以下 memory/trace capacity 数值只是 **load-test-sized example**，必须按实际流量压测，不是通用 production sizing：
 
 ```yaml
 processors:
@@ -265,7 +271,7 @@ processors:
 
 Production `decision_wait` 必须独立校准，至少覆盖 trace completion latency + SDK/exporter/network lateness + safety margin；只增加 `num_traces` 不能让已完成 decision 重新纳入 late span。Decision 完成后到达的 span 不参与该次 policy decision。必须监控实际版本提供的 late-span 信号，官方常见名称包括 `otelcol_processor_tail_sampling_sampling_late_span_age`，并计算 late-span ratio；指标名称与单位必须按部署 Collector 版本验证。
 
-Policy intent 不可弱化：error 和 slow requests 由 keep policy 选中，normal requests 才按比例采样。但 trace artifact 只有同时验证以下条件时才能标为 `complete`：upstream candidate complete export；同 Trace 一致路由到同一 Collector；所有 policy-relevant spans 在 decision 前到齐；early drop、overflow、policy evaluation error 均为零。任一条件未验证或异常，canonical artifact status 必须是 `partial` 或 `unavailable`，不得保证 error/slow trace retained。完整配置语义见[本章分布式链路追踪](../03-observability/05-distributed-tracing.md#tail-based-sampling尾部采样)与[官方 Tail Sampling Processor README](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/tailsamplingprocessor/README.md)。
+Policy intent 不可弱化：error 和 slow requests 由 keep policy 选中，normal requests 才按比例采样。但 trace artifact 只有同时验证以下条件时才能标为 `complete`：upstream sampler config/version 证明 candidate complete export；同 Trace 一致路由到同一 Collector；所有 policy-relevant spans 在 decision 前到齐；early drop、overflow、policy evaluation error 均为零。任一条件未验证或异常，canonical artifact status 必须是 `partial` 或 `unavailable`，不得保证 error/slow trace retained。完整配置语义见[本章分布式链路追踪](../03-observability/05-distributed-tracing.md#tail-based-sampling尾部采样)与[官方 Tail Sampling Processor README](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/tailsamplingprocessor/README.md)。
 
 应用只发出 timeout trigger event，字段必须完整且命名稳定：
 
@@ -282,12 +288,14 @@ Required trigger fields 不新增 `cause`。Correlator 只根据 bounded `timeou
 
 ## 十、触发流程、Bundle 与 Manifest
 
-Correlator 用稳定的低基数字段做去重，并执行 two-phase preservation：先保护前窗，再等待并追加后窗。Application instrumentation 在 timeout 当下于进程内 freeze 有界 request snapshot，对 capture system 仍然只发 required trigger event；process-side evidence exporter 按 trigger identity 把 snapshot 复制到 protected incident staging。Correlator 立即查询 event-time 对应的 time-versioned index，在 retention margin 内 fan-out 到 Client Node 与所有 index ∩ static allowlist 的 candidate Server Nodes，不等待 Trace。各 privileged Node agent 随即 freeze/copy 覆盖 `T-60s～T` 的 closed TCP/eBPF/pcap segments/records，或建立不会被 ring overwrite 的 protected references；跨过 T 的当前 open segment 必须在 trigger 时标记为 protected-on-close。然后 incident staging 持续 append `T～T+60s`，直到 T+60 rotation close 后才 finalize/upload；原 ring 全程不停止。
+Correlator 用稳定的低基数字段做去重，并执行 two-phase preservation：先保护前窗，再等待并追加后窗。Client application instrumentation 在 timeout 当下于进程内 freeze 有界 request snapshot，对 capture system 仍然只发 required trigger event；本地 process exporter 把 snapshot 复制到 protected incident staging。Correlator 立即查询 event-time 对应的 time-versioned index，在 retention margin 内、不等待 Trace，同时 fan-out authenticated process preservation 与 privileged node preservation。每个授权 candidate Server pod 的 process-side evidence exporter freeze/copy Request/C stage 与 process-owned TCP rings；Client/candidate Server Nodes 的 agent freeze/copy node-owned TCP/eBPF/permitted pcap，或建立不会被 ring overwrite 的 protected references。跨过 T 的当前 open segment 必须在 trigger 时标记为 protected-on-close。两类 staging 都持续 append `T～T+60s`，直到 T+60 rotation close 后才 finalize/upload；所有原 ring 全程不停止。
 
 ```text
 Client timeout → map normalized_cause → correlator dedupe
 → lookup event-time index version → fan-out authorized Client/candidate Server Nodes
-→ T: freeze request snapshot + protect/copy T-60s～T closed evidence
+→ T: Client process freezes A/request snapshot
+→ T: candidate Server process exporters freeze Request/C + process TCP rings
+→ T: Node agents freeze node TCP/eBPF/permitted pcap
 → append A/B/C + eBPF + container metrics + permitted pcap for T～T+60s
 → T+60 rotation close → finalize/upload bundle
 → protected refs released; original rings have continued throughout
@@ -313,12 +321,12 @@ incident/<incident-id>/
 
 - wall-clock 同步状态、已知 offset、时区，以及各进程 monotonic duration 的来源；
 - Client/sidecar/pre-NAT/post-NAT/Server observation points、每一跳 tuple、netns 与 connection generation；
-- correlation index version/valid time、mapping age/source、authorized candidates、fan-out target/result/latency；stale/ambiguous/unresolved/timeout 的 bounded reason；
+- correlation index version/valid time、mapping age/source、authorized candidates；process preservation 与 node preservation 各自的 target/result/latency/bounded reason；stale/ambiguous/unresolved/timeout 状态；
 - TLS termination 点，以及 app、sidecar、gateway 分段连接关系；
 - capture policy/version、static allowlist match、raw/metadata-only mode、filter、snaplen、dumpcap/eBPF/Collector/agent 版本；
 - 每个 ring 的 required/actual oldest timestamp、effective pre-retention、freeze/protect/rotation-close 时间与完整覆盖范围；
 - pcap received/dropped、eBPF loss、OTel dropped spans、log exporter drops；
-- upstream sampling/export mode、same-trace routing version、production `decision_wait`、policy error，以及依实际 Collector 版本验证过的 Tail Sampling early removal/drop/capacity-loss/late-span 指标，例如 `sampling_trace_dropped_too_early`、`otelcol_processor_tail_sampling_sampling_late_span_age`、trace removal age、late ratio 与 overflow；
+- upstream sampler config/version/config drift、export mode、same-trace routing version、production `decision_wait`、policy error，以及依实际 Collector 版本验证过的 Tail Sampling early removal/drop/capacity-loss/late-span 指标，例如 `sampling_trace_dropped_too_early`、`otelcol_processor_tail_sampling_sampling_late_span_age`、trace removal age、late ratio 与 overflow；
 - 每个应有 artifact 使用唯一 canonical schema：`artifact_status = complete|partial|unavailable|failure`；缺失或部分 artifact 必须附时间范围和明确 bounded failure reason。
 
 如果 manifest 的 retention、preservation、privacy、loss/drop/clock 信息缺失，相应证据只能标为 unavailable；“没有采到”不能转写成“没有发生”。
@@ -351,13 +359,15 @@ storage：Node 专用 volume + quota + 业务磁盘安全水位
 
 至少自监控以下信号：
 
-- OTel received/dropped spans；upstream export-mode/config drift、same-trace routing；Tail Sampling decision latency、trace count、memory、policy errors，以及按部署 Collector 版本核对过的 early removal/drop/capacity loss/late-span（例如 `sampling_trace_dropped_too_early`、`otelcol_processor_tail_sampling_sampling_late_span_age`、removal age、late ratio、overflow）；
+- OTel received/dropped spans；upstream sampler config/version/config drift、export mode、same-trace routing；Tail Sampling decision latency、trace count、memory、policy errors，以及按部署 Collector 版本核对过的 early removal/drop/capacity loss/late-span（例如 `sampling_trace_dropped_too_early`、`otelcol_processor_tail_sampling_sampling_late_span_age`、removal age、late ratio、overflow）；
 - log exporter queue/drop；
 - eBPF lost events；
 - pcap packets received/dropped by kernel；
 - capture agent health/restart；
 - ring disk usage、oldest capture timestamp、effective retention；
 - correlation index mapping age、resolution status/ambiguity、candidate count、fan-out latency/failure；
+- process preservation target/result/latency/failure 与 exporter health/restart；
+- node preservation target/result/latency/failure；
 - trigger received/deduped/rejected；
 - pin success/failure/latency；
 - evidence-schema rejected/unmapped counts；
@@ -371,6 +381,7 @@ Collector metric 名称和语义会随版本变化，部署前必须从实际 `/
 - Snaplen 128 只是 raw prefix 长度上限，不是 header-only 或隐私控制。Raw dumpcap 只允许在 static allowlist 中已验证仍在 TLS 加密边界、且禁止 session keys/decryption 的 hop；cleartext/TLS termination 后 hop 必须使用丢弃 payload bytes 的 approved metadata-only agent/eBPF 或 `TCP_INFO`，不得生成 raw artifact。若组织政策禁止 encrypted application bytes，则禁用所有 raw dumpcap。
 - Bundle admission 必须核对 policy metadata、TLS boundary 与 allowlist；不合规 artifact 必须拒绝、立即销毁并在 manifest 留下 failure，不提供 sanitized fragment 例外。Trace/log/event 只能含第二节 allowlisted evidence schema 的字段和值。
 - Incident storage 和传输必须启用 RBAC、访问/导出/删除审计、传输与静态加密、3 天 TTL。
+- Process-side evidence exporter 必须是 authenticated、unprivileged workload，只通过 workload identity/mTLS/RBAC 接收授权 target；只能读取自己的 bounded rings 并写 protected staging，禁止 pcap/eBPF/shell/filter 权限。
 - Node agent 只获得加载批准的 eBPF 程序、读取批准观察点和写专用 volume 的最小权限；应用容器永不获得 privileged capture 权限。
 - Filter 只来自版本化的静态 allowlist，禁止从 trigger event、request 参数或其他动态输入生成。
 
@@ -380,11 +391,13 @@ Collector metric 名称和语义会随版本变化，部署前必须从实际 `/
 |---|---|
 | Trigger 丢失 | timeout metrics 与 trigger count 对账并告警；保留已有 application log/trace |
 | Tail Sampling 过载 | 保留 ERROR/slow policy intent、先丢 normal traces；检查 `memory_limiter` 与 production sizing；early removal/drop/overflow 非零时将 trace 标为 `partial`/`unavailable` |
-| Upstream head sampling 或 late span | 修正为完整 export，重新校准 `decision_wait`；已完成 decision 不回补，trace 标为 `partial`/`unavailable` |
+| Upstream head sampling、ParentBased delegate 误配或 late span | 修正为 pure `AlwaysOn` 或五个 delegate 均为 `AlwaysOn`，重新校准 `decision_wait`；unsampled remote/local parent 或已完成 decision 不回补时，trace 标为 `partial`/`unavailable` |
 | eBPF ring/event 丢失 | 输出 lost-event counter；manifest 标为 unavailable evidence |
 | pcap kernel drop | 缩窄静态 filter、调整 capture buffer；manifest 记录 received/dropped |
 | Effective pre-retention 不足 | trigger 当下先保护仍存在的 closed T− records/files；manifest 标 `partial` 并记录实际覆盖，禁止声称完整窗口 |
 | Mapping stale/ambiguous/unresolved 或 fan-out timeout | Client 证据继续保护；Server artifact 标 `partial`/`unavailable`，记录 index version、candidates、mapping age 与 bounded reason |
+| Process exporter unreachable/restarted/timeout | Server Request/C 与 process-owned TCP artifacts 分别标 `partial`/`unavailable`；记录 workload target、process preservation result/latency/reason |
+| Node agent preservation 失败 | Node TCP/eBPF/permitted pcap artifacts 分别标 `partial`/`unavailable`；不得用 process ring 假装 node evidence 完整 |
 | 磁盘达到安全水位 | 立即停止 pin 或按 policy 缩短 TTL；不得侵占业务磁盘 |
 | T+ 文件仍在写 | T 时已经 freeze/protect 所有 closed T− 文件并标记 current segment 为 protected-on-close；持续 append 后窗，等待 T+60 rotation close 后 finalize |
 | Raw artifact 不符合隐私 policy | admission 拒绝并立即销毁；manifest 记录 policy/version/hop 与 `privacy_policy_rejected` |
@@ -426,9 +439,9 @@ confidence: high / medium / low
 ## 十三、值班 Runbook
 
 1. 取得 trace、stream、channel、connection、tuple 与 timeout stage；核对 `connection_generation` 和 netns。
-2. 先检查 `manifest.json` 的 artifact status、index version/mapping age/candidates/fan-out result、effective pre-retention、freeze/protected status、privacy admission、clock、Tail Sampling completeness/loss 和 missing/partial artifacts。
+2. 先检查 `manifest.json` 的 artifact status、index version/mapping age/candidates、process preservation 与 node preservation target/result/latency/reason、effective pre-retention、privacy admission、clock、Tail Sampling completeness/loss 和 missing/partial artifacts。
 3. 检查 A 时间线，找出第一个异常 gap；区分 acquire、EventLoop、write/future 与 response deadline。
-4. 将 B 对齐到 socket、container netns/veth、CNI/overlay、sidecar 与 Node；确认 event-time index、EndpointSlice/service route、每一跳 tuple/NAT mapping 和所有 candidate Server fan-out 结果。
+4. 将 B 对齐到 process-owned TCP、Node socket/eBPF、container netns/veth、CNI/overlay、sidecar 与 Node；确认 event-time index、EndpointSlice/service route、每一跳 tuple/NAT mapping，以及每个 candidate Server pod exporter 和 Node agent 的 fan-out 结果。
 5. 将 C 对齐到 framework receive、queue、handler 和 response write；不要合并 receive→start queue delay 与 handler duration。
 6. 比较同 Node、同 EventLoop、同 connection 的 sibling requests/streams，判断单请求、单 stream、连接或 Node 范围。
 7. 只对仍未解释的时间段读取 Client/Server 双端 pcap；先确认观察点、drop 和 clock，再判断方向。
@@ -438,32 +451,38 @@ confidence: high / medium / low
 
 在隔离的 load-test 环境逐项注入以下故障，并为每项预先写出期望 A/B/C 与 collection-health signature：
 
-1. EventLoop block。
-2. Executor saturation。
-3. Container CPU throttling。
-4. Peer stop-read。
-5. `tc netem` loss/latency/reorder。
-6. Zero HTTP/2 stream window。
-7. `RST_STREAM`/`GOAWAY`。
-8. Sidecar reset/connect timeout。
-9. CNI/overlay MTU issue。
-10. Capture pipeline 主动制造 spans/events/packets loss。
-11. 将 upstream SDK/agent 误配为 1–5% head sampling。
-12. 注入 exporter/network delay，让 policy-relevant span 晚于 `decision_wait` 到达。
-13. 制造 EndpointSlice/conntrack/sidecar mapping stale、ambiguous 与 fan-out timeout。
+1. Connection pool acquire saturation/delay。
+2. EventLoop block。
+3. Executor saturation。
+4. Container CPU throttling。
+5. Peer stop-read。
+6. `tc netem` loss/latency/reorder。
+7. Zero HTTP/2 stream window。
+8. `RST_STREAM`/`GOAWAY`。
+9. Sidecar reset/connect timeout。
+10. CNI/overlay MTU issue。
+11. Capture pipeline 主动制造 spans/events/packets loss。
+12. 将 upstream SDK/agent 误配为 1–5% head sampling，或让 `ParentBased` 的 not-sampled delegates 保持 drop；分别注入 unsampled remote parent 与 unsampled local parent。
+13. 注入 exporter/network delay，让 policy-relevant span 晚于 `decision_wait` 到达。
+14. 制造 EndpointSlice/conntrack/sidecar mapping stale、ambiguous 与 fan-out timeout。
+15. 令 candidate Server process exporter unreachable/restart，并分别制造 process/node preservation timeout。
 
 验收必须同时满足：
 
 - 每种故障无需人工守候即可产生状态明确的 `complete|partial|unavailable|failure` incident bundle；
 - timeout 后 2 分钟内完成 bundle，或在 bundle/告警中给出明确 failure reason；
-- Trigger 时 application request snapshot 会立即 freeze；correlator 不等待 Trace，而是在 retention margin 内通过 event-time index fan-out 到 Client 与所有授权 candidate Server Nodes，Node closed T− evidence 随即 freeze/copy 或建立 protected refs；T～T+60 append 和 rotation close 后才 finalize，且原 ring 全程继续运行；
+- Trigger 时 Client request snapshot 会立即 freeze；correlator 不等待 Trace，在 retention margin 内同时向每个授权 candidate Server pod 的 process-side evidence exporter 与所在 Node agent fan-out：前者保存 Request/C 与 process TCP rings，后者保存 node TCP/eBPF/permitted pcap；T～T+60 append 和 rotation close 后才 finalize，且原 rings 全程继续运行；
 - VIP、NAT 与 service-mesh 路径测试能用 EndpointSlice/service route/CNI flow/conntrack/sidecar 的 versioned mapping 命中所有授权 candidates；stale/ambiguous/unresolved/timeout 会把 Server artifact 标为 partial/unavailable 并记录 candidates、version、mapping age 与 reason；
+- Process/node targets 必须来自 index ∩ static allowlist，并通过 workload identity/mTLS/RBAC；event input 不能指定 Pod/Node/filter。Process exporter 只能读自己的 bounded rings、写 protected staging，不能拥有 pcap/eBPF/shell/filter 权限；
+- Process exporter unreachable/restarted 或 fan-out timeout 时，Server Request/C、process TCP 与 node-owned artifacts 分别标 partial/unavailable，manifest 分别记录 process preservation 与 node preservation target/result/latency/reason；
+- Mirrored Server receive signal 能立即触发本 pod self-freeze，但验收必须证明 Client-trigger fan-out 仍会执行，且 mirrored signal 不能扩大或取代授权 target；
 - 要声称完整 `T-60s` 前窗，实测 effective pre-retention 必须达到 60 秒加 propagation/pin/rotation margin；不足时自动标为 partial/unavailable，并准确列出缺失范围；
+- Connection-pool delay 与 EventLoop block 可分别注入，`connection_acquired-rpc_submit`/`t1-t0` 和 `eventloop_enter-connection_acquired`/`t2-t1` 均可独立计算，并产生可区分 signature；
 - 每种故障产生可区分的预期 signature，不以单个正常 aggregate metric 证明“不是网络”；
 - packet ring 始终满足约 2 GiB/Node quota，且能看到 actual effective retention；
 - trigger storm 下 `service/node/peer/normalized_cause` dedupe、每 Node 每小时最多 3 次 pin、降级顺序和业务磁盘安全水位均生效；exception/error text 与任意 event string 不进入 key/label；
-- Tail Sampling pipeline 的 candidate traces 由 upstream `AlwaysOn`/`ParentBased(AlwaysOn)` 完整 export，1–5% 只在 Collector 最终保留 normal traces；同 Trace 路由、production `decision_wait`、policy error、early-drop/overflow 与 late ratio 都经过验证；
-- Upstream head sampling misconfiguration 与 late-span 注入必须可见；`otelcol_processor_tail_sampling_sampling_late_span_age` 等实际版本指标进入 manifest，异常时 trace artifact 只能是 partial/unavailable，不得宣称 error/slow Trace 已保留；
+- Tail Sampling pipeline 的 candidate traces 推荐由 upstream pure `AlwaysOn` 完整 export；若使用 `ParentBased`，root 与 remote/local sampled/not-sampled 五个 delegates 必须全部为 `AlwaysOn`。1–5% 只在 Collector 最终保留 normal traces；sampler config/version/drift、同 Trace 路由、production `decision_wait`、policy error、early-drop/overflow 与 late ratio 都经过验证；
+- Unsampled remote parent、unsampled local parent、head-sampling misconfiguration 与 late-span 注入必须可见且仍完整 export；任何 delegate drop 或 `otelcol_processor_tail_sampling_sampling_late_span_age` 等异常使 trace artifact 只能是 partial/unavailable，不得宣称 error/slow Trace 已保留；
 - 只有 upstream complete export、same-trace routing、policy-relevant spans decision 前到齐且无 early drop/overflow/policy error 时，trace artifact 才可标 complete；所有 artifact status 只允许 `complete|partial|unavailable|failure`；
 - OTel/log/eBPF/pcap 任一 collection loss 都可见并进入 manifest；
 - Raw pcap 只在验证过的 TLS-encrypted allowlisted hop 出现；cleartext/TLS termination 后 hop 没有 raw artifact，改用丢弃 payload 的 metadata-only 证据；admission 会销毁不合规 artifact 并记录 failure；
