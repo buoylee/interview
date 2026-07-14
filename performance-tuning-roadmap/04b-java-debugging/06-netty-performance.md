@@ -510,12 +510,18 @@ RPC submit
 
 ```text
 t0 rpc_submit
-t1 eventloop_enter
-t2 transport_write       # 编码完成，进入 transport 前
-t3 transport_flush
+t1 connection_acquired   # pool/slot/Channel acquire 完成
+t2 eventloop_enter
+t3 transport_write       # 编码完成，进入 transport write
+   transport_flush       # 独立 named boundary，不占用 t index
 t4 write_future_done
 t5 response_received | timeout
 ```
+
+- `t1-t0` 固定表示 connection pool/slot acquire queue。
+- `t2-t1` 固定表示 EventLoop queue。
+
+`transport_flush` 必须与 `transport_write` 分开记录，但不另占一个 `t` index，确保这里与跨层 Runbook 使用同一份 stage contract。
 
 必须监听本次 write 返回的原始 `ChannelFuture`，不能只记录“调用过 flush”：
 
@@ -523,15 +529,28 @@ t5 response_received | timeout
 long submitNanos = System.nanoTime();
 ChannelFuture future = channel.writeAndFlush(frame);
 
-future.addListener(f -> recordWriteResult(
-    requestId,
-    channel.id().asShortText(),
-    System.nanoTime() - submitNanos,
-    f.isSuccess(),
-    f.isCancelled(),
-    f.cause()
-));
+future.addListener(f -> {
+    Throwable error = f.cause();
+    // 仅在 listener 内做本地分类；classifier 不读取 message/frame values，
+    // 只输出 bounded error_code、approved exception class，以及只由
+    // approved frame identifiers 生成的 normalized stack fingerprint。
+    SafeWriteError safeError = classifyWriteFailureInProcess(error);
+    String outcome = f.isSuccess() ? "success"
+        : f.isCancelled() ? "cancelled" : "failure";
+
+    recordWriteResult(
+        requestId,
+        channel.id().asShortText(),
+        System.nanoTime() - submitNanos,
+        outcome,
+        safeError.errorCode(),
+        safeError.approvedExceptionClass(),
+        safeError.normalizedStackFingerprint()
+    );
+});
 ```
+
+Raw `Throwable` 只能停留在 listener 与进程内 classifier；不得传给 record/snapshot/serializer，也不得进入 log、trace 或 incident bundle。Classifier 禁止读取或保存 exception message、完整 stack trace、stack/frame values；fingerprint 只能使用 approved frame identifiers，且输出必须有界。
 
 在 promise 由标准 Netty transport 正确完成的前提下，future `success` 表示该 write 已离开 `ChannelOutboundBuffer` 并交给 kernel socket buffer；它不表示 TCP ACK、对端收到或业务处理完成。自研 outbound handler 还要审计是否错误地提前完成、替换或吞掉 promise。基础用法见本文第 3 节。
 
@@ -539,13 +558,15 @@ future.addListener(f -> recordWriteResult(
 
 不要在 EventLoop 为每个阶段同步写磁盘。阶段数据先保存在请求上下文和有界环形缓冲区；仅对 slow/failure/timeout 全量输出。快照至少包含：
 
-- 请求：`requestId`、frame bytes、deadline、当前 timeout 类型、各阶段时间与分段耗时。
+- 请求：`requestId`、bounded numeric `frame_size_bytes`、deadline、当前 timeout 类型、各阶段时间与分段耗时；只记录 frame 长度，不记录 frame content。
 - 连接：固定 `channelSlot`（0–9）、`channelId`、connection generation、local/remote IP 和 port、per-channel sequence。
 - 负载：该 Channel 的 in-flight 数、最老请求 age、连接选择前的等待队列深度。
 - 状态：`isOpen()`、`isActive()`、`isWritable()`、`bytesBeforeWritable()`、`bytesBeforeUnwritable()`。
-- 写结果：future 的 `pending/success/failure/cancelled`、`cause`；失败时保留 exception class 和 stack trace。
+- 写结果：future 的 bounded `pending/success/failure/cancelled` outcome、bounded `error_code`、approved exception class、normalized stack fingerprint；禁止 raw `cause`、exception message、完整 stack trace 或 stack/frame values。
 - EventLoop：线程名/编号、`pendingTasks()`、最近一次 loop lag。
 - 定时器：deadline 预期触发时间、实际触发时间、timer 所属 executor；防止把 timer 自身延迟误判为网络慢。
+
+任何 frame content、raw `Throwable`、exception message、完整 stack trace 或 stack/frame values 都不得进入 log、trace、snapshot、serialization 或 incident bundle。
 
 `pending_write_bytes` 优先由自建 outbound probe 维护。直接读取 `channel.unsafe().outboundBuffer()` 属于 Netty internal API；若必须使用，应固定 Netty 版本并只在对应 EventLoop 上访问。
 
@@ -582,13 +603,14 @@ native epoll 可读取 `EpollSocketChannel.tcpInfo()`；其他 transport 可按�
 
 | 证据签名 | 故障边界 | 确认后的修复 |
 |---|---|---|
-| `t1-t0` 高，EventLoop lag / `pendingTasks` 同时升高；共享该 EventLoop 的其他 Channel 也变慢 | EventLoop 排队或阻塞 | 阻塞 I/O、长计算、锁等待移出 EventLoop；给业务线程池设置有界队列与拒绝策略；不要靠增加连接掩盖阻塞 |
-| 有 `t1`，没有 `t2` | encoder/outbound handler 或其自定义 executor | 查异常和慢 handler；确保 handler 调用 `ctx.write(msg, promise)` 并正确传递 promise |
-| 有 `t2`，没有 `t3` | flush 未继续传播 | 查批量 flush 逻辑和 outbound handler；确保调用 `ctx.flush()`，并用 per-channel `writeSeq/flushSeq` 关联批次 |
-| 有 `t3`，future 长期 pending，pending bytes 上升且 `isWritable=false` | ChannelOutboundBuffer / socket backpressure | 对单 Channel 设置有界 pending bytes/in-flight；连接选择时跳过不可写 Channel；在 `channelWritabilityChanged` 恢复；不要先盲目调高水位线 |
+| `t1-t0` 高，pool pending / acquire latency 同时升高 | connection pool/slot acquire queue | 给 pool/slot wait 设置有界队列、deadline 和 admission；修复连接泄漏或负载分配倾斜；不要用增加连接掩盖下游饱和 |
+| `t2-t1` 高，EventLoop lag / `pendingTasks` 同时升高；共享该 EventLoop 的其他 Channel 也变慢 | EventLoop 排队或阻塞 | 阻塞 I/O、长计算、锁等待移出 EventLoop；给业务线程池设置有界队列与拒绝策略；不要靠增加连接掩盖阻塞 |
+| 有 `t2`，没有 `t3` | encoder/outbound handler 或其自定义 executor | 查异常和慢 handler；确保 handler 调用 `ctx.write(msg, promise)` 并正确传递 promise |
+| 有 `t3`，没有 `transport_flush` | flush 未继续传播 | 查批量 flush 逻辑和 outbound handler；确保调用 `ctx.flush()`，并用 per-channel `writeSeq/flushSeq` 关联批次 |
+| 已见 `transport_flush`，future 长期 pending，pending bytes 上升且 `isWritable=false` | ChannelOutboundBuffer / socket backpressure | 对单 Channel 设置有界 pending bytes/in-flight；连接选择时跳过不可写 Channel；在 `channelWritabilityChanged` 恢复；不要先盲目调高水位线 |
 | future success，但 `Send-Q`/notsent 持续高 | 数据已交给 kernel，但 TCP 尚未排空 | 查对端是否停止读取、receive window、拥塞窗口；小包延迟经证据确认后再评估 `TCP_NODELAY`，不要先扩大 buffer |
 | `unacked`/`retrans` 增长 | 数据曾经发出，但未及时 ACK | 查两端抓包、丢包、MTU、路由、主机/NIC drop；此时“发送端完全没发包”的判断需要重新验证 |
-| future failure | Netty / socket 明确失败 | 直接按 `cause` 处理 closed channel、reset、编码异常等；只看 `exceptionCaught` 不够，outbound 失败可能只落在 promise |
+| future failure | Netty / socket 明确失败 | 直接按 bounded error code、approved class/fingerprint 处理 closed channel、reset、编码异常等；只看 `exceptionCaught` 不够，outbound 失败可能只落在 promise |
 | future success，随后 response timeout | 服务端处理、返回网络或客户端 read path | 将调查方向移出 send path，沿 response 方向继续分段计时 |
 | 只有某个 slot 的 in-flight、oldest age 或 pending bytes 明显高于其他 9 条 | 负载分配倾斜或 head-of-line blocking | 改为 writable + least-inflight/least-pending 选路；限制单连接并发；若协议一问一答，避免慢请求独占整条连接 |
 
@@ -627,11 +649,12 @@ nsenter -t "$PID" -n tcpdump -i any -nn -s 0 -B 32768 \
 
 ### 9.8 上线前故障注入
 
-在测试环境制造四种可控故障，确认日志能产生不同签名：
+在测试环境制造五种可控故障，确认日志能产生不同签名：
 
-1. EventLoop handler 人为阻塞：应看到 `t1-t0`、loop lag、`pendingTasks` 上升。
-2. 对端暂停读取：应看到 pending bytes、不可写持续时间、`Send-Q` 上升。
-3. outbound handler 抛异常或故意不转发：应看到阶段缺失或 future failure。
-4. `tc netem` 注入丢包/延迟：应在抓包和 `retrans/rtt` 看到网络层证据，而不是 EventLoop queue lag。
+1. Connection pool/slot saturation：应看到 `t1-t0`、pool pending、acquire latency 上升。
+2. EventLoop handler 人为阻塞：应看到 `t2-t1`、loop lag、`pendingTasks` 上升。
+3. 对端暂停读取：应看到 `transport_flush` 已出现、future pending、pending bytes、不可写持续时间与 `Send-Q` 上升。
+4. outbound handler 抛异常、故意不转发 write 或 flush：应分别看到 `t2` 后缺少 `t3`、或 `t3` 后缺少 `transport_flush`，也可能出现 future failure。
+5. `tc netem` 注入丢包/延迟：应在抓包和 `retrans/rtt` 看到网络层证据，而不是 EventLoop queue lag。
 
 只有这些签名在测试环境被验证过，线上 timeout 快照才真正具备判因能力。
