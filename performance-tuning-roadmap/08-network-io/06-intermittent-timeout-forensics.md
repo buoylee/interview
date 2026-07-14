@@ -167,3 +167,252 @@ incident metadata 应保存 pod UID/container ID 到 PID、cgroup、netns inode�
 TLS 在 sidecar、Ingress、gateway 或应用终止时，每一段都是不同的 TCP connection generation 和 4-tuple。incident bundle 要分别保存各 hop 的握手/连接错误、代理计数器和时间窗口，不能把入口连接的 ACK 当作后端应用连接的 ACK。
 
 HTTP/2 multiplexing 要同时从请求维度和连接维度判断：单条 stream 的 deadline、`RST_STREAM` 或 handler 延迟不应污染整个 channel 的结论；连接级 `GOAWAY`、flow-control stall、Send-Q 增长或多条 sibling stream 同时失败，才支持把范围提升到 HTTP/2 connection 或 TCP。禁止采集 TLS session keys；没有 session keys 时，加密 pcap 无法提供 payload，但仍然是有效的传输层证据。
+
+## 八、三种有界 Ring 与双端保留
+
+以下默认值面向 Linux + Docker/Kubernetes + Netty + Prometheus/OpenTelemetry 基准环境。三个 ring 必须在 timeout 前持续运行，并分别限制内存、磁盘和时间范围：
+
+| Ring | Content | Location | Default |
+|---|---|---|---|
+| Request | A/C stage events | process memory | recent 30–60s per active connection |
+| TCP | `TCP_INFO` samples | process/Node agent | recent 30–60s |
+| Packet | headers | dedicated Node volume | bounded by duration, size, count, quota |
+
+Packet ring 使用窄 capture filter；下面的 `192.0.2.10` 是文档示例地址，部署时只能替换为静态 allowlist 中已批准的服务 IP/port：
+
+```bash
+sudo dumpcap \
+  -i any \
+  -f 'tcp and host 192.0.2.10 and port 443' \
+  -s 128 \
+  -b duration:30 \
+  -b filesize:102400 \
+  -b files:20 \
+  -w /var/capture/service.pcapng
+```
+
+这里的 packet defaults 必须同时成立：snaplen 为 128 bytes；filter 限定协议、目标和端口；每 30 秒或 100 MiB（`filesize:102400`）轮转，以先达到者为准；最多 20 个文件；总容量约 2 GiB/Node。高流量时 size rotation 会缩短时间覆盖，因此必须监控最旧文件时间和 effective retention，不能根据 20 个文件推断一定保留 10 分钟。
+
+需要判断方向性时，Client Node 和 Server Node 都要运行 ring，并 pin 相同的 `T-60s～T+60s` 时窗。单端 pcap 无法可靠区分“发送端未发出”“中间路径丢失”和“接收端已收到但采集点错误”。
+
+## 九、Tail Sampling 与 Trigger 契约
+
+OpenTelemetry Collector 通过 Tail Sampling 保留异常 Trace。所有属于同一 Trace 的 spans 必须路由到能做一致决策的 Collector；以下 memory/trace capacity 数值只是 **load-test-sized example**，必须按实际流量压测，不是通用 production sizing：
+
+```yaml
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 2048
+    spike_limit_mib: 512
+  tail_sampling:
+    decision_wait: 10s
+    num_traces: 50000
+    expected_new_traces_per_sec: 5000
+    policies:
+      - name: keep-errors
+        type: status_code
+        status_code:
+          status_codes: [ERROR]
+      - name: keep-slow
+        type: latency
+        latency:
+          threshold_ms: 2000
+      - name: sample-normal
+        type: probabilistic
+        probabilistic:
+          sampling_percentage: 1
+```
+
+容量值可以经负载测试调整，但 policy semantics 不可弱化：error 和 slow requests 必须保留，normal requests 才允许按比例采样。配置原理见[分布式链路追踪](../03-observability/05-distributed-tracing.md#tail-based-sampling尾部采样)。
+
+应用只发出 timeout trigger event，字段必须完整且命名稳定：
+
+```text
+event_time, service, peer, node, pod_uid/container_id,
+network_namespace, trace_id, request_id, stream_id,
+channel_id, connection_generation, local_tuple, remote_tuple,
+timeout_stage, deadline
+```
+
+`trace_id`、`request_id`、`stream_id`、channel/connection identity 和 tuples 只进入 logs、traces、trigger events 与 incident metadata，禁止成为 Prometheus/OpenTelemetry metrics labels。应用不得抓包、加载 eBPF、执行 shell 或提交 filter；privileged Node agent 独占 eBPF/pcap 的启动、轮转和 pin 权限。Agent 的 filter 只能从本地静态 allowlist 选择，绝不读取、拼接或执行 event input。
+
+## 十、触发流程、Bundle 与 Manifest
+
+Correlator 用稳定的低基数字段做去重，等待后窗结束后再 pin，确保不会只保留 timeout 之前的证据：
+
+```text
+Client timeout → correlator dedupe → wait for T+60s
+→ pin Client/Server T-60s～T+60s
+→ merge A/B/C + eBPF + container metrics + pcap
+→ upload bundle → ring continues
+```
+
+上传成功或明确失败都不能暂停原 ring。每个 incident bundle 至少包含：
+
+```text
+incident/<incident-id>/
+├── manifest.json
+├── client-timeout.json       # Client timeout 与 A 时间线
+├── trace.json                # Trace
+├── server-events.json        # Server events 与 C 时间线
+├── tcp-ebpf.json             # TCP_INFO/eBPF
+├── container-metrics.json    # 容器、CNI、sidecar、Node 时间窗
+├── client-node.pcapng        # Client pcap
+└── server-node.pcapng        # Server pcap
+```
+
+`manifest.json` 是解释证据有效性的入口，必须记录：
+
+- wall-clock 同步状态、已知 offset、时区，以及各进程 monotonic duration 的来源；
+- Client/sidecar/pre-NAT/post-NAT/Server observation points、每一跳 tuple、netns 与 connection generation；
+- TLS termination 点，以及 app、sidecar、gateway 分段连接关系；
+- capture filter、snaplen、dumpcap/eBPF/Collector/agent 版本；
+- pcap received/dropped、eBPF loss、OTel dropped spans、log exporter drops；
+- 每个应有 artifact 的状态、校验信息；缺失 artifact 必须附明确 failure reason。
+
+如果 manifest 的 loss/drop/clock 信息缺失，相应证据只能标为 unavailable；“没有采到”不能转写成“没有发生”。
+
+## 十一、容量、过载、安全与自监控
+
+### 11.1 固定默认值与触发风暴
+
+```text
+packet ring：snaplen 128、窄 filter、30 秒或 100 MiB、20 files、约 2 GiB/Node
+incident window：T-60s～T+60s
+dedupe：同 service/node/peer/cause，5 分钟一次
+pin rate limit：最多 3 pins/Node/hour
+incident TTL：3 天
+storage：Node 专用 volume + quota + 业务磁盘安全水位
+```
+
+触发风暴时严格按以下顺序降级：
+
+1. 保留 timeout metrics/logs。
+2. 保留 error/slow traces。
+3. 必要时聚合 eBPF，但继续暴露 loss counter。
+4. pcap 只 pin 首次或代表样本。
+5. 优先丢弃 normal traces。
+6. 在触及业务磁盘安全水位前停止 pin；不得以业务可用性换取取证完整性。
+
+达到 dedupe 或 rate limit 的 trigger 仍要计入 received/deduped/rejected 指标，并在相关事件中记录未 pin 原因。TTL 删除、quota 拒绝与上传失败同样必须可审计。
+
+### 11.2 取证系统自身的健康度
+
+至少自监控以下信号：
+
+- OTel received/dropped spans；Tail Sampling decision latency、trace count、memory；
+- log exporter queue/drop；
+- eBPF lost events；
+- pcap packets received/dropped by kernel；
+- capture agent health/restart；
+- ring disk usage、oldest capture timestamp、effective retention；
+- trigger received/deduped/rejected；
+- pin success/failure/latency；
+- incident storage upload failures。
+
+这些 metrics 只能使用 service、node、result、reason 等有界枚举；不得加入 request、trace、stream、tuple、pod UID 或 connection identity。任何一个正常的 aggregate metric 都不能单独证明“不是网络”；aggregate 信号只用于定位范围，结论必须回到同一请求的 A/B/C、双端观察点和 collection-health 证据。
+
+### 11.3 安全与最小权限
+
+- 绝不采集、缓存、pin、上传或导出 request/response body、token、cookie、`Authorization`、TLS session keys、secrets；即使宣称是 sanitized fragment 也不例外。
+- Packet ring 只允许取证所需 headers，snaplen 128 是上限而不是扩大采集内容的许可；Trace/log/event 也只能含第二节定义的定位 metadata。
+- Incident storage 和传输必须启用 RBAC、访问/导出/删除审计、传输与静态加密、3 天 TTL。
+- Node agent 只获得加载批准的 eBPF 程序、读取批准观察点和写专用 volume 的最小权限；应用容器永不获得 privileged capture 权限。
+- Filter 只来自版本化的静态 allowlist，禁止从 trigger event、request 参数或其他动态输入生成。
+
+### 11.4 采集故障处理
+
+| Failure | Required handling |
+|---|---|
+| Trigger 丢失 | timeout metrics 与 trigger count 对账并告警；保留已有 application log/trace |
+| Tail Sampling 过载 | 保留 ERROR/slow，先丢 normal traces；检查 `memory_limiter` 与 load-test sizing |
+| eBPF ring/event 丢失 | 输出 lost-event counter；manifest 标为 unavailable evidence |
+| pcap kernel drop | 缩窄静态 filter、调整 capture buffer；manifest 记录 received/dropped |
+| 磁盘达到安全水位 | 立即停止 pin 或按 policy 缩短 TTL；不得侵占业务磁盘 |
+| T+ 文件仍在写 | 等待 rotation 后 pin；先保留所有已关闭的 T- 文件 |
+| Client/Server Node 已销毁 | 保留 Trace/log/eBPF 等现存证据；逐项记录缺失端点及原因 |
+| 时钟不同步 | 使用进程内 monotonic duration；跨主机排序标注 offset 并降低信心 |
+| Bundle 上传失败 | 在 2 分钟 SLA 内重试到上限后明确失败；ring 继续运行并告警 |
+
+## 十二、证据判定矩阵
+
+| Signature | Boundary |
+|---|---|
+| `t1-t0` high + EventLoop lag high | Client queue/EventLoop |
+| future pending + pending bytes rising + unwritable | outbound backpressure |
+| future success + no `tcp_sendmsg`/`bytes_sent` delta | promise/pipeline/mapping/observation point |
+| `bytes_sent` rises + `bytes_acked` stalls + retrans/RTO rises | TCP/network/peer ACK path |
+| `bytes_acked` rises + no Server framework event | Server socket/TLS/HTTP2/trace/observation point |
+| receive→handler start high + executor queue high | Server concurrency queue |
+| handler duration high | code/lock/DB/downstream |
+| Server response write complete + Client missing | return path/proxy/Client read |
+| one HTTP/2 stream fails | stream/handler/deadline |
+| many streams fail + Send-Q/retrans abnormal | connection/TCP |
+| CPU throttling + EventLoop lag | container CPU quota |
+| veth/CNI/softnet drops rise | container/Node datapath |
+| conntrack near limit/insert failure | NAT/conntrack |
+
+每次结论必须使用同一模板，不能只写故障分类：
+
+```text
+root cause:
+supporting evidence:
+exclusion evidence:
+missing evidence:
+confidence: high / medium / low
+```
+
+禁止只凭以下任一项下结论：no retrans 不能证明不是网络；pcap 没看到 request 不能证明 Client 未发送；future success 不能证明 Server 已收到；TCP ACK 不能证明 TLS/HTTP2/handler 已处理。缺失 pcap、event 或 delta 只有在 observation point、identity mapping、clock 和 collection health 都验证有效后，才能作为 absence evidence；否则写入 `missing evidence` 并降低 confidence。
+
+## 十三、值班 Runbook
+
+1. 取得 trace、stream、channel、connection、tuple 与 timeout stage；核对 `connection_generation` 和 netns。
+2. 先检查 `manifest.json` 的 clock、pcap drops、eBPF loss、OTel/log drops 和 missing artifacts。
+3. 检查 A 时间线，找出第一个异常 gap；区分 acquire、EventLoop、write/future 与 response deadline。
+4. 将 B 对齐到 socket、container netns/veth、CNI/overlay、sidecar 与 Node；确认每一跳 tuple/NAT mapping。
+5. 将 C 对齐到 framework receive、queue、handler 和 response write；不要合并 receive→start queue delay 与 handler duration。
+6. 比较同 Node、同 EventLoop、同 connection 的 sibling requests/streams，判断单请求、单 stream、连接或 Node 范围。
+7. 只对仍未解释的时间段读取 Client/Server 双端 pcap；先确认观察点、drop 和 clock，再判断方向。
+8. 按模板记录 supporting evidence、exclusion evidence、missing evidence 与 confidence；不得用单一正常 aggregate metric 排除网络。
+
+## 十四、故障注入与验收
+
+在隔离的 load-test 环境逐项注入以下故障，并为每项预先写出期望 A/B/C 与 collection-health signature：
+
+1. EventLoop block。
+2. Executor saturation。
+3. Container CPU throttling。
+4. Peer stop-read。
+5. `tc netem` loss/latency/reorder。
+6. Zero HTTP/2 stream window。
+7. `RST_STREAM`/`GOAWAY`。
+8. Sidecar reset/connect timeout。
+9. CNI/overlay MTU issue。
+10. Capture pipeline 主动制造 spans/events/packets loss。
+
+验收必须同时满足：
+
+- 每种故障无需人工守候即可产生 incident bundle；
+- timeout 后 2 分钟内完成 bundle，或在 bundle/告警中给出明确 failure reason；
+- 每种故障产生可区分的预期 signature，不以单个正常 aggregate metric 证明“不是网络”；
+- packet ring 始终满足约 2 GiB/Node quota，且能看到 actual effective retention；
+- trigger storm 下 dedupe、每 Node 每小时最多 3 次 pin、降级顺序和业务磁盘安全水位均生效；
+- OTel/log/eBPF/pcap 任一 collection loss 都可见并进入 manifest；
+- bundle 绝不包含 body、token、cookie、`Authorization`、TLS session keys、secret 或所谓已脱敏片段；
+- 值班人员可在 10 分钟内把故障归类到 Client 应用、container/Node datapath、TCP/network、Server 应用或 HTTP/2 stream，并给出 confidence。
+
+## 十五、命令速查
+
+这些命令只用于读取已经锁定的 observation point；不要在 timeout 后才临时启动采集，也不要用命令输出替代 identity/clock/collection-health 校验。
+
+```bash
+ss -tinm dst 192.0.2.10:443
+sudo /usr/share/bcc/tools/tcpretrans -T
+sudo /usr/share/bcc/tools/tcpdrop
+sudo conntrack -S
+docker inspect --format '{{.State.Pid}}' client
+sudo nsenter -t 12345 -n ss -tinm
+```
+
+完整原理与参数见：[tcpdump/Wireshark 与 namespace 抓包](./01-tcpdump-wireshark.md)、[连接与 socket 排查](./02-connection-issues.md)、[丢包/延迟/eBPF 证据](./03-packet-loss-latency.md)、[Netty 性能边界](../04b-java-debugging/06-netty-performance.md)、[OpenTelemetry Tail Sampling](../03-observability/05-distributed-tracing.md#tail-based-sampling尾部采样)。
