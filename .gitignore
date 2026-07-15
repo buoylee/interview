@@ -21,6 +21,19 @@
 # Python 字节码 / 缓存(各 lab 跑测试时生成,非内容)
 __pycache__/
 *.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.pyright/
+.ruff_cache/
+.coverage
+htmlcov/
+.env
+.env.*
+!.env.example
+build/
+dist/
+*.egg-info/
 
 # 简历 PDF 与校验和:只留 .md 源,PDF 本地生成、不入库
 /*.pdf

@@ -1,0 +1,22 @@
+[project]
+name = "order-contracts-lab"
+version = "0.1.0"
+description = "Runnable Pydantic v2 data-contract examples for an order service"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2,<3",
+  "pydantic-settings>=2,<3",
+]
+
+[dependency-groups]
+dev = ["pytest>=8,<10"]
+integrations = ["fastapi>=0.115,<1"]
+
+[tool.uv]
+default-groups = ["dev", "integrations"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+pythonpath = ["src"]
+testpaths = ["tests"]
