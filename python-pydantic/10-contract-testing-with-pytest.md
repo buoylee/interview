@@ -283,7 +283,7 @@ assert "internal_note" not in safe["order"]
 - subclass、`serialize_as_any=True`、computed field 或未来 model field 会扩大输出面；
 - error response、Settings repr、example output 也可能从另一通道泄漏。
 
-因此组合三种断言：完整 canonical dict／golden；已知敏感字段不存在；故意启用危险路径时测试它确实会泄漏，用来教育和锁定风险。[`test_serialize_as_any_demonstrates_the_leak_risk`](lab/tests/test_serialization.py) 就是第三类。测试用的 fake secret 也不能被 pytest failure 自动打印到共享日志，尽量使用明显占位值并只断言 absence。
+因此组合三种断言：完整 canonical dict／golden；已知敏感字段不存在；故意启用危险路径时测试它确实会泄漏，用来教育和锁定风险。[`test_serialize_as_any_demonstrates_the_leak_risk`](lab/tests/test_serialization.py) 就是第三类。测试用的 fake secret 也不能被 pytest failure 自动打印到共享日志，尽量使用明显测试假值并只断言 absence。
 
 ## schema golden 与 semantic compatibility 是两层门
 

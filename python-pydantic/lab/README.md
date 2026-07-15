@@ -49,7 +49,7 @@ uv run python scripts/export_schemas.py
 
 ## 环境变量策略
 
-- `.env.example` 只含公开占位值；真实 `.env` 永不提交。
+- `.env.example` 只含公开演示值；真实 `.env` 永不提交。
 - `AppSettings` 默认 `env_file=None`，不会因当前工作目录里碰巧存在 `.env` 而污染测试或生产。
 - 只有调用 `load_settings(env_file=...)` 时才显式读取 dotenv；当前来源顺序为 init > environment > explicit dotenv > secrets > defaults。
 - `get_settings()` 提供每进程缓存；测试修改环境前后调用 `clear_settings_cache()`。多 worker 各自加载配置，不共享进程内缓存。
