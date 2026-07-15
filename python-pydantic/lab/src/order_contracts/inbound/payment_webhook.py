@@ -1,6 +1,14 @@
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictInt, StrictStr, StringConstraints
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictStr,
+    StringConstraints,
+    field_validator,
+)
 
 from order_contracts.value_objects import Money, OrderId
 
@@ -45,3 +53,10 @@ class PaymentWebhookEnvelope(BaseModel):
     event_id: EventId
     schema_version: Literal[1]
     payload: PaymentPayload
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def require_integer_schema_version(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("schema_version must be an integer")
+        return value

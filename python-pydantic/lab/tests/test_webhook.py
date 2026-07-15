@@ -3,7 +3,11 @@ from copy import deepcopy
 import pytest
 from pydantic import ValidationError
 
-from order_contracts.inbound.payment_webhook import PaymentSucceeded, PaymentWebhookEnvelope
+from order_contracts.inbound.payment_webhook import (
+    PaymentFailed,
+    PaymentSucceeded,
+    PaymentWebhookEnvelope,
+)
 
 
 def succeeded_payload() -> dict[str, object]:
@@ -20,9 +24,28 @@ def succeeded_payload() -> dict[str, object]:
     }
 
 
+def failed_payload() -> dict[str, object]:
+    return {
+        "event_id": "evt_0123456789ab",
+        "schema_version": 1,
+        "payload": {
+            "event_type": "payment.failed",
+            "provider_reference": "pay_demo_002",
+            "order_id": "ord_0123456789ab",
+            "failure_code": "CARD_DECLINED",
+            "occurred_at": "2026-07-15T12:30:00Z",
+        },
+    }
+
+
 def test_discriminator_selects_succeeded_payload() -> None:
     envelope = PaymentWebhookEnvelope.model_validate(succeeded_payload())
     assert isinstance(envelope.payload, PaymentSucceeded)
+
+
+def test_discriminator_selects_failed_payload() -> None:
+    envelope = PaymentWebhookEnvelope.model_validate(failed_payload())
+    assert isinstance(envelope.payload, PaymentFailed)
 
 
 def test_unknown_event_type_has_stable_union_error() -> None:
@@ -40,7 +63,9 @@ def test_naive_datetime_is_rejected() -> None:
     payload["payload"]["occurred_at"] = "2026-07-15T12:30:00"  # type: ignore[index]
     with pytest.raises(ValidationError) as caught:
         PaymentWebhookEnvelope.model_validate(payload)
-    assert caught.value.errors()[0]["type"] == "timezone_aware"
+    error = caught.value.errors()[0]
+    assert error["type"] == "timezone_aware"
+    assert error["loc"] == ("payload", "payment.succeeded", "occurred_at")
 
 
 def test_failed_payload_requires_failure_code() -> None:
@@ -53,4 +78,52 @@ def test_failed_payload_requires_failure_code() -> None:
     }
     with pytest.raises(ValidationError) as caught:
         PaymentWebhookEnvelope.model_validate(payload)
-    assert caught.value.errors()[0]["type"] == "missing"
+    error = caught.value.errors()[0]
+    assert error["type"] == "missing"
+    assert error["loc"] == ("payload", "payment.failed", "failure_code")
+
+
+@pytest.mark.parametrize("schema_version", [True, 1.0, "1"])
+def test_schema_version_requires_raw_integer(schema_version: object) -> None:
+    payload = succeeded_payload()
+    payload["schema_version"] = schema_version
+    with pytest.raises(ValidationError) as caught:
+        PaymentWebhookEnvelope.model_validate(payload)
+    error = caught.value.errors()[0]
+    assert error["type"] == "value_error"
+    assert error["loc"] == ("schema_version",)
+
+
+def test_event_id_rejects_non_string_input() -> None:
+    payload = succeeded_payload()
+    payload["event_id"] = 123
+    with pytest.raises(ValidationError) as caught:
+        PaymentWebhookEnvelope.model_validate(payload)
+    error = caught.value.errors()[0]
+    assert error["type"] == "string_type"
+    assert error["loc"] == ("event_id",)
+
+
+def test_envelope_forbids_unknown_fields() -> None:
+    payload = succeeded_payload()
+    payload["unexpected"] = True
+    with pytest.raises(ValidationError) as caught:
+        PaymentWebhookEnvelope.model_validate(payload)
+    error = caught.value.errors()[0]
+    assert error["type"] == "extra_forbidden"
+    assert error["loc"] == ("unexpected",)
+
+
+def test_discriminated_payload_forbids_unknown_fields() -> None:
+    payload = succeeded_payload()
+    payload["payload"]["unexpected"] = True  # type: ignore[index]
+    with pytest.raises(ValidationError) as caught:
+        PaymentWebhookEnvelope.model_validate(payload)
+    error = caught.value.errors()[0]
+    assert error["type"] == "extra_forbidden"
+    assert error["loc"] == ("payload", "payment.succeeded", "unexpected")
+
+
+def test_json_mode_preserves_external_webhook_shape() -> None:
+    envelope = PaymentWebhookEnvelope.model_validate(succeeded_payload())
+    assert envelope.model_dump(mode="json") == succeeded_payload()
