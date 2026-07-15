@@ -1,8 +1,12 @@
 from copy import deepcopy
+import hashlib
+import hmac
+import json
 
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
+from order_contracts.adapters import InvalidWebhookSignature, parse_payment_webhook
 from order_contracts.inbound.payment_webhook import (
     PaymentFailed,
     PaymentSucceeded,
@@ -127,3 +131,19 @@ def test_discriminated_payload_forbids_unknown_fields() -> None:
 def test_json_mode_preserves_external_webhook_shape() -> None:
     envelope = PaymentWebhookEnvelope.model_validate(succeeded_payload())
     assert envelope.model_dump(mode="json") == succeeded_payload()
+
+
+def test_webhook_rejects_signature_before_parsing_payload() -> None:
+    with pytest.raises(InvalidWebhookSignature):
+        parse_payment_webhook(
+            b"not-json",
+            signature="bad-signature",
+            secret=SecretStr("demo-secret"),
+        )
+
+
+def test_valid_signature_then_parses_payload() -> None:
+    raw = json.dumps(succeeded_payload(), separators=(",", ":")).encode()
+    signature = hmac.new(b"demo-secret", raw, hashlib.sha256).hexdigest()
+    parsed = parse_payment_webhook(raw, signature, SecretStr("demo-secret"))
+    assert parsed.event_id == "evt_0123456789ab"

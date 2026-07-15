@@ -1,12 +1,40 @@
+import hashlib
+import hmac
 from datetime import datetime
+
+from pydantic import SecretStr
 
 from order_contracts.application.commands import CreateOrderCommand, CreateOrderLine
 from order_contracts.domain.order import Order
 from order_contracts.events.envelope import OrderCreatedEnvelopeV2
 from order_contracts.events.v2 import OrderCreatedV2
 from order_contracts.inbound.create_order import CreateOrderRequest
+from order_contracts.inbound.payment_webhook import PaymentWebhookEnvelope
 from order_contracts.outbound.views import CustomerOrderView, InternalOrderView
 from order_contracts.value_objects import Money
+
+
+class InvalidWebhookSignature(ValueError):
+    """Raised before payload parsing when the provider signature is invalid."""
+
+
+def parse_create_order(raw: bytes) -> CreateOrderRequest:
+    return CreateOrderRequest.model_validate_json(raw)
+
+
+def parse_payment_webhook(
+    raw: bytes,
+    signature: str,
+    secret: SecretStr,
+) -> PaymentWebhookEnvelope:
+    expected = hmac.new(
+        secret.get_secret_value().encode(),
+        raw,
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(expected, signature):
+        raise InvalidWebhookSignature("invalid webhook signature")
+    return PaymentWebhookEnvelope.model_validate_json(raw)
 
 
 def to_create_order_command(request: CreateOrderRequest) -> CreateOrderCommand:
