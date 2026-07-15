@@ -1717,7 +1717,9 @@ git commit -m "feat(testing-lab): add payment contracts"
 - Consumes: `OutboxRepository.claim_batch/mark_done/mark_failed`, `ProcessPayment.execute`, `Clock`, and SQLAlchemy `SKIP LOCKED` implementation.
 - Produces: `PaymentWorker.run_once(limit=10) -> int`, mutable test-only `ManualClock`, a 30-second claim lease, deterministic exponential backoff `min(2 ** attempts, 60)` seconds, concurrent claim guarantees, and the first complete order-to-paid E2E proof.
 
-- [ ] **Step 1: Write the failing worker success test**
+**Strict-TDD execution amendment:** each behavior is introduced by a focused failing test before its minimal implementation. The executable order is success → non-positive limit rejection → retry delay → 60-second cap → cancellation/lease recovery → Postgres locking mutation proof → E2E side-effect mutation proof. Existing SQL locking code from Task 8 is mutation-tested before its Task 10 concurrency regression is accepted.
+
+- [x] **Step 1: Write the failing worker success test**
 
 ```python
 # python-testing/lab/tests/component/test_payment_worker.py
@@ -1764,7 +1766,7 @@ Run: `cd python-testing/lab && uv run pytest tests/component/test_payment_worker
 
 Expected: FAIL because `order_service.adapters.outbox` does not exist.
 
-- [ ] **Step 2: Implement worker ownership, cleanup, and retry scheduling**
+- [x] **Step 2: Test cancellation ownership, then implement cleanup; test retry boundaries before implementing scheduling**
 
 Add this test-only clock to `adapters/memory.py` so time advances without sleeping:
 
@@ -1864,7 +1866,7 @@ async def test_worker_propagates_cancellation_without_leaking_its_task() -> None
     assert store.outbox[0].done is True
 ```
 
-- [ ] **Step 3: Verify retry without sleeping**
+- [x] **Step 3: Verify retry without sleeping**
 
 Add this retry test using `ManualClock`; no test may call `asyncio.sleep` for timing:
 
@@ -1895,7 +1897,7 @@ Run: `cd python-testing/lab && uv run pytest tests/component/test_payment_worker
 
 Expected: success, retry, and cancellation-cleanup tests pass.
 
-- [ ] **Step 4: Prove two Postgres workers do not claim the same message**
+- [x] **Step 4: Prove two Postgres workers do not claim the same message**
 
 Create two due outbox messages in Postgres. Use `asyncio.gather` to call `claim_batch(limit=1)` in two independent UoWs, each committing its claim. Assert the returned message IDs are distinct and both rows have non-null `claimed_at`. Do not coordinate with sleeps; use an `asyncio.Event` barrier before both claim calls.
 
@@ -1903,7 +1905,7 @@ Run: `cd python-testing/lab && uv run pytest tests/integration/test_outbox.py -q
 
 Expected: the concurrent claim test passes repeatedly and under `-n 2` when each test uses unique UUIDs.
 
-- [ ] **Step 5: Add the first E2E order-to-paid flow**
+- [x] **Step 5: Add the first E2E order-to-paid flow**
 
 Build the app with a `CreateOrder` override backed by `SQLAlchemyUnitOfWork`; POST an order through ASGITransport; run one `PaymentWorker` with `ProcessPayment` and the fake HTTP provider; load through a fresh SQL UoW and assert `PAID`, provider reference `pay-001`, and outbox row `done=true`.
 
@@ -1913,7 +1915,7 @@ Run: `cd python-testing/lab && uv run pytest tests/e2e/test_order_flow.py -q`
 
 Expected: one complete flow passes against Postgres 16 without contacting an external payment system.
 
-- [ ] **Step 6: Write the chapter**
+- [x] **Step 6: Write the chapter**
 
 Cover coroutine/test ownership, pytest-asyncio strict versus auto mode, collector/loop scopes, async fixture teardown, leaked tasks, cancellation, deadlines versus sleeps, event/barrier coordination, deterministic clocks, async mock limits, worker at-least-once delivery, duplicate execution, `SKIP LOCKED`, xdist versus asyncio concurrency, and why async tests still run sequentially unless a separate mechanism parallelizes them. Link deep runtime material to `python-concurrency/`.
 

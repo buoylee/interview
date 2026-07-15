@@ -149,6 +149,21 @@ async def test_memory_outbox_claims_due_available_messages_with_lease_and_limit(
 
 
 @pytest.mark.asyncio
+async def test_memory_outbox_claim_order_matches_sql_occurrence_then_id() -> None:
+    now = datetime(2026, 7, 15, tzinfo=UTC)
+    older = _message(3, now=now - timedelta(seconds=1))
+    tied_high_id = _message(2, now=now)
+    tied_low_id = _message(1, now=now)
+    repository = MemoryOutboxRepository(
+        [tied_high_id, tied_low_id, older]
+    )
+
+    claimed = await repository.claim_batch(limit=3, now=now)
+
+    assert claimed == [older, tied_low_id, tied_high_id]
+
+
+@pytest.mark.asyncio
 async def test_memory_outbox_zero_limit_claims_nothing() -> None:
     now = datetime(2026, 7, 15, tzinfo=UTC)
     message = _message(1, now=now)

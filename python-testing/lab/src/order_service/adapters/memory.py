@@ -56,7 +56,7 @@ class MemoryOutboxRepository:
         if limit == 0:
             return []
 
-        claimed: list[OutboxMessage] = []
+        eligible: list[OutboxMessage] = []
         for message in self._messages:
             due = message.available_at is None or message.available_at <= now
             lease_available = (
@@ -64,10 +64,14 @@ class MemoryOutboxRepository:
                 or message.claimed_at <= now - timedelta(seconds=30)
             )
             if not message.done and lease_available and due:
-                message.claimed_at = now
-                claimed.append(message)
-                if len(claimed) == limit:
-                    break
+                eligible.append(message)
+
+        claimed = sorted(
+            eligible,
+            key=lambda message: (message.occurred_at, message.id),
+        )[:limit]
+        for message in claimed:
+            message.claimed_at = now
         return claimed
 
     async def mark_done(self, message_id: UUID) -> None:
@@ -118,6 +122,17 @@ class FrozenClock:
 
     def now(self) -> datetime:
         return self.value
+
+
+@dataclass
+class ManualClock:
+    value: datetime
+
+    def now(self) -> datetime:
+        return self.value
+
+    def advance(self, *, seconds: int) -> None:
+        self.value += timedelta(seconds=seconds)
 
 
 class SequenceIdGenerator:

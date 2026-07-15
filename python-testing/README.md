@@ -68,7 +68,7 @@ fixture ownership 规则：module/session scope 可以共享真正只读或有�
 | 05 Component 与 API 测试 | ✅ 完成 |
 | 06 数据库整合测试 | ✅ 完成 |
 | 07 HTTP 与契约测试 | ✅ 完成 |
-| 08 Async、并发与背景任务 | ⬜ 待完成 |
+| 08 Async、并发与背景任务 | ✅ 完成 |
 | 09 Property 与 stateful testing | ⬜ 待完成 |
 | 10 测试套件可靠性与规模 | ⬜ 待完成 |
 | 11 CI、遗留系统与 capstone | ⬜ 待完成 |
