@@ -121,7 +121,9 @@ def test_file_secret_source_can_be_explicit(monkeypatch, tmp_path: Path) -> None
     class SecretOnlySettings(BaseSettings):
         api_key: SecretStr
 
-    monkeypatch.delenv("API_KEY", raising=False)
+    for key in tuple(os.environ):
+        if key.upper() == "API_KEY":
+            monkeypatch.delenv(key, raising=False)
     (tmp_path / "api_key").write_text("file-secret", encoding="utf-8")
     settings = SecretOnlySettings(_secrets_dir=tmp_path)
     assert settings.api_key.get_secret_value() == "file-secret"
