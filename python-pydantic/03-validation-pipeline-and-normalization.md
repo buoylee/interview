@@ -299,22 +299,31 @@ before_2
 field validator 可以接收 `ValidationInfo`。其中 `info.data` 只包含**已经按字段定义顺序完成验证**的字段，而不是原始 input 的所有 key，也不是最终模型：
 
 ```python
-from pydantic import BaseModel, ValidationInfo, field_validator
+from pydantic import BaseModel, Field, ValidationError, ValidationInfo, field_validator
 
 
 class Credentials(BaseModel):
-    password: str
+    password: str = Field(min_length=8)
     password_repeat: str
 
     @field_validator("password_repeat", mode="after")
     @classmethod
     def passwords_match(cls, value: str, info: ValidationInfo) -> str:
-        if value != info.data["password"]:
+        password = info.data.get("password")
+        if password is not None and value != password:
             raise ValueError("passwords do not match")
         return value
+
+
+try:
+    Credentials.model_validate(
+        {"password": "short", "password_repeat": "also-short"}
+    )
+except ValidationError as exc:
+    assert [error["loc"] for error in exc.errors()] == [("password",)]
 ```
 
-这段代码成立，是因为 `password` 定义在 `password_repeat` 前。若调换字段定义顺序，校验 `password_repeat` 时 `info.data` 还没有 `password`；若前一个字段验证失败，它也不会以成功值出现在 `data`。所以跨字段关系若天然属于整个对象，model after 通常更稳健。
+这段代码成立，是因为 `password` 定义在 `password_repeat` 前，但仍然必须用 `.get()`／membership guard：若调换字段定义顺序，校验 `password_repeat` 时 `info.data` 还没有 `password`；即使顺序未变，若前一个字段验证失败，它也不会以成功值出现在 `data`。此时 validator 应跳过依赖性比较，让原始 `password` 错误成为 `ValidationError`，不能用未保护的下标访问泄漏 `KeyError`。跨字段关系若天然属于整个对象，model after 通常更稳健。
 
 对 model validator，`ValidationInfo.data` 为 `None`；after model validator 直接读取 `self`，before／wrap 则使用传入的整体值或 handler。不要把 field validator 的 partial-data 心智套到 model validator。
 
@@ -352,9 +361,9 @@ assert SafeDefault().retries == 3
 
 `default_factory` 若接收已验证数据，同样只看到定义在它之前的字段，因此也有字段顺序依赖；复杂派生值更适合显式构造函数或应用层 mapper。
 
-## context：传入纯上下文，不把 I/O 藏进 validator
+## context：传入逐调用上下文，不把 I/O 藏进 validator
 
-`model_validate(..., context=...)` 可以把调用方已有的纯上下文传给 validator：
+`model_validate(..., context=...)` 可以把调用方已有的逐调用上下文传给 validator：
 
 ```python
 from pydantic import BaseModel, ValidationInfo, field_validator
@@ -378,7 +387,9 @@ message = Message.model_validate(
 assert message.text == "example"
 ```
 
-这里的 context 是调用前已经准备好的不可变数据；validator 仍然确定、快速且无 I/O。它适合租户已有的词表、locale、已解析协议版本等调用期政策，不适合传数据库 session 后在 validator 内查询。
+Pydantic 会把调用方给出的**同一个 context 对象**传给 validator，不会替调用方复制或冻结它；示例的外层 dict 仍然可变。团队应约定 validator 把 context 当作只读输入，绝不原地修改，否则后续 validator 与调用方都会观察到变化。词表等成员适合使用 `frozenset` 或不可变值对象，降低误修改风险，但这不等于整个 context 自动不可变。
+
+这里的“纯”描述 validator 的行为：只读取当前值和逐调用 context，保持确定、快速且无 I/O；不是在声称 context 对象具有不可变性。context 适合携带租户已有的词表、locale、已解析协议版本等调用期政策，不适合传数据库 session 后在 validator 内查询。
 
 直接 `Model(...)` 不能直接传 validation context：`Message(text="...", context=...)` 只会把 `context` 当作候选模型字段，具体结果由 extra policy 决定。Pydantic 文档给过覆写 `__init__` 配合 `ContextVar` 的高级方案，但本教程**不覆写 `__init__`**；需要 context 时显式使用 `model_validate(..., context=...)`，让调用点可见。
 
@@ -407,7 +418,7 @@ def dangerous_before(value: Any) -> Any:
 
 ## normalization 的纯度白名单
 
-允许进入 validator 的 normalization 应同时满足：只依赖当前值与显式纯 context、确定、快速、无外部副作用、重复执行结果稳定。
+允许进入 validator 的 normalization 应同时满足：只依赖当前值与显式传入、按约定只读的逐调用 context，确定、快速、无外部副作用、重复执行结果稳定。
 
 | 白名单 | 示例 | 条件 |
 |---|---|---|
@@ -526,7 +537,7 @@ func ParseCreateOrder(raw []byte) (CreateOrderRequest, error) {
 5. default 是否需要 `validate_default`？是否存在 invalid 或 mutable default 偷渡？
 6. before 是否原地 mutate，尤其是在 union 分支失败之前？
 7. normalization 是否只做 trim、case、timezone 等语义等价变换，且无 DB／HTTP／sleep／敏感日志？
-8. context 是否由 `model_validate(..., context=...)` 显式传入纯数据？调用点是否可见？
+8. context 是否由 `model_validate(..., context=...)` 逐调用显式传入并按约定只读？调用点是否可见？
 9. 对外是否映射稳定的 `type + loc`，并移除敏感 `input`？
 10. 规则只依赖当前输入，还是实际属于 authorize／库存／领域状态／传输协议？
 
