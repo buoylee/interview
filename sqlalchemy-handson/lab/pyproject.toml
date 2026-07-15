@@ -26,6 +26,7 @@ packages = ["src/order_service"]
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers"
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = [
     "integration: requires the PostgreSQL 18 Compose service",
 ]
