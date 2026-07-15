@@ -1305,13 +1305,21 @@ git commit -m "feat(testing-lab): add API component boundary"
 - Create: `python-testing/lab/tests/integration/conftest.py`
 - Create: `python-testing/lab/tests/integration/test_migrations.py`
 - Create: `python-testing/lab/tests/integration/test_sqlalchemy_uow.py`
+- Create: `python-testing/lab/tests/integration/test_sqlalchemy_outbox.py`
 - Modify: `python-testing/README.md`
 
 **Interfaces:**
 - Consumes: final repository/UoW protocols and Order/OutboxMessage mappings from Tasks 4 and 6.
 - Produces: `orders` and `outbox_messages` tables, `SQLAlchemyUnitOfWork`, `ConcurrentOrderUpdate`, session factory fixture, and marker contract `integration + docker`.
 
-- [ ] **Step 1: Write a failing committed-visibility integration test**
+- [ ] **Step 1: Separate surface REDs from executed Postgres behavior REDs**
+
+First prove missing modules and fixtures at collection. Then add only importable
+stubs, the Testcontainers fixture, and an empty migration. Execute migration,
+repository, UoW, lease, transition, and `SKIP LOCKED` tests against Postgres and
+observe behavior-specific failures before implementing each behavior.
+
+Write the committed-visibility integration test first:
 
 ```python
 # python-testing/lab/tests/integration/test_sqlalchemy_uow.py
@@ -1343,7 +1351,7 @@ async def test_committed_order_is_visible_to_a_new_uow(session_factory) -> None:
     assert loaded == order
 ```
 
-Run: `cd python-testing/lab && uv run pytest tests/integration/test_sqlalchemy_uow.py -q`
+Run: `cd python-testing/lab && uv run pytest tests/integration/test_sqlalchemy_uow.py -m "integration and docker" -q`
 
 Expected: FAIL during collection because the SQLAlchemy adapter and fixture do not exist. If Docker is unavailable, record that prerequisite separately; do not change the expected red reason.
 
@@ -1436,7 +1444,11 @@ async def test_stale_save_raises_concurrent_update(session_factory) -> None:
 
 Keep the committed-visibility test from Step 1 as the fifth behavior.
 
-Run: `cd python-testing/lab && uv run pytest tests/integration -q`
+Add focused outbox tests in `test_sqlalchemy_outbox.py` for complete row mapping,
+due/future/done filtering, the exact 30-second lease boundary, limit contracts,
+done/failed/missing-ID transitions, and two-transaction `FOR UPDATE SKIP LOCKED`.
+
+Run: `cd python-testing/lab && uv run pytest tests/integration -m "integration and docker" -q`
 
 Expected: all five behaviors pass against Postgres 16.
 
