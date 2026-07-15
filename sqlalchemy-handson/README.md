@@ -60,7 +60,9 @@ M1 的 00–06 是本里程碑的可執行範圍；M2–M4 只標示後續範圍
 
 - `production question`：先定義真實系統要回答的問題。
 - `prediction`：執行前先寫下對 SQL、狀態或資源的預測。
+- `failing/naive behavior`：先呈現直覺作法如何失敗，建立需要解釋的落差。
 - `mechanism`：追蹤公開契約與底層機制如何產生結果。
+- `corrected behavior`：用最小修正重跑案例，確認行為符合預測與契約。
 - `evidence`：用測試、事件順序與 PostgreSQL 行為留下證據。
 - `decision`：把觀察轉成適用條件、代價與架構選擇。
 - `interview drill`：用追問檢查能否清楚解釋取捨。
