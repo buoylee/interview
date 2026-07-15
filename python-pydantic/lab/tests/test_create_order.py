@@ -50,3 +50,10 @@ def test_duplicate_sku_is_rejected() -> None:
     with pytest.raises(ValidationError) as caught:
         CreateOrderRequest.model_validate(payload)
     assert caught.value.errors()[0]["type"] == "value_error"
+
+
+def test_validated_items_are_immutable() -> None:
+    request = CreateOrderRequest.model_validate(valid_payload())
+    with pytest.raises(TypeError):
+        request.items[0] = request.items[0]  # type: ignore[index]
+    assert isinstance(request.items, tuple)

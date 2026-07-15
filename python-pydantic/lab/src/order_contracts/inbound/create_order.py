@@ -33,7 +33,7 @@ class CreateOrderRequest(BaseModel):
 
     customer_id: CustomerId
     idempotency_key: IdempotencyKey
-    items: Annotated[list[CreateOrderItem], Field(min_length=1, max_length=100)]
+    items: Annotated[tuple[CreateOrderItem, ...], Field(min_length=1, max_length=100)]
 
     @model_validator(mode="after")
     def reject_duplicate_skus(self) -> Self:

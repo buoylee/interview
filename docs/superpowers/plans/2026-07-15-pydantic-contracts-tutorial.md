@@ -232,7 +232,7 @@ git commit -m "build(pydantic): scaffold runnable contracts lab"
 **Interfaces:**
 - Produces: `OrderId`、`CustomerId`、`CurrencyCode`、`Sku`、`Money`。
 - Produces: `CreateOrderItem`、`CreateOrderRequest`。
-- Policy: ID／quantity 严格；currency 允许字符串规范化为大写；Money 接受 `Decimal` 或十进制字符串但拒绝 binary float。
+- Policy: ID／quantity 严格；currency 允许字符串规范化为大写；Money 仅接受 `Decimal` 或十进制字符串并拒绝其他原始输入类型；请求 items 验证后存储为不可变 tuple。
 
 - [ ] **Step 1: 写值对象失败测试**
 
@@ -271,6 +271,14 @@ def test_money_rejects_binary_float() -> None:
     error = caught.value.errors()[0]
     assert error["type"] == "value_error"
     assert error["loc"] == ("amount",)
+
+
+def test_money_rejects_integer_input() -> None:
+    with pytest.raises(ValidationError) as caught:
+        Money.model_validate({"amount": 12, "currency": "USD"})
+    error = caught.value.errors()[0]
+    assert error["type"] == "value_error"
+    assert error["loc"] == ("amount",)
 ```
 
 - [ ] **Step 2: 运行并确认缺少模块**
@@ -298,9 +306,9 @@ from pydantic import (
 )
 
 
-def _reject_binary_float(value: Any) -> Any:
-    if isinstance(value, float):
-        raise ValueError("binary floats are not accepted for money")
+def _validate_money_input(value: Any) -> Any:
+    if not isinstance(value, (Decimal, str)):
+        raise ValueError("money amount must be a Decimal or decimal string")
     return value
 
 
@@ -323,7 +331,7 @@ Sku = Annotated[
 ]
 MoneyAmount = Annotated[
     Decimal,
-    BeforeValidator(_reject_binary_float),
+    BeforeValidator(_validate_money_input),
     Field(gt=Decimal("0"), max_digits=12, decimal_places=2),
 ]
 
@@ -343,7 +351,7 @@ class Money(BaseModel):
 
 Run: `cd python-pydantic/lab && uv run pytest tests/test_value_objects.py -v`
 
-Expected: `4 passed`。
+Expected: `5 passed`。
 
 - [ ] **Step 5: 写 CreateOrder 失败测试**
 
@@ -402,6 +410,13 @@ def test_duplicate_sku_is_rejected() -> None:
     with pytest.raises(ValidationError) as caught:
         CreateOrderRequest.model_validate(payload)
     assert caught.value.errors()[0]["type"] == "value_error"
+
+
+def test_validated_items_are_immutable() -> None:
+    request = CreateOrderRequest.model_validate(valid_payload())
+    with pytest.raises(TypeError):
+        request.items[0] = request.items[0]  # type: ignore[index]
+    assert isinstance(request.items, tuple)
 ```
 
 - [ ] **Step 6: 运行并确认 CreateOrder 模型尚不存在**
@@ -442,7 +457,7 @@ class CreateOrderRequest(BaseModel):
 
     customer_id: CustomerId
     idempotency_key: IdempotencyKey
-    items: Annotated[list[CreateOrderItem], Field(min_length=1, max_length=100)]
+    items: Annotated[tuple[CreateOrderItem, ...], Field(min_length=1, max_length=100)]
 
     @model_validator(mode="after")
     def reject_duplicate_skus(self) -> Self:
@@ -456,7 +471,7 @@ class CreateOrderRequest(BaseModel):
 
 Run: `cd python-pydantic/lab && uv run pytest tests/test_value_objects.py tests/test_create_order.py -v`
 
-Expected: `8 passed`。
+Expected: `10 passed`。
 
 - [ ] **Step 9: Commit**
 

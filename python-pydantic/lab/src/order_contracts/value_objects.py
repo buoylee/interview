@@ -12,9 +12,9 @@ from pydantic import (
 )
 
 
-def _reject_binary_float(value: Any) -> Any:
-    if isinstance(value, float):
-        raise ValueError("binary floats are not accepted for money")
+def _validate_money_input(value: Any) -> Any:
+    if not isinstance(value, (Decimal, str)):
+        raise ValueError("money amount must be a Decimal or decimal string")
     return value
 
 
@@ -37,7 +37,7 @@ Sku = Annotated[
 ]
 MoneyAmount = Annotated[
     Decimal,
-    BeforeValidator(_reject_binary_float),
+    BeforeValidator(_validate_money_input),
     Field(gt=Decimal("0"), max_digits=12, decimal_places=2),
 ]
 

@@ -30,3 +30,11 @@ def test_money_rejects_binary_float() -> None:
     error = caught.value.errors()[0]
     assert error["type"] == "value_error"
     assert error["loc"] == ("amount",)
+
+
+def test_money_rejects_integer_input() -> None:
+    with pytest.raises(ValidationError) as caught:
+        Money.model_validate({"amount": 12, "currency": "USD"})
+    error = caught.value.errors()[0]
+    assert error["type"] == "value_error"
+    assert error["loc"] == ("amount",)
