@@ -158,8 +158,31 @@ def test_webhook_rejects_non_string_signature(signature: object) -> None:
         )
 
 
-def test_valid_signature_then_parses_payload() -> None:
+@pytest.mark.parametrize(
+    ("prefix", "separator", "suffix"),
+    [
+        pytest.param(" ", "", "", id="leading"),
+        pytest.param("", " ", "", id="embedded"),
+        pytest.param("", "", " ", id="trailing"),
+    ],
+)
+def test_webhook_rejects_whitespace_in_otherwise_valid_signature_before_parsing(
+    prefix: str,
+    separator: str,
+    suffix: str,
+) -> None:
+    raw = b"not-json"
+    digest = hmac.new(b"demo-secret", raw, hashlib.sha256).hexdigest()
+    signature = f"{prefix}{digest[:32]}{separator}{digest[32:]}{suffix}"
+    with pytest.raises(InvalidWebhookSignature):
+        parse_payment_webhook(raw, signature, SecretStr("demo-secret"))
+
+
+@pytest.mark.parametrize("uppercase", [False, True], ids=["lowercase", "uppercase"])
+def test_valid_signature_then_parses_payload(uppercase: bool) -> None:
     raw = json.dumps(succeeded_payload(), separators=(",", ":")).encode()
     signature = hmac.new(b"demo-secret", raw, hashlib.sha256).hexdigest()
+    if uppercase:
+        signature = signature.upper()
     parsed = parse_payment_webhook(raw, signature, SecretStr("demo-secret"))
     assert parsed.event_id == "evt_0123456789ab"

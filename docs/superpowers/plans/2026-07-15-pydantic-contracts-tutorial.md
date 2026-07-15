@@ -1550,9 +1550,32 @@ def test_webhook_rejects_non_string_signature(signature: object) -> None:
         )
 
 
-def test_valid_signature_then_parses_payload() -> None:
+@pytest.mark.parametrize(
+    ("prefix", "separator", "suffix"),
+    [
+        pytest.param(" ", "", "", id="leading"),
+        pytest.param("", " ", "", id="embedded"),
+        pytest.param("", "", " ", id="trailing"),
+    ],
+)
+def test_webhook_rejects_whitespace_in_otherwise_valid_signature_before_parsing(
+    prefix: str,
+    separator: str,
+    suffix: str,
+) -> None:
+    raw = b"not-json"
+    digest = hmac.new(b"demo-secret", raw, hashlib.sha256).hexdigest()
+    signature = f"{prefix}{digest[:32]}{separator}{digest[32:]}{suffix}"
+    with pytest.raises(InvalidWebhookSignature):
+        parse_payment_webhook(raw, signature, SecretStr("demo-secret"))
+
+
+@pytest.mark.parametrize("uppercase", [False, True], ids=["lowercase", "uppercase"])
+def test_valid_signature_then_parses_payload(uppercase: bool) -> None:
     raw = json.dumps(succeeded_payload(), separators=(",", ":")).encode()
     signature = hmac.new(b"demo-secret", raw, hashlib.sha256).hexdigest()
+    if uppercase:
+        signature = signature.upper()
     parsed = parse_payment_webhook(raw, signature, SecretStr("demo-secret"))
     assert parsed.event_id == "evt_0123456789ab"
 ```
@@ -1671,6 +1694,7 @@ def classify_consume_failure(error: Exception) -> MessageFailureKind:
 ```python
 import hashlib
 import hmac
+import re
 
 from pydantic import SecretStr
 
@@ -1693,10 +1717,11 @@ def parse_payment_webhook(
     signature: str,
     secret: SecretStr,
 ) -> PaymentWebhookEnvelope:
-    try:
-        supplied = bytes.fromhex(signature)
-    except (TypeError, ValueError):
+    if not isinstance(signature, str) or re.fullmatch(
+        r"[0-9A-Fa-f]{64}", signature
+    ) is None:
         raise InvalidWebhookSignature("invalid webhook signature") from None
+    supplied = bytes.fromhex(signature)
     expected = hmac.new(
         secret.get_secret_value().encode(),
         raw,
@@ -1711,7 +1736,7 @@ def parse_payment_webhook(
 
 Run: `cd python-pydantic/lab && uv run pytest tests/test_errors.py tests/test_webhook.py tests/test_adapters.py -v`
 
-Expected: `32 passed`；输出 JSON 不出现敏感 input/context；坏签名或畸形签名在坏 JSON 之前失败；只有明确的传输异常可重试。
+Expected: `36 passed`；输出 JSON 不出现敏感 input/context；坏签名、畸形签名或含空白的签名在坏 JSON 之前失败；大小写十六进制均可接受；只有明确的传输异常可重试。
 
 - [ ] **Step 8: Commit**
 

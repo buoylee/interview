@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import re
 from datetime import datetime
 
 from pydantic import SecretStr
@@ -27,10 +28,11 @@ def parse_payment_webhook(
     signature: str,
     secret: SecretStr,
 ) -> PaymentWebhookEnvelope:
-    try:
-        supplied = bytes.fromhex(signature)
-    except (TypeError, ValueError):
+    if not isinstance(signature, str) or re.fullmatch(
+        r"[0-9A-Fa-f]{64}", signature
+    ) is None:
         raise InvalidWebhookSignature("invalid webhook signature") from None
+    supplied = bytes.fromhex(signature)
     expected = hmac.new(
         secret.get_secret_value().encode(),
         raw,
