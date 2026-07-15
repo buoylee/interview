@@ -1471,6 +1471,10 @@ git commit -m "feat(testing-lab): add Postgres integration"
 
 ### Task 9: Add the Payment HTTP Adapter and Contract Tests
 
+**Strict-TDD execution amendment:** Step 1 first proves the missing surface, then implements only the uncertain branch. Before completing the use case, add approved, declined, already-paid, in-progress replay, missing-order, and invalid-state tests and observe behavioral failures. For the HTTP adapter, first observe the missing-module RED, implement only approved charge/refund serialization, then run declined, malformed, 5xx, and timeout tests to obtain behavioral REDs before adding response/error mapping. This ordering supersedes the implementation-before-tests wording below.
+
+**Review-fix TDD amendment:** Before widening transport classification, add charge/refund tests for non-timeout `httpx.RequestError` and observe raw HTTPX exceptions. Before response parsing changes, add a non-JSON 5xx status-diagnostic test and a non-JSON 402 definitive-decline test, observe their protocol-classification failures, then move status classification ahead of success-body decoding. Exact request payload/header assertions remain transport-level regression tests.
+
 **Files:**
 - Create: `python-testing/07-http-and-contract-testing.md`
 - Create: `python-testing/lab/src/order_service/ports/payment.py`

@@ -7,6 +7,7 @@ from uuid import UUID
 
 from order_service.application.messages import OutboxMessage
 from order_service.domain.order import Order
+from order_service.ports.payment import PaymentResult
 
 
 @dataclass
@@ -128,3 +129,28 @@ class SequenceIdGenerator:
             return next(self._values)
         except StopIteration as exc:
             raise RuntimeError("no IDs remaining") from exc
+
+
+class StubPaymentGateway:
+    def __init__(
+        self,
+        *,
+        result: PaymentResult | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self.result = result or PaymentResult("pay-stub")
+        self.error = error
+        self.charge_calls: list[dict[str, object]] = []
+        self.refund_calls: list[dict[str, object]] = []
+
+    async def charge(self, **kwargs) -> PaymentResult:
+        self.charge_calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        return self.result
+
+    async def refund(self, **kwargs) -> PaymentResult:
+        self.refund_calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        return self.result
