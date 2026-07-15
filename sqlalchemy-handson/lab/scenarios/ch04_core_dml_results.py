@@ -22,6 +22,7 @@ def run(engine: Engine) -> Evidence:
     tenant_id = uuid4()
     other_tenant_id = uuid4()
     product_id = uuid4()
+    second_product_id = uuid4()
     with engine.begin() as connection:
         metadata.drop_all(connection)
         metadata.create_all(connection)
@@ -50,6 +51,15 @@ def run(engine: Engine) -> Evidence:
             unit_price=Decimal("12.50"),
             attributes={"color": "blue"},
         )
+        upsert_product(
+            connection,
+            tenant_id=tenant_id,
+            product_id=second_product_id,
+            sku="CORE-2",
+            name="Companion",
+            unit_price=Decimal("5.00"),
+            attributes={},
+        )
         replenish_inventory(
             connection,
             tenant_id=tenant_id,
@@ -62,6 +72,12 @@ def run(engine: Engine) -> Evidence:
             product_id=product_id,
             quantity=5,
         )
+        replenish_inventory(
+            connection,
+            tenant_id=tenant_id,
+            product_id=second_product_id,
+            quantity=6,
+        )
         report = inventory_report(connection, tenant_id=tenant_id)
 
     return Evidence(
@@ -70,14 +86,20 @@ def run(engine: Engine) -> Evidence:
             "executemany sends one statement shape with multiple parameter sets.",
             "ON CONFLICT updates the existing tenant/SKU row and RETURNING exposes its identity.",
         ),
-        setup=("Two tenants", "One product upserted twice", "Inventory replenished 3 + 5"),
+        setup=(
+            "Two tenants",
+            "One product upserted twice plus one companion product",
+            "Inventory replenished to 8 and 6 units",
+        ),
         observation=(
             f"executemany_tenant_rows={executemany_result.rowcount}",
             f"upsert_preserved_product_id={original.id == updated.id == product_id}",
             f"returned_product_name={updated.name}",
             f"inventory_available={stock.available}",
             f"inventory_version={stock.version}",
-            f"tenant_stock_value={report[0].tenant_stock_value:.2f}",
+            f"tenant_report_rows={len(report)}",
+            "tenant_stock_values="
+            + ",".join(f"{row.tenant_stock_value:.2f}" for row in report),
         ),
         explanation=(
             "PostgreSQL RETURNING removes a follow-up lookup for server-visible results.",

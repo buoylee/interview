@@ -102,6 +102,7 @@ def test_inventory_upsert_and_report_are_tenant_scoped(
     tenant_id = uuid4()
     other_tenant_id = uuid4()
     product_id = uuid4()
+    second_product_id = uuid4()
     other_product_id = uuid4()
     with engine.begin() as connection:
         create_tenant(connection, tenant_id=tenant_id, name="Stock Tenant")
@@ -113,6 +114,15 @@ def test_inventory_upsert_and_report_are_tenant_scoped(
             sku="STOCK-1",
             name="Stock Product",
             unit_price=Decimal("5.00"),
+            attributes={},
+        )
+        upsert_product(
+            connection,
+            tenant_id=tenant_id,
+            product_id=second_product_id,
+            sku="STOCK-2",
+            name="Second Stock Product",
+            unit_price=Decimal("7.50"),
             attributes={},
         )
         upsert_product(
@@ -138,6 +148,12 @@ def test_inventory_upsert_and_report_are_tenant_scoped(
         )
         replenish_inventory(
             connection,
+            tenant_id=tenant_id,
+            product_id=second_product_id,
+            quantity=2,
+        )
+        replenish_inventory(
+            connection,
             tenant_id=other_tenant_id,
             product_id=other_product_id,
             quantity=7,
@@ -148,9 +164,9 @@ def test_inventory_upsert_and_report_are_tenant_scoped(
     assert first.available == 3
     assert second.available == 8
     assert second.version == 2
-    assert len(report) == 1
-    assert report[0].tenant_id == tenant_id
-    assert report[0].tenant_stock_value == Decimal("40.00")
+    assert [row.sku for row in report] == ["STOCK-1", "STOCK-2"]
+    assert all(row.tenant_id == tenant_id for row in report)
+    assert all(row.tenant_stock_value == Decimal("55.00") for row in report)
     with pytest.raises(FrozenInstanceError):
         second.available = 0  # type: ignore[misc]
 
@@ -198,4 +214,5 @@ def test_core_dml_scenario_records_expected_result_shapes(
     assert "returned_product_name=Updated" in observations
     assert "inventory_available=8" in observations
     assert "inventory_version=2" in observations
-    assert "tenant_stock_value=100.00" in observations
+    assert "tenant_report_rows=2" in observations
+    assert "tenant_stock_values=130.00,130.00" in observations

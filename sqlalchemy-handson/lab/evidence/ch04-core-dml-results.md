@@ -8,8 +8,8 @@
 ## Setup
 
 - Two tenants
-- One product upserted twice
-- Inventory replenished 3 + 5
+- One product upserted twice plus one companion product
+- Inventory replenished to 8 and 6 units
 
 ## Observation
 
@@ -18,7 +18,8 @@
 - returned_product_name=Updated
 - inventory_available=8
 - inventory_version=2
-- tenant_stock_value=100.00
+- tenant_report_rows=2
+- tenant_stock_values=130.00,130.00
 
 ## Explanation
 
