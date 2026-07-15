@@ -88,8 +88,13 @@ point = adapter.validate_python({"x": 3, "y": 4})
 ```python
 CurrencyCode = Annotated[
     StrictStr,
-    BeforeValidator(_normalize_currency),
     Field(pattern=r"^[A-Z]{3}$"),
+    BeforeValidator(
+        _normalize_currency,
+        json_schema_input_type=Annotated[
+            str, Field(pattern=r"^\s*[A-Za-z]{3}\s*$")
+        ],
+    ),
 ]
 ```
 
@@ -102,7 +107,7 @@ CurrencyCode = Annotated[
 
 它没有独立 subclass identity，也不需要自定义 serializer。对订单边界来说，“校验后得到普通大写 string”正是所需结果。为它实现 CoreSchema hook 不会增加业务表达力，只会增加维护面。
 
-这仍有一个 schema 评审点：before validator 的 trim／uppercase 是运行时输入转换，JSON Schema 的 regex 只表达 canonical pattern，不能自动向其他语言客户端描述 normalize 动作。若跨语言 producer 必须预先得知转换政策，应在 API 文档或 examples 中明确；不要假设 validator 已自动变成完整协议描述。
+这里显式为 validation schema 提供 raw input pattern，使其他语言客户端知道服务会接受大小写与首尾空白；runtime 的 canonical pattern 则约束 normalize 后的值。JSON Schema 仍只描述接受集合，不会替客户端执行 trim／uppercase。
 
 ## `ProviderReference`：类型包拥有三面契约
 
@@ -112,10 +117,9 @@ CurrencyCode = Annotated[
 class ProviderReference(str):
     @classmethod
     def validate(cls, value: str) -> "ProviderReference":
-        normalized = value.strip()
-        if re.fullmatch(PROVIDER_REFERENCE_PATTERN, normalized) is None:
+        if re.fullmatch(PROVIDER_REFERENCE_PATTERN, value) is None:
             raise ValueError("invalid provider reference")
-        return cls(normalized)
+        return cls(value)
 
     @classmethod
     def __get_pydantic_core_schema__(
@@ -132,7 +136,7 @@ class ProviderReference(str):
 
 它比 `CurrencyCode` 多承担三项所有权：
 
-- validation：strip、完整 regex 校验，并返回 `ProviderReference` subclass；
+- validation：完整 regex 校验，并返回 `ProviderReference` subclass；
 - serialization：JSON 路径明确写成 string；
 - JSON Schema：对 schema consumer 发布 `type: string` 与同一 pattern。
 
@@ -184,7 +188,7 @@ assert adapter.validate_python("  pay_ABC12345  ") == "pay_ABC12345"
 assert adapter.json_schema()["pattern"] == PROVIDER_REFERENCE_PATTERN
 ```
 
-当前 [高级类型测试](lab/tests/test_advanced_types.py) 正是分别检查运行时正反例和 schema pattern。它仍揭示一个值得公开评审的语义差异：runtime 接受首尾空格后再 strip，而 JSON Schema pattern 对原始 string 不表达 strip，因此严格按 schema 预检的客户端可能拒绝 runtime 会接受的输入。三种政策都可以成立，但必须显式选择：取消 trim、把输入 normalize 写进协议文档，或只承诺 canonical output pattern。不能把“pattern 字符串相同”误称为完整 runtime parity。
+当前 [高级类型测试](lab/tests/test_advanced_types.py) 同时检查运行时正反例、首尾空格拒绝政策和 schema pattern。runtime 与 published pattern 都只接受 canonical reference，避免客户端按 schema 预检时与服务端产生分歧。
 
 同理，自定义 serializer 也不会自动反推为 JSON Schema。验证、序列化、schema 是相关但独立的三面；直接 hook 的 owner 必须分别测试。
 
@@ -194,7 +198,7 @@ assert adapter.json_schema()["pattern"] == PROVIDER_REFERENCE_PATTERN
 
 | 调用 | 输入 | 结果／输出 | 本例负责的 schema 节点 |
 |---|---|---|---|
-| `validate_python(...)` | Python `str` | normalize 后的 `ProviderReference` subclass | string → after validator |
+| `validate_python(...)` | Python `str` | `ProviderReference` subclass | string → after validator |
 | `validate_json(...)` | JSON `bytes`／`str` | JSON decoder 后进入同一验证 graph，返回 subclass | JSON parse → string → after validator |
 | `dump_python(value)` | validated object | Python mode 保留 `ProviderReference`（它也是 `str`） | Python representation |
 | `dump_python(value, mode="json")`／`dump_json(value)` | validated object | plain `str`／JSON string bytes | `to_string_ser_schema()` |

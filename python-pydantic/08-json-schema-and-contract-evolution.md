@@ -102,7 +102,7 @@ assert MetadataOnly(quantity=0).quantity == 0
 
 `$defs` 名称和 `$ref` 布局也不应被业务代码解析。它们是当前生成器组织文档的方式；消费者应基于发布的契约和标准 resolver 工作，而不是依赖 properties 顺序、definition 名称拼接或文件格式化细节。
 
-## 已知事实：`Money` 暴露 schema/runtime mismatch
+## 修复实例：让 `Money` schema 与 runtime 对齐
 
 [Money](lab/src/order_contracts/value_objects.py) 的 runtime before validator 只接受 `Decimal` 或 `str`：
 
@@ -113,25 +113,23 @@ def _validate_money_input(value: Any) -> Any:
     return value
 ```
 
-然而当前三份 **validation** golden 的 `Money.amount` 都生成 `anyOf: number | decimal-string`。通过 `model_validate_json()` 读取 JSON number 时，number 先成为 `int`／`float`，随后被上述 validator 拒绝。JSON Schema 因无法从任意 Python 函数推导精确输入集合，宽报了 number 分支。
+若不补充 schema 输入类型，Pydantic 会生成 `anyOf: number | decimal-string`；但 JSON number 先成为 `int`／`float`，随后会被上述 validator 拒绝。Pydantic 无法从任意 Python 函数推导精确输入集合，因此 lab 显式声明 JSON 输入类型。
 
-相反，Money serializer 标注返回 `str`，所以 serialization mode 的 `amount` 是 string：
+Money serializer 也标注返回 `str`，因此 validation 与 serialization mode 都只发布 string：
 
 ```python
 validation_amount = Money.model_json_schema(mode="validation")["properties"]["amount"]
 serialization_amount = Money.model_json_schema(mode="serialization")["properties"]["amount"]
 
-assert "anyOf" in validation_amount
+assert validation_amount["type"] == "string"
 assert serialization_amount["type"] == "string"
 ```
 
-这不是要在文档任务里无条件重生 goldens“修掉 diff”。它揭示了三条治理原则：
+这个修复揭示了三条治理原则：
 
 1. golden 只能证明“生成结果没有意外变化”，不能证明生成结果与 runtime 完全一致；
 2. custom validator 需要 positive／negative runtime tests 和 schema parity 审查；
-3. 真正修复时要先选择政策：允许 JSON number，或自定义 validation JSON Schema 只声明 string；随后同时提交 model、测试、golden 和兼容性判断。
-
-在该修复形成独立、经过评审的变更前，本章只记录已知 mismatch，不修改三份生成文件。
+3. 修复前先选择政策：允许 JSON number，或让 validation JSON Schema 只声明 string；随后同时提交 model、测试、golden 和兼容性判断。
 
 ## deterministic golden workflow
 
@@ -301,7 +299,7 @@ dual-write 不是默认安全方案。两个 event 可能乱序、部分发布�
 
 OpenAPI 可以把 request／response JSON Schema 与 HTTP operation、status、media type 组合起来，适合文档和 client generation；它仍不能完整表达或执行：
 
-- 任意 Python validator／serializer 与当前 `Money` mismatch；
+- 未提供 schema annotation 的任意 Python validator／serializer；
 - authorize、库存、幂等、单币种和状态迁移；
 - broker retry／ack／DLQ 与版本部署顺序；
 - 字段单位、隐私等级和语义变化，除非人准确维护 description 并遵守它；

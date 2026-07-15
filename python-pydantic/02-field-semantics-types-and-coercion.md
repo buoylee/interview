@@ -262,8 +262,8 @@ lab 的 `MoneyAmount` 有两层防线：
 ```python
 MoneyAmount = Annotated[
     Decimal,
-    BeforeValidator(_validate_money_input),
     Field(gt=Decimal("0"), max_digits=12, decimal_places=2),
+    BeforeValidator(_validate_money_input, json_schema_input_type=str),
 ]
 ```
 

@@ -18,10 +18,9 @@ class ProviderReference(str):
 
     @classmethod
     def validate(cls, value: str) -> "ProviderReference":
-        normalized = value.strip()
-        if re.fullmatch(PROVIDER_REFERENCE_PATTERN, normalized) is None:
+        if re.fullmatch(PROVIDER_REFERENCE_PATTERN, value) is None:
             raise ValueError("invalid provider reference")
-        return cls(normalized)
+        return cls(value)
 
     @classmethod
     def __get_pydantic_core_schema__(

@@ -214,6 +214,15 @@ def test_startup_factory_fails_fast_without_required_settings() -> None:
     assert caught.value.errors()[0]["loc"] == ("payment",)
 
 
+@pytest.mark.parametrize("secret", ["", "short"])
+def test_startup_rejects_unsafe_webhook_secret(monkeypatch, secret: str) -> None:
+    monkeypatch.setenv("ORDER_PAYMENT__BASE_URL", "https://env.example.test")
+    monkeypatch.setenv("ORDER_PAYMENT__WEBHOOK_SECRET", secret)
+    with pytest.raises(ValidationError) as caught:
+        load_settings()
+    assert caught.value.errors()[0]["loc"] == ("payment", "webhook_secret")
+
+
 def test_cache_is_explicit_and_clearable(monkeypatch) -> None:
     set_required_env(monkeypatch)
     clear_settings_cache()

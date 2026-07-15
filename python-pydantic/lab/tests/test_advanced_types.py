@@ -4,15 +4,15 @@ from pydantic import TypeAdapter, ValidationError
 from order_contracts.advanced_types import ProviderReference
 
 
-def test_core_schema_type_normalizes_and_returns_subclass() -> None:
+def test_core_schema_type_returns_subclass() -> None:
     adapter = TypeAdapter(ProviderReference)
-    value = adapter.validate_python("  pay_ABC12345  ")
+    value = adapter.validate_python("pay_ABC12345")
     assert value == "pay_ABC12345"
     assert isinstance(value, ProviderReference)
 
 
 def test_core_schema_type_validates_json_and_returns_subclass() -> None:
-    value = TypeAdapter(ProviderReference).validate_json(b'"  pay_ABC12345  "')
+    value = TypeAdapter(ProviderReference).validate_json(b'"pay_ABC12345"')
     assert value == "pay_ABC12345"
     assert isinstance(value, ProviderReference)
 
@@ -34,3 +34,11 @@ def test_core_schema_type_rejects_invalid_reference() -> None:
     with pytest.raises(ValidationError) as caught:
         TypeAdapter(ProviderReference).validate_python("wrong")
     assert caught.value.errors()[0]["type"] == "value_error"
+
+
+@pytest.mark.parametrize("value", [" pay_ABC12345", "pay_ABC12345 "])
+def test_core_schema_type_rejects_whitespace_rejected_by_published_pattern(
+    value: str,
+) -> None:
+    with pytest.raises(ValidationError):
+        TypeAdapter(ProviderReference).validate_python(value)

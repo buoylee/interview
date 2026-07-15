@@ -33,7 +33,7 @@ class PaymentProviderSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     base_url: AnyHttpUrl
-    webhook_secret: SecretStr
+    webhook_secret: Annotated[SecretStr, Field(min_length=8)]
     timeout_seconds: Annotated[
         StrictInt, BeforeValidator(_parse_timeout_seconds), Field(gt=0, le=30)
     ] = 3

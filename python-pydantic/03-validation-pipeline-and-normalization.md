@@ -40,8 +40,8 @@ def _validate_money_input(value: Any) -> Any:
 
 MoneyAmount = Annotated[
     Decimal,
-    BeforeValidator(_validate_money_input),
     Field(gt=Decimal("0"), max_digits=12, decimal_places=2),
+    BeforeValidator(_validate_money_input, json_schema_input_type=str),
 ]
 ```
 

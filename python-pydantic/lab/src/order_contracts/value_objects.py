@@ -28,8 +28,13 @@ OrderId = Annotated[StrictStr, Field(pattern=r"^ord_[0-9a-f]{12}$")]
 CustomerId = Annotated[StrictStr, Field(pattern=r"^cus_[0-9a-f]{12}$")]
 CurrencyCode = Annotated[
     StrictStr,
-    BeforeValidator(_normalize_currency),
     Field(pattern=r"^[A-Z]{3}$"),
+    BeforeValidator(
+        _normalize_currency,
+        json_schema_input_type=Annotated[
+            str, Field(pattern=r"^\s*[A-Za-z]{3}\s*$")
+        ],
+    ),
 ]
 Sku = Annotated[
     StrictStr,
@@ -37,8 +42,8 @@ Sku = Annotated[
 ]
 MoneyAmount = Annotated[
     Decimal,
-    BeforeValidator(_validate_money_input),
     Field(gt=Decimal("0"), max_digits=12, decimal_places=2),
+    BeforeValidator(_validate_money_input, json_schema_input_type=str),
 ]
 
 

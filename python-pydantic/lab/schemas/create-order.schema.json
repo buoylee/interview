@@ -32,21 +32,11 @@
       "additionalProperties": false,
       "properties": {
         "amount": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-              "type": "string"
-            }
-          ],
-          "decimal_places": 2,
-          "gt": "0",
-          "max_digits": 12,
-          "title": "Amount"
+          "title": "Amount",
+          "type": "string"
         },
         "currency": {
+          "pattern": "^\\s*[A-Za-z]{3}\\s*$",
           "title": "Currency",
           "type": "string"
         }

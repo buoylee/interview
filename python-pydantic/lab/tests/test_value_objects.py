@@ -11,6 +11,14 @@ def test_currency_is_normalized_to_uppercase() -> None:
     assert adapter.validate_python("usd") == "USD"
 
 
+def test_currency_validation_schema_describes_normalized_input() -> None:
+    schema = TypeAdapter(CurrencyCode).json_schema(mode="validation")
+    assert schema == {
+        "pattern": r"^\s*[A-Za-z]{3}\s*$",
+        "type": "string",
+    }
+
+
 def test_order_id_rejects_non_string_input() -> None:
     adapter = TypeAdapter(OrderId)
     with pytest.raises(ValidationError) as caught:
@@ -38,3 +46,9 @@ def test_money_rejects_integer_input() -> None:
     error = caught.value.errors()[0]
     assert error["type"] == "value_error"
     assert error["loc"] == ("amount",)
+
+
+def test_money_validation_schema_does_not_advertise_json_numbers() -> None:
+    amount_schema = Money.model_json_schema(mode="validation")["properties"]["amount"]
+    assert amount_schema["type"] == "string"
+    assert "anyOf" not in amount_schema
