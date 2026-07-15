@@ -25,4 +25,5 @@ packages = ["src/order_contracts"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"
+pythonpath = ["."]
 testpaths = ["tests"]
