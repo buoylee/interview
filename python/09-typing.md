@@ -311,7 +311,7 @@ print(get_type_hints(birthday)["age"])   # <class 'int'> —— 不加 include_e
 
 - **mypy / pyright**:静态检查器。`mypy yourfile.py` 报类型错误;pyright(VS Code 的 Pylance 内核)随编辑器实时提示。CI 里跑 mypy 是生产项目标配。
 - **`from __future__ import annotations`**:让注解延迟成字符串求值,可避免前向引用问题与一些循环依赖(3.x 普遍推荐加)。
-- **运行时校验靠库**:注解本身不校验,需要"传错真报错"就用 **pydantic**(读注解做运行时验证 + 解析)——FastAPI 的请求校验就是这么来的(见[第 14 章](14-stdlib-and-ecosystem.md)生态地图)。
+- **运行时校验靠库**:注解本身不校验,需要"传错真报错"就用 **pydantic**(读注解做运行时验证 + 解析)——FastAPI 的请求校验就是这么来的(见[第 14 章](14-stdlib-and-ecosystem.md)生态地图；深水入口见[数据契约与信任边界](../python-pydantic/00-data-contracts-and-trust-boundaries.md))。
 
 ## Java/Go 对照框
 
