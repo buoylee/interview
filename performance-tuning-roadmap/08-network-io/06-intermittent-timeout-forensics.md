@@ -132,7 +132,7 @@ t9 handler finish
 t10 response write complete
 ```
 
-必须把 framework/network receive 与 handler start 分开记录。若 `t6` 已出现而 `t8` 很晚，问题在服务端排队或调度。只要 A→t6 gap 异常，无论 `t6` 是延迟出现还是缺失，都要检查 B 层连接和网络证据。缺失的 `t6` 只有在服务端埋点覆盖完整且 collection health（采集、导出、采样、保留）已验证健康后，才算“absence 的证据”；否则必须标记为“no evidence / unavailable evidence（无证据／证据不可用）”，不能据此推断请求未到达服务端。异步框架还应分别记录 EventLoop 回调、业务 executor 提交和执行时间，避免把两类队列合并。
+必须把 framework/network receive 与 handler start 分开记录。若 `t6` 已出现而 `t8` 很晚，问题在服务端排队或调度。只要 A→t6 gap 异常，无论 `t6` 是延迟出现还是缺失，都要检查 B 层连接和网络证据。缺失的 `t6` 只有在服务端埋点覆盖完整且 collection health（采集、导出、采样、保留）已验证健康后，才算“absence 的证据”；否则不能据此推断请求未到达服务端。若 Server event artifact 仍有 usable records 但存在采集/验证 gap，标为 `partial`；若 source/observation point 不存在，标为 `unavailable`/`not_attempted`；若 collection 已运行、preservation/finalization 无失败但零 usable records，标为 `unavailable`/`succeeded_empty`；只有 required operation 自身失败且零 artifact 时才标为 `failure`。异步框架还应分别记录 EventLoop 回调、业务 executor 提交和执行时间，避免把两类队列合并。
 
 同一窗口至少保留这些有界信号：
 
@@ -184,7 +184,7 @@ Client/Server process exporter 都只能读取本进程的 bounded rings、写�
 
 Event input 只能提供第九节 required identity，绝不能指定任意 Pod、Node、candidate 或 filter。Fan-out target 只能来自 time-versioned index 的候选集合与 static allowlist 交集。`peer`/`remote_tuple` 可能是 VIP、NAT 地址或 sidecar，禁止假定它唯一对应一个 Server Node。
 
-Mapping stale、ambiguous 或 unresolved 时，若已保留可用但候选不完整/有歧义的 Server evidence，对应 artifact 标为 `partial`；若没有 observation point/source，且没有尝试 preservation，则标为 `unavailable`。Fan-out timeout 属于已尝试的 preservation operation：有可用片段时 artifact 标为 `partial` 并另记 `operation_status=timed_out`/bounded `operation_failure`，没有任何可用 artifact 时标为 `failure`。Client/Server process exporter 或 Node agent unreachable/restarted/timeout 同理逐 artifact 判定，Node evidence 绝不能冒充 process evidence。Manifest 必须按 Client process preservation、每个 candidate Server process preservation 与每个 endpoint Node preservation 分别记录 target/result/latency/`operation_status`/bounded `operation_failure`，不能把任一端点或平面的成功包装成完整双端证据。
+Mapping stale、ambiguous 或 unresolved 时，若已保留可用但候选不完整/有歧义的 Server evidence，对应 artifact 标为 `partial`。若没有 observation point/source，required preservation 未启动，则标为 `unavailable`、`operation_status=not_attempted`。若 fan-out/preservation 本身成功但目标 window 产生零 usable records，则标为 `unavailable`、`operation_status=succeeded_empty`，并记录 bounded collection-loss/empty-window reason，不记录 operation failure。Fan-out timeout 等 operation 自身失败时，有可用片段则 artifact 标为 `partial` 并另记 `operation_status=timed_out`/bounded `operation_failure`，没有任何可用 artifact 才标为 `failure`。Client/Server process exporter 或 Node agent unreachable/restarted/timeout 同理逐 artifact 判定，Node evidence 绝不能冒充 process evidence。Manifest 必须按 Client process preservation、每个 candidate Server process preservation 与每个 endpoint Node preservation 分别记录 target/result/latency/`operation_status`/bounded `operation_failure`，不能把任一端点或平面的成功包装成完整双端证据。
 
 | Layer | Signal | Common metric/example |
 |---|---|---|
@@ -223,7 +223,7 @@ HTTP/2 multiplexing 要同时从请求维度和连接维度判断：单条 strea
 | TCP | `TCP_INFO` samples | process/Node agent | recent 30–60s |
 | Packet | headers | dedicated Node volume | bounded by duration, size, count, quota |
 
-表中的 30–60 秒只是成本 baseline，不是完整 incident window 的保证。要支持默认 `T-60s`，Request、TCP 与 Packet ring 的 **effective pre-retention 必须至少为 60 秒，加上 trigger propagation、freeze/pin 与 rotation margin**；部署值必须由实测覆盖。任何 ring 的 actual oldest timestamp/effective retention 短于所需前窗但仍有可用记录时，对应 artifact 必须标为 `partial` 并记录缺失范围；因 ring 未部署、policy 不允许或 source 不存在而没有可用记录，且没有尝试 preservation 时才标为 `unavailable`；已尝试 preservation 但失败且没有任何可用 artifact 时标为 `failure`。绝不能声称拥有完整 `T-60s～T+60s` 证据。
+表中的 30–60 秒只是成本 baseline，不是完整 incident window 的保证。要支持默认 `T-60s`，Request、TCP 与 Packet ring 的 **effective pre-retention 必须至少为 60 秒，加上 trigger propagation、freeze/pin 与 rotation margin**；部署值必须由实测覆盖。任何 ring 的 actual oldest timestamp/effective retention 短于所需前窗但仍有可用记录时，对应 artifact 必须标为 `partial` 并记录缺失范围；因 ring 未部署、policy 不允许或 source 不存在而没有可用记录时，标为 `unavailable`、`operation_status=not_attempted`；ring/collection 已运行且 preservation 成功处理空 required window、零 usable records 时，标为 `unavailable`、`operation_status=succeeded_empty` 与 bounded collection-loss/empty-window reason。只有 preservation operation 自身失败且没有任何可用 artifact 时才标为 `failure`。绝不能声称拥有完整 `T-60s～T+60s` 证据。
 
 Packet ring 使用窄 capture filter；下面的 `192.0.2.10` 是文档示例地址，部署时只能替换为静态 allowlist 中已批准的服务 IP/port：
 
@@ -242,7 +242,7 @@ sudo dumpcap \
 
 **`dumpcap -s 128` 保存的是 raw packet prefix，不保证只含 L2/L3/L4 headers。** 可变长度 headers 之后仍可能出现应用 bytes；因此上面的 raw dumpcap ring 只能用于 static allowlist 中已经验证为“仍处于 TLS 加密边界内”的 observation hop，并且该 hop 禁止 TLS session keys、decryption 或任何 payload 解码。任何 cleartext hop 或 TLS termination 之后的 hop 都必须禁用 raw pcap，改用 approved eBPF/header-only capture agent：只输出解析后的 L2/L3/L4/TCP metadata，在持久化前丢弃全部 payload bytes；也可以只使用 `TCP_INFO`。这些 hop 不得产生 raw artifact。如果组织政策连 encrypted application bytes 都禁止，必须全面禁用 dumpcap ring。
 
-Bundle admission 必须验证 observation hop、TLS boundary、policy version 与 static allowlist metadata。不合规或无法证明合规的 raw artifact 必须拒绝进入 bundle、立即销毁，并在 manifest 记录 `operation_status=rejected` 与 bounded `operation_failure=privacy_policy_rejected`；若 admission 已尝试且没有任何可用 raw artifact，raw artifact status 为 `failure`。若 policy 在采集前就明确禁用该 observation point、没有尝试 admission，raw artifact status 才是 `unavailable`。绝不能依赖 sanitized fragment 作为例外。
+Bundle admission 必须验证 observation hop、TLS boundary、policy version 与 static allowlist metadata。不合规或无法证明合规的 raw artifact 必须拒绝进入 bundle、立即销毁，并在 manifest 记录 `operation_status=rejected` 与 bounded `operation_failure=privacy_policy_rejected`；若 admission 已尝试且没有任何可用 raw artifact，raw artifact status 为 `failure`。若 policy 在采集前就明确禁用该 observation point，则 raw artifact 为 `unavailable`、`operation_status=not_attempted`。若合规 capture/preservation operation 成功但产生零 usable raw/metadata records，则 artifact 为 `unavailable`、`operation_status=succeeded_empty`，并记录 collection-loss/empty-window reason。绝不能依赖 sanitized fragment 作为例外。
 
 需要判断方向性时，Client Node 和 Server Node 都要运行 ring，并 pin 相同的 `T-60s～T+60s` 时窗。单端 pcap 无法可靠区分“发送端未发出”“中间路径丢失”和“接收端已收到但采集点错误”。
 
@@ -279,7 +279,7 @@ processors:
 
 Production `decision_wait` 必须独立校准，至少覆盖 trace completion latency + SDK/exporter/network lateness + safety margin；只增加 `num_traces` 不能让已完成 decision 重新纳入 late span。Decision 完成后到达的 span 不参与该次 policy decision。必须监控实际版本提供的 late-span 信号，官方常见名称包括 `otelcol_processor_tail_sampling_sampling_late_span_age`，并计算 late-span ratio；指标名称与单位必须按部署 Collector 版本验证。
 
-Policy intent 不可弱化：error 和 slow requests 由 keep policy 选中，normal requests 才按比例采样。但 trace artifact 只有同时验证以下条件时才能标为 `complete`：upstream sampler config/version 证明 candidate complete export；同 Trace 一致路由到同一 Collector；所有 policy-relevant spans 在 decision 前到齐；early drop、overflow、policy evaluation error 均为零。任一条件未验证或异常时，仍有 usable spans 的 trace 标为 `partial` 并记录 gap/drop/late/verification reason；没有 usable spans，且没有 preservation/admission/finalization operation failure 时标为 `unavailable`。不得保证 error/slow trace retained。完整配置语义见[本章分布式链路追踪](../03-observability/05-distributed-tracing.md#tail-based-sampling尾部采样)与[官方 Tail Sampling Processor README](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/tailsamplingprocessor/README.md)。
+Policy intent 不可弱化：error 和 slow requests 由 keep policy 选中，normal requests 才按比例采样。但 trace artifact 只有同时验证以下条件时才能标为 `complete`：upstream sampler config/version 证明 candidate complete export；同 Trace 一致路由到同一 Collector；所有 policy-relevant spans 在 decision 前到齐；early drop、overflow、policy evaluation error 均为零。任一条件未验证或异常时，仍有 usable spans 的 trace 标为 `partial` 并记录 gap/drop/late/verification reason；Tail Sampling/collection 已运行但 total loss 导致零 usable spans，且 required preservation/finalization operation 没有失败时，trace 标为 `unavailable`、`operation_status=succeeded_empty` 与 bounded collection-loss reason。若 trace source 未部署，标为 `unavailable`、`operation_status=not_attempted`；只有 required operation 自身失败且零 usable spans 时才标为 `failure`。不得保证 error/slow trace retained。完整配置语义见[本章分布式链路追踪](../03-observability/05-distributed-tracing.md#tail-based-sampling尾部采样)与[官方 Tail Sampling Processor README](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/tailsamplingprocessor/README.md)。
 
 应用只发出 timeout trigger event，字段必须完整且命名稳定：
 
@@ -342,18 +342,18 @@ incident/<incident-id>/
 └── server-node.pcapng        # Server pcap
 ```
 
-每个 artifact 必须严格按以下互斥 truth table 判定；`artifact_status` 描述“现有证据是否可用/完整”，`operation_status` 描述 preservation/admission/finalization 操作结果，两者不得混用：
+每个 artifact 必须严格按以下互斥 truth table 判定；`artifact_status` 描述“现有证据是否可用/完整”，`operation_status` 描述 preservation/admission/finalization 操作结果，两者不得混用。`operation_status` 只能使用 bounded enum `not_attempted|succeeded|succeeded_empty|rejected|timed_out|failed`：
 
 | `artifact_status` | 唯一判定条件 |
 |---|---|
 | `complete` | required window/content 齐全，且 integrity、privacy、clock、collection health 全部验证；没有任何已知 gap、drop、loss 或 late span |
 | `partial` | 仍有可用 evidence，但已知存在 time gap、drop、loss、late span，或 operation 失败后仍留下可用片段 |
-| `unavailable` | 没有可用 evidence，因为 source 未部署、policy 预先不允许、source 不存在或没有 observation point；且没有尝试过 required preservation/admission/finalization operation |
-| `failure` | required preservation、admission 或 finalization operation 已尝试失败，且没有任何可用 artifact |
+| `unavailable` | 没有 usable artifact，且 required preservation/admission/finalization operation 没有失败；source 未部署、policy 预先不允许、source/observation point 不存在时为 `operation_status=not_attempted`，collection/ring 已运行且 operation 成功处理空窗口、产生零 usable records 时为 `operation_status=succeeded_empty` |
+| `failure` | required preservation、admission 或 finalization operation 已尝试且 operation 自身失败/拒绝，且没有任何可用 artifact |
 
-若 operation 失败但仍有片段，必须写 `artifact_status=partial`，并另写 bounded `operation_status` 与 `operation_failure`；不得把 operation failure 当作第五种 artifact status，也不得在有已知 gap/drop/loss 时标 `complete`。
+若 operation 失败但仍有片段，必须写 `artifact_status=partial`，并另写 bounded `operation_status` 与 `operation_failure`；不得把 operation failure 当作第五种 artifact status，也不得在有已知 gap/drop/loss 时标 `complete`。`succeeded_empty` 明确表示 operation 没有失败：`operation_failure=none`，collection loss/empty window 进入 artifact bounded reason，不能混作 preservation operation failure。
 
-两个 pcap 路径是 bundle 的逻辑 artifact slots，不表示每个 hop 都必须生成 raw 文件：只有通过 privacy admission 的 TLS-encrypted allowlisted hop 才能写入。若 cleartext/TLS termination 后 hop 或组织 policy 在采集前已禁用 raw pcap，且没有尝试 raw preservation/admission，slot 标为 `unavailable` 并以 metadata-only eBPF/TCP_INFO 证据替代；若已尝试 raw admission/finalization 后失败且无 raw artifact，slot 标为 `failure`；若仍有可用但不完整的 raw records，则标为 `partial` 并另记 operation failure。
+两个 pcap 路径是 bundle 的逻辑 artifact slots，不表示每个 hop 都必须生成 raw 文件：只有通过 privacy admission 的 TLS-encrypted allowlisted hop 才能写入。若 cleartext/TLS termination 后 hop 或组织 policy 在采集前已禁用 raw pcap，slot 标为 `unavailable`、`operation_status=not_attempted`，并以 metadata-only eBPF/TCP_INFO 证据替代；若 capture/preservation/finalization 成功但零 usable raw/metadata records，slot 标为 `unavailable`、`operation_status=succeeded_empty` 与 bounded collection-loss/empty-window reason；若 raw admission/finalization operation 自身失败/拒绝且无 raw artifact，slot 标为 `failure`；若 operation 失败但仍有可用、不完整且 policy-approved 的 raw records，则标为 `partial` 并另记 operation failure。
 
 `manifest.json` 是解释证据有效性的入口，必须记录：
 
@@ -368,7 +368,7 @@ incident/<incident-id>/
 - upstream sampler config/version/config drift、export mode、same-trace routing version、production `decision_wait`、policy error，以及依实际 Collector 版本验证过的 Tail Sampling early removal/drop/capacity-loss/late-span 指标，例如 `sampling_trace_dropped_too_early`、`otelcol_processor_tail_sampling_sampling_late_span_age`、trace removal age、late ratio 与 overflow；
 - 每个应有 artifact 使用上述唯一 canonical schema：`artifact_status = complete|partial|unavailable|failure`；另以 bounded `operation_status`/`operation_failure` 记录 preservation/admission/finalization 结果；非 complete artifact 必须附实际时间范围和 bounded reason。
 
-如果 manifest 的 retention、privacy、loss/drop/clock/collection-health verification 缺失但仍有可用 evidence，相应 artifact 标为 `partial` 并记录 verification gap；若没有可用 evidence，则依 truth table 区分从未具备 source/observation point 的 `unavailable` 与已尝试 operation 后失败的 `failure`。“没有采到”不能转写成“没有发生”。
+如果 manifest 的 retention、privacy、loss/drop/clock/collection-health verification 缺失但仍有可用 evidence，相应 artifact 标为 `partial` 并记录 verification gap。若没有 usable evidence：从未具备 source/observation point 的 artifact 为 `unavailable`/`not_attempted`；collection/ring 已运行且 operation 无失败但产出为空的 artifact 为 `unavailable`/`succeeded_empty`；required operation 自身失败/拒绝且产出为空才为 `failure`。“没有采到”不能转写成“没有发生”，collection-health loss 也不能伪装成 preservation operation failure。
 
 ## 十一、容量、过载、安全与自监控
 
@@ -434,21 +434,21 @@ Collector metric 名称和语义会随版本变化，部署前必须从实际 `/
 
 | Failure | Required handling |
 |---|---|
-| Trigger 丢失 | timeout metrics 与 trigger count 对账并告警；已有 application log/trace 分别按 truth table 判定，未因 trigger 启动的 preservation 不伪装成 operation failure |
-| Tail Sampling 过载 | 保留 ERROR/slow policy intent、先丢 normal traces；检查 `memory_limiter` 与 production sizing；early removal/drop/overflow 非零且仍有 usable spans 时 trace 为 `partial`，没有 usable spans 时为 `unavailable`，绝不能为 `complete` |
-| Upstream head sampling、ParentBased delegate 误配或 late span | 合规 pure `AlwaysOn` 或五个 delegate 均为 `AlwaysOn` 时，unsampled remote/local parent spans 仍须完整 export；发现 misconfiguration、delegate drop 或 late span 后，有 usable spans 时 trace 为 `partial`，没有 usable spans 时为 `unavailable` |
-| eBPF ring/event 丢失 | 输出 lost-event counter；仍有 usable events 时 eBPF artifact 必须为 `partial`，没有 usable events 时才为 `unavailable`；已知 loss 时禁止 `complete` |
-| pcap kernel drop | 缩窄静态 filter、调整 capture buffer并记录 received/dropped；仍有 usable packets 时 pcap artifact 必须为 `partial`，没有 usable packets 时才为 `unavailable`；已知 drop 时禁止 `complete` |
-| Effective pre-retention 不足 | trigger 当下先保护仍存在的 closed T− records/files；有实际覆盖时 artifact 为 `partial` 并记录缺失范围，没有 required-window usable records 时为 `unavailable`，禁止声称完整窗口 |
-| Mapping stale/ambiguous/unresolved 或 fan-out timeout | 有可用但不完整/歧义的 Server evidence 时为 `partial`；没有 candidate/source/observation point且未 fan-out 时为 `unavailable`；fan-out 已尝试失败且无 artifact 时为 `failure`，有片段则为 `partial` 并另记 operation failure |
+| Trigger 丢失 | timeout metrics 与 trigger count 对账并告警；已有 application log/trace 分别按 truth table 判定；未因 trigger 启动的 required preservation 记为 `not_attempted`，不能伪装成 operation failure |
+| Tail Sampling 过载 | 保留 ERROR/slow policy intent、先丢 normal traces；early removal/drop/overflow 非零且仍有 usable spans 时 trace 为 `partial`；total loss、零 usable spans 且 preservation/finalization 无失败时为 `unavailable`/`succeeded_empty` 与 collection-loss reason；只有 required operation 自身失败且零 spans 时才为 `failure`；已知 loss 时禁止 `complete` |
+| Upstream head sampling、ParentBased delegate 误配或 late span | 发现 misconfiguration、delegate drop 或 late span 后，有 usable spans 时 trace 为 `partial`；collection 已运行但零 usable spans 且 operation 无失败时为 `unavailable`/`succeeded_empty`；required operation 自身失败且零 spans 时为 `failure` |
+| eBPF ring/event 丢失 | 输出 lost-event counter；仍有 usable events 时 eBPF artifact 必须为 `partial`；total loss、零 usable events 且 preservation/finalization 无失败时为 `unavailable`/`succeeded_empty` 与 collection-loss reason；operation 自身失败且零 artifact 时为 `failure`；已知 loss 时禁止 `complete` |
+| pcap kernel drop | 缩窄静态 filter、调整 capture buffer并记录 received/dropped；仍有 usable packets 时 pcap artifact 必须为 `partial`；total drop、零 usable packets 且 preservation/finalization 无失败时为 `unavailable`/`succeeded_empty` 与 collection-loss reason；operation 自身失败且零 artifact 时为 `failure`；已知 drop 时禁止 `complete` |
+| Effective pre-retention 不足 | trigger 当下先保护仍存在的 closed T− records/files；有实际覆盖时 artifact 为 `partial` 并记录缺失范围；ring 未部署时为 `unavailable`/`not_attempted`；empty required window 且 preservation 成功时为 `unavailable`/`succeeded_empty`；preservation 自身失败且零 artifact 时为 `failure` |
+| Mapping stale/ambiguous/unresolved 或 fan-out timeout | 有可用但不完整/歧义的 Server evidence 时为 `partial`；没有 candidate/source/observation point时为 `unavailable`/`not_attempted`；fan-out 成功但目标零 usable records 时为 `unavailable`/`succeeded_empty`；fan-out 自身失败且无 artifact 时为 `failure`，有片段则为 `partial` 并另记 operation failure |
 | Client process exporter unreachable/restarted/timeout | Preservation 已尝试：Client A/Request 与 process TCP 有可用片段时各自为 `partial` 并另记 operation failure；没有任何可用 artifact 时各自为 `failure` |
 | Server process exporter unreachable/restarted/timeout | Preservation 已尝试：对应 candidate 的 Server Request/C 与 process TCP 有可用片段时各自为 `partial` 并另记 operation failure；没有任何可用 artifact 时各自为 `failure` |
 | Node agent preservation 失败 | Preservation 已尝试：Node TCP/eBPF/permitted pcap 有可用片段时各自为 `partial` 并另记 operation failure；没有任何可用 artifact 时各自为 `failure`；不得用 process evidence 冒充 Node evidence |
-| Local admission 达到 bytes/concurrency/rate/quota | copy 前立即拒绝且 business/EventLoop fail open；记录 admission decision/limits/usage/bounded reason。若 join 已有 usable staging，artifact 沿用其状态；若 admission 已尝试拒绝且没有 artifact，状态为 `failure` |
+| Local admission 达到 bytes/concurrency/rate/quota | copy 前立即拒绝且 business/EventLoop fail open；记录 `operation_status=rejected`、admission limits/usage/bounded reason。若 join 已有 usable staging，artifact 沿用其状态；若 admission 拒绝且没有 artifact，状态为 `failure` |
 | 磁盘达到安全水位 | copy 前 local admission 立即拒绝新的 preservation，或依 policy 缩短尚未承诺的 TTL；不得侵占业务磁盘；artifact/operation status 按上一行判定 |
-| T+ 文件仍在写 | T 时 freeze/protect closed T− 文件并标记 current segment protected-on-close；持续 append，等待原 T+60 rotation close 后 finalize；若 finalization 失败，有片段为 `partial`，无 artifact 为 `failure` |
-| Raw artifact 不符合隐私 policy | 若 policy 预先禁用且未尝试 admission，raw artifact 为 `unavailable`；若 admission 已尝试拒绝，必须销毁全部 raw bytes，因此 raw artifact 为 `failure` 并记录 `operation_status=rejected`/`privacy_policy_rejected`；approved metadata-only evidence 是独立 artifact，不能把被拒 raw fragment 标成可用 |
-| Client/Server Node 已销毁 | 保留 Trace/log/eBPF 等现存证据并逐项判定；未尝试 preservation 且 source 已不存在的 endpoint artifact 为 `unavailable` |
+| T+ 文件仍在写 | T 时 freeze/protect closed T− 文件并标记 current segment protected-on-close；持续 append，等待原 T+60 rotation close 后 finalize；finalization 成功但零 usable records 时为 `unavailable`/`succeeded_empty`；finalization 失败时有片段为 `partial`，无 artifact 为 `failure` |
+| Raw artifact 不符合隐私 policy | policy 预先禁用时 raw artifact 为 `unavailable`/`not_attempted`；合规 operation 成功但零 usable raw/metadata records 时为 `unavailable`/`succeeded_empty`；admission 已尝试拒绝时必须销毁全部 raw bytes，raw artifact 为 `failure`/`rejected` 并记录 `privacy_policy_rejected`；approved metadata-only evidence 是独立 artifact |
+| Client/Server Node 已销毁 | 保留 Trace/log/eBPF 等现存证据并逐项判定；source 已不存在而 required preservation 未启动的 endpoint artifact 为 `unavailable`/`not_attempted`；已成功处理空 target 则为 `unavailable`/`succeeded_empty` |
 | 时钟不同步 | 使用进程内 monotonic duration；跨主机证据仍可用但有 clock verification gap 时为 `partial`，标注 offset 并降低信心；禁止标 `complete` |
 | Bundle 上传失败 | 在 2 分钟 SLA 内重试到上限后记录 `operation_status=failed`；仍有可用 local/staged artifact 时为 `partial`，没有任何可用 artifact 时为 `failure`；ring 继续运行并告警 |
 
@@ -519,14 +519,14 @@ confidence: high / medium / low
 
 验收必须同时满足：
 
-- 每种故障无需人工守候即可让每个 artifact 按 canonical truth table 得到互斥的 `complete|partial|unavailable|failure`；preservation/admission/finalization 另以 `operation_status`/`operation_failure` 表示；
-- timeout 后 2 分钟内完成 bundle finalization，或在 bundle/告警中写明 bounded operation failure；有可用片段时 artifact 必须为 `partial`，已尝试 operation 且无 artifact 时必须为 `failure`；
+- 每种故障无需人工守候即可让每个 artifact 按 canonical truth table 得到互斥的 `complete|partial|unavailable|failure`；preservation/admission/finalization 另以 bounded `not_attempted|succeeded|succeeded_empty|rejected|timed_out|failed` 和 `operation_failure` 表示；
+- timeout 后 2 分钟内完成 bundle finalization，或在 bundle/告警中写明 bounded operation failure；operation 失败但有可用片段时 artifact 必须为 `partial`，operation 自身失败且零 artifact 时必须为 `failure`，operation 无失败但成功处理空窗口时必须为 `unavailable`/`succeeded_empty`；
 - Trigger 时 timeout metric 与 signed trigger event 无条件发出；本地 authenticated unprivileged Client exporter 在任何 copy 前完成 non-blocking admission，拒绝时 business/EventLoop fail open。通过后才在 T freeze/copy Client A/Request 与 process TCP rings；correlator 不等待 Trace，并行 fan-out。每个 Server exporter/Node agent 也必须先 local admission 再保存各自 rings；accepted staging append `T～T+60s`，原 T+60 deadline/rotation close 后 finalize，原 rings 全程继续运行；
-- VIP、NAT 与 service-mesh 路径测试能用 EndpointSlice/service route/CNI flow/conntrack/sidecar 的 versioned mapping 命中所有授权 candidates；stale/ambiguous 时有 usable Server evidence 为 `partial`，没有 source/observation point且未 fan-out 为 `unavailable`，fan-out 已尝试失败且无 artifact 为 `failure`，并记录 candidates/version/mapping age/operation failure；
+- VIP、NAT 与 service-mesh 路径测试能用 EndpointSlice/service route/CNI flow/conntrack/sidecar 的 versioned mapping 命中所有授权 candidates；stale/ambiguous 时有 usable Server evidence 为 `partial`；没有 source/observation point时为 `unavailable`/`not_attempted`；fan-out 成功但零 usable records 时为 `unavailable`/`succeeded_empty`；fan-out 自身失败且无 artifact 为 `failure`，并记录 candidates/version/mapping age/status/reason；
 - Client process target 必须匹配 signed workload identity ∩ static allowlist；Server process 与 endpoint Node targets 必须来自 event-time index ∩ static allowlist，全部通过 workload identity/mTLS/RBAC。`bounded_peer_id` 只能从 static allowlist 派生，Node identity 只能来自可信 index；raw event Pod/Node/peer/filter/string 不能指定 target 或控制 dedupe key；process exporter 只能读自己的 bounded rings、写 protected staging，不能拥有 pcap/eBPF/shell/filter 权限；
 - Client/Server exporter 或 endpoint Node fan-out 已尝试失败时，对应 artifacts 有 usable fragments 必须为 `partial` 并另记 operation failure，无任何 usable artifact 必须为 `failure`。Manifest 按 Client process、每个 candidate Server process 与每个 endpoint Node preservation 分别记录 target/result/latency/operation status/failure，且 Node evidence 不得冒充 process evidence；
 - Mirrored Server receive signal 能立即触发本 pod self-freeze，但验收必须证明 Client-trigger fan-out 仍会执行，且 mirrored signal 不能扩大或取代授权 target；
-- 要声称完整 `T-60s` 前窗，实测 effective pre-retention 必须达到 60 秒加 propagation/pin/rotation margin，且无已知 gap/drop；不足但有 usable records 时为 `partial` 并列出缺失范围，没有 required-window records 时为 `unavailable`；
+- 要声称完整 `T-60s` 前窗，实测 effective pre-retention 必须达到 60 秒加 propagation/pin/rotation margin，且无已知 gap/drop；不足但有 usable records 时为 `partial` 并列出缺失范围；ring 未运行时零 records 为 `unavailable`/`not_attempted`，ring 已运行且 preservation 成功处理 empty required window 时为 `unavailable`/`succeeded_empty`，operation 自身失败且零 artifact 时为 `failure`；
 - Connection-pool delay 与 EventLoop block 可分别注入，`connection_acquired-rpc_submit`/`t1-t0` 和 `eventloop_enter-connection_acquired`/`t2-t1` 均可独立计算，并产生可区分 signature；
 - 每种故障产生可区分的预期 signature，不以单个正常 aggregate metric 证明“不是网络”；
 - packet ring 始终满足独立约 2 GiB/Node ring quota，且能看到 actual effective retention；Node protected staging 的 2 GiB/Node protected total 不与 ring quota 混用；
@@ -534,10 +534,10 @@ confidence: high / medium / low
 - trigger storm 下 canonical key 只由 signed workload identity、static-allowlist-derived `bounded_peer_id`、bounded normalized cause、trusted node identity 与 5m bucket 组成；同 key duplicate 只 join existing staging、增加 bounded count/first-last time，不新增 request IDs、不延长原 T+60 deadline/TTL。大量变化的 raw `peer`/`node`/event strings 不产生新 key；local admission 与降级顺序、业务磁盘安全水位均生效；
 - Tail Sampling pipeline 的 candidate traces 推荐由 upstream pure `AlwaysOn` 完整 export；若使用 `ParentBased`，root 与 remote/local sampled/not-sampled 五个 delegates 必须全部为 `AlwaysOn`。1–5% 只在 Collector 最终保留 normal traces；sampler config/version/drift、同 Trace 路由、production `decision_wait`、policy error、early-drop/overflow 与 late ratio 都经过验证；
 - 在合规 pure `AlwaysOn`，或 root、remote/local sampled/not-sampled 五个 delegates 全部为 `AlwaysOn` 的配置下，注入 unsampled remote/local parent 时，相关 spans 必须仍完整 export；
-- 刻意注入 head-sampling misconfiguration、delegate drop 或 late span 时，自监控和 manifest 必须检出配置漂移、drop/late 与 bounded reason；仍有 usable spans 时 trace 为 `partial`，无 usable spans 时为 `unavailable`，不得宣称 error/slow Trace 已保留；
+- 刻意注入 head-sampling misconfiguration、delegate drop 或 late span 时，自监控和 manifest 必须检出配置漂移、drop/late 与 bounded reason；仍有 usable spans 时 trace 为 `partial`；collection 已运行、operation 无失败但零 usable spans 时为 `unavailable`/`succeeded_empty`；trace source 未部署时为 `unavailable`/`not_attempted`；required operation 自身失败且零 spans 时为 `failure`；不得宣称 error/slow Trace 已保留；
 - 只有 upstream complete export、same-trace routing、policy-relevant spans decision 前到齐，且 integrity/privacy/clock/collection health 已验证、无 early drop/overflow/policy error/late span 时，trace artifact 才可标 `complete`；
-- OTel/log/eBPF/pcap 任一 collection loss 都可见并进入 manifest；pcap/eBPF 有 drop/loss 但仍有 records 时必须为 `partial`，无 usable records 时为 `unavailable`，禁止标 `complete`；
-- Raw pcap 只在验证过的 TLS-encrypted allowlisted hop 出现；policy 预先禁用且未尝试 admission 时 raw artifact 为 `unavailable`；admission 已尝试拒绝时销毁全部 raw bytes，raw artifact 为 `failure` 并记录 operation failure；只有已通过 privacy admission 的 pcap 在后续 operation 失败但仍留下 usable approved fragment 时才为 `partial`；
+- OTel/log/eBPF/pcap 任一 collection loss 都可见并进入 manifest；pcap/eBPF 有 drop/loss 但仍有 records 时必须为 `partial`；total loss 后 preservation/finalization 无失败但零 usable records 时必须为 `unavailable`/`succeeded_empty` 与 collection-loss reason；operation 自身失败且零 artifact 时为 `failure`；禁止将 collection loss 本身记成 operation failure 或标 `complete`；
+- Raw pcap 只在验证过的 TLS-encrypted allowlisted hop 出现；policy 预先禁用时 raw artifact 为 `unavailable`/`not_attempted`；合规 capture/preservation 成功但零 usable records 时为 `unavailable`/`succeeded_empty`；admission 已尝试拒绝时销毁全部 raw bytes，raw artifact 为 `failure`/`rejected` 并记录 operation failure；只有已通过 privacy admission 的 pcap 在后续 operation 失败但仍留下 usable approved fragment 时才为 `partial`；
 - Evidence schema fuzz test 会拒绝并计数 free-form message、URL/query、headers、body、`db.statement`、payload fragment 与 invalid/unmapped values，且任何 artifact 都不出现被拒 value；
 - bundle 绝不包含 body、token、cookie、`Authorization`、TLS session keys、secret 或所谓已脱敏片段；
 - 值班人员可在 10 分钟内把故障归类到 Client 应用、container/Node datapath、TCP/network、Server 应用或 HTTP/2 stream，并给出 confidence。
