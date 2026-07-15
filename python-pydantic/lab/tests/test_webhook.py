@@ -137,8 +137,24 @@ def test_webhook_rejects_signature_before_parsing_payload() -> None:
     with pytest.raises(InvalidWebhookSignature):
         parse_payment_webhook(
             b"not-json",
-            signature="bad-signature",
+            signature="00" * hashlib.sha256().digest_size,
             secret=SecretStr("demo-secret"),
+        )
+
+
+@pytest.mark.parametrize("signature", ["not-hex", "签名"])
+def test_webhook_rejects_malformed_hex_signature(signature: str) -> None:
+    with pytest.raises(InvalidWebhookSignature):
+        parse_payment_webhook(b"not-json", signature, SecretStr("demo-secret"))
+
+
+@pytest.mark.parametrize("signature", [None, b"00"])
+def test_webhook_rejects_non_string_signature(signature: object) -> None:
+    with pytest.raises(InvalidWebhookSignature):
+        parse_payment_webhook(
+            b"not-json",
+            signature,  # type: ignore[arg-type]
+            SecretStr("demo-secret"),
         )
 
 

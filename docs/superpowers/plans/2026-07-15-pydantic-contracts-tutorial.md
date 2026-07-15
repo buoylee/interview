@@ -1392,6 +1392,7 @@ git commit -m "feat(pydantic): version order-created event contracts"
 - Create: `python-pydantic/lab/src/order_contracts/errors.py`
 - Modify: `python-pydantic/lab/src/order_contracts/adapters.py`
 - Create: `python-pydantic/lab/tests/test_errors.py`
+- Modify: `python-pydantic/lab/tests/test_adapters.py`
 - Modify: `python-pydantic/lab/tests/test_webhook.py`
 
 **Interfaces:**
@@ -1406,17 +1407,36 @@ git commit -m "feat(pydantic): version order-created event contracts"
 
 ```python
 import json
+from typing import Literal
 
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from order_contracts.errors import (
     MessageFailureKind,
     classify_consume_failure,
     to_error_response,
 )
-from order_contracts.events.envelope import parse_order_created
+from order_contracts.events.envelope import OrderCreatedEnvelopeV1, parse_order_created
 from order_contracts.inbound.create_order import CreateOrderRequest
+
+
+class DeliveryPreference(BaseModel):
+    speed: Literal["standard"]
+
+
+def order_created_message() -> dict[str, object]:
+    return {
+        "event_id": "msg_0123456789ab",
+        "event_type": "order.created",
+        "schema_version": 1,
+        "occurred_at": "2026-07-15T12:30:00Z",
+        "payload": {
+            "order_id": "ord_0123456789ab",
+            "customer_id": "cus_0123456789ab",
+            "total": {"amount": "24.60", "currency": "USD"},
+        },
+    }
 
 
 def test_error_response_exposes_type_and_loc_but_not_input() -> None:
@@ -1431,29 +1451,64 @@ def test_error_response_exposes_type_and_loc_but_not_input() -> None:
     response = to_error_response(caught.value)
     dumped = response.model_dump_json()
     assert response.details[0].reason in {"string_pattern_mismatch", "too_short"}
+    assert set(response.details[0].model_dump()) == {"reason", "path"}
     assert "top-secret-customer-value" not in dumped
 
 
 def test_unknown_event_version_is_incompatible_not_transient() -> None:
-    raw = json.dumps(
-        {
-            "event_id": "msg_0123456789ab",
-            "event_type": "order.created",
-            "schema_version": 9,
-            "occurred_at": "2026-07-15T12:30:00Z",
-            "payload": {},
-        }
-    ).encode()
+    message = order_created_message()
+    message["schema_version"] = 9
+    raw = json.dumps(message).encode()
     with pytest.raises(ValidationError) as caught:
         parse_order_created(raw)
     assert classify_consume_failure(caught.value) is MessageFailureKind.INCOMPATIBLE
 
 
-def test_field_validation_is_permanent_and_timeout_is_transient() -> None:
+def test_missing_event_version_is_incompatible() -> None:
+    message = order_created_message()
+    del message["schema_version"]
+    with pytest.raises(ValidationError) as caught:
+        parse_order_created(json.dumps(message).encode())
+    assert caught.value.errors()[0]["type"] == "union_tag_not_found"
+    assert classify_consume_failure(caught.value) is MessageFailureKind.INCOMPATIBLE
+
+
+def test_protocol_header_literal_error_is_incompatible() -> None:
+    message = order_created_message()
+    message["event_type"] = "order.cancelled"
+    with pytest.raises(ValidationError) as caught:
+        OrderCreatedEnvelopeV1.model_validate(message)
+    assert caught.value.errors()[0]["loc"] == ("event_type",)
+    assert caught.value.errors()[0]["type"] == "literal_error"
+    assert classify_consume_failure(caught.value) is MessageFailureKind.INCOMPATIBLE
+
+
+def test_ordinary_literal_error_is_permanent() -> None:
+    with pytest.raises(ValidationError) as caught:
+        DeliveryPreference.model_validate({"speed": "express"})
+    assert caught.value.errors()[0]["loc"] == ("speed",)
+    assert caught.value.errors()[0]["type"] == "literal_error"
+    assert classify_consume_failure(caught.value) is MessageFailureKind.PERMANENT
+
+
+def test_field_validation_is_permanent() -> None:
     with pytest.raises(ValidationError) as caught:
         CreateOrderRequest.model_validate({})
     assert classify_consume_failure(caught.value) is MessageFailureKind.PERMANENT
-    assert classify_consume_failure(TimeoutError("broker unavailable")) is MessageFailureKind.TRANSIENT
+
+
+@pytest.mark.parametrize("error_type", [TimeoutError, ConnectionError])
+def test_transport_failure_is_transient(error_type: type[Exception]) -> None:
+    error = error_type("broker unavailable")
+    assert classify_consume_failure(error) is MessageFailureKind.TRANSIENT
+
+
+@pytest.mark.parametrize("error_type", [TypeError, KeyError, AssertionError])
+def test_unknown_failure_is_propagated(error_type: type[Exception]) -> None:
+    error = error_type("unexpected consumer bug")
+    with pytest.raises(error_type) as caught:
+        classify_consume_failure(error)
+    assert caught.value is error
 ```
 
 - [ ] **Step 2: 写签名先于 payload parsing 的失败测试**
@@ -1474,8 +1529,24 @@ def test_webhook_rejects_signature_before_parsing_payload() -> None:
     with pytest.raises(InvalidWebhookSignature):
         parse_payment_webhook(
             b"not-json",
-            signature="bad-signature",
+            signature="00" * hashlib.sha256().digest_size,
             secret=SecretStr("demo-secret"),
+        )
+
+
+@pytest.mark.parametrize("signature", ["not-hex", "签名"])
+def test_webhook_rejects_malformed_hex_signature(signature: str) -> None:
+    with pytest.raises(InvalidWebhookSignature):
+        parse_payment_webhook(b"not-json", signature, SecretStr("demo-secret"))
+
+
+@pytest.mark.parametrize("signature", [None, b"00"])
+def test_webhook_rejects_non_string_signature(signature: object) -> None:
+    with pytest.raises(InvalidWebhookSignature):
+        parse_payment_webhook(
+            b"not-json",
+            signature,  # type: ignore[arg-type]
+            SecretStr("demo-secret"),
         )
 
 
@@ -1486,13 +1557,52 @@ def test_valid_signature_then_parses_payload() -> None:
     assert parsed.event_id == "evt_0123456789ab"
 ```
 
-- [ ] **Step 3: 运行并确认错误／签名接口缺失**
+- [ ] **Step 3: 写公开 create-order 解析边界测试**
 
-Run: `cd python-pydantic/lab && uv run pytest tests/test_errors.py tests/test_webhook.py -v`
+向 `tests/test_adapters.py` 追加：
+
+```python
+import json
+
+import pytest
+from pydantic import ValidationError
+
+from order_contracts.adapters import parse_create_order
+
+
+def test_parse_create_order_validates_raw_json_bytes() -> None:
+    raw = json.dumps(
+        {
+            "customer_id": "cus_0123456789ab",
+            "idempotency_key": "checkout-2026-0001",
+            "items": [
+                {
+                    "sku": "SKU-RED-1",
+                    "quantity": 2,
+                    "unit_price": {"amount": "12.30", "currency": "usd"},
+                }
+            ],
+        }
+    ).encode()
+    request = parse_create_order(raw)
+    assert request.customer_id == "cus_0123456789ab"
+    assert request.items[0].unit_price.currency == "USD"
+
+
+def test_parse_create_order_rejects_invalid_json() -> None:
+    with pytest.raises(ValidationError) as caught:
+        parse_create_order(b"not-json")
+    assert caught.value.errors()[0]["type"] == "json_invalid"
+    assert caught.value.errors()[0]["loc"] == ()
+```
+
+- [ ] **Step 4: 运行并确认错误／签名接口缺失**
+
+Run: `cd python-pydantic/lab && uv run pytest tests/test_errors.py tests/test_webhook.py tests/test_adapters.py -v`
 
 Expected: collection 因缺少 `errors.py` 或 adapter API 失败。
 
-- [ ] **Step 4: 实现稳定且不含原始 input 的错误 DTO**
+- [ ] **Step 5: 实现稳定且不含原始 input 的错误 DTO**
 
 创建 `src/order_contracts/errors.py`：
 
@@ -1536,16 +1646,25 @@ class MessageFailureKind(StrEnum):
 
 
 def classify_consume_failure(error: Exception) -> MessageFailureKind:
-    if not isinstance(error, ValidationError):
+    if isinstance(error, (TimeoutError, ConnectionError)):
         return MessageFailureKind.TRANSIENT
-    error_types = {item["type"] for item in error.errors(include_url=False)}
-    incompatible_types = {"union_tag_invalid", "union_tag_not_found", "literal_error"}
-    if error_types & incompatible_types:
-        return MessageFailureKind.INCOMPATIBLE
-    return MessageFailureKind.PERMANENT
+    if isinstance(error, ValidationError):
+        errors = error.errors(include_url=False)
+        if any(
+            item["type"] in {"union_tag_invalid", "union_tag_not_found"}
+            or (
+                item["type"] == "literal_error"
+                and item["loc"]
+                and item["loc"][-1] in {"schema_version", "event_type"}
+            )
+            for item in errors
+        ):
+            return MessageFailureKind.INCOMPATIBLE
+        return MessageFailureKind.PERMANENT
+    raise error
 ```
 
-- [ ] **Step 5: 在 adapter 中实现边界解析与 HMAC 验签**
+- [ ] **Step 6: 在 adapter 中实现边界解析与 HMAC 验签**
 
 在 `src/order_contracts/adapters.py` 增加 imports：
 
@@ -1574,26 +1693,30 @@ def parse_payment_webhook(
     signature: str,
     secret: SecretStr,
 ) -> PaymentWebhookEnvelope:
+    try:
+        supplied = bytes.fromhex(signature)
+    except (TypeError, ValueError):
+        raise InvalidWebhookSignature("invalid webhook signature") from None
     expected = hmac.new(
         secret.get_secret_value().encode(),
         raw,
         hashlib.sha256,
-    ).hexdigest()
-    if not hmac.compare_digest(expected, signature):
+    ).digest()
+    if not hmac.compare_digest(expected, supplied):
         raise InvalidWebhookSignature("invalid webhook signature")
     return PaymentWebhookEnvelope.model_validate_json(raw)
 ```
 
-- [ ] **Step 6: 验证错误、安全与失败分类**
+- [ ] **Step 7: 验证错误、安全与失败分类**
 
-Run: `cd python-pydantic/lab && uv run pytest tests/test_errors.py tests/test_webhook.py -v`
+Run: `cd python-pydantic/lab && uv run pytest tests/test_errors.py tests/test_webhook.py tests/test_adapters.py -v`
 
-Expected: `9 passed`；输出 JSON 不出现敏感 input；坏签名在坏 JSON 之前失败。
+Expected: `32 passed`；输出 JSON 不出现敏感 input/context；坏签名或畸形签名在坏 JSON 之前失败；只有明确的传输异常可重试。
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add python-pydantic/lab/src/order_contracts/errors.py python-pydantic/lab/src/order_contracts/adapters.py python-pydantic/lab/tests/test_errors.py python-pydantic/lab/tests/test_webhook.py
+git add python-pydantic/lab/src/order_contracts/errors.py python-pydantic/lab/src/order_contracts/adapters.py python-pydantic/lab/tests/test_errors.py python-pydantic/lab/tests/test_adapters.py python-pydantic/lab/tests/test_webhook.py
 git commit -m "feat(pydantic): add safe boundary error policies"
 ```
 

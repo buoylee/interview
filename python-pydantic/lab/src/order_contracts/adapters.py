@@ -27,12 +27,16 @@ def parse_payment_webhook(
     signature: str,
     secret: SecretStr,
 ) -> PaymentWebhookEnvelope:
+    try:
+        supplied = bytes.fromhex(signature)
+    except (TypeError, ValueError):
+        raise InvalidWebhookSignature("invalid webhook signature") from None
     expected = hmac.new(
         secret.get_secret_value().encode(),
         raw,
         hashlib.sha256,
-    ).hexdigest()
-    if not hmac.compare_digest(expected, signature):
+    ).digest()
+    if not hmac.compare_digest(expected, supplied):
         raise InvalidWebhookSignature("invalid webhook signature")
     return PaymentWebhookEnvelope.model_validate_json(raw)
 

@@ -37,10 +37,19 @@ class MessageFailureKind(StrEnum):
 
 
 def classify_consume_failure(error: Exception) -> MessageFailureKind:
-    if not isinstance(error, ValidationError):
+    if isinstance(error, (TimeoutError, ConnectionError)):
         return MessageFailureKind.TRANSIENT
-    error_types = {item["type"] for item in error.errors(include_url=False)}
-    incompatible_types = {"union_tag_invalid", "union_tag_not_found", "literal_error"}
-    if error_types & incompatible_types:
-        return MessageFailureKind.INCOMPATIBLE
-    return MessageFailureKind.PERMANENT
+    if isinstance(error, ValidationError):
+        errors = error.errors(include_url=False)
+        if any(
+            item["type"] in {"union_tag_invalid", "union_tag_not_found"}
+            or (
+                item["type"] == "literal_error"
+                and item["loc"]
+                and item["loc"][-1] in {"schema_version", "event_type"}
+            )
+            for item in errors
+        ):
+            return MessageFailureKind.INCOMPATIBLE
+        return MessageFailureKind.PERMANENT
+    raise error
