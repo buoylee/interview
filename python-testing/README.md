@@ -38,7 +38,9 @@
 | integration | `uv run pytest -m "integration and docker" -q` | 真 Postgres、migration、事务、锁；需要 Docker |
 | E2E | `uv run pytest -m "e2e and docker" -q` | HTTP 到 Postgres 与可控支付端的完整路径；需要 Docker |
 
-未经明确选择 `docker` marker，不应启动容器。当前 bootstrap 也可以用 `uv run pytest -q` 验证包安装与 bridge 基础示例，结果应为 `6 passed`。
+未经明确选择 `docker` marker，不应启动容器。Task 3 的 bootstrap 快照可用 `uv run pytest -q` 验证包安装与 bridge 基础示例，当时结果为 `6 passed`；累计数量会随后续章节增长。
+
+fixture ownership 规则：module/session scope 可以共享真正只读或有隔离协议的资源管理能力，但不得直接返回可变领域对象。需要多个订单或局部覆盖时，共享无状态 factory，并让每次调用创建新的 `Order`。
 
 ## 每章固定模板
 
@@ -61,7 +63,7 @@
 | 00 测试策略与风险模型 | ✅ 完成 |
 | 01 pytest 执行模型 | ✅ 完成 |
 | 02 好测试与 TDD | ✅ 完成 |
-| 03 fixture 与参数化 | ⬜ 待完成 |
+| 03 fixture 与参数化 | ✅ 完成 |
 | 04 Test doubles 与 seams | ⬜ 待完成 |
 | 05 Component 与 API 测试 | ⬜ 待完成 |
 | 06 数据库整合测试 | ⬜ 待完成 |

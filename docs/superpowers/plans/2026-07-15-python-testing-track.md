@@ -504,28 +504,33 @@ Do not encode a permanent cumulative suite count in the plan or README. Stage on
 - Consumes: `Order.create`, `Money`, and deterministic constants from Task 4.
 - Produces: typed `OrderFactory = Callable[..., Order]`, function-scoped `order_factory`, and the repository-wide rule that mutable domain objects are never returned from session/module-scoped fixtures.
 
-- [ ] **Step 1: Write a failing freshness test for the factory fixture**
+- [ ] **Step 1: Separate factory surface evidence from behavior evidence**
+
+First run an executed missing-module/symbol surface test before creating `tests.factories`; preserve that historical RED in the implementation report, then remove the obsolete test after direct behavior coverage exists. Create `tests/__init__.py`, add `OrderFactory` and the final `make_order` signature with a temporary `NotImplementedError` body, and re-run the surface test to GREEN.
+
+- [ ] **Step 2: Prove fixture registration before using the fixture**
+
+Create `tests/conftest.py` as test configuration without an `order_factory` fixture, then execute this narrow fixture-name surface test while `make_order` still raises `NotImplementedError`:
 
 ```python
-# python-testing/lab/tests/unit/test_order_factory.py
-from tests.factories import OrderFactory
+def test_order_factory_fixture_exposes_callable(request: pytest.FixtureRequest) -> None:
+    try:
+        factory = request.getfixturevalue("order_factory")
+    except pytest.FixtureLookupError:
+        pytest.fail("order_factory fixture is missing")
 
-
-def test_order_factory_returns_fresh_objects(order_factory: OrderFactory) -> None:
-    first = order_factory()
-    second = order_factory()
-    first.start_payment()
-    assert second.status.value == "pending_payment"
+    assert callable(factory)
 ```
 
-Run: `cd python-testing/lab && uv run pytest tests/unit/test_order_factory.py -q`
+Run: `cd python-testing/lab && uv run pytest tests/unit/test_order_factory.py -q -k fixture_exposes_callable`
 
-Expected: FAIL during collection because `tests.factories` and `order_factory` do not exist.
+Expected RED: one executed fixture lookup failure. Add only a temporary module-scoped `order_factory` returning the existing `make_order` callable, then re-run to GREEN. This proves registration/callability only; the callable body remains unimplemented and module scope remains deliberately uncorrected.
 
-- [ ] **Step 2: Add a typed factory and function-scoped fixture**
+- [ ] **Step 3: Execute all requested factory behaviors before implementing them**
+
+Before replacing `NotImplementedError`, add and run tests that directly call `make_order` and `order_factory`. The behavioral RED must separately report: real `Order` plus deterministic defaults, distinct mutable instances, keyword overrides, and a callable fixture producing fresh orders. Only after those tests execute and fail may `make_order` receive this implementation:
 
 ```python
-# python-testing/lab/tests/factories.py
 from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -553,38 +558,68 @@ def make_order(
     )
 ```
 
+Run: `cd python-testing/lab && uv run pytest tests/unit/test_order_factory.py -q`
+
+Expected: direct behavior REDs precede implementation; final behavior tests pass. Import/collection failures are not accepted as defaults, freshness, override, or scope evidence.
+
+- [ ] **Step 4: Prove function scope from runtime lifecycle evidence**
+
+Enable pytest's built-in `pytester` plugin in `tests/conftest.py`. Add a retained meta-regression that runs exactly two real non-meta consumer node IDs from the repository test file with `--setup-show`, asserts both inner tests pass, and counts function-scope lifecycle lines:
+
 ```python
-# python-testing/lab/tests/conftest.py
+def test_order_factory_is_function_scoped(pytester: pytest.Pytester) -> None:
+    test_file = Path(__file__).resolve()
+    result = pytester.runpytest_subprocess(
+        "--setup-show",
+        "-q",
+        f"{test_file}::test_order_factory_preserves_keyword_overrides",
+        f"{test_file}::test_order_factory_is_callable_and_returns_fresh_orders",
+    )
+
+    result.assert_outcomes(passed=2)
+    output = result.stdout.str()
+    lifecycle_counts = (
+        output.count("SETUP    F order_factory"),
+        output.count("TEARDOWN F order_factory"),
+    )
+
+    assert lifecycle_counts == (2, 2), output
+```
+
+Run: `cd python-testing/lab && uv run pytest tests/unit/test_order_factory.py::test_order_factory_is_function_scoped -q`
+
+Expected RED: the inner consumers both pass, output contains one module-scope setup/teardown, and the lifecycle assertion reports `(0, 0) != (2, 2)`. Change only the fixture scope to function and re-run to GREEN. Final `tests/conftest.py`:
+
+```python
 import pytest
 
 from tests.factories import OrderFactory, make_order
 
+pytest_plugins = ["pytester"]
 
-@pytest.fixture
+
+@pytest.fixture(scope="function")
 def order_factory() -> OrderFactory:
     return make_order
 ```
 
-Run: `cd python-testing/lab && uv run pytest tests/unit/test_order_factory.py -q`
+The pytester subprocess must select only the two named consumer node IDs, exercise the actual repository conftest/fixture, and require no `sys.path` or import workaround.
 
-Expected: `1 passed`.
-
-- [ ] **Step 3: Add a deterministic state-leak reproduction excluded from defaults**
+- [ ] **Step 5: Add a deterministic state-leak reproduction excluded from defaults**
 
 ```python
-# python-testing/lab/scenarios/fixture-leak/conftest.py
 import pytest
 
+from order_service.domain.order import Order
 from tests.factories import make_order
 
 
 @pytest.fixture(scope="module")
-def shared_order():
+def shared_order() -> Order:
     return make_order()
 ```
 
 ```python
-# python-testing/lab/scenarios/fixture-leak/test_leak.py
 def test_a_mutates_shared_order(shared_order) -> None:
     shared_order.start_payment()
 
@@ -593,23 +628,28 @@ def test_b_expected_fresh_order(shared_order) -> None:
     assert shared_order.status.value == "pending_payment"
 ```
 
-Run: `cd python-testing/lab && uv run pytest scenarios/fixture-leak -q`
+Run: `cd python-testing/lab && uv run python -m pytest scenarios/fixture-leak -q`
 
 Expected: first test passes and second test fails because the module-scoped mutable object leaked state.
 
-- [ ] **Step 4: Write the chapter and failure-scenario README**
+- [ ] **Step 6: Write the chapter, verify the executable contract, and commit**
 
 Cover: fixture dependency DAG, request-time lookup by name, cache per scope, scope mismatch, yield/finalizer LIFO teardown, teardown after setup failure, factory fixture versus object fixture, indirect parametrization, `request.param`, readable IDs, conftest visibility, plugin fixtures, autouse risk, and why session scope is an ownership decision rather than a speed switch. The failure ticket starts from the scenario above and fixes it by returning a factory or using function scope.
 
-- [ ] **Step 5: Verify fast tests remain isolated and commit**
-
-Run: `cd python-testing/lab && uv run pytest tests/unit -q --setup-show`
-
-Expected: all unit tests pass; `order_factory` is set up and torn down per test.
+Run from `python-testing/lab/`:
 
 ```bash
-git add python-testing/03-fixtures-and-parametrization.md python-testing/README.md python-testing/lab/tests python-testing/lab/scenarios/fixture-leak
-git commit -m "docs(testing): teach fixture ownership"
+uv run pytest tests/unit/test_order_factory.py -q
+uv run pytest tests/unit -q --setup-show
+uv run pytest -q
+uv run pytest --collect-only -q
+```
+
+Expected: focused, unit, and default suites pass; `order_factory` is set up and torn down per consumer; default collection contains no `scenarios/` node IDs.
+
+```bash
+git add docs/superpowers/plans/2026-07-15-python-testing-track.md python-testing/03-fixtures-and-parametrization.md python-testing/README.md python-testing/lab/tests python-testing/lab/scenarios/fixture-leak
+git commit --amend --no-edit
 ```
 
 ### Task 6: Add Application Ports, Handwritten Fakes, and Idempotent Creation
