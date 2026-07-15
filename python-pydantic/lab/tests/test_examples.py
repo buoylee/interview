@@ -80,3 +80,25 @@ def test_fastapi_validation_handler_returns_safe_error_response() -> None:
     assert response.status_code == 422
     assert parsed.details[0].path == ["body", "customer_id"]
     assert "top-secret-customer-value" not in body
+
+
+def test_fastapi_validation_handler_redacts_unknown_field_name() -> None:
+    secret_key = "api_key_sk_live_secret_material"
+    error = RequestValidationError(
+        [
+            {
+                "type": "extra_forbidden",
+                "loc": ("body", "items", 0, secret_key),
+                "msg": "Extra inputs are not permitted",
+                "input": "ignored-value",
+            }
+        ]
+    )
+    request = Request({"type": "http", "method": "POST", "path": "/orders"})
+
+    response = request_validation_handler(request, error)
+
+    body = response.body.decode()
+    parsed = ErrorResponse.model_validate(json.loads(body))
+    assert parsed.details[0].path == ["body", "items", 0, "<extra>"]
+    assert secret_key not in body

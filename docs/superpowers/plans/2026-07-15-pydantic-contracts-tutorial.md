@@ -2253,6 +2253,7 @@ git commit -m "feat(pydantic): isolate core-schema and timing examples"
 ### Task 11: 四个可执行示例与 FastAPI 薄 adapter
 
 **Files:**
+- Modify: `python-pydantic/lab/pyproject.toml`
 - Create: `python-pydantic/lab/examples/__init__.py`
 - Create: `python-pydantic/lab/examples/validate_http_payload.py`
 - Create: `python-pydantic/lab/examples/consume_event.py`
@@ -2271,11 +2272,17 @@ git commit -m "feat(pydantic): isolate core-schema and timing examples"
 创建 `tests/test_examples.py`：
 
 ```python
+import json
+
 from examples.consume_event import main as consume_event
-from examples.fastapi_adapter import app, create_order
+from examples.fastapi_adapter import app, create_order, request_validation_handler
 from examples.load_settings import main as load_settings
 from examples.validate_http_payload import main as validate_http_payload
+from fastapi.exceptions import RequestValidationError
+from order_contracts.errors import ErrorResponse
 from order_contracts.inbound.create_order import CreateOrderRequest
+from order_contracts.outbound.views import CustomerOrderView
+from starlette.requests import Request
 
 
 def test_http_example_executes() -> None:
@@ -2314,7 +2321,61 @@ def test_fastapi_adapter_registers_route_and_function_is_callable() -> None:
             ],
         }
     )
-    assert create_order(request).order_id == "ord_0123456789ab"
+    response = create_order(request)
+    assert isinstance(response, CustomerOrderView)
+    assert response.order_id == "ord_0123456789ab"
+
+
+def test_fastapi_openapi_declares_contract_response_schema() -> None:
+    responses = app.openapi()["paths"]["/orders"]["post"]["responses"]
+    success_schema = responses["200"]["content"]["application/json"]["schema"]
+    error_schema = responses["422"]["content"]["application/json"]["schema"]
+    assert success_schema == {"$ref": "#/components/schemas/CustomerOrderView"}
+    assert error_schema == {"$ref": "#/components/schemas/ErrorResponse"}
+
+
+def test_fastapi_validation_handler_returns_safe_error_response() -> None:
+    error = RequestValidationError(
+        [
+            {
+                "type": "string_pattern_mismatch",
+                "loc": ("body", "customer_id"),
+                "msg": "String should match pattern",
+                "input": "top-secret-customer-value",
+            }
+        ]
+    )
+    request = Request({"type": "http", "method": "POST", "path": "/orders"})
+
+    response = request_validation_handler(request, error)
+
+    body = response.body.decode()
+    parsed = ErrorResponse.model_validate(json.loads(body))
+    assert response.status_code == 422
+    assert parsed.details[0].path == ["body", "customer_id"]
+    assert "top-secret-customer-value" not in body
+
+
+def test_fastapi_validation_handler_redacts_unknown_field_name() -> None:
+    secret_key = "api_key_sk_live_secret_material"
+    error = RequestValidationError(
+        [
+            {
+                "type": "extra_forbidden",
+                "loc": ("body", "items", 0, secret_key),
+                "msg": "Extra inputs are not permitted",
+                "input": "ignored-value",
+            }
+        ]
+    )
+    request = Request({"type": "http", "method": "POST", "path": "/orders"})
+
+    response = request_validation_handler(request, error)
+
+    body = response.body.decode()
+    parsed = ErrorResponse.model_validate(json.loads(body))
+    assert parsed.details[0].path == ["body", "items", 0, "<extra>"]
+    assert secret_key not in body
 ```
 
 创建 `tests/test_integrations.py`，把第 13 章的 ORM attribute adapter 变成受测事实：
@@ -2459,9 +2520,13 @@ if __name__ == "__main__":
 
 ```python
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from starlette.requests import Request
 
 from order_contracts.adapters import project_customer_order, to_create_order_command
 from order_contracts.domain.order import Order
+from order_contracts.errors import ErrorDetail, ErrorResponse
 from order_contracts.inbound.create_order import CreateOrderRequest
 from order_contracts.outbound.views import CustomerOrderView
 
@@ -2469,7 +2534,26 @@ from order_contracts.outbound.views import CustomerOrderView
 app = FastAPI(title="Order contract adapter")
 
 
-@app.post("/orders", response_model=CustomerOrderView)
+@app.exception_handler(RequestValidationError)
+def request_validation_handler(
+    _request: Request,
+    error: RequestValidationError,
+) -> JSONResponse:
+    details: list[ErrorDetail] = []
+    for item in error.errors():
+        path = list(item["loc"])
+        if item["type"] == "extra_forbidden" and path:
+            path[-1] = "<extra>"
+        details.append(ErrorDetail(reason=item["type"], path=path))
+    response = ErrorResponse(details=details)
+    return JSONResponse(status_code=422, content=response.model_dump(mode="json"))
+
+
+@app.post(
+    "/orders",
+    response_model=CustomerOrderView,
+    responses={422: {"model": ErrorResponse}},
+)
 def create_order(payload: CreateOrderRequest) -> CustomerOrderView:
     command = to_create_order_command(payload)
     order = Order.create("ord_0123456789ab", command)
@@ -2480,7 +2564,7 @@ def create_order(payload: CreateOrderRequest) -> CustomerOrderView:
 
 Run: `cd python-pydantic/lab && uv run pytest tests/test_examples.py tests/test_integrations.py -v`
 
-Expected: `5 passed`。
+Expected: `8 passed`。
 
 Run: `cd python-pydantic/lab && uv run python examples/validate_http_payload.py && uv run python examples/consume_event.py && uv run python examples/load_settings.py`
 

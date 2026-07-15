@@ -18,12 +18,13 @@ def request_validation_handler(
     _request: Request,
     error: RequestValidationError,
 ) -> JSONResponse:
-    response = ErrorResponse(
-        details=[
-            ErrorDetail(reason=item["type"], path=list(item["loc"]))
-            for item in error.errors()
-        ]
-    )
+    details: list[ErrorDetail] = []
+    for item in error.errors():
+        path = list(item["loc"])
+        if item["type"] == "extra_forbidden" and path:
+            path[-1] = "<extra>"
+        details.append(ErrorDetail(reason=item["type"], path=path))
+    response = ErrorResponse(details=details)
     return JSONResponse(status_code=422, content=response.model_dump(mode="json"))
 
 
