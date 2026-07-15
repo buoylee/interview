@@ -35,6 +35,13 @@ state；application 仍負責把 constraint violation 翻譯成領域錯誤，�
 [`PostgreSQL integration test`](../lab/tests/integration/test_schema.py) 固定。先預測的目的不是
 猜對，而是把「schema 應該保證什麼」寫成可失敗的 contract。
 
+## 命名慣例與可操作的 IntegrityError
+
+**Failing/naive behavior**：不命名 constraint 時，名稱可能由 database 或 migration 工具
+臨時產生。application 捕捉到 `IntegrityError` 後只能比對易變的 message，migration 也難以
+穩定 `DROP CONSTRAINT`。更危險的 naive 修正是捕捉所有 integrity error 後一律回覆「資料
+重複」；foreign key、check 與 unique violation 的語義並不相同。
+
 ## Public contract：MetaData、Table、Column、constraint
 
 **Mechanism — Public contract**：[`MetaData`](https://docs.sqlalchemy.org/en/20/core/metadata.html)
@@ -52,12 +59,7 @@ Python contract。`Column` 同時描述 SQL 型別、nullability、server defaul
 送出前填值。時間欄位使用 timezone-aware `DateTime` 搭配 `now()`，因此非 Python 寫入路徑
 仍得到一致的 database-side default。
 
-## 命名慣例與可操作的 IntegrityError
-
-**Failing/naive behavior**：不命名 constraint 時，名稱可能由 database 或 migration 工具
-臨時產生。application 捕捉到 `IntegrityError` 後只能比對易變的 message，migration 也難以
-穩定 `DROP CONSTRAINT`。更危險的 naive 修正是捕捉所有 integrity error 後一律回覆「資料
-重複」；foreign key、check 與 unique violation 的語義並不相同。
+### 具名 constraint 作為 error contract
 
 `MetaData.naming_convention` 讓 `pk_products`、`uq_products_tenant_id_sku`、
 `ck_products_unit_price_nonnegative` 等名稱由 table、column 與 constraint token
@@ -72,6 +74,7 @@ execution plan、維運與 migration 討論能指向同一個 object。
 
 ## Python 型別、SQLAlchemy 型別、PostgreSQL 型別
 
+**Mechanism — Mental model**：
 同一欄資料經過三個型別邊界：Python value、SQLAlchemy `TypeEngine`，以及 PostgreSQL
 column type。SQLAlchemy 的
 [`Core type basics`](https://docs.sqlalchemy.org/en/20/core/type_basics.html) 說明 portable
@@ -83,24 +86,9 @@ column type。SQLAlchemy 的
 單純文件，它會參與 DDL、statement compilation、bind processing、result processing 與
 reflection，所以不應在 repository 裡繞過它手動轉字串。
 
-## Money TypeDecorator 與 cache_ok
-
-**Corrected behavior**：`Money` 依
-[`TypeDecorator`](https://docs.sqlalchemy.org/en/20/core/custom_types.html) 擴充
-`Numeric(12, 2)` 的 bind boundary。它只接受 `Decimal` 或 `None`，並在送入 driver 前以
-`ROUND_HALF_EVEN` 量化到兩位小數。集中處理可避免每個 use case 自己選 rounding mode。
-
-float 被拒絕，因為它以 binary floating-point 表示；許多十進位金額不能精確表示，先建立
-float 再轉成 `Decimal` 可能把近似誤差帶進 rounding 決策。要求 caller 從十進位字串或其他
-精確來源建立 `Decimal`，讓 cent-level 規則的輸入可預測。這個拒絕不是說 PostgreSQL
-`NUMERIC` 不精確，而是保護 Python 到 bind processor 之間的資料來源。
-
-`cache_ok = True` 宣告此 type instance 不含會改變 SQL compilation 的 mutable state，
-因此可安全參與 SQLAlchemy statement cache。若 custom type 的 constructor state 會影響
-rendered SQL，便不能無條件使用這個宣告。
-
 ## UUID、timezone、JSONB、Enum 的取捨
 
+**Mechanism — Implementation note（PostgreSQL-specific decision）**：
 UUID 適合由多個 process 先行產生 identifier，也避免 sequence 暴露總量；代價是 index 較大，
 且完全隨機的值可能降低 locality。timezone-aware timestamp 保存時間線上的 instant；顯示用
 timezone 應在 system boundary 轉換，不靠無 timezone timestamp 猜測。
@@ -119,6 +107,7 @@ lifecycle；Python `Enum` 又是另一個 application boundary。這不是普遍
 
 ## 多租戶 composite constraint
 
+**Mechanism — Public contract**：
 只讓 `order_lines.product_id` 指向 `products.id`，無法證明 line 與 product 屬於同一租戶。
 因此 `products` 額外保證 `(tenant_id, id)` 唯一，child 再用
 `(tenant_id, product_id)` composite foreign key 引用它；order、inventory 與 reservation
@@ -129,18 +118,38 @@ lifecycle；Python `Enum` 又是另一個 application boundary。這不是普遍
 API、request context 與測試負責；需要更強的 defense-in-depth 時可另外評估 PostgreSQL
 Row-Level Security。
 
+## Money TypeDecorator 與 cache_ok
+
+**Corrected behavior**：`Money` 依
+[`TypeDecorator`](https://docs.sqlalchemy.org/en/20/core/custom_types.html) 擴充
+`Numeric(12, 2)` 的 bind boundary。它只接受 `Decimal` 或 `None`，並在送入 driver 前以
+`ROUND_HALF_EVEN` 量化到兩位小數。集中處理可避免每個 use case 自己選 rounding mode。
+
+float 被拒絕，因為它以 binary floating-point 表示；許多十進位金額不能精確表示，先建立
+float 再轉成 `Decimal` 可能把近似誤差帶進 rounding 決策。要求 caller 從十進位字串或其他
+精確來源建立 `Decimal`，讓 cent-level 規則的輸入可預測。這個拒絕不是說 PostgreSQL
+`NUMERIC` 不精確，而是保護 Python 到 bind processor 之間的資料來源。
+
+`cache_ok = True` 宣告此 type instance 不含會改變 SQL compilation 的 mutable state，
+因此可安全參與 SQLAlchemy statement cache。若 custom type 的 constructor state 會影響
+rendered SQL，便不能無條件使用這個宣告。
+
 ## create_all 只屬於 Lab
 
-**Evidence**：scenario 在自己擁有的 `engine.begin()` transaction boundary 中先 drop 再
-create，接著只透過 inspector 讀回結果；pytest 的 function-scoped `recreated_schema` fixture
+**Evidence — Implementation note（Lab-only / destructive behavior）**：scenario 在自己擁有的
+`engine.begin()` transaction boundary 中先 drop 再 create，接著只透過 inspector 讀回結果；
+pytest 的 function-scoped `recreated_schema` fixture
 也在 setup／teardown 各自開啟並結束 transaction，不把 transaction ownership 隱藏到
 repository API。實際輸出保存在
 [`ch02-schema-types.md`](../lab/evidence/ch02-schema-types.md)：目前真實 PostgreSQL 回報八張
-表、`uq_products_tenant_id_sku` 與 `ix_outbox_events_claimable`。
+表、`uq_products_tenant_id_sku`、`JSONB` 型別、`ix_outbox_events_claimable`，以及
+`((status)::text = 'pending'::text)` partial-index predicate。
 
 `create_all()` 適合可丟棄 lab、測試 bootstrap 與本章的 reflection evidence；它不是生產
 schema evolution 策略。它不會表達 production migration 的版本順序、data backfill、
 online DDL 風險或 rollback 決策。M3 將由 Alembic 擁有這些責任。
+
+## 架構決策
 
 **Decision**：採用具名 database constraint、Decimal-backed `Money`、原生 UUID、timezone
 timestamp、明確的 PostgreSQL JSONB，以及 tenant-aware composite foreign key；保留

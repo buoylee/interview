@@ -22,7 +22,7 @@ def test_metadata_round_trips_through_postgresql(
     assert product_types["attributes"] == "JSONB"
 
 
-def test_schema_scenario_records_named_constraints(
+def test_schema_scenario_records_reflected_contract(
     engine: Engine,
     recreated_schema: None,
 ) -> None:
@@ -31,3 +31,5 @@ def test_schema_scenario_records_named_constraints(
     assert "table_count=8" in observations
     assert "uq_products_tenant_id_sku" in observations
     assert "ix_outbox_events_claimable" in observations
+    assert "product_attributes_type=JSONB" in observations
+    assert "outbox_claimable_predicate=((status)::text = 'pending'::text)" in observations
