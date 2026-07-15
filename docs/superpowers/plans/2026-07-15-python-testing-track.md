@@ -79,6 +79,7 @@
 - Create: `python-testing/lab/pyproject.toml`
 - Create: `python-testing/lab/src/order_service/__init__.py`
 - Create: `python-testing/lab/tests/unit/test_package_smoke.py`
+- Create: `python-testing/lab/tests/unit/test_pytest_basics.py`
 - Modify: `python/12-testing.md`
 - Modify: `python/README.md`
 
@@ -187,7 +188,15 @@ Expected: `1 passed`; Docker is not contacted.
 
 `python-testing/README.md` must include: audience, prerequisite links, the 00–11 chapter table, fast/integration/e2e command tiers, the fixed chapter template, a progress table initially marking only bootstrap complete, and links to `python-data/`, `python-concurrency/`, `performance-tuning-roadmap/`, `financial-consistency/`, `golang/testing/`, and `fastapi-ops/`.
 
-Rewrite `python/12-testing.md` to contain exactly these top-level sections: `为什么 pytest 是默认选择`, `pytest 十分钟上手`, `unittest 与 doctest 什么时候仍然合理`, `下一步：Python 测试工程 track`, `Java/Go 对照框`, and `章末面试卡`. Keep one runnable assert example, one fixture example, and one parametrize example; move all advanced promises to the new track link.
+Rewrite `python/12-testing.md` to contain exactly these top-level sections: `为什么 pytest 是默认选择`, `pytest 十分钟上手`, `unittest 与 doctest 什么时候仍然合理`, `下一步：Python 测试工程 track`, `Java/Go 对照框`, and `章末面试卡`. Keep one runnable assert example, one fixture example, and one parametrize example; move all advanced promises to the new track link. Put the three basics in `python-testing/lab/tests/unit/test_pytest_basics.py`, and copy its full contents verbatim into the bridge's single formal Python block.
+
+Run: `cd python-testing/lab && uv run pytest tests/unit/test_pytest_basics.py -q`
+
+Expected: `5 passed` from the dedicated bridge-basics file.
+
+Run: `cd python-testing/lab && uv run pytest -q`
+
+Expected: `6 passed` for the complete Task 1 suite after the bridge source is added.
 
 Update the chapter-12 row and relationship section in `python/README.md` so they point to `../python-testing/README.md` for depth.
 

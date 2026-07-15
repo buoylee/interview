@@ -30,7 +30,7 @@
 | 09 | [类型系统与 typing](09-typing.md) | 渐进类型、泛型、`Protocol`/`TypedDict`/`Annotated`、mypy/pyright |
 | 10 | [模块、包、导入系统](10-modules-packages-imports.md) | import 机制与缓存、循环导入、`__main__`、`__all__` |
 | 11 | [工程化:环境、依赖、打包、工具链](11-tooling-envs-packaging.md) | venv、uv/poetry、`pyproject.toml`、ruff、打包 |
-| 12 | [测试](12-testing.md) | pytest、fixture/parametrize、mock、coverage |
+| 12 | [测试](12-testing.md) | pytest 快速入门与框架选型；深度 → [Python 测试工程 track](../python-testing/README.md) |
 | 13 | [并发(桥接章)](13-concurrency-bridge.md) | GIL 心智、threading/multiprocessing/asyncio 怎么选 |
 | 14 | [标准库与生态地图](14-stdlib-and-ecosystem.md) | collections/itertools/pathlib/logging… + 生态地图 |
 | 15 | [CPython 执行模型](15-cpython-execution-model.md) | 字节码·code object·帧·名字解析(LOAD_FAST/GLOBAL/DEREF)·cell/闭包·自适应专门化 |
@@ -47,8 +47,9 @@
 
 ## 与仓库其他目录的关系
 
-这套教程聚焦**语言本身**。三块深水区不在这里重写,只在对应章用指针带你过去:
+这套教程聚焦**语言本身**。几块深水区不在这里重写,只在对应章用指针带你过去:
 
+- **测试工程深度** → [`../python-testing/README.md`](../python-testing/README.md):风险驱动的测试策略、pytest 机制、可测架构、真数据库、契约、并发、property/stateful、E2E 与测试套件治理。第 12 章只讲框架选型和十分钟入门。
 - **并发深度** → [`../python-concurrency/`](../python-concurrency/):GIL、threading、multiprocessing、asyncio、anyio、生产 worker/任务队列、调优。第 13 章只讲"怎么选",实操在那里。
 - **性能剖析/调试** → [`../performance-tuning-roadmap/06a-python-profiling`](../performance-tuning-roadmap/06a-python-profiling)、[`06b-python-debugging`](../performance-tuning-roadmap/06b-python-debugging)。第 15–16 章讲执行/内存的内部机制与心智,工具实操在那里。
 - **Web/服务可观测性** → [`../fastapi-ops/`](../fastapi-ops/):FastAPI 指标/追踪/日志/压测/调优。
