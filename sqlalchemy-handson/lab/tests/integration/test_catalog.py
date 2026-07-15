@@ -214,5 +214,6 @@ def test_core_dml_scenario_records_expected_result_shapes(
     assert "returned_product_name=Updated" in observations
     assert "inventory_available=8" in observations
     assert "inventory_version=2" in observations
+    assert "tenant_stock_value=100.00" in observations
     assert "tenant_report_rows=2" in observations
     assert "tenant_stock_values=130.00,130.00" in observations

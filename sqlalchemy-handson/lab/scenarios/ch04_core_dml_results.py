@@ -51,15 +51,6 @@ def run(engine: Engine) -> Evidence:
             unit_price=Decimal("12.50"),
             attributes={"color": "blue"},
         )
-        upsert_product(
-            connection,
-            tenant_id=tenant_id,
-            product_id=second_product_id,
-            sku="CORE-2",
-            name="Companion",
-            unit_price=Decimal("5.00"),
-            attributes={},
-        )
         replenish_inventory(
             connection,
             tenant_id=tenant_id,
@@ -71,6 +62,16 @@ def run(engine: Engine) -> Evidence:
             tenant_id=tenant_id,
             product_id=product_id,
             quantity=5,
+        )
+        single_product_report = inventory_report(connection, tenant_id=tenant_id)
+        upsert_product(
+            connection,
+            tenant_id=tenant_id,
+            product_id=second_product_id,
+            sku="CORE-2",
+            name="Companion",
+            unit_price=Decimal("5.00"),
+            attributes={},
         )
         replenish_inventory(
             connection,
@@ -97,6 +98,8 @@ def run(engine: Engine) -> Evidence:
             f"returned_product_name={updated.name}",
             f"inventory_available={stock.available}",
             f"inventory_version={stock.version}",
+            "tenant_stock_value="
+            f"{single_product_report[0].tenant_stock_value:.2f}",
             f"tenant_report_rows={len(report)}",
             "tenant_stock_values="
             + ",".join(f"{row.tenant_stock_value:.2f}" for row in report),

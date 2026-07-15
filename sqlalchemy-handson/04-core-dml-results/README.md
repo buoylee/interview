@@ -70,7 +70,7 @@ PostgreSQL：
 - [`test_catalog_operations_leave_transaction_ownership_to_caller`](../lab/tests/integration/test_catalog.py)
   明確 rollback caller transaction，驗證 catalog 沒有 commit。
 - [`test_core_dml_scenario_records_expected_result_shapes`](../lab/tests/integration/test_catalog.py)
-  鎖定 scenario 的七行 observation contract。
+  鎖定原始六行加上 window proof 的八行 observation contract。
 
 ## SELECT、JOIN、subquery、CTE、window function
 
@@ -214,13 +214,15 @@ upsert_preserved_product_id=True
 returned_product_name=Updated
 inventory_available=8
 inventory_version=2
+tenant_stock_value=100.00
 tenant_report_rows=2
 tenant_stock_values=130.00,130.00
 ```
 
 在本章固定環境中，第一行表示保存 rowcount 後看見兩筆 tenant insert；它不證明 network
-packet 數、server plan 或其他 DBAPI 都會回傳 `2`。最後兩行才是 window proof：report 有兩列，
-而兩列都帶 `100.00 + 30.00 = 130.00`；若只是逐列 stock value，會得到 `100.00,30.00`。
+packet 數、server plan 或其他 DBAPI 都會回傳 `2`。`tenant_stock_value=100.00` 保留 brief
+要求的原始單商品觀察；最後兩行再提供較強的 window proof：report 有兩列，而兩列都帶
+`100.00 + 30.00 = 130.00`；若只是逐列 stock value，會得到 `100.00,30.00`。
 
 「批量」的核心是把 parameter sets 或 set operation 交給資料庫邊界，不是在 Python loop 中
 重複單列 statement。真正的大批量仍要量測 parameter/page size、driver strategy、transaction
