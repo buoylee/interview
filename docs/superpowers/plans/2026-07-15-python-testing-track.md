@@ -2054,6 +2054,7 @@ git commit -m "test(testing-lab): add stateful properties"
 - Create: `python-testing/lab/scenarios/mutation/test_fee.py`
 - Create: `python-testing/lab/scenarios/mutation/README.md`
 - Create: `python-testing/lab/tests/unit/test_time_contract.py`
+- Modify: `python-testing/lab/src/order_service/domain/order.py`
 - Modify: `python-testing/lab/pyproject.toml`
 - Modify: `python-testing/README.md`
 
@@ -2134,6 +2135,8 @@ def test_order_rejects_naive_created_at() -> None:
         make_order(created_at=datetime(2026, 7, 15))
 ```
 
+Before implementation, add a second test using a custom `tzinfo` whose `utcoffset()` returns `None`; it must fail with `DID NOT RAISE`. Then validate awareness with `created_at.utcoffset() is None` and retain semantic `ValueError`/`timezone-aware` assertions rather than exact full-message assertions.
+
 Run: `cd python-testing/lab && uv run pytest tests/unit/test_time_contract.py -q`
 
 Expected: PASS and protect the branch before running mutmut on `domain/`.
@@ -2152,9 +2155,11 @@ Run: `cd python-testing/lab && uv run pytest tests/unit tests/component tests/co
 
 Expected: branch report is generated; record uncovered lines as risk questions, not a pass/fail percentage target.
 
+Configure mutmut v3 with `source_paths = ["src"]`, `only_mutate = ["src/order_service/domain/order.py"]`, and select `test_order.py`, `test_time_contract.py`, plus `tests/property`. Because mutmut v3 deliberately skips decorated dataclass bodies, first make a behavior-preserving extraction of validation rules into private module-level pure functions; retain the existing domain tests as refactoring protection.
+
 Run: `cd python-testing/lab && uv run mutmut run "order_service.domain.order*"`
 
-Expected: mutmut completes on the pure domain subset. Inspect every survivor; add a named test for any non-equivalent survivor and document equivalent mutants explicitly instead of gaming the score.
+Expected: mutmut completes on the pure domain subset. Inspect every survivor; add a named test for any behaviorally meaningful survivor. Document equivalent or non-actionable message-only mutants explicitly instead of adding exact-copy assertions to game the score. The verified Task 12 run is 26 mutants: 21 killed and 5 message-only, non-actionable survivors.
 
 - [ ] **Step 6: Write the chapter and policies**
 

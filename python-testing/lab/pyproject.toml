@@ -55,5 +55,10 @@ show_missing = true
 skip_covered = true
 
 [tool.mutmut]
-source_paths = ["src/order_service/domain"]
-pytest_add_cli_args_test_selection = ["tests/unit", "tests/property"]
+source_paths = ["src"]
+only_mutate = ["src/order_service/domain/order.py"]
+pytest_add_cli_args_test_selection = [
+    "tests/unit/test_order.py",
+    "tests/unit/test_time_contract.py",
+    "tests/property",
+]

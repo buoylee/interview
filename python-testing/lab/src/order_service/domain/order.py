@@ -17,19 +17,30 @@ class InvalidOrderTransition(RuntimeError):
     pass
 
 
+def _normalize_money(amount: Decimal, currency: str) -> str:
+    if not isinstance(amount, Decimal):
+        raise InvalidAmount("amount must be a Decimal")
+    if amount <= 0:
+        raise InvalidAmount("amount must be positive")
+    if len(currency) != 3 or not currency.isalpha():
+        raise InvalidCurrency("currency must be a three-letter code")
+    return currency.upper()
+
+
+def _validate_new_order(idempotency_key: str, created_at: datetime) -> None:
+    if not idempotency_key.strip():
+        raise ValueError("idempotency_key must not be blank")
+    if created_at.utcoffset() is None:
+        raise ValueError("created_at must be timezone-aware")
+
+
 @dataclass(frozen=True, slots=True)
 class Money:
     amount: Decimal
     currency: str
 
     def __post_init__(self) -> None:
-        if not isinstance(self.amount, Decimal):
-            raise InvalidAmount("amount must be a Decimal")
-        if self.amount <= 0:
-            raise InvalidAmount("amount must be positive")
-        if len(self.currency) != 3 or not self.currency.isalpha():
-            raise InvalidCurrency("currency must be a three-letter code")
-        object.__setattr__(self, "currency", self.currency.upper())
+        object.__setattr__(self, "currency", _normalize_money(self.amount, self.currency))
 
 
 class OrderStatus(StrEnum):
@@ -58,10 +69,7 @@ class Order:
         total: Money,
         created_at: datetime,
     ) -> "Order":
-        if not idempotency_key.strip():
-            raise ValueError("idempotency_key must not be blank")
-        if created_at.tzinfo is None:
-            raise ValueError("created_at must be timezone-aware")
+        _validate_new_order(idempotency_key, created_at)
         return cls(
             id=order_id,
             idempotency_key=idempotency_key,
