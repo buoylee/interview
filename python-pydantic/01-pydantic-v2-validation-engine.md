@@ -114,14 +114,14 @@ request = CreateOrderRequest.model_validate(payload_dict)
 
 ### JSON mode
 
-`model_validate_json()` 或 `TypeAdapter.validate_json()` 接收 JSON 的 `str`、`bytes` 或 `bytearray` 表示，直接走 JSON 解析与 JSON schema 分支：
+`model_validate_json()` 或 `TypeAdapter.validate_json()` 接收 JSON 的 `str`、`bytes` 或 `bytearray` 表示，直接走 JSON 解析与 CoreSchema 的 JSON 输入路径：
 
 ```python
 request = CreateOrderRequest.model_validate_json(raw_request_bytes)
 event = ORDER_CREATED_ADAPTER.validate_json(raw_event_bytes)
 ```
 
-这不是简单的 `json.loads(raw)` 加 `model_validate(...)` 别名。JSON mode 知道输入来自 JSON 类型系统，并能避免先构造完整 Python 中间对象；个别类型在 strict 模式下的 JSON 接受规则也可能与 Python mode 不同。因此测试必须覆盖服务真实使用的入口。
+这不是简单的 `json.loads(raw)` 加 `model_validate(...)` 别名。JSON mode 知道输入来自 JSON 类型系统，并能避免先构造完整 Python 中间对象；个别类型在 strict 模式下的 JSON 接受规则也可能与 Python mode 不同。因此测试必须覆盖服务真实使用的入口。这里执行的始终是 CoreSchema；生成给 OpenAPI／代码生成器使用的 JSON Schema 从不参与运行时验证。
 
 ### string mode
 
@@ -207,7 +207,7 @@ except ValidationError as exc:
 - `input`：触发错误的原始输入。
 - `ctx`：约束参数或自定义错误上下文。
 
-服务不能直接把完整 `errors()` 或 `str(exc)` 回给客户端或日志平台，因为 `input`、`ctx`，甚至攻击者构造的 extra-field 路径都可能含敏感信息。lab 的 [`ErrorResponse`](lab/src/order_contracts/errors.py) 只投影 machine type 与清洗后的 path；FastAPI 示例还把 `extra_forbidden` 的用户自定义 key 替换为 `<extra>`。
+服务不能直接把完整 `errors()` 或 `str(exc)` 回给客户端或日志平台，因为 `input`、`ctx`，甚至攻击者构造的 extra-field 路径都可能含敏感信息。lab 的 [`ErrorResponse`](lab/src/order_contracts/errors.py) 只移除 `input`／`ctx`，保留 machine type 与原始 `loc`；因此它并不自动保证 path 安全。HTTP 示例在 [`fastapi_adapter.py`](lab/examples/fastapi_adapter.py) 中进一步把 `extra_forbidden` 的用户自定义 key 替换为 `<extra>`。其他协议若允许任意 key，也必须按自己的模型策略清洗 location 后再跨边界输出。
 
 结论是：Pydantic 的错误树用于诊断，服务错误 DTO 用于跨边界，两者应显式映射，不能直接透传。
 
