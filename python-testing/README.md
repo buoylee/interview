@@ -59,7 +59,7 @@
 |---|---|
 | Bootstrap：track、package、配置与 bridge | ✅ 完成 |
 | 00 测试策略与风险模型 | ✅ 完成 |
-| 01 pytest 执行模型 | ⬜ 待完成 |
+| 01 pytest 执行模型 | ✅ 完成 |
 | 02 好测试与 TDD | ⬜ 待完成 |
 | 03 fixture 与参数化 | ⬜ 待完成 |
 | 04 Test doubles 与 seams | ⬜ 待完成 |
