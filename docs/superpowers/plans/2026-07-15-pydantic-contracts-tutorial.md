@@ -68,7 +68,7 @@
 - Produces: 可由 `uv` 安装的 `order_contracts` src-layout package；后续所有测试从此包导入。
 - Produces: `order_contracts.__version__ == '0.1.0'`。
 
-- [ ] **Step 1: 声明项目、依赖组和 pytest 路径**
+- [ ] **Step 1: 声明项目、构建配置、依赖组和 pytest 配置**
 
 创建 `python-pydantic/lab/pyproject.toml`：
 
@@ -84,6 +84,10 @@ dependencies = [
   "pydantic-settings>=2,<3",
 ]
 
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
 [dependency-groups]
 dev = ["pytest>=8,<10"]
 integrations = ["fastapi>=0.115,<1"]
@@ -91,9 +95,11 @@ integrations = ["fastapi>=0.115,<1"]
 [tool.uv]
 default-groups = ["dev", "integrations"]
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/order_contracts"]
+
 [tool.pytest.ini_options]
 addopts = "-ra"
-pythonpath = ["src"]
 testpaths = ["tests"]
 ```
 
@@ -109,11 +115,11 @@ def test_package_has_version() -> None:
     assert order_contracts.__version__ == "0.1.0"
 ```
 
-- [ ] **Step 3: 同步依赖并确认测试按预期失败**
+- [ ] **Step 3: 同步依赖但暂不安装项目，并确认测试按预期失败**
 
-Run: `cd python-pydantic/lab && uv sync && uv run pytest tests/test_package_smoke.py -v`
+Run: `cd python-pydantic/lab && uv sync --no-install-project && uv run --no-sync pytest tests/test_package_smoke.py -v`
 
-Expected: 依赖同步成功；pytest collection 以 `ModuleNotFoundError: No module named 'order_contracts'` 失败。`uv sync` 同时生成 `python-pydantic/lab/uv.lock`。
+Expected: 依赖同步成功但尚未安装项目；pytest collection 以 `ModuleNotFoundError: No module named 'order_contracts'` 失败。`uv sync` 同时生成 `python-pydantic/lab/uv.lock`。
 
 - [ ] **Step 4: 创建最小 package 和职责目录**
 
@@ -194,9 +200,13 @@ dist/
 
 - [ ] **Step 7: 验证 package、锁文件和忽略行为**
 
-Run: `cd python-pydantic/lab && uv run pytest tests/test_package_smoke.py -v`
+Run: `cd python-pydantic/lab && uv sync && uv run --no-sync pytest tests/test_package_smoke.py -v`
 
-Expected: `1 passed`。
+Expected: `uv sync` 使用 Hatchling 构建并安装 `order-contracts-lab`；pytest 输出 `1 passed`。
+
+Run: `cd python-pydantic/lab && uv run --no-sync python -I -c 'import order_contracts; assert order_contracts.__version__ == "0.1.0"; print(order_contracts.__version__)'`
+
+Expected: 隔离模式 Python 仍可从已安装环境导入 package，并输出 `0.1.0`。
 
 Run: `git check-ignore python-pydantic/lab/.venv python-pydantic/lab/.env python-pydantic/lab/.pytest_cache python-pydantic/lab/.env.example`
 
