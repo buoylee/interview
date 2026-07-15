@@ -1102,7 +1102,7 @@ git commit -m "feat(pydantic): add safe outbound projections"
 - Produces: `EventEnvelope[T]`、`OrderCreatedEnvelopeV1`、`OrderCreatedEnvelopeV2`、`OrderCreatedMessage`。
 - Produces: `parse_order_created(raw: bytes) -> OrderCreatedMessage`。
 - Produces: `project_order_created_v2(order: Order, event_id: str, occurred_at: datetime) -> OrderCreatedEnvelopeV2`。
-- Policy: V1 payload 对新增字段使用 `extra='ignore'` 以展示向前读取；V2 producer 使用 `extra='forbid'`；envelope 用 `schema_version` discriminator 明确选择版本。
+- Policy: V1 payload 对新增字段使用 `extra='ignore'` 以展示向前读取；V2 producer 使用 `extra='forbid'`；envelope 用 `schema_version` discriminator 明确选择版本。存在版本字段时原始类型必须严格为 `int`；缺少版本字段时保留 discriminator 原生的 `union_tag_not_found` 错误。
 
 - [ ] **Step 1: 写事件解析与兼容性失败测试**
 
@@ -1160,6 +1160,16 @@ def test_unknown_schema_version_is_incompatible() -> None:
     with pytest.raises(ValidationError) as caught:
         parse_order_created(json.dumps(message).encode())
     assert caught.value.errors()[0]["type"] == "union_tag_invalid"
+
+
+def test_missing_schema_version_uses_native_discriminator_error() -> None:
+    message = v2_message()
+    del message["schema_version"]
+    with pytest.raises(ValidationError) as caught:
+        parse_order_created(json.dumps(message).encode())
+    error = caught.value.errors()[0]
+    assert error["type"] == "union_tag_not_found"
+    assert error["loc"] == ()
 
 
 def test_v2_producer_rejects_unknown_payload_field() -> None:
@@ -1232,9 +1242,21 @@ class OrderCreatedV2(OrderCreatedV1):
 创建 `src/order_contracts/events/envelope.py`：
 
 ```python
+from collections.abc import Mapping
 from typing import Annotated, Generic, Literal, TypeAlias, TypeVar
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictInt, StrictStr, TypeAdapter
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    StrictInt,
+    StrictStr,
+    TypeAdapter,
+    field_validator,
+    model_validator,
+)
 
 from order_contracts.events.v1 import OrderCreatedV1
 from order_contracts.events.v2 import OrderCreatedV2
@@ -1242,6 +1264,28 @@ from order_contracts.events.v2 import OrderCreatedV2
 
 PayloadT = TypeVar("PayloadT")
 MessageId = Annotated[StrictStr, Field(pattern=r"^msg_[0-9a-f]{12}$")]
+
+
+class _SchemaVersionHeader(BaseModel):
+    schema_version: int
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def require_integer_schema_version(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("schema_version must be an integer")
+        return value
+
+
+def _validate_schema_version_header(value: object) -> object:
+    _SchemaVersionHeader.model_validate(value, from_attributes=True)
+    return value
+
+
+def _validate_discriminator_header(value: object) -> object:
+    if isinstance(value, Mapping) and "schema_version" not in value:
+        return value
+    return _validate_schema_version_header(value)
 
 
 class EventEnvelope(BaseModel, Generic[PayloadT]):
@@ -1252,6 +1296,11 @@ class EventEnvelope(BaseModel, Generic[PayloadT]):
     schema_version: StrictInt
     occurred_at: AwareDatetime
     payload: PayloadT
+
+    @model_validator(mode="before")
+    @classmethod
+    def require_integer_schema_version(cls, value: object) -> object:
+        return _validate_schema_version_header(value)
 
 
 class OrderCreatedEnvelopeV1(EventEnvelope[OrderCreatedV1]):
@@ -1264,9 +1313,13 @@ class OrderCreatedEnvelopeV2(EventEnvelope[OrderCreatedV2]):
     schema_version: Literal[2]
 
 
-OrderCreatedMessage: TypeAlias = Annotated[
+_DiscriminatedOrderCreatedMessage: TypeAlias = Annotated[
     OrderCreatedEnvelopeV1 | OrderCreatedEnvelopeV2,
     Field(discriminator="schema_version"),
+]
+OrderCreatedMessage: TypeAlias = Annotated[
+    _DiscriminatedOrderCreatedMessage,
+    BeforeValidator(_validate_discriminator_header),
 ]
 ORDER_CREATED_ADAPTER = TypeAdapter(OrderCreatedMessage)
 
@@ -1322,7 +1375,7 @@ def project_order_created_v2(
 
 Run: `cd python-pydantic/lab && uv run pytest tests/test_event_compatibility.py -v`
 
-Expected: `5 passed`。
+Expected: `16 passed`。
 
 - [ ] **Step 7: Commit**
 

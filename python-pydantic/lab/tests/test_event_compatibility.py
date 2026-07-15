@@ -82,6 +82,16 @@ def test_unknown_schema_version_is_incompatible() -> None:
     assert error["loc"] == ()
 
 
+def test_missing_schema_version_uses_native_discriminator_error() -> None:
+    message = v2_message()
+    del message["schema_version"]
+    with pytest.raises(ValidationError) as caught:
+        parse_order_created(json.dumps(message).encode())
+    error = caught.value.errors()[0]
+    assert error["type"] == "union_tag_not_found"
+    assert error["loc"] == ()
+
+
 @pytest.mark.parametrize("schema_version", [True, 1.0, 2.0])
 def test_schema_version_requires_raw_integer(schema_version: object) -> None:
     message = v2_message()

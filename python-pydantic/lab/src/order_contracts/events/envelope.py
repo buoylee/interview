@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from typing import Annotated, Generic, Literal, TypeAlias, TypeVar
 
 from pydantic import (
@@ -37,6 +38,12 @@ def _validate_schema_version_header(value: object) -> object:
     return value
 
 
+def _validate_discriminator_header(value: object) -> object:
+    if isinstance(value, Mapping) and "schema_version" not in value:
+        return value
+    return _validate_schema_version_header(value)
+
+
 class EventEnvelope(BaseModel, Generic[PayloadT]):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -68,7 +75,7 @@ _DiscriminatedOrderCreatedMessage: TypeAlias = Annotated[
 ]
 OrderCreatedMessage: TypeAlias = Annotated[
     _DiscriminatedOrderCreatedMessage,
-    BeforeValidator(_validate_schema_version_header),
+    BeforeValidator(_validate_discriminator_header),
 ]
 ORDER_CREATED_ADAPTER = TypeAdapter(OrderCreatedMessage)
 
