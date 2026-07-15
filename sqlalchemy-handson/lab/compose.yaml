@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:18.4
+    environment:
+      POSTGRES_USER: sqlalchemy
+      POSTGRES_PASSWORD: sqlalchemy
+      POSTGRES_DB: sqlalchemy_handson
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sqlalchemy -d sqlalchemy_handson"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
