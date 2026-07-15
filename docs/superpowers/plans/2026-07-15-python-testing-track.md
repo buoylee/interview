@@ -1031,7 +1031,35 @@ git commit -m "feat(testing-lab): add testable order use case"
 - Consumes: `CreateOrder.execute` and FastAPI dependency overrides.
 - Produces: `create_app() -> FastAPI`, dependency provider `get_create_order() -> CreateOrder`, and POST `/orders` contract with `Idempotency-Key`, decimal amount, currency, ID, status, and version.
 
-- [ ] **Step 1: Write the failing in-process API test**
+- [ ] **Step 1: Prove the importable API and symbol surface is absent**
+
+Write and execute narrow collection/symbol tests for `order_service.api`,
+`create_app`, `get_create_order`, `CreateOrderRequest`, and `OrderResponse`.
+Collection failure proves only that this public surface is absent; it does not
+prove route, validation, dependency, lifespan, serialization, idempotency, or
+fixture-cleanup behavior.
+
+- [ ] **Step 2: Introduce the minimal importable API surface**
+
+Add only enough package modules, callable stubs, and schemas for the surface
+tests to collect. Before implementing any observable API behavior, execute a
+focused behavioral RED against those callable symbols.
+
+- [ ] **Step 3: Drive each in-process API behavior from an executed RED**
+
+Use the real `CreateOrder` with memory adapters and a FastAPI dependency
+override. Retain focused RED/GREEN evidence for the unconfigured dependency,
+app metadata and route surface, lifespan ownership, exact successful response,
+header/body validation, complete duplicate-key replay without extra IDs,
+override cleanup, and manual lifespan ownership with `ASGITransport`.
+Drive two additional exceptional-cleanup RED/GREEN cycles: first prove that an
+exception escaping the exact configured-app helper leaves overrides populated
+without `finally`; then prove that an exception escaping lifespan leaves
+`app.state.ready` true without `finally`. Add only the corresponding
+`try/finally` cleanup to make each retained test green.
+
+The initial public-contract test follows as the first behavioral target after
+the minimal surface exists:
 
 ```python
 # python-testing/lab/tests/component/test_api.py
@@ -1080,9 +1108,11 @@ async def test_create_order_returns_public_contract() -> None:
 
 Run: `cd python-testing/lab && uv run pytest tests/component/test_api.py -q`
 
-Expected: FAIL during collection because `order_service.api` does not exist.
+Expected when executed chronologically before Step 2: FAIL during collection
+because `order_service.api` does not exist. Do not use this failure as evidence
+for any behavior listed in Step 3.
 
-- [ ] **Step 2: Add schemas, dependency seam, lifespan, and route**
+- [ ] **Step 4: Implement schemas, dependency seam, lifespan, and route**
 
 ```python
 # python-testing/lab/src/order_service/api/dependencies.py
@@ -1112,15 +1142,20 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.ready = True
-        yield
-        app.state.ready = False
+        try:
+            yield
+        finally:
+            app.state.ready = False
 
     app = FastAPI(title="Order Service Testing Lab", version="1.0.0", lifespan=lifespan)
 
     @app.post("/orders", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
     async def create_order(
         body: CreateOrderRequest,
-        idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
+        idempotency_key: Annotated[
+            str,
+            Header(alias="Idempotency-Key", min_length=1, pattern=r".*\S.*"),
+        ],
         use_case: Annotated[CreateOrder, Depends(get_create_order)],
     ) -> OrderResponse:
         order = await use_case.execute(
@@ -1131,15 +1166,21 @@ def create_app() -> FastAPI:
     return app
 ```
 
-- [ ] **Step 3: Verify success, validation, lifespan, and override cleanup**
+- [ ] **Step 5: Verify success, validation, lifespan, and override cleanup**
 
 Run: `cd python-testing/lab && uv run pytest tests/component/test_api.py -q`
 
 Expected: the public-contract test passes.
 
-Refactor setup into an `app` fixture that yields the configured app and calls `app.dependency_overrides.clear()` after yield. Add an async client fixture that owns `app.router.lifespan_context(app)` and `httpx.AsyncClient`. Then add these exact behaviors:
+Refactor setup into one `configured_app` context-manager helper that owns app
+creation, override installation, and exceptional cleanup. The `app` fixture
+must only delegate to this helper. Add an async client fixture that owns
+`app.router.lifespan_context(app)` and `httpx.AsyncClient`. Then add these exact
+behaviors:
 
 ```python
+from contextlib import contextmanager
+
 import pytest_asyncio
 
 
@@ -1158,10 +1199,18 @@ def use_case() -> CreateOrder:
 
 @pytest.fixture
 def app(use_case: CreateOrder):
+    with configured_app(use_case) as application:
+        yield application
+
+
+@contextmanager
+def configured_app(use_case: CreateOrder):
     application = create_app()
     application.dependency_overrides[get_create_order] = lambda: use_case
-    yield application
-    application.dependency_overrides.clear()
+    try:
+        yield application
+    finally:
+        application.dependency_overrides.clear()
 
 
 @pytest_asyncio.fixture
@@ -1202,15 +1251,38 @@ async def test_duplicate_idempotency_key_returns_same_order(client: httpx.AsyncC
 @pytest.mark.asyncio
 async def test_lifespan_marks_application_ready(app, client: httpx.AsyncClient) -> None:
     assert app.state.ready is True
+
+
+def test_configured_app_clears_override_when_context_body_raises(use_case: CreateOrder) -> None:
+    application = None
+    with pytest.raises(RuntimeError, match="override sentinel"):
+        with configured_app(use_case) as application:
+            assert get_create_order in application.dependency_overrides
+            raise RuntimeError("override sentinel")
+    assert application is not None
+    assert application.dependency_overrides == {}
+
+
+@pytest.mark.asyncio
+async def test_lifespan_clears_ready_when_context_body_raises() -> None:
+    application = create_app()
+    with pytest.raises(RuntimeError, match="lifespan sentinel"):
+        async with application.router.lifespan_context(application):
+            assert application.state.ready is True
+            raise RuntimeError("lifespan sentinel")
+    assert application.state.ready is False
 ```
 
-Together with the original public-contract test, expect five passing tests. Run the same file a second time and expect the same five passes; do not introduce a repeat plugin only for this check.
+Together with the surface/provider/metadata/lifecycle/transport/cleanup tests and
+the four parameterized validation boundaries, expect 13 passing cases. Run the
+same file a second time and expect the same 13 passes; do not introduce a repeat
+plugin only for this check.
 
-- [ ] **Step 4: Write the chapter**
+- [ ] **Step 6: Write the chapter**
 
 Cover component boundaries, ASGITransport versus a real network process, TestClient versus AsyncClient, lifespan ownership, dependency override cleanup, request validation, error-handler contracts, structured log assertions with `caplog`, snapshot/golden trade-offs, OpenAPI as a contract artifact, and why route tests must not mock the function being verified. The failure ticket is a dependency override that leaks into the next test.
 
-- [ ] **Step 5: Run fast tests and commit**
+- [ ] **Step 7: Run fast tests and commit**
 
 Run: `cd python-testing/lab && uv run pytest tests/unit tests/component -q`
 
