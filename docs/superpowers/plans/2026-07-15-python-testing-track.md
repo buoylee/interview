@@ -664,6 +664,8 @@ git commit --amend --no-edit
 - Create: `python-testing/lab/src/order_service/ports/system.py`
 - Create: `python-testing/lab/src/order_service/adapters/__init__.py`
 - Create: `python-testing/lab/src/order_service/adapters/memory.py`
+- Create: `python-testing/lab/tests/unit/test_messages.py`
+- Create: `python-testing/lab/tests/unit/test_memory_adapter.py`
 - Create: `python-testing/lab/tests/component/test_create_order.py`
 - Modify: `python-testing/README.md`
 
@@ -671,7 +673,30 @@ git commit --amend --no-edit
 - Consumes: `Order`, `Money`, `OrderFactory`, and async pytest strict mode.
 - Produces: `CreateOrderCommand`, `OutboxMessage`, `CreateOrder.execute`, `OrderRepository`, `OutboxRepository`, `UnitOfWork`, `Clock`, `IdGenerator`, `MemoryUnitOfWork`, `FrozenClock`, and `SequenceIdGenerator`. Later SQL and HTTP tasks implement these protocols without changing their signatures.
 
-- [ ] **Step 1: Write component tests for idempotency and atomic outbox intent**
+- [ ] **Step 1: Introduce importable surfaces without claiming behavior evidence**
+
+Add narrow surface tests that use `importlib` inside test functions so pytest can collect and execute them before the modules exist. First assert that the application, ports, and memory-adapter modules are discoverable; observe an assertion/`pytest.fail` RED, not a collection error. Add only package files, modules, public names, signatures, and temporary bodies that raise `NotImplementedError`. Then execute exact surface assertions for the public dataclass fields and protocol signatures. These GREENs establish importability and the later-adapter API only; they are not evidence for dataclass mutability, clock/ID behavior, repository behavior, transaction semantics, or use-case behavior.
+
+Run each focused surface node from `python-testing/lab/`. Keep the final surface assertions in `tests/unit/test_messages.py` and `tests/unit/test_memory_adapter.py`; remove any obsolete missing-module-only assertion after it has served as RED evidence.
+
+- [ ] **Step 2: Specify messages, deterministic system fakes, and repository behavior**
+
+With every public symbol importable, add one focused behavioral test (or one tightly related table) at a time and run it before implementation. Retain regression oracles for:
+
+- `CreateOrderCommand` exact values plus frozen/slotted behavior;
+- `OutboxMessage` exact defaults, mutable attempts/claim/done state, and slots;
+- `FrozenClock.now()` and ordered `SequenceIdGenerator.new()` including `RuntimeError("no IDs remaining")`;
+- independent `MemoryStore` defaults;
+- `MemoryOrderRepository` add/get/get-by-idempotency/save on real `Order` instances;
+- `MemoryOutboxRepository` add, due filtering, exact 30-second lease boundary, done exclusion, limit, claim timestamps, done cleanup, failed attempts/backoff/claim cleanup, and deliberate missing-ID errors.
+
+Every RED must execute an already-importable callable and fail by assertion, `DID NOT RAISE`, `NotImplementedError`, or another expected behavior exception. Implement only the branch proven by that RED before moving to the next one.
+
+- [ ] **Step 3: Specify copy-on-enter/publish-on-commit unit-of-work behavior**
+
+Add focused async tests in `tests/unit/test_memory_adapter.py` for copy-on-enter isolation, read-your-writes, no publication without commit, rollback on exception, publish-on-commit, deep-copy boundaries in both directions, commit count, and safe sequential re-entry. Execute the relevant node(s) before each implementation branch. Use real handwritten repositories and real `Order`/`OutboxMessage` objects; do not use `AsyncMock`, add test-only production methods, or assert only that a fake exists.
+
+- [ ] **Step 4: Specify idempotent order creation and atomic outbox intent**
 
 ```python
 # python-testing/lab/tests/component/test_create_order.py
@@ -711,9 +736,11 @@ async def test_create_order_writes_order_and_payment_request_once() -> None:
 
 Run: `cd python-testing/lab && uv run pytest tests/component/test_create_order.py -q`
 
-Expected: FAIL during collection because application and memory adapter modules do not exist.
+Expected initial use-case behavior RED: the test collects and executes against importable temporary implementations, then fails with `NotImplementedError` or an expected assertion. A missing-module or missing-symbol collection error is not evidence for idempotency, atomicity, payload content, or ID consumption.
 
-- [ ] **Step 2: Define commands, messages, and stable protocols**
+Retain component assertions for deterministic order and message IDs, exact topic/payload/timestamps/availability, one order plus one outbox row, same-key replay returning the existing order without duplicates or additional ID consumption, commit count, and message-ID exhaustion leaving orders/outbox/commit count untouched. Introduce and execute these behavioral REDs before implementing their corresponding branches.
+
+Define the stable command/message and protocol surfaces as follows:
 
 ```python
 # python-testing/lab/src/order_service/application/messages.py
@@ -795,7 +822,7 @@ class IdGenerator(Protocol):
     def new(self) -> UUID: ...
 ```
 
-- [ ] **Step 3: Implement deterministic memory fakes and the use case**
+Implement the deterministic memory fakes and use case incrementally from the executed REDs, preserving these ownership rules:
 
 Implement `memory.py` with these complete ownership rules:
 
@@ -948,7 +975,7 @@ class CreateOrder:
             return order
 ```
 
-- [ ] **Step 4: Verify component behavior and make fake rollback observable**
+Verify component behavior and make fake rollback observable:
 
 Run: `cd python-testing/lab && uv run pytest tests/component/test_create_order.py -q`
 
@@ -985,7 +1012,7 @@ Run: `cd python-testing/lab && uv run pytest tests/unit tests/component -q`
 Expected: all tests pass without Docker.
 
 ```bash
-git add python-testing/04-test-doubles-and-seams.md python-testing/README.md python-testing/lab/src/order_service/application python-testing/lab/src/order_service/ports python-testing/lab/src/order_service/adapters python-testing/lab/tests/component
+git add docs/superpowers/plans/2026-07-15-python-testing-track.md python-testing/04-test-doubles-and-seams.md python-testing/README.md python-testing/lab/src/order_service/application python-testing/lab/src/order_service/ports python-testing/lab/src/order_service/adapters python-testing/lab/tests/unit/test_messages.py python-testing/lab/tests/unit/test_memory_adapter.py python-testing/lab/tests/component
 git commit -m "feat(testing-lab): add testable order use case"
 ```
 

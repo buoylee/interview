@@ -64,7 +64,7 @@ fixture ownership 规则：module/session scope 可以共享真正只读或有�
 | 01 pytest 执行模型 | ✅ 完成 |
 | 02 好测试与 TDD | ✅ 完成 |
 | 03 fixture 与参数化 | ✅ 完成 |
-| 04 Test doubles 与 seams | ⬜ 待完成 |
+| 04 Test doubles 与 seams | ✅ 完成 |
 | 05 Component 与 API 测试 | ⬜ 待完成 |
 | 06 数据库整合测试 | ⬜ 待完成 |
 | 07 HTTP 与契约测试 | ⬜ 待完成 |
