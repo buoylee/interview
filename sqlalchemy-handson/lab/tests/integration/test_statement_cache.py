@@ -45,4 +45,7 @@ def test_compiler_scenario_reports_cache_reuse(
     recreated_schema: None,
 ) -> None:
     del recreated_schema
-    assert "compiled_cache_entries=1" in "\n".join(run(engine).observation)
+    observations = "\n".join(run(engine).observation)
+    assert "compiled_cache_entries=1" in observations
+    assert "naive_hostile_value_present_in_sql=True" in observations
+    assert "corrected_hostile_value_present_in_sql=False" in observations

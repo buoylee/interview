@@ -33,15 +33,18 @@ postgresql+psycopg://sqlalchemy:sqlalchemy@localhost:55432/sqlalchemy_handson
 `sqlalchemy`／`sqlalchemy` 是僅供本機使用的 Compose 預設帳密。提交的
 [`environment.md`](evidence/environment.md) 只會保留遮蔽密碼後的 URL。
 
+每份 evidence 都固定包含七節：Hypothesis、Setup、Command、Observation、Explanation、
+Decision、Caveat。`Command` 恰好保留一條可從本目錄重跑該份證據的命令。
+
 ## Scenario 與 evidence 對照
 
 | Scenario | Evidence | 精確目的 |
 |---|---|---|
 | [`environment.py`](scenarios/environment.py) | [`environment.md`](evidence/environment.md) | 記錄實際 Python、SQLAlchemy、psycopg、PostgreSQL 與主機平台版本，不洩漏密碼。 |
-| [`ch01_engine_execution.py`](scenarios/ch01_engine_execution.py) | [`ch01-engine-execution.md`](evidence/ch01-engine-execution.md) | 觀察首次執行的 pool checkout、SQL 編譯與 bind parameter 路徑。 |
-| [`ch02_schema_types.py`](scenarios/ch02_schema_types.py) | [`ch02-schema-types.md`](evidence/ch02-schema-types.md) | 重建並反射 M1 schema，驗證具名 constraints、JSONB 與 partial index。 |
-| [`ch03_expression_compiler.py`](scenarios/ch03_expression_compiler.py) | [`ch03-expression-compiler.md`](evidence/ch03-expression-compiler.md) | 驗證 SQL 結構與 bound values 分離，且等價 statement 重用 compiled cache。 |
-| [`ch04_core_dml_results.py`](scenarios/ch04_core_dml_results.py) | [`ch04-core-dml-results.md`](evidence/ch04-core-dml-results.md) | 重建資料後執行 tenant-scoped executemany、upsert、inventory DML 與報表。 |
+| [`ch01_engine_execution.py`](scenarios/ch01_engine_execution.py) | [`ch01-engine-execution.md`](evidence/ch01-engine-execution.md) | 執行 request-scoped Engine 與 process-scoped reuse 對照，並證明 checkout 發生在 `engine.connect()` 期間。 |
+| [`ch02_schema_types.py`](scenarios/ch02_schema_types.py) | [`ch02-schema-types.md`](evidence/ch02-schema-types.md) | 重建並反射 M1 schema，先拒絕跨租戶 FK，再接受同租戶 reference。 |
+| [`ch03_expression_compiler.py`](scenarios/ch03_expression_compiler.py) | [`ch03-expression-compiler.md`](evidence/ch03-expression-compiler.md) | compile-only 顯示 naive 拼接會嵌入 hostile value，bound parameter 則讓值離開 SQL text。 |
+| [`ch04_core_dml_results.py`](scenarios/ch04_core_dml_results.py) | [`ch04-core-dml-results.md`](evidence/ch04-core-dml-results.md) | 執行無 tenant predicate 的歧義 lookup，再以 tenant predicate 隔離結果。 |
 | [`ch05_connection_transactions.py`](scenarios/ch05_connection_transactions.py) | [`ch05-connection-transactions.md`](evidence/ch05-connection-transactions.md) | 重建資料後重現 autobegin、例外 rollback、savepoint 與 PostgreSQL failed transaction。 |
 | [`ch06_pooling_capacity.py`](scenarios/ch06_pooling_capacity.py) | [`ch06-pooling-capacity.md`](evidence/ch06-pooling-capacity.md) | 以固定 pool budget 飽和兩條連線，驗證第三次 checkout timeout 與回收。 |
 

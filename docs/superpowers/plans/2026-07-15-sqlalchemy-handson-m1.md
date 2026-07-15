@@ -384,7 +384,7 @@ def test_engine_connects_to_the_expected_postgresql(engine: Engine) -> None:
         ).one()
 
     assert database == "sqlalchemy_handson"
-    assert int(version_num) // 10_000 == 18
+    assert int(version_num) == 180004
 ```
 
 - [ ] **Step 2: Run the unit test and confirm the missing-module failure**
@@ -539,7 +539,9 @@ Expected: Ruff exits 0; mypy reports no issues; commit contains no generated dat
 
 **Interfaces:**
 
-- Produces: immutable `Evidence` document with required sections.
+- Produces: immutable `Evidence` document with exactly seven required sections:
+  Hypothesis, Setup, Command, Observation, Explanation, Decision, Caveat.
+- Enforces: every evidence document contains exactly one reproducible command.
 - Produces: `write_evidence(path: Path, evidence: Evidence) -> None`.
 - Produces: `ch01_engine_execution.run(engine: Engine) -> Evidence`.
 
@@ -559,6 +561,7 @@ def test_evidence_writer_emits_every_required_section(tmp_path: Path) -> None:
         title="Example",
         hypothesis=("one prediction",),
         setup=("one setup fact",),
+        command="uv run python -m scenarios.example",
         observation=("one observation",),
         explanation=("one explanation",),
         decision=("one decision",),
@@ -571,6 +574,7 @@ def test_evidence_writer_emits_every_required_section(tmp_path: Path) -> None:
     for heading in (
         "## Hypothesis",
         "## Setup",
+        "## Command",
         "## Observation",
         "## Explanation",
         "## Decision",
@@ -595,6 +599,10 @@ def test_execute_path_observes_checkout_before_cursor_execution(engine: Engine) 
     observations = "\n".join(evidence.observation)
 
     assert "event_order=checkout->before_cursor_execute" in observations
+    assert "checkout_during_connect=True" in observations
+    assert "sql_not_executed_at_checkout=True" in observations
+    assert "naive_distinct_pools=True" in observations
+    assert "corrected_reused_pool=True" in observations
     assert "result=42" in observations
     assert "dialect=postgresql" in observations
     assert "driver=psycopg" in observations
@@ -626,6 +634,7 @@ class Evidence:
     title: str
     hypothesis: tuple[str, ...]
     setup: tuple[str, ...]
+    command: str
     observation: tuple[str, ...]
     explanation: tuple[str, ...]
     decision: tuple[str, ...]
@@ -636,6 +645,7 @@ class Evidence:
         for heading, values in (
             ("Hypothesis", self.hypothesis),
             ("Setup", self.setup),
+            ("Command", (self.command,)),
             ("Observation", self.observation),
             ("Explanation", self.explanation),
             ("Decision", self.decision),
@@ -656,6 +666,10 @@ def write_evidence(path: Path, evidence: Evidence) -> None:
 
 Create `scenarios/ch01_engine_execution.py`:
 
+Before installing event listeners, the scenario must execute two temporary Engine-per-operation
+queries, assert their Pool objects differ, and dispose both Engines in `finally`. It must then execute
+two work units through the passed process-scoped Engine and assert that both use the same Pool.
+
 ```python
 from __future__ import annotations
 
@@ -663,7 +677,7 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Engine, event, text
+from sqlalchemy import Engine, create_engine, event, text
 
 from order_service.db.engine import build_engine
 from order_service.db.settings import DatabaseSettings
@@ -671,6 +685,23 @@ from scenarios._evidence import Evidence, write_evidence
 
 
 def run(engine: Engine) -> Evidence:
+    naive_engines = (create_engine(engine.url), create_engine(engine.url))
+    try:
+        for naive_engine in naive_engines:
+            with naive_engine.connect() as connection:
+                assert connection.scalar(text("SELECT 1")) == 1
+        naive_distinct_pools = naive_engines[0].pool is not naive_engines[1].pool
+    finally:
+        for naive_engine in naive_engines:
+            naive_engine.dispose()
+
+    corrected_pool_ids: set[int] = set()
+    for _ in range(2):
+        corrected_pool_ids.add(id(engine.pool))
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT 1")) == 1
+    corrected_reused_pool = len(corrected_pool_ids) == 1
+
     event_order: list[str] = []
     statements: list[str] = []
 
@@ -694,6 +725,8 @@ def run(engine: Engine) -> Evidence:
     event.listen(engine, "before_cursor_execute", before_cursor_execute)
     try:
         with engine.connect() as connection:
+            checkout_during_connect = event_order == ["checkout"]
+            sql_not_executed_at_checkout = not statements
             result = connection.scalar(text("SELECT :value"), {"value": 42})
     finally:
         event.remove(engine.pool, "checkout", on_checkout)
@@ -703,14 +736,19 @@ def run(engine: Engine) -> Evidence:
         title="Chapter 01 — Engine execution path",
         hypothesis=(
             "create_engine() configures an Engine without checking out a connection.",
-            "The first execute checks out a DBAPI connection before cursor execution.",
+            "Entering engine.connect() checks out a DBAPI connection before SQL execution.",
         ),
         setup=(
             f"dialect={engine.dialect.name}",
             f"driver={engine.dialect.driver}",
             f"pool={type(engine.pool).__name__}",
         ),
+        command="uv run python -m scenarios.ch01_engine_execution",
         observation=(
+            f"naive_distinct_pools={naive_distinct_pools}",
+            f"corrected_reused_pool={corrected_reused_pool}",
+            f"checkout_during_connect={checkout_during_connect}",
+            f"sql_not_executed_at_checkout={sql_not_executed_at_checkout}",
             f"event_order={'->'.join(event_order)}",
             f"statement={statements[0]}",
             f"result={result}",
@@ -758,7 +796,7 @@ uv run pytest tests/unit/test_evidence.py tests/integration/test_engine_executio
 uv run python -m scenarios.ch01_engine_execution
 ```
 
-Expected: `2 passed`; `evidence/ch01-engine-execution.md` contains the six required evidence sections, `event_order=checkout->before_cursor_execute`, and `result=42`.
+Expected: focused tests pass; evidence contains all seven required sections, proves checkout already occurred inside `engine.connect()` before SQL execution, preserves `event_order=checkout->before_cursor_execute`, and records executable `naive_distinct_pools=True` / `corrected_reused_pool=True` lifecycle observations.
 
 - [ ] **Step 6: Write chapter 01 from the verified scenario**
 
@@ -817,6 +855,10 @@ Expected: Ruff and mypy exit 0; the commit includes actual captured evidence, no
 - Produces exactly eight tables: `tenants`, `products`, `inventories`, `orders`, `order_lines`, `inventory_reservations`, `idempotency_records`, `outbox_events`.
 - Produces: function-scoped `recreated_schema` fixture for database-behavior tests.
 - Produces: `ch02_schema_types.run(engine: Engine) -> Evidence`.
+- Enforces with PostgreSQL behavior tests: cross-tenant composite references fail for
+  inventories, order_lines, and inventory_reservations; each assertion reads the expected
+  constraint name from `IntegrityError.orig` / psycopg diagnostics and explicitly rolls back
+  before reusing the Connection.
 
 - [ ] **Step 1: Write failing schema contract tests**
 
@@ -893,7 +935,14 @@ def test_schema_scenario_records_named_constraints(
     assert "table_count=8" in observations
     assert "uq_products_tenant_id_sku" in observations
     assert "ix_outbox_events_claimable" in observations
+    assert "naive_cross_tenant_rejected=True" in observations
+    assert "corrected_tenant_scoped_reference=True" in observations
 ```
+
+Also seed two tenants, products, and orders, then attempt invalid cross-tenant INSERTs into
+inventories, order_lines, and inventory_reservations. Each attempt must assert its named composite
+foreign key, call `rollback()`, and prove the Connection is reusable. The test must fail if any
+relevant composite FK is removed or weakened.
 
 - [ ] **Step 2: Run the tests and confirm the missing schema failure**
 
@@ -1142,6 +1191,9 @@ def run(engine: Engine) -> Evidence:
     with engine.begin() as connection:
         metadata.drop_all(connection)
         metadata.create_all(connection)
+    # Seed fixed parent IDs, execute a cross-tenant inventory INSERT, catch IntegrityError,
+    # assert its named composite FK, and rollback. Then execute the matching tenant-scoped
+    # INSERT successfully. Record deterministic naive_... and corrected_... observations.
     inspector = inspect(engine)
     table_names = sorted(inspector.get_table_names())
     unique_names = sorted(
@@ -1161,6 +1213,7 @@ def run(engine: Engine) -> Evidence:
             "The PostgreSQL dialect preserves JSONB and partial-index intent.",
         ),
         setup=("PostgreSQL 18.4", "SQLAlchemy MetaData.create_all() for the M1 lab"),
+        command="uv run python -m scenarios.ch02_schema_types",
         observation=(
             f"table_count={len(table_names)}",
             f"tables={','.join(table_names)}",
@@ -1332,7 +1385,10 @@ def test_compiler_scenario_reports_cache_reuse(
     recreated_schema: None,
 ) -> None:
     del recreated_schema
-    assert "compiled_cache_entries=1" in "\n".join(run(engine).observation)
+    observations = "\n".join(run(engine).observation)
+    assert "compiled_cache_entries=1" in observations
+    assert "naive_hostile_value_present_in_sql=True" in observations
+    assert "corrected_hostile_value_present_in_sql=False" in observations
 ```
 
 - [ ] **Step 2: Run tests and confirm the missing statement module**
@@ -1396,6 +1452,7 @@ def run(engine: Engine) -> Evidence:
     tenant_id = uuid4()
     product_id = uuid4()
     hostile_sku = "x'; DROP TABLE products; --"
+    naive_sql = f"SELECT * FROM products WHERE sku = '{hostile_sku}'"
     statement = product_by_sku_statement()
     compiled = statement.params(tenant_id=tenant_id, sku=hostile_sku).compile(
         dialect=postgresql.dialect()
@@ -1428,9 +1485,13 @@ def run(engine: Engine) -> Evidence:
             "Two equivalent executions reuse one explicit compiled-cache entry.",
         ),
         setup=("PostgreSQL dialect compiler", "Connection-level compiled_cache dictionary"),
+        command="uv run python -m scenarios.ch03_expression_compiler",
         observation=(
+            f"naive_sql={naive_sql}",
+            f"naive_hostile_value_present_in_sql={hostile_sku in naive_sql}",
             f"compiled_sql={compiled}",
             f"hostile_value_present_in_sql={hostile_sku in str(compiled)}",
+            f"corrected_hostile_value_present_in_sql={hostile_sku in str(compiled)}",
             f"bound_sku={compiled.params['sku']}",
             f"compiled_cache_entries={len(cache)}",
         ),
@@ -1473,7 +1534,8 @@ uv run pytest tests/unit/test_statements.py tests/integration/test_statement_cac
 uv run python -m scenarios.ch03_expression_compiler
 ```
 
-Expected: `4 passed`; evidence says `hostile_value_present_in_sql=False` and `compiled_cache_entries=1`.
+Expected: tests pass; compile-only naive SQL visibly embeds the hostile value but is never
+executed, corrected bound-parameter SQL keeps it out of SQL text, and the explicit cache has one entry.
 
 - [ ] **Step 6: Write chapter 03**
 
@@ -1520,6 +1582,8 @@ git commit -m "docs(sqlalchemy): explain expressions and cache keys"
 
 - Produces: `ProductRecord` and `InventoryRecord` immutable return types.
 - Produces: `create_tenant(connection, *, tenant_id, name) -> None`.
+- Produces: explicit idempotent `ensure_tenant(connection, *, tenant_id, name) -> None` for
+  repeatable tenant provisioning; `create_tenant` retains strict INSERT semantics.
 - Produces: `upsert_product(...) -> ProductRecord` using PostgreSQL `ON CONFLICT ... RETURNING`.
 - Produces: `replenish_inventory(...) -> InventoryRecord` using an atomic upsert.
 - Produces: `inventory_report(connection, *, tenant_id) -> list[InventoryRecord]` using a CTE and window aggregate.
@@ -1671,6 +1735,15 @@ def create_tenant(connection: Connection, *, tenant_id: UUID, name: str) -> None
     connection.execute(tenants.insert().values(id=tenant_id, name=name))
 
 
+def ensure_tenant(connection: Connection, *, tenant_id: UUID, name: str) -> None:
+    statement = (
+        pg_insert(tenants)
+        .values(id=tenant_id, name=name)
+        .on_conflict_do_nothing(index_elements=[tenants.c.id])
+    )
+    connection.execute(statement)
+
+
 def upsert_product(
     connection: Connection,
     *,
@@ -1818,7 +1891,7 @@ from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import Engine
+from sqlalchemy import Engine, select
 
 from order_service.core.catalog import (
     inventory_report,
@@ -1826,7 +1899,7 @@ from order_service.core.catalog import (
     upsert_product,
 )
 from order_service.db.engine import build_engine
-from order_service.db.schema import metadata, tenants
+from order_service.db.schema import metadata, products, tenants
 from order_service.db.settings import DatabaseSettings
 from scenarios._evidence import Evidence, write_evidence
 
@@ -1835,6 +1908,7 @@ def run(engine: Engine) -> Evidence:
     tenant_id = uuid4()
     other_tenant_id = uuid4()
     product_id = uuid4()
+    other_product_id = uuid4()
     with engine.begin() as connection:
         metadata.drop_all(connection)
         metadata.create_all(connection)
@@ -1876,6 +1950,24 @@ def run(engine: Engine) -> Evidence:
             quantity=5,
         )
         report = inventory_report(connection, tenant_id=tenant_id)
+        upsert_product(
+            connection,
+            tenant_id=other_tenant_id,
+            product_id=other_product_id,
+            sku="CORE-1",
+            name="Other Tenant Product",
+            unit_price=Decimal("99.00"),
+            attributes={},
+        )
+        naive_matches = connection.scalars(
+            select(products.c.tenant_id).where(products.c.sku == "CORE-1")
+        ).all()
+        corrected_matches = connection.scalars(
+            select(products.c.tenant_id).where(
+                products.c.tenant_id == tenant_id,
+                products.c.sku == "CORE-1",
+            )
+        ).all()
 
     return Evidence(
         title="Chapter 04 — Core DML and Result",
@@ -1884,6 +1976,7 @@ def run(engine: Engine) -> Evidence:
             "ON CONFLICT updates the existing tenant/SKU row and RETURNING exposes its identity.",
         ),
         setup=("Two tenants", "One product upserted twice", "Inventory replenished 3 + 5"),
+        command="uv run python -m scenarios.ch04_core_dml_results",
         observation=(
             f"executemany_tenant_rows={executemany_result.rowcount}",
             f"upsert_preserved_product_id={original.id == updated.id == product_id}",
@@ -1891,6 +1984,10 @@ def run(engine: Engine) -> Evidence:
             f"inventory_available={stock.available}",
             f"inventory_version={stock.version}",
             f"tenant_stock_value={report[0].tenant_stock_value:.2f}",
+            f"naive_unscoped_matches={len(naive_matches)}",
+            f"naive_cross_tenant_ambiguous={len(set(naive_matches)) > 1}",
+            f"corrected_tenant_matches={len(corrected_matches)}",
+            f"corrected_tenant_isolated={corrected_matches == [tenant_id]}",
         ),
         explanation=(
             "PostgreSQL RETURNING removes a follow-up lookup for server-visible results.",
@@ -1941,6 +2038,10 @@ def test_core_dml_scenario_records_expected_result_shapes(
     assert "executemany_tenant_rows=2" in observations
     assert "upsert_preserved_product_id=True" in observations
     assert "inventory_available=8" in observations
+    assert "naive_unscoped_matches=2" in observations
+    assert "naive_cross_tenant_ambiguous=True" in observations
+    assert "corrected_tenant_matches=1" in observations
+    assert "corrected_tenant_isolated=True" in observations
 ```
 
 Run:
@@ -1950,7 +2051,8 @@ uv run pytest tests/integration/test_catalog.py -q
 uv run python -m scenarios.ch04_core_dml_results
 ```
 
-Expected: `3 passed`; evidence contains all six exact observation lines from Step 4.
+Expected: tests pass; evidence retains the DML/result observations and adds deterministic
+naive unscoped ambiguity plus corrected tenant-scoped isolation observations.
 
 - [ ] **Step 6: Write chapter 04**
 
@@ -1998,6 +2100,8 @@ git commit -m "feat(sqlalchemy): add the Core catalog slice"
 
 - Produces: `RegisterStockCommand`, the transaction input DTO.
 - Produces: `register_product_with_stock(engine: Engine, command: RegisterStockCommand) -> InventoryRecord`.
+- Enforces: repeated service calls can provision multiple products for one tenant, and a repeated
+  tenant/SKU request replenishes inventory through the canonical `ProductRecord.id` returned by upsert.
 - Enforces: the application-service entry point owns `with engine.begin()`; Core functions remain commit-free.
 - Produces: `ch05_connection_transactions.run(engine: Engine) -> Evidence`.
 
@@ -2069,6 +2173,11 @@ def test_application_service_rolls_back_every_prior_write(
         assert connection.scalar(select(func.count()).select_from(products)) == 0
 ```
 
+Add real PostgreSQL regressions for two products under one tenant and for replaying the same
+tenant/SKU with a different requested product ID. The latter must assert one canonical product row,
+one canonical inventory row, and accumulated inventory on the original ID. Retain the rollback and
+lower-layer transaction-ownership tests.
+
 Append this architecture guard to `tests/unit/test_package_contract.py` and add `from pathlib import Path` at the top:
 
 ```python
@@ -2114,7 +2223,7 @@ from sqlalchemy import Engine
 
 from order_service.core.catalog import (
     InventoryRecord,
-    create_tenant,
+    ensure_tenant,
     replenish_inventory,
     upsert_product,
 )
@@ -2139,12 +2248,12 @@ def register_product_with_stock(
     if command.quantity <= 0:
         raise ValueError("quantity must be positive")
     with engine.begin() as connection:
-        create_tenant(
+        ensure_tenant(
             connection,
             tenant_id=command.tenant_id,
             name=command.tenant_name,
         )
-        upsert_product(
+        product = upsert_product(
             connection,
             tenant_id=command.tenant_id,
             product_id=command.product_id,
@@ -2156,12 +2265,17 @@ def register_product_with_stock(
         return replenish_inventory(
             connection,
             tenant_id=command.tenant_id,
-            product_id=command.product_id,
+            product_id=product.id,
             quantity=command.quantity,
         )
 ```
 
 - [ ] **Step 4: Implement a deterministic transaction-state scenario**
+
+The scenario must also execute a naive failed root transaction: catch `IntegrityError`, prove the
+next statement is rejected, call public `rollback()`, and prove the same Connection is reusable.
+Record deterministic `naive_failed_transaction_rejected=True` and
+`corrected_connection_reusable=True` observations while retaining the original state observations.
 
 Create `scenarios/ch05_connection_transactions.py`:
 
@@ -2230,6 +2344,7 @@ def run(engine: Engine) -> Evidence:
             "Engine.begin() rolls back on exception, while a savepoint can roll back one failed unit.",
         ),
         setup=("Fresh PostgreSQL schema", "One exception block", "One nested transaction"),
+        command="uv run python -m scenarios.ch05_connection_transactions",
         observation=(
             f"in_transaction_before_execute={before_execute}",
             f"in_transaction_after_execute={after_execute}",
@@ -2286,6 +2401,8 @@ def test_transaction_scenario_records_autobegin_and_savepoint(
     assert "in_transaction_after_execute=True" in observations
     assert "exception_block_rolled_back=True" in observations
     assert "savepoint_preserved_outer=True" in observations
+    assert "naive_failed_transaction_rejected=True" in observations
+    assert "corrected_connection_reusable=True" in observations
 ```
 
 Run:
@@ -2393,6 +2510,10 @@ def test_pool_scenario_records_capacity_and_timeout() -> None:
     assert "configured_hard_limit=2" in observations
     assert "checked_out_at_timeout=2" in observations
     assert "timeout_class=sqlalchemy.exc.TimeoutError" in observations
+    assert "naive_checkout_timed_out=True" in observations
+    assert "corrected_pool_recovered=True" in observations
+    assert "timeout_within_expected_bound=True" in observations
+    assert "waited_seconds=" not in observations
 ```
 
 - [ ] **Step 2: Run tests and confirm missing modules**
@@ -2455,7 +2576,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 from sqlalchemy.pool import QueuePool
 
@@ -2469,6 +2590,8 @@ class PoolExhaustionObservation:
     waited_seconds: float
     error_message: str
     checked_out_at_timeout: int
+    event_names: tuple[str, ...]
+    checked_out_after_recovery: int
 
 
 def observe_pool_exhaustion(settings: DatabaseSettings) -> PoolExhaustionObservation:
@@ -2483,6 +2606,16 @@ def observe_pool_exhaustion(settings: DatabaseSettings) -> PoolExhaustionObserva
     release = threading.Event()
     holder_errors: list[Exception] = []
     pool = cast(QueuePool, engine.pool)
+    event_names: list[str] = []
+    event_lock = threading.Lock()
+
+    def record_event(name: str) -> None:
+        with event_lock:
+            event_names.append(name)
+
+    event.listen(pool, "checkout", lambda *_args: record_event("checkout"))
+    event.listen(pool, "reset", lambda *_args: record_event("reset"))
+    event.listen(pool, "checkin", lambda *_args: record_event("checkin"))
 
     def hold_connection() -> None:
         try:
@@ -2495,37 +2628,48 @@ def observe_pool_exhaustion(settings: DatabaseSettings) -> PoolExhaustionObserva
             holder_errors.append(error)
 
     threads = [threading.Thread(target=hold_connection) for _ in range(2)]
-    observation: PoolExhaustionObservation | None = None
+    timeout_result: tuple[float, str, int] | None = None
     try:
-        for thread in threads:
-            thread.start()
-        both_checked_out.wait(timeout=2)
-        started = time.perf_counter()
         try:
-            third_connection = engine.connect()
-        except SQLAlchemyTimeoutError as error:
-            waited = time.perf_counter() - started
-            observation = PoolExhaustionObservation(
-                waited_seconds=waited,
-                error_message=str(error),
-                checked_out_at_timeout=pool.checkedout(),
-            )
-        else:
-            third_connection.close()
-            raise AssertionError("third checkout unexpectedly succeeded")
+            for thread in threads:
+                thread.start()
+            both_checked_out.wait(timeout=2)
+            started = time.perf_counter()
+            try:
+                third_connection = engine.connect()
+            except SQLAlchemyTimeoutError as error:
+                waited = time.perf_counter() - started
+                record_event("timeout")
+                timeout_result = (waited, str(error), pool.checkedout())
+            else:
+                third_connection.close()
+                raise AssertionError("third checkout unexpectedly succeeded")
+        finally:
+            record_event("release")
+            release.set()
+            for thread in threads:
+                if thread.ident is not None:
+                    thread.join(timeout=2)
+                    if thread.is_alive():
+                        holder_errors.append(TimeoutError("connection holder did not stop"))
+        if holder_errors:
+            raise ExceptionGroup("connection holders failed", holder_errors)
+        if timeout_result is None:
+            raise AssertionError("pool exhaustion observation was not captured")
+
+        with engine.connect() as connection:
+            connection.scalar(text("SELECT 1"))
+
+        waited, error_message, checked_out_at_timeout = timeout_result
+        return PoolExhaustionObservation(
+            waited_seconds=waited,
+            error_message=error_message,
+            checked_out_at_timeout=checked_out_at_timeout,
+            event_names=tuple(event_names),
+            checked_out_after_recovery=pool.checkedout(),
+        )
     finally:
-        release.set()
-        for thread in threads:
-            if thread.ident is not None:
-                thread.join(timeout=2)
-                if thread.is_alive():
-                    holder_errors.append(TimeoutError("connection holder did not stop"))
         engine.dispose()
-    if holder_errors:
-        raise ExceptionGroup("connection holders failed", holder_errors)
-    if observation is None:
-        raise AssertionError("pool exhaustion observation was not captured")
-    return observation
 
 
 def run(settings: DatabaseSettings) -> Evidence:
@@ -2537,11 +2681,14 @@ def run(settings: DatabaseSettings) -> Evidence:
             "A third checkout waits pool_timeout before SQLAlchemy raises TimeoutError.",
         ),
         setup=("pool_size=2", "max_overflow=0", "pool_timeout=0.2 seconds"),
+        command="uv run python -m scenarios.ch06_pooling_capacity",
         observation=(
             "configured_hard_limit=2",
             f"checked_out_at_timeout={observed.checked_out_at_timeout}",
             "timeout_class=sqlalchemy.exc.TimeoutError",
-            f"waited_seconds={observed.waited_seconds:.3f}",
+            "naive_checkout_timed_out=True",
+            f"corrected_pool_recovered={observed.checked_out_after_recovery == 0}",
+            f"timeout_within_expected_bound={0.15 <= observed.waited_seconds < 0.8}",
             f"error_message={observed.error_message}",
         ),
         explanation=(
@@ -2586,7 +2733,9 @@ Before using `--count=5`, add this exact entry to `[dependency-groups].dev` in `
 "pytest-repeat>=0.9,<1",
 ```
 
-Expected: unit and integration tests pass; all five repeated executions pass; evidence records a wait near 0.2 seconds and two checked-out connections.
+Expected: unit and integration tests pass; all five repeated executions pass; the test retains the
+bounded timing assertion, while committed evidence records `timeout_within_expected_bound=True`
+instead of a wall-clock millisecond value and proves recovery after saturation.
 
 - [ ] **Step 6: Write chapter 06**
 
@@ -2657,6 +2806,7 @@ EXPECTED_EVIDENCE = {
 REQUIRED_HEADINGS = {
     "## Hypothesis",
     "## Setup",
+    "## Command",
     "## Observation",
     "## Explanation",
     "## Decision",
@@ -2670,6 +2820,13 @@ def test_committed_evidence_manifest_is_complete() -> None:
     for path in evidence_dir.glob("*.md"):
         rendered = path.read_text(encoding="utf-8")
         assert REQUIRED_HEADINGS <= set(rendered.splitlines())
+        command_section = rendered.split("## Command\n\n", maxsplit=1)[1].split(
+            "\n## Observation", maxsplit=1
+        )[0]
+        command_lines = [
+            line for line in command_section.splitlines() if line.startswith("- ")
+        ]
+        assert len(command_lines) == 1
 ```
 
 - [ ] **Step 2: Run the manifest test and confirm environment evidence is missing**
@@ -2710,6 +2867,7 @@ def main() -> None:
             title="M1 environment manifest",
             hypothesis=("The committed evidence identifies every behavior-affecting runtime version.",),
             setup=(f"database_url={settings.safe_url}",),
+            command="uv run python -m scenarios.environment",
             observation=(
                 f"python={platform.python_version()}",
                 f"implementation={sys.implementation.name}",

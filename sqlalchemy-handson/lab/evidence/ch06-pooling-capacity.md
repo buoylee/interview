@@ -11,12 +11,18 @@
 - max_overflow=0
 - pool_timeout=0.2 seconds
 
+## Command
+
+- uv run python -m scenarios.ch06_pooling_capacity
+
 ## Observation
 
 - configured_hard_limit=2
 - checked_out_at_timeout=2
 - timeout_class=sqlalchemy.exc.TimeoutError
-- waited_seconds=0.205
+- naive_checkout_timed_out=True
+- corrected_pool_recovered=True
+- timeout_within_expected_bound=True
 - error_message=QueuePool limit of size 2 overflow 0 reached, connection timed out, timeout 0.20 (Background on this error at: https://sqlalche.me/e/20/3o7r)
 
 ## Explanation

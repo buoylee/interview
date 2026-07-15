@@ -29,6 +29,8 @@ state；application 仍負責把 constraint violation 翻譯成領域錯誤，�
    `ix_outbox_events_claimable`。
 4. `Money` 會以 half-even 將 `Decimal("12.345")` 量化為 `Decimal("12.34")`，float 則被
    拒絕。
+5. `(tenant_id, parent_id)` 不一致的 inventory、order line 與 reservation 會被 PostgreSQL
+   依各自具名 composite foreign key 拒絕；rollback 後同一 Connection 可再次使用。
 
 這些預測分別由
 [`unit contract test`](../lab/tests/unit/test_schema_contract.py) 與
@@ -143,7 +145,10 @@ pytest 的 function-scoped `recreated_schema` fixture
 repository API。實際輸出保存在
 [`ch02-schema-types.md`](../lab/evidence/ch02-schema-types.md)：目前真實 PostgreSQL 回報八張
 表、`uq_products_tenant_id_sku`、`JSONB` 型別、`ix_outbox_events_claimable`，以及
-`((status)::text = 'pending'::text)` partial-index predicate。
+`((status)::text = 'pending'::text)` partial-index predicate。scenario 另外先嘗試跨租戶
+inventory reference，從 `IntegrityError.orig` 的 psycopg diagnostic 讀到具名 constraint，
+rollback 後再插入同租戶 reference；integration test 對 inventories、order_lines 與
+inventory_reservations 重複同一行為契約。
 
 `create_all()` 適合可丟棄 lab、測試 bootstrap 與本章的 reflection evidence；它不是生產
 schema evolution 策略。它不會表達 production migration 的版本順序、data backfill、

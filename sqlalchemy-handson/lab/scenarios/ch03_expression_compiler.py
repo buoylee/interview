@@ -20,6 +20,7 @@ def run(engine: Engine) -> Evidence:
     tenant_id = uuid4()
     product_id = uuid4()
     hostile_sku = "x'; DROP TABLE products; --"
+    naive_sql = f"SELECT * FROM products WHERE sku = '{hostile_sku}'"
     statement = product_by_sku_statement()
     compiled = statement.params(tenant_id=tenant_id, sku=hostile_sku).compile(
         dialect=postgresql.dialect()  # type: ignore[no-untyped-call]
@@ -53,9 +54,13 @@ def run(engine: Engine) -> Evidence:
             "Two equivalent executions reuse one explicit compiled-cache entry.",
         ),
         setup=("PostgreSQL dialect compiler", "Connection-level compiled_cache dictionary"),
+        command="uv run python -m scenarios.ch03_expression_compiler",
         observation=(
+            f"naive_sql={naive_sql}",
+            f"naive_hostile_value_present_in_sql={hostile_sku in naive_sql}",
             f"compiled_sql={compiled_sql}",
             f"hostile_value_present_in_sql={hostile_sku in str(compiled)}",
+            f"corrected_hostile_value_present_in_sql={hostile_sku in str(compiled)}",
             f"bound_sku={compiled.params['sku']}",
             f"compiled_cache_entries={len(cache)}",
         ),

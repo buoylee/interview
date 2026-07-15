@@ -10,7 +10,7 @@ from sqlalchemy import Engine
 
 from order_service.core.catalog import (
     InventoryRecord,
-    create_tenant,
+    ensure_tenant,
     replenish_inventory,
     upsert_product,
 )
@@ -35,12 +35,12 @@ def register_product_with_stock(
     if command.quantity <= 0:
         raise ValueError("quantity must be positive")
     with engine.begin() as connection:
-        create_tenant(
+        ensure_tenant(
             connection,
             tenant_id=command.tenant_id,
             name=command.tenant_name,
         )
-        upsert_product(
+        product = upsert_product(
             connection,
             tenant_id=command.tenant_id,
             product_id=command.product_id,
@@ -52,6 +52,6 @@ def register_product_with_stock(
         return replenish_inventory(
             connection,
             tenant_id=command.tenant_id,
-            product_id=command.product_id,
+            product_id=product.id,
             quantity=command.quantity,
         )

@@ -19,6 +19,10 @@ def test_pool_scenario_records_capacity_and_timeout() -> None:
     assert "configured_hard_limit=2" in observations
     assert "checked_out_at_timeout=2" in observations
     assert "timeout_class=sqlalchemy.exc.TimeoutError" in observations
+    assert "naive_checkout_timed_out=True" in observations
+    assert "corrected_pool_recovered=True" in observations
+    assert "timeout_within_expected_bound=True" in observations
+    assert "waited_seconds=" not in observations
 
 
 def test_timeout_emits_no_checkout_event_and_pool_recovers() -> None:

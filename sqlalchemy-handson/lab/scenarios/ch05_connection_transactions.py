@@ -97,6 +97,7 @@ def run(engine: Engine) -> Evidence:
             "One failed root transaction and one exception block",
             "One nested transaction",
         ),
+        command="uv run python -m scenarios.ch05_connection_transactions",
         observation=(
             f"in_transaction_before_execute={before_execute}",
             f"in_transaction_after_execute={after_execute}",
@@ -105,8 +106,12 @@ def run(engine: Engine) -> Evidence:
             f"failed_transaction_active={failed_transaction_active}",
             "failed_transaction_rejected_statement="
             f"{failed_transaction_rejected_statement}",
+            "naive_failed_transaction_rejected="
+            f"{failed_transaction_rejected_statement}",
             f"in_transaction_after_rollback={after_failed_rollback}",
             "connection_reusable_after_rollback="
+            f"{connection_reusable_after_rollback}",
+            "corrected_connection_reusable="
             f"{connection_reusable_after_rollback}",
         ),
         explanation=(

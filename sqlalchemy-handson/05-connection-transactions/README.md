@@ -23,15 +23,15 @@ Transaction 與 isolation/autocommit 的完整 API 索引。
 前兩步應留在資料庫，還是三步一起消失？誰有足夠資訊做這個決定？
 
 只有 application service 知道「三個 lower-level operation 合起來是一個業務操作」。
-`create_tenant()` 不知道後面還要建立 product；`upsert_product()` 也不知道 inventory 是不是同一個
+`ensure_tenant()` 不知道後面還要建立 product；`upsert_product()` 也不知道 inventory 是不是同一個
 成功條件。因此交易邊界不能由最先完成的 lower-level function 決定。正確 ownership 是：
 
 ```text
 application service
   └─ Engine.begin()：一個 use case 的 commit／rollback 邊界
-       ├─ create_tenant(Connection)
-       ├─ upsert_product(Connection)
-       └─ replenish_inventory(Connection)
+       ├─ ensure_tenant(Connection)
+       ├─ upsert_product(Connection) → canonical ProductRecord
+       └─ replenish_inventory(Connection, product.id)
 ```
 
 成功離開 block 時，context manager commit 三筆寫入；任何一步把例外傳出 block，context manager
@@ -39,7 +39,9 @@ rollback 整個 root transaction。這不是「service layer 通常這樣寫」�
 [`test_application_service_commits_the_complete_operation`](../lab/tests/integration/test_transactions.py)
 與
 [`test_application_service_rolls_back_every_prior_write`](../lab/tests/integration/test_transactions.py)
-在真實 PostgreSQL 上鎖定的行為。
+在真實 PostgreSQL 上鎖定的行為。另兩個 regression 會在同租戶註冊兩個商品，並以新 requested
+ID 重送同一 SKU；service 必須保留 upsert 回傳的 canonical product ID，補貨也只能寫入該
+canonical inventory row。
 
 ## 先預測，再執行
 
@@ -187,7 +189,8 @@ application-service root boundary，觸發整體 rollback。
 failed-transaction recovery 規則可能不同，不應把 PostgreSQL error code 寫成跨 dialect contract。
 
 生成的
-[`ch05-connection-transactions.md`](../lab/evidence/ch05-connection-transactions.md) 固定八行：
+[`ch05-connection-transactions.md`](../lab/evidence/ch05-connection-transactions.md) 保留既有八個
+狀態觀察，並加上明確的 naive／corrected 對照：
 
 ```text
 in_transaction_before_execute=False
@@ -198,6 +201,8 @@ failed_transaction_active=True
 failed_transaction_rejected_statement=True
 in_transaction_after_rollback=False
 connection_reusable_after_rollback=True
+naive_failed_transaction_rejected=True
+corrected_connection_reusable=True
 ```
 
 前兩行證明 autobegin；第三行證明 exception block rollback；第四行證明 savepoint rollback 後 outer

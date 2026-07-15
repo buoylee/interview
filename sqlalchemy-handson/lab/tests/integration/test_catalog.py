@@ -217,3 +217,7 @@ def test_core_dml_scenario_records_expected_result_shapes(
     assert "tenant_stock_value=100.00" in observations
     assert "tenant_report_rows=2" in observations
     assert "tenant_stock_values=130.00,130.00" in observations
+    assert "naive_unscoped_matches=2" in observations
+    assert "naive_cross_tenant_ambiguous=True" in observations
+    assert "corrected_tenant_matches=1" in observations
+    assert "corrected_tenant_isolated=True" in observations

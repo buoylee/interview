@@ -24,8 +24,10 @@ dispose 自己的 `Engine`。
 
 1. `create_engine()` 只組態 `Engine`、`Pool` 與 `Dialect`，不會立即建立或 checkout
    實體 DBAPI connection。
-2. 第一次 `engine.connect()` 後執行 SQL 時，公開 event 應先觀察到 pool `checkout`，
-   再觀察到 `before_cursor_execute`。
+2. 進入第一次 `engine.connect()` context 時就會觀察到 pool `checkout`；此時尚未呼叫
+   `scalar()`／`execute()`，也不會有 `before_cursor_execute`。
+3. 隨後執行 SQL 才會觀察到 `before_cursor_execute`；完整事件順序仍是
+   `checkout->before_cursor_execute`。
 
 SQLAlchemy 的
 [`Engine Configuration`](https://docs.sqlalchemy.org/en/20/core/engines.html) 文件把
@@ -66,10 +68,11 @@ SQLAlchemy 的
 **Mechanism — Mental model**：把一次同步 Core 執行想成以下資料與資源路徑：
 
 ```text
-text("SELECT :value") + {"value": 42}
-  → SQLAlchemy Connection
+engine.connect()
   → Engine（選定 Pool 與 Dialect）
   → Pool checkout（取得可用的 DBAPI connection）
+  → 回傳 SQLAlchemy Connection
+connection.scalar(text("SELECT :value"), {"value": 42})
   → PostgreSQL/psycopg Dialect（編譯 SQL、調整參數格式）
   → psycopg cursor.execute(statement, parameters)
   → PostgreSQL
@@ -120,6 +123,9 @@ allowlist。
 只借用 `Connection`；CLI 自己建立的 `Engine` 則在 `finally` 中 dispose。這讓案例與
 production decision 使用同一套資源模型。
 
+scenario 會真的建立兩個 naive Engine、各執行一次查詢並確認得到兩個不同 Pool，然後以注入的
+同一個 Engine 執行兩個工作單元，確認共用同一 Pool；兩個 naive Engine 都在 `finally` dispose。
+
 ## Evidence：事件順序與真實 PostgreSQL 結果
 
 **Evidence**：
@@ -127,14 +133,18 @@ production decision 使用同一套資源模型。
 PostgreSQL 執行 scenario，要求觀察同時包含：
 
 - `event_order=checkout->before_cursor_execute`
+- `checkout_during_connect=True`
+- `sql_not_executed_at_checkout=True`
+- `naive_distinct_pools=True`
+- `corrected_reused_pool=True`
 - `result=42`
 - `dialect=postgresql`
 - `driver=psycopg`
 
 CLI 會把同一個 immutable `Evidence` 寫成
 [`ch01-engine-execution.md`](../lab/evidence/ch01-engine-execution.md)。該檔案是執行產物，
-不是手寫範例；除了 observation，也保留 hypothesis、setup、explanation、decision 與
-caveat。事件證據支持本案例的 checkout／execute 順序，但沒有量測整個服務的 pool
+不是手寫範例；固定保留 Hypothesis、Setup、Command、Observation、Explanation、Decision、
+Caveat 七節，其中 Command 只有一條可重跑命令。事件證據支持本案例的 checkout／execute 順序，但沒有量測整個服務的 pool
 容量或 latency；那些問題不能由 `SELECT 42` 外推。
 
 ## 架構決策表

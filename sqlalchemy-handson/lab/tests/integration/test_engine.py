@@ -11,4 +11,4 @@ def test_engine_connects_to_the_expected_postgresql(engine: Engine) -> None:
         ).one()
 
     assert database == "sqlalchemy_handson"
-    assert int(version_num) // 10_000 == 18
+    assert int(version_num) == 180004

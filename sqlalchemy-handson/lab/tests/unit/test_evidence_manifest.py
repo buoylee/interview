@@ -12,6 +12,7 @@ EXPECTED_EVIDENCE = {
 REQUIRED_HEADINGS = {
     "## Hypothesis",
     "## Setup",
+    "## Command",
     "## Observation",
     "## Explanation",
     "## Decision",
@@ -25,3 +26,10 @@ def test_committed_evidence_manifest_is_complete() -> None:
     for path in evidence_dir.glob("*.md"):
         rendered = path.read_text(encoding="utf-8")
         assert set(rendered.splitlines()) >= REQUIRED_HEADINGS
+        command_section = rendered.split("## Command\n\n", maxsplit=1)[1].split(
+            "\n## Observation", maxsplit=1
+        )[0]
+        command_lines = [
+            line for line in command_section.splitlines() if line.startswith("- ")
+        ]
+        assert len(command_lines) == 1

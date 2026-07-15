@@ -5,7 +5,7 @@ from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import Engine
+from sqlalchemy import Engine, select
 
 from order_service.core.catalog import (
     inventory_report,
@@ -13,7 +13,7 @@ from order_service.core.catalog import (
     upsert_product,
 )
 from order_service.db.engine import build_engine
-from order_service.db.schema import metadata, tenants
+from order_service.db.schema import metadata, products, tenants
 from order_service.db.settings import DatabaseSettings
 from scenarios._evidence import Evidence, write_evidence
 
@@ -23,6 +23,7 @@ def run(engine: Engine) -> Evidence:
     other_tenant_id = uuid4()
     product_id = uuid4()
     second_product_id = uuid4()
+    other_product_id = uuid4()
     with engine.begin() as connection:
         metadata.drop_all(connection)
         metadata.create_all(connection)
@@ -66,6 +67,24 @@ def run(engine: Engine) -> Evidence:
         single_product_report = inventory_report(connection, tenant_id=tenant_id)
         upsert_product(
             connection,
+            tenant_id=other_tenant_id,
+            product_id=other_product_id,
+            sku="CORE-1",
+            name="Other Tenant Product",
+            unit_price=Decimal("99.00"),
+            attributes={},
+        )
+        naive_matches = connection.scalars(
+            select(products.c.tenant_id).where(products.c.sku == "CORE-1")
+        ).all()
+        corrected_matches = connection.scalars(
+            select(products.c.tenant_id).where(
+                products.c.tenant_id == tenant_id,
+                products.c.sku == "CORE-1",
+            )
+        ).all()
+        upsert_product(
+            connection,
             tenant_id=tenant_id,
             product_id=second_product_id,
             sku="CORE-2",
@@ -92,6 +111,7 @@ def run(engine: Engine) -> Evidence:
             "One product upserted twice plus one companion product",
             "Inventory replenished to 8 and 6 units",
         ),
+        command="uv run python -m scenarios.ch04_core_dml_results",
         observation=(
             f"executemany_tenant_rows={executemany_result.rowcount}",
             f"upsert_preserved_product_id={original.id == updated.id == product_id}",
@@ -103,6 +123,10 @@ def run(engine: Engine) -> Evidence:
             f"tenant_report_rows={len(report)}",
             "tenant_stock_values="
             + ",".join(f"{row.tenant_stock_value:.2f}" for row in report),
+            f"naive_unscoped_matches={len(naive_matches)}",
+            f"naive_cross_tenant_ambiguous={len(set(naive_matches)) > 1}",
+            f"corrected_tenant_matches={len(corrected_matches)}",
+            f"corrected_tenant_isolated={corrected_matches == [tenant_id]}",
         ),
         explanation=(
             "PostgreSQL RETURNING removes a follow-up lookup for server-visible results.",

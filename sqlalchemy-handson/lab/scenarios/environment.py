@@ -25,6 +25,7 @@ def main() -> None:
                 "The committed evidence identifies every behavior-affecting runtime version.",
             ),
             setup=(f"database_url={settings.safe_url}",),
+            command="uv run python -m scenarios.environment",
             observation=(
                 f"python={platform.python_version()}",
                 f"implementation={sys.implementation.name}",

@@ -123,11 +123,16 @@ def run(settings: DatabaseSettings) -> Evidence:
             "A third checkout waits pool_timeout before SQLAlchemy raises TimeoutError.",
         ),
         setup=("pool_size=2", "max_overflow=0", "pool_timeout=0.2 seconds"),
+        command="uv run python -m scenarios.ch06_pooling_capacity",
         observation=(
             "configured_hard_limit=2",
             f"checked_out_at_timeout={observed.checked_out_at_timeout}",
             "timeout_class=sqlalchemy.exc.TimeoutError",
-            f"waited_seconds={observed.waited_seconds:.3f}",
+            "naive_checkout_timed_out=True",
+            "corrected_pool_recovered="
+            f"{observed.checked_out_after_recovery == 0}",
+            "timeout_within_expected_bound="
+            f"{0.15 <= observed.waited_seconds < 0.8}",
             f"error_message={observed.error_message}",
         ),
         explanation=(

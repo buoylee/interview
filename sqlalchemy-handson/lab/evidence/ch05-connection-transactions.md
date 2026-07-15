@@ -12,6 +12,10 @@
 - One failed root transaction and one exception block
 - One nested transaction
 
+## Command
+
+- uv run python -m scenarios.ch05_connection_transactions
+
 ## Observation
 
 - in_transaction_before_execute=False
@@ -20,8 +24,10 @@
 - savepoint_preserved_outer=True
 - failed_transaction_active=True
 - failed_transaction_rejected_statement=True
+- naive_failed_transaction_rejected=True
 - in_transaction_after_rollback=False
 - connection_reusable_after_rollback=True
+- corrected_connection_reusable=True
 
 ## Explanation
 

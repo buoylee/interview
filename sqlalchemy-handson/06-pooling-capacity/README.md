@@ -41,7 +41,8 @@ checkout，再由第三個 checkout 等待 0.2 秒 timeout；它不靠 `sleep()`
 [`test_third_checkout_times_out_when_two_slots_are_held`](../lab/tests/integration/test_pooling.py) 對等待時間只鎖定
 `0.15 <= waited_seconds < 0.8` 的寬窗口。0.2 秒是設定值，不是 universal latency promise；host
 scheduler、CI contention 與 clock granularity 都會讓實測毫秒數浮動。真正不變的證據是兩個 slot
-已持有、第三次 checkout timeout，以及 release 後 pool 可恢復。
+已持有、第三次 checkout timeout，以及 release 後 pool 可恢復。因此 committed evidence 只寫
+`timeout_within_expected_bound=True`，不提交 wall-clock millisecond；寬窗口仍由測試直接檢查。
 
 ## Public contract：QueuePool checkout、checkin、reset、invalidate
 

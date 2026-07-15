@@ -9,6 +9,7 @@ class Evidence:
     title: str
     hypothesis: tuple[str, ...]
     setup: tuple[str, ...]
+    command: str
     observation: tuple[str, ...]
     explanation: tuple[str, ...]
     decision: tuple[str, ...]
@@ -19,6 +20,7 @@ class Evidence:
         for heading, values in (
             ("Hypothesis", self.hypothesis),
             ("Setup", self.setup),
+            ("Command", (self.command,)),
             ("Observation", self.observation),
             ("Explanation", self.explanation),
             ("Decision", self.decision),

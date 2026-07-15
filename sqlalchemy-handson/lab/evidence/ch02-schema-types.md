@@ -10,6 +10,10 @@
 - 資料庫版本為 PostgreSQL 18.4。
 - M1 Lab 以 SQLAlchemy MetaData.create_all() 建立 schema。
 
+## Command
+
+- uv run python -m scenarios.ch02_schema_types
+
 ## Observation
 
 - table_count=8
@@ -18,6 +22,9 @@
 - outbox_indexes=ix_outbox_events_claimable
 - product_attributes_type=JSONB
 - outbox_claimable_predicate=((status)::text = 'pending'::text)
+- naive_cross_tenant_constraint=fk_inventories_tenant_id_product_id_products
+- naive_cross_tenant_rejected=True
+- corrected_tenant_scoped_reference=True
 
 ## Explanation
 

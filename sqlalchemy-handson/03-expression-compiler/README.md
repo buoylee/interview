@@ -30,7 +30,8 @@ channel：SQLAlchemy compiler 處理 expression tree，Dialect 與 DBAPI 處理 
 3. 對同一結構執行兩次後，顯式 `compiled_cache` dictionary 只會有一個 entry。
 4. 從 factory 建立的兩個等價 `Select` 會編譯出相同 SQL 文字。
 
-**Failing/naive behavior** 是用 f-string、`%` 或 `+` 組 SQL。手動替單引號加 escape 也不是
+**Failing/naive behavior** 是用 f-string、`%` 或 `+` 組 SQL。scenario 只 compile 這個
+anti-example、不送進 PostgreSQL，並明確觀察 hostile value 已嵌入 SQL text。手動替單引號加 escape 也不是
 修正：escaping 規則屬於 driver、backend 與型別適配邊界，application 很容易漏掉非字串型別、
 不同 encoding 或另一條拼接路徑。更安全且可重用的輸入，是 SQLAlchemy expression 加上獨立
 parameter mapping。
@@ -133,6 +134,8 @@ connection.execute(
 [`test_statement_cache.py`](../lab/tests/integration/test_statement_cache.py)。
 
 - `hostile_value_present_in_sql=False`
+- `naive_hostile_value_present_in_sql=True`
+- `corrected_hostile_value_present_in_sql=False`
 - `bound_sku=x'; DROP TABLE products; --`
 - `compiled_cache_entries=1`
 

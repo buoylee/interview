@@ -15,6 +15,8 @@ identity map、relationship 與 unit of work 是主要問題時更合適，兩�
 [`catalog.py`](../lab/src/order_service/core/catalog.py)：
 
 - [`create_tenant()`](../lab/src/order_service/core/catalog.py) 只執行 tenant INSERT。
+- [`ensure_tenant()`](../lab/src/order_service/core/catalog.py) 明確提供依 tenant id 的 idempotent
+  provisioning；它不會把嚴格的 `create_tenant()` 靜默改成另一種語意。
 - [`upsert_product()`](../lab/src/order_service/core/catalog.py) 以租戶與 SKU 衝突鍵 upsert，回傳
   [`ProductRecord`](../lab/src/order_service/core/catalog.py)。
 - [`replenish_inventory()`](../lab/src/order_service/core/catalog.py) 原子累加庫存與版本，回傳
@@ -57,6 +59,7 @@ filter。本章的 PostgreSQL integration test 會建立兩個租戶與相同 SK
 5. 另一個 tenant 不會出現在本租戶 report，也不會因相同 SKU 成為 product upsert conflict。
 6. caller rollback 後 tenant、product 與 inventory 都是零筆，證明 lower-level catalog function
    沒有偷走交易 ownership。
+7. 只用共享 SKU 查詢會同時命中兩個 tenant；加入 tenant predicate 後只留下目標 tenant。
 
 測試入口是 [`test_catalog.py`](../lab/tests/integration/test_catalog.py)，其中每個測試都使用真實
 PostgreSQL：
@@ -217,6 +220,10 @@ inventory_version=2
 tenant_stock_value=100.00
 tenant_report_rows=2
 tenant_stock_values=130.00,130.00
+naive_unscoped_matches=2
+naive_cross_tenant_ambiguous=True
+corrected_tenant_matches=1
+corrected_tenant_isolated=True
 ```
 
 在本章固定環境中，第一行表示保存 rowcount 後看見兩筆 tenant insert；它不證明 network

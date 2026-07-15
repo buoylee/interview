@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import argparse
+from decimal import Decimal
 from pathlib import Path
+from uuid import UUID
 
-from sqlalchemy import Engine, inspect
+from psycopg.errors import ForeignKeyViolation
+from sqlalchemy import Engine, func, inspect, select
+from sqlalchemy.exc import IntegrityError
 
 from order_service.db.engine import build_engine
-from order_service.db.schema import metadata
+from order_service.db.schema import inventories, metadata, products, tenants
 from order_service.db.settings import DatabaseSettings
 from scenarios._evidence import Evidence, write_evidence
 
@@ -15,6 +19,61 @@ def run(engine: Engine) -> Evidence:
     with engine.begin() as connection:
         metadata.drop_all(connection)
         metadata.create_all(connection)
+        connection.execute(
+            tenants.insert(),
+            [
+                {
+                    "id": UUID("00000000-0000-0000-0000-000000000201"),
+                    "name": "Schema Tenant A",
+                },
+                {
+                    "id": UUID("00000000-0000-0000-0000-000000000202"),
+                    "name": "Schema Tenant B",
+                },
+            ],
+        )
+        connection.execute(
+            products.insert().values(
+                id=UUID("00000000-0000-0000-0000-000000000203"),
+                tenant_id=UUID("00000000-0000-0000-0000-000000000202"),
+                sku="SCHEMA-B",
+                name="Schema Product B",
+                unit_price=Decimal("10.00"),
+                attributes={},
+            )
+        )
+
+    with engine.connect() as connection:
+        try:
+            connection.execute(
+                inventories.insert().values(
+                    tenant_id=UUID("00000000-0000-0000-0000-000000000201"),
+                    product_id=UUID("00000000-0000-0000-0000-000000000203"),
+                    available=1,
+                    reserved=0,
+                    version=1,
+                )
+            )
+        except IntegrityError as error:
+            if not isinstance(error.orig, ForeignKeyViolation):
+                raise
+            naive_constraint = error.orig.diag.constraint_name
+            connection.rollback()
+        else:
+            connection.rollback()
+            raise AssertionError("cross-tenant inventory reference unexpectedly succeeded")
+
+    with engine.begin() as connection:
+        connection.execute(
+            inventories.insert().values(
+                tenant_id=UUID("00000000-0000-0000-0000-000000000202"),
+                product_id=UUID("00000000-0000-0000-0000-000000000203"),
+                available=1,
+                reserved=0,
+                version=1,
+            )
+        )
+        corrected_count = connection.scalar(select(func.count()).select_from(inventories))
     inspector = inspect(engine)
     table_names = sorted(inspector.get_table_names())
     unique_names = sorted(
@@ -47,6 +106,7 @@ def run(engine: Engine) -> Evidence:
             "資料庫版本為 PostgreSQL 18.4。",
             "M1 Lab 以 SQLAlchemy MetaData.create_all() 建立 schema。",
         ),
+        command="uv run python -m scenarios.ch02_schema_types",
         observation=(
             f"table_count={len(table_names)}",
             f"tables={','.join(table_names)}",
@@ -54,6 +114,9 @@ def run(engine: Engine) -> Evidence:
             f"outbox_indexes={','.join(index_names)}",
             f"product_attributes_type={product_attributes_type}",
             f"outbox_claimable_predicate={claimable_predicate}",
+            f"naive_cross_tenant_constraint={naive_constraint}",
+            "naive_cross_tenant_rejected=True",
+            f"corrected_tenant_scoped_reference={corrected_count == 1}",
         ),
         explanation=(
             "具名 constraint 是 migration 與 IntegrityError translation 的穩定識別依據。",

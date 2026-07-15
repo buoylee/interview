@@ -8,6 +8,10 @@
 
 - database_url=postgresql+psycopg://sqlalchemy:***@localhost:55432/sqlalchemy_handson
 
+## Command
+
+- uv run python -m scenarios.environment
+
 ## Observation
 
 - python=3.14.3

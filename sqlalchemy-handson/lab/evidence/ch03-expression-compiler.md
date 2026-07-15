@@ -10,12 +10,19 @@
 - PostgreSQL dialect compiler
 - Connection-level compiled_cache dictionary
 
+## Command
+
+- uv run python -m scenarios.ch03_expression_compiler
+
 ## Observation
 
+- naive_sql=SELECT * FROM products WHERE sku = 'x'; DROP TABLE products; --'
+- naive_hostile_value_present_in_sql=True
 - compiled_sql=SELECT products.id, products.tenant_id, products.sku, products.name, products.unit_price, products.attributes
 FROM products
 WHERE products.tenant_id = %(tenant_id)s::UUID AND products.sku = %(sku)s
 - hostile_value_present_in_sql=False
+- corrected_hostile_value_present_in_sql=False
 - bound_sku=x'; DROP TABLE products; --
 - compiled_cache_entries=1
 

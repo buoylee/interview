@@ -37,6 +37,15 @@ def create_tenant(connection: Connection, *, tenant_id: UUID, name: str) -> None
     connection.execute(tenants.insert().values(id=tenant_id, name=name))
 
 
+def ensure_tenant(connection: Connection, *, tenant_id: UUID, name: str) -> None:
+    statement = (
+        pg_insert(tenants)
+        .values(id=tenant_id, name=name)
+        .on_conflict_do_nothing(index_elements=[tenants.c.id])
+    )
+    connection.execute(statement)
+
+
 def upsert_product(
     connection: Connection,
     *,

@@ -11,6 +11,10 @@
 - One product upserted twice plus one companion product
 - Inventory replenished to 8 and 6 units
 
+## Command
+
+- uv run python -m scenarios.ch04_core_dml_results
+
 ## Observation
 
 - executemany_tenant_rows=2
@@ -21,6 +25,10 @@
 - tenant_stock_value=100.00
 - tenant_report_rows=2
 - tenant_stock_values=130.00,130.00
+- naive_unscoped_matches=2
+- naive_cross_tenant_ambiguous=True
+- corrected_tenant_matches=1
+- corrected_tenant_isolated=True
 
 ## Explanation
 
