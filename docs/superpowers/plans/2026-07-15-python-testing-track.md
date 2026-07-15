@@ -346,212 +346,146 @@ git commit -m "docs(testing): explain pytest execution"
 
 **Interfaces:**
 - Consumes: only Python stdlib types; no framework or I/O dependency.
-- Produces: `Money`, `OrderStatus`, `Order`, `InvalidAmount`, `InvalidCurrency`, `InvalidOrderTransition`, and idempotent `mark_paid` behavior used by every later task.
+- Produces: `Money`, `OrderStatus`, `Order`, `InvalidAmount`, `InvalidCurrency`, `InvalidOrderTransition`, the keyword-only `Order.create` factory, exact package `__all__`, and idempotent `mark_paid` behavior used by later tasks.
+- `Money.amount` accepts `Decimal` only. `Money(1.0, "USD")` raises `InvalidAmount` with a stable Decimal-specific diagnostic; production never coerces float.
 
-- [ ] **Step 1: Write failing tests for value and transition invariants**
+- [ ] **Step 1: Reset production and enforce two-stage proof**
 
-```python
-# python-testing/lab/tests/unit/test_order.py
-from datetime import UTC, datetime
-from decimal import Decimal
-from uuid import UUID
+Delete existing Task 4 production and package exports, then reduce the focused test file. For every absent module, exception, class, enum, method, or package export:
 
-import pytest
+1. write and run one narrow symbol/API test;
+2. add only the minimal symbol or callable signature;
+3. rerun that symbol/API test GREEN;
+4. only then add a separate behavior test, run it until the public API executes and fails on an assertion, `DID NOT RAISE`, or the expected behavior/policy exception such as `TypeError`/`AttributeError`;
+5. add only the minimal guard/mutation and rerun GREEN.
 
-from order_service.domain.order import (
-    InvalidAmount,
-    InvalidOrderTransition,
-    Money,
-    Order,
-    OrderStatus,
-)
+A collection/import/attribute failure proves only missing public surface. It must never be reported as evidence for a guard or mutation behind that surface.
 
-ORDER_ID = UUID("00000000-0000-0000-0000-000000000001")
-NOW = datetime(2026, 7, 15, tzinfo=UTC)
+- [ ] **Step 2: Introduce public symbols independently**
 
+Use these separate RED→GREEN symbol/API cycles:
 
-def make_order() -> Order:
-    return Order.create(
-        order_id=ORDER_ID,
-        idempotency_key="create-001",
-        total=Money(Decimal("10.00"), "USD"),
-        created_at=NOW,
-    )
+1. `test_order_module_exposes_money_type`: missing module/`Money` → add only `class Money`.
+2. `test_order_module_exposes_invalid_amount_type`: missing exception → add only the `ValueError` subtype.
+3. `test_order_module_exposes_invalid_currency_type`: missing exception → add only the `ValueError` subtype.
+4. `test_order_module_exposes_order_status_type`: missing enum → add only an empty plain `Enum`.
+5. `test_order_module_exposes_order_type`: missing aggregate → add only `class Order`.
+6. `test_order_type_exposes_create_factory`: missing factory → add a callable, permissive classmethod that returns `None`.
+7. `test_order_module_exposes_invalid_order_transition_type`: missing exception → add only the `RuntimeError` subtype.
+8. `test_order_type_exposes_start_payment_method`: missing method → add a no-op signature.
+9. `test_order_type_exposes_mark_payment_failed_method`: missing method → add a no-op signature.
+10. `test_order_type_exposes_mark_paid_method`: missing method → add a no-op signature.
+11. `test_domain_package_exposes_public_order_symbols`: missing package attributes → add only the six imports, without `__all__`.
 
+Each corresponding behavior must remain unimplemented until its later behavioral RED.
 
-def test_money_rejects_non_positive_amount() -> None:
-    with pytest.raises(InvalidAmount, match="positive"):
-        Money(Decimal("0"), "USD")
+- [ ] **Step 3: Build `Money` with executable behavioral REDs**
 
+After the relevant symbols are green:
 
-def test_order_moves_from_pending_to_paid() -> None:
-    order = make_order()
-    order.start_payment()
-    order.mark_paid("provider-001")
-    assert order.status is OrderStatus.PAID
-    assert order.payment_reference == "provider-001"
-    assert order.version == 3
+1. `test_money_accepts_positive_decimal`: `Money() takes no arguments` → add only mutable, non-slotted dataclass fields.
+2. `test_money_is_immutable`: assignment reports `DID NOT RAISE FrozenInstanceError` → add only `frozen=True`.
+3. `test_money_uses_slots_without_instance_dict`: the frozen instance still has `__dict__` → add only `slots=True`.
+4. `test_money_rejects_float_amount`: `DID NOT RAISE InvalidAmount` → add only the Decimal type guard and stable diagnostic.
+5. `test_money_rejects_non_positive_amount` for zero, negative integer, and negative fraction: three `DID NOT RAISE` failures → add only the positive guard.
+6. `test_money_normalizes_valid_currency`: lowercase assertion failure → add uppercase normalization.
+7. `test_money_rejects_invalid_currency_code` for blank, short, non-alpha, and long values: four `DID NOT RAISE` failures → add only the documented three-letter alphabetic guard.
 
+Do not add arithmetic, rounding, float conversion, currency conversion, or a currency allowlist.
 
-def test_order_rejects_paid_without_starting_payment() -> None:
-    order = make_order()
-    with pytest.raises(InvalidOrderTransition, match="PENDING_PAYMENT.*PAID"):
-        order.mark_paid("provider-001")
+- [ ] **Step 4: Specify exact enum policy after the enum symbol exists**
 
+Run `test_order_status_has_exact_public_members_and_values` against the empty enum and observe `[]` versus the four expected pairs. Then add exactly:
 
-def test_mark_paid_is_idempotent_for_same_provider_reference() -> None:
-    order = make_order()
-    order.start_payment()
-    order.mark_paid("provider-001")
-    order.mark_paid("provider-001")
-    assert order.version == 3
+- `PENDING_PAYMENT = "pending_payment"`
+- `PAYMENT_IN_PROGRESS = "payment_in_progress"`
+- `PAYMENT_FAILED = "payment_failed"`
+- `PAID = "paid"`
+
+Keep the enum as a plain `Enum` for that member-policy GREEN. Then run `test_order_status_interoperates_with_strings` and observe `isinstance(OrderStatus.PAID, str)` fail. Switch only the enum base/import to `StrEnum`, and rerun both the interoperability and exact-member tests GREEN.
+
+- [ ] **Step 5: Build `Order.create` through separate signature and behavior cycles**
+
+After `Order` and callable `create` are green:
+
+1. `test_order_create_rejects_positional_invocation`: permissive factory reports `DID NOT RAISE TypeError` → add only the keyword-only `*`.
+2. `test_order_create_requires_each_named_field`: optional arguments produce four `DID NOT RAISE TypeError` failures → make all four keyword-only arguments required while still returning `None`.
+3. `test_order_create_preserves_required_fields_at_version_one`: required factory returns `None` → add only aggregate fields/defaults and successful construction.
+4. `test_order_create_rejects_blank_idempotency_key`: empty and whitespace keys execute and report `DID NOT RAISE` → add the blank-key guard.
+5. `test_order_create_rejects_naive_timestamp`: naive time executes and reports `DID NOT RAISE` → add the timezone-aware guard.
+
+Use deterministic `ORDER_ID`, UTC `NOW`, and `Decimal` totals.
+
+- [ ] **Step 6: Build each successful transition after its method symbol**
+
+1. With no-op `start_payment`, run `test_start_payment_retries_failed_order_and_increments_version`; observe unchanged failed state, then implement only failed→in-progress.
+2. Run `test_start_payment_moves_pending_order_and_increments_version`; observe unchanged pending state, then extend the legal mutation to pending.
+3. With no-op `mark_payment_failed`, run `test_mark_payment_failed_moves_in_progress_order_and_increments_version`; observe unchanged in-progress state, then add only the successful failed transition.
+4. With no-op `mark_paid`, run `test_mark_paid_moves_in_progress_order_and_records_reference`; observe unchanged state, then add only paid status/reference/version mutation.
+
+Every success test asserts status, payment reference, and exact version.
+
+- [ ] **Step 7: Build replay and provider-reference guards behavior-first**
+
+1. `test_mark_paid_same_reference_replay_preserves_paid_state`: observe version 4, then add only the same-reference early return.
+2. `test_mark_paid_rejects_different_reference_and_preserves_paid_state`: observe `DID NOT RAISE InvalidOrderTransition`, then add only the mismatched paid replay rejection.
+3. `test_mark_paid_rejects_blank_provider_reference_without_mutation`: observe `DID NOT RAISE ValueError`, then add only the blank-reference guard.
+
+Same-reference and different-reference cases remain distinct. Both assert stored status/reference/version.
+
+- [ ] **Step 8: Add the exhaustive illegal-transition matrix before legality guards**
+
+Parameterize `test_illegal_transition_matrix_preserves_order_state` with exactly these illegal source→target rows:
+
+- `start_payment`: `PAYMENT_IN_PROGRESS → PAYMENT_IN_PROGRESS`, `PAID → PAYMENT_IN_PROGRESS`;
+- `mark_payment_failed`: `PENDING_PAYMENT → PAYMENT_FAILED`, `PAYMENT_FAILED → PAYMENT_FAILED`, `PAID → PAYMENT_FAILED`;
+- `mark_paid`: `PENDING_PAYMENT → PAID`, `PAYMENT_FAILED → PAID`.
+
+Before guards, run the matrix and require all seven rows to execute their method and fail with `DID NOT RAISE InvalidOrderTransition`. Then add the three legality guards and shared source→target diagnostic. Each row must assert the diagnostic and preservation of status, payment reference, and version. Rerun all seven GREEN.
+
+- [ ] **Step 9: Separate package symbols from exact export policy**
+
+After the six package attributes are green, add `test_domain_package_all_is_exact_public_order_api`. Observe that `__all__` is absent, then add exactly:
+
+```text
+InvalidAmount
+InvalidCurrency
+InvalidOrderTransition
+Money
+Order
+OrderStatus
 ```
 
-- [ ] **Step 2: Run the focused tests and verify they fail**
+Do not use explicit imports alone as proof of exact `__all__`.
 
-Run: `cd python-testing/lab && uv run pytest tests/unit/test_order.py -q`
+- [ ] **Step 10: Write the chapter around the executed proof chain**
 
-Expected: FAIL during collection because `order_service.domain.order` does not exist.
+Use the fixed eight-section structure. Cover behavior versus implementation, Arrange-Act-Assert/Given-When-Then, one failure reason, executable-policy names, equivalence classes/boundaries, exception-message brittleness, deterministic time/IDs, coverage versus assertion quality, mutation testing, Classical versus London TDD, and the private-call-order failure ticket.
 
-- [ ] **Step 3: Implement the minimal complete domain model**
+Every formal Python block must be byte-for-byte identical to the complete runnable `order.py` or `test_order.py`. The failure ticket must name the runnable regression `test_mark_paid_moves_in_progress_order_and_records_reference`.
 
-```python
-# python-testing/lab/src/order_service/domain/order.py
-from dataclasses import dataclass
-from datetime import datetime
-from decimal import Decimal
-from enum import StrEnum
-from uuid import UUID
+- [ ] **Step 11: Run exact final verification and amend Task 4**
 
-
-class InvalidAmount(ValueError):
-    pass
-
-
-class InvalidCurrency(ValueError):
-    pass
-
-
-class InvalidOrderTransition(RuntimeError):
-    pass
-
-
-@dataclass(frozen=True, slots=True)
-class Money:
-    amount: Decimal
-    currency: str
-
-    def __post_init__(self) -> None:
-        if self.amount <= 0:
-            raise InvalidAmount("amount must be positive")
-        if len(self.currency) != 3 or not self.currency.isalpha():
-            raise InvalidCurrency("currency must be a three-letter code")
-        object.__setattr__(self, "currency", self.currency.upper())
-
-
-class OrderStatus(StrEnum):
-    PENDING_PAYMENT = "pending_payment"
-    PAYMENT_IN_PROGRESS = "payment_in_progress"
-    PAYMENT_FAILED = "payment_failed"
-    PAID = "paid"
-
-
-@dataclass(slots=True)
-class Order:
-    id: UUID
-    idempotency_key: str
-    total: Money
-    status: OrderStatus
-    created_at: datetime
-    payment_reference: str | None = None
-    version: int = 1
-
-    @classmethod
-    def create(
-        cls,
-        *,
-        order_id: UUID,
-        idempotency_key: str,
-        total: Money,
-        created_at: datetime,
-    ) -> "Order":
-        if not idempotency_key.strip():
-            raise ValueError("idempotency_key must not be blank")
-        if created_at.tzinfo is None:
-            raise ValueError("created_at must be timezone-aware")
-        return cls(
-            id=order_id,
-            idempotency_key=idempotency_key,
-            total=total,
-            status=OrderStatus.PENDING_PAYMENT,
-            created_at=created_at,
-        )
-
-    def start_payment(self) -> None:
-        if self.status not in {OrderStatus.PENDING_PAYMENT, OrderStatus.PAYMENT_FAILED}:
-            self._reject(OrderStatus.PAYMENT_IN_PROGRESS)
-        self.status = OrderStatus.PAYMENT_IN_PROGRESS
-        self.version += 1
-
-    def mark_paid(self, provider_reference: str) -> None:
-        if self.status is OrderStatus.PAID and self.payment_reference == provider_reference:
-            return
-        if self.status is not OrderStatus.PAYMENT_IN_PROGRESS:
-            self._reject(OrderStatus.PAID)
-        if not provider_reference.strip():
-            raise ValueError("provider_reference must not be blank")
-        self.status = OrderStatus.PAID
-        self.payment_reference = provider_reference
-        self.version += 1
-
-    def mark_payment_failed(self) -> None:
-        if self.status is not OrderStatus.PAYMENT_IN_PROGRESS:
-            self._reject(OrderStatus.PAYMENT_FAILED)
-        self.status = OrderStatus.PAYMENT_FAILED
-        self.version += 1
-
-    def _reject(self, target: OrderStatus) -> None:
-        raise InvalidOrderTransition(f"cannot move {self.status.name} to {target.name}")
-```
-
-Export these names from `domain/__init__.py` without adding new behavior.
-
-- [ ] **Step 4: Verify green, then add a mutation-quality example**
-
-Run: `cd python-testing/lab && uv run pytest tests/unit/test_order.py -q`
-
-Expected: `4 passed`.
-
-Append these tests and run again; expect `8 passed` because the parameter cases count separately:
-
-```python
-def test_money_rejects_invalid_currency_code() -> None:
-    with pytest.raises(InvalidCurrency, match="three-letter"):
-        Money(Decimal("1.00"), "US")
-
-
-@pytest.mark.parametrize("amount", [Decimal("0"), Decimal("-1"), Decimal("-0.01")])
-def test_money_rejects_each_non_positive_equivalence_class(amount: Decimal) -> None:
-    with pytest.raises(InvalidAmount):
-        Money(amount, "USD")
-```
-
-- [ ] **Step 5: Write the chapter around the executed red–green sequence**
-
-Cover: behavior versus implementation, arrange-act-assert/Given-When-Then, one reason per failure, test naming as executable policy, equivalence classes and boundaries, exception-message brittleness, deterministic time/IDs, coverage versus assertion quality, mutation testing as an oracle audit, London versus classical TDD without dogma, and a failure ticket where a test asserts private call order and breaks during harmless refactoring.
-
-Every domain code block must match `order.py` or `test_order.py` exactly.
-
-- [ ] **Step 6: Run fast tests, update progress, and commit**
-
-Run: `cd python-testing/lab && uv run pytest tests/unit -q`
-
-Expected: all unit tests pass without Docker.
+From `python-testing/lab/`:
 
 ```bash
-git add python-testing/02-test-design-and-tdd.md python-testing/README.md python-testing/lab/src/order_service/domain python-testing/lab/tests/unit
-git commit -m "feat(testing-lab): add tested order domain"
+uv run pytest tests/unit/test_order.py -q
+uv run pytest tests/unit -q
+uv run pytest -q
 ```
+
+From the worktree root:
+
+```bash
+python3 -c 'import re; from pathlib import Path; chapter=Path("python-testing/02-test-design-and-tdd.md").read_text(); blocks=re.findall(r"```python\n(.*?)```", chapter, re.S); sources=[Path(p).read_text() for p in ["python-testing/lab/src/order_service/domain/order.py", "python-testing/lab/tests/unit/test_order.py"]]; assert blocks == sources'
+python3 -c 'import re; from pathlib import Path; f=Path("python-testing/02-test-design-and-tdd.md"); targets=re.findall(r"\[[^]]+\]\(([^)]+)\)", f.read_text()); local=[t for t in targets if not t.startswith(("http://", "https://", "#"))]; missing=[t for t in local if not (f.parent / t.split("#",1)[0]).exists()]; assert not missing, missing'
+rg -n '^## ' python-testing/02-test-design-and-tdd.md
+rg -n "behavior|Arrange|Given|失败理由|测试名|等价类|边界|异常|确定性|coverage|mutation|London|Classical|私有|调用顺序" python-testing/02-test-design-and-tdd.md
+git diff --check
+git diff -- .superpowers/sdd/progress.md
+```
+
+Do not encode a permanent cumulative suite count in the plan or README. Stage only the Task 4 files and this Task 4 plan section, then amend the existing Task 4 commit with `git commit --amend --no-edit`.
 
 ### Task 5: Build Fixture Graphs and Test-Data Factories
 
