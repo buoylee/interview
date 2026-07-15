@@ -42,19 +42,27 @@ raw bytes
 外部 schema（CreateOrderRequest）
    │  parse / 明确允许的 coerce
    ▼
-类型与局部不变量（validate + normalize）
-   │
-   ▼  显式 mapper：to_create_order_command
-内部 command（CreateOrderCommand）
+validated boundary data（validate + normalize 后的边界数据）
+   │  explicit mapper：to_create_order_command
+   ▼
+application command（CreateOrderCommand）
    │  authorize（真实服务的应用层；本 lab 未实现身份系统）
    ▼
-domain（Order.create / act）
+domain / act（Order.create）
    │
-   ├──► view（CustomerOrderView）
-   └──► event（OrderCreatedEnvelopeV2）
-              │  project / serialize
-              ▼
-             JSON
+   ├── explicit project: project_customer_order
+   │       ▼
+   │    CustomerOrderView (Pydantic contract)
+   │       │ serialize
+   │       ▼
+   │      JSON
+   │
+   └── explicit project: project_order_created_v2
+           ▼
+        OrderCreatedEnvelopeV2 (Pydantic contract)
+           │ serialize
+           ▼
+          JSON
 ```
 
 这条流水线有意使用不同的模型，而不是把一个 `BaseModel` 传到底：
@@ -62,7 +70,7 @@ domain（Order.create / act）
 1. [inbound/create_order.py](lab/src/order_contracts/inbound/create_order.py) 的 `CreateOrderRequest` 面向 HTTP 输入，拒绝未知字段和字符串数量，并把币种规范成大写。
 2. [adapters.py](lab/src/order_contracts/adapters.py) 的 `to_create_order_command` 逐字段映射，形成内部 `CreateOrderCommand`；信任在这里提升，但不是无限提升。
 3. [domain/order.py](lab/src/order_contracts/domain/order.py) 的 `Order.create` 执行领域规则。混合币种只有聚合整张订单时才能判断，所以不塞进单个金额字段的校验器。
-4. 同一适配器把领域对象 project 成 `CustomerOrderView` 或事件，再由 Pydantic serialize 成消费者需要的 JSON。
+4. 同一适配器先把领域对象显式 project 成 `CustomerOrderView` 或 `OrderCreatedEnvelopeV2`。两者都是出站 Pydantic 契约，各自再 serialize 成对应消费者需要的 JSON；view/event 不是 projection 的输入，而是 projection 的结果。
 
 一个重要的工程结论是：**验证不是“清洗后永远安全”的一次性仪式，而是每跨过一个不同信任边界，就按该边界的契约重新建立信任。**
 
@@ -74,11 +82,13 @@ domain（Order.create / act）
 |---|---|---|---|---|
 | HTTP 请求 | 公网客户端；可被篡改、过期或误用 | 默认严格；本例拒绝 `quantity="2"`，只显式允许币种大小写归一 | `CreateOrderRequest` 使用 `extra="forbid"`，阻断意外字段与 mass assignment | 转成稳定的 4xx 契约错误；不要进入领域动作 |
 | Webhook | 第三方推送；既要验来源，也要验载荷 | 先基于原始 bytes 验 HMAC，再解析；版本号要求原始整数 | envelope 与具体 payload 均 `forbid` | 签名失败与 schema 失败分开观测；是否让提供方重试由 adapter 协议决定 |
-| MQ 消息 | 上游服务和历史版本；可能重复、乱序或 poison message | 按 `schema_version` 选择明确版本，不做静默跨版本猜测 | 事件 envelope 使用 `forbid` | schema 永久错误通常进入隔离队列；暂时故障才重试；ack / nack 必须由消费 adapter 明确决定 |
+| MQ 消息 | 上游服务和历史版本；可能重复、乱序或 poison message | 按 `schema_version` 选择明确版本，不做静默跨版本猜测 | envelope/header 严格；payload 由版本策略决定：V1 `ignore`、V2 `forbid` | schema 永久错误通常进入隔离队列；暂时故障才重试；ack / nack 必须由消费 adapter 明确决定 |
 | Settings | 环境变量、dotenv、file secrets；天然是文本且含敏感值 | 只为已知文本格式显式转换，例如 `"5"` → `5`、CSV → 币种元组 | 顶层忽略无关环境键；嵌套 `PaymentProviderSettings` 仍 `forbid` | 缺少必需配置时启动即失败，秘密用 `SecretStr` 避免 repr 泄漏 |
 | 内部命令 | 已经过入口验证并由 mapper 生成的进程内数据 | 不再做方便性的隐式 coercion；保持精确类型和值对象语义 | dataclass 没有“额外 JSON 字段”概念，mapper 只列出允许字段 | 构造错误是编程错误；外部状态和状态迁移失败交给 application / domain |
 
 HTTP 与 Settings 的策略不同并不矛盾。`"5"` 在 JSON 中是客户端主动发送的字符串，而环境变量从介质上只能是字符串；边界不同，允许的 coercion 就应不同。严格不是“所有地方一律不转换”，而是**转换必须有边界语义和测试依据**。
+
+MQ 的 unknown-field 策略也不是一个全局开关。[EventEnvelope](lab/src/order_contracts/events/envelope.py) 用 `extra="forbid"` 严格保护 envelope/header，避免拼错 `schema_version` 等协议字段却继续消费；payload 则刻意按版本取舍：[OrderCreatedV1](lab/src/order_contracts/events/v1.py) 使用 `extra="ignore"`，让旧消费者可忽略新生产者增加的字段，换取向前兼容，但代价是字段拼写错误也可能被静默吞掉；[OrderCreatedV2](lab/src/order_contracts/events/v2.py) 改用 `extra="forbid"`，以更早暴露契约漂移为优先。这是经过选择的**版本兼容政策**，不是“MQ 都该 ignore”或“所有模型都该 forbid”的通用默认值。[test_event_compatibility.py](lab/tests/test_event_compatibility.py) 分别用 `test_v1_payload_reader_ignores_additive_v2_field` 和 `test_v2_producer_rejects_unknown_payload_field` 锁定这项取舍。broker 的重试、ack / nack 和隔离队列仍属于生产 adapter 行为，本 lab 没有实现 broker。
 
 Webhook 的顺序尤其关键：[parse_payment_webhook](lab/src/order_contracts/adapters.py) 在解析 payload 之前验证签名。若先解析再重编码，空格、键顺序或数字表示的变化都可能让验签对象不再是提供方真正发送的 bytes。
 

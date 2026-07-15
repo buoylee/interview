@@ -2614,8 +2614,8 @@ Expected: 全部通过。
 
 - `## 事故开场：模型构造成功，为什么订单仍然不能下？`：用“库存已售罄但 DTO 合法”区分契约有效与业务允许。
 - `## 一句话心智：Pydantic 守边界，不替领域做决定`。
-- `## 从 raw bytes 到领域行为的完整流水线`：画出 bytes → schema → parse/coerce → local invariants → command → domain → view/event → JSON。
-- `## 五类信任边界`：HTTP、Webhook、MQ、Settings、内部命令逐行比较来源、coercion、unknown-field、失败政策。
+- `## 从 raw bytes 到领域行为的完整流水线`：按真实顺序画出 bytes → schema → parse/coerce → validated boundary data → explicit mapper/application command → domain → explicit projection → view/event Pydantic contract → serialization → JSON；view 与 event 两条分支都必须各自经过 projection 和 serialization，禁止把 `project` 放在 view/event 之后。
+- `## 五类信任边界`：HTTP、Webhook、MQ、Settings、内部命令逐行比较来源、coercion、unknown-field、失败政策。MQ 必须写明 envelope/header 的 `extra="forbid"`，并对照 payload V1 的 `extra="ignore"` 与 V2 的 `extra="forbid"`，解释兼容性取舍是显式版本政策而非通用默认；broker 重试、ack / nack、DLQ 仍明确为 lab 外的生产 adapter 行为。
 - `## 类型注解、静态检查、运行时验证、业务规则不是一件事`：连接 `python/09-typing.md`，明确 mypy／Pyright 不在本项目安装。
 - `## 订单案例：一个模型贯穿所有层会怎样`：展示 mass assignment、权限字段、版本耦合和 ORM 泄漏。
 - `## 决策表：规则应该放在哪一层`：结构／局部不变量 → Pydantic；外部状态／状态迁移 → application/domain；签名／重试／ack → adapter。
@@ -2627,6 +2627,14 @@ Expected: 全部通过。
 Run: `rg -n 'parse|validate|normalize|authorize|act|project|serialize|test_domain_order' python-pydantic/00-data-contracts-and-trust-boundaries.md`
 
 Expected: 每个统一术语和测试文件至少出现一次；相对链接均能从该文件所在目录解析。
+
+Run:
+
+```bash
+perl -0777 -ne 'die "flow ordering/branches missing\n" unless /validated boundary data.*explicit mapper.*application command.*domain \/ act.*explicit project: project_customer_order.*CustomerOrderView \(Pydantic contract\).*serialize.*JSON.*explicit project: project_order_created_v2.*OrderCreatedEnvelopeV2 \(Pydantic contract\).*serialize.*JSON/s; die "MQ version policy missing\n" unless /EventEnvelope.*extra="forbid".*OrderCreatedV1.*extra="ignore".*OrderCreatedV2.*extra="forbid"/s' python-pydantic/00-data-contracts-and-trust-boundaries.md
+```
+
+Expected: 退出码 0，锁定 projection/serialization 顺序与 MQ 分版本 unknown-field 政策。
 
 - [ ] **Step 4: Commit**
 
