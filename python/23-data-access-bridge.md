@@ -68,6 +68,7 @@ CRUD 业务密集、关系多        ► ORM(对象映射 + Session 省样板)
 | 架构权衡与测试(repository、真 DB 测试) | [`../python-data/08`](../python-data/08-architecture-and-testing.md) |
 | 可跑 Postgres lab(四个现象实测) | [`../python-data/lab/`](../python-data/lab/) |
 | 数据访问面试卡 | [`../python-data/99`](../python-data/99-interview-cards.md) |
+| SQLAlchemy 2.0 深水教程（Core／ORM／一致性／事故實驗） | [`../sqlalchemy-handson/`](../sqlalchemy-handson/) |
 
 ## Java/Go 对照框
 

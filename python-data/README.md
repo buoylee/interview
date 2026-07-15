@@ -4,6 +4,10 @@
 
 这是 [`../python/`](../python/) 资深教程的延伸:`python/` 聚焦语言本身,数据访问只在 [`python/23`(桥接章)](../python/23-data-access-bridge.md) 讲「怎么选」,实操深度在这里(对照 `python/13` 并发桥接章 → `../python-concurrency/` 的关系)。
 
+**SQLAlchemy 專題深水區**：若已完成選型，想沿著 Core 執行管線、交易與連線池一路追到
+可重現的事故實驗，請進入 [`../sqlalchemy-handson/`](../sqlalchemy-handson/)；`python-data/`
+仍是較短的架構與選型路線，不重複該深水教程。
+
 > **环境约定**:锚点 **Postgres 16 + SQLAlchemy 2.0**(async 为主),纯开源;示例代码都对真库实测过。`lab/` 里的数字是 Apple Silicon / 本地回环跑出来的,**你的会不同**——看的是数量级与现象。
 
 ## 怎么读

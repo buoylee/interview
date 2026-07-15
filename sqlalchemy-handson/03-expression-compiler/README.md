@@ -129,6 +129,8 @@ connection.execute(
 `connection.execution_options(compiled_cache=cache)` 注入空 dictionary，對相同 `Select`
 與參數執行兩次。真實 PostgreSQL 執行完成後，
 [`ch03-expression-compiler.md`](../lab/evidence/ch03-expression-compiler.md) 記錄：
+對應的行為測試見 [`test_statements.py`](../lab/tests/unit/test_statements.py) 與
+[`test_statement_cache.py`](../lab/tests/integration/test_statement_cache.py)。
 
 - `hostile_value_present_in_sql=False`
 - `bound_sku=x'; DROP TABLE products; --`

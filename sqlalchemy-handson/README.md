@@ -1,5 +1,8 @@
 # SQLAlchemy Hands-on：從正確使用到架構決策
 
+> **狀態：M1 complete**。00–06 章、可執行 scenarios、行為測試與提交版 evidence
+> 已完成；07–24 是後續里程碑範圍。
+
 ## 這不是 API 翻譯
 
 這份教程有三個目標：先學會正確使用 SQLAlchemy，再用可重現的證據解釋機制，
@@ -19,15 +22,15 @@ PostgreSQL 行為。
 
 M1 的 00–06 是本里程碑的可執行範圍；M2–M4 只標示後續範圍，不代表內容已完成。
 
-### M1 · 起點、Core 與執行管線（00–06）
+### M1 · 起點、Core 與執行管線（00–06）— M1 complete
 
-- [00 · 起點與全景](00-overview/)
-- [01 · Engine 解剖](01-engine-execution/)
-- [02 · Schema 與型別系統](02-schema-types/)
-- [03 · SQL Expression 與 compiler](03-expression-compiler/)
-- [04 · 查詢、DML 與 Result](04-core-dml-results/)
-- [05 · Connection 與交易狀態機](05-connection-transactions/)
-- [06 · 連線池與容量治理](06-pooling-capacity/)
+- [00 · 起點與全景](00-overview/README.md)
+- [01 · Engine 解剖](01-engine-execution/README.md)
+- [02 · Schema 與型別系統](02-schema-types/README.md)
+- [03 · SQL Expression 與 compiler](03-expression-compiler/README.md)
+- [04 · 查詢、DML 與 Result](04-core-dml-results/README.md)
+- [05 · Connection 與交易狀態機](05-connection-transactions/README.md)
+- [06 · 連線池與容量治理](06-pooling-capacity/README.md)
 
 ### M2 · ORM 與工作單元（07–12，後續里程碑範圍）
 
@@ -71,10 +74,15 @@ M1 的 00–06 是本里程碑的可執行範圍；M2–M4 只標示後續範圍
 
 ```bash
 cd lab
-make sync
+uv sync --locked
 make db-up
+make evidence
 make verify
+# 審閱 evidence 與測試結果後：
+make db-down
 ```
+
+每個命令的用途、scenario／evidence 對照與故障排除見 [`lab/README.md`](lab/README.md)。
 
 ## 與既有教程的邊界
 
