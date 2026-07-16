@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import Self
+from typing import Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_serializer
@@ -32,3 +32,8 @@ class OrderResponse(BaseModel):
             currency=order.total.currency,
             version=order.version,
         )
+
+
+class RefundResponse(BaseModel):
+    order_id: UUID
+    status: Literal["accepted"]
