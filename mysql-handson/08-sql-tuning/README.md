@@ -71,6 +71,7 @@ SELECT o.* FROM orders o WHERE user_id = 100 ORDER BY created_at LIMIT 100000, 2
 #### 用工具聚合
 
 生产环境慢查日志几分钟就能产生几十 MB，手动 grep 不现实。
+聚合工具会先生成 fingerprint（SQL 指纹）：把 SQL 中的具体参数替换成占位符，将结构相同的查询归为同一类，再统计这类查询的次数和耗时。
 
 ```bash
 # mysqldumpslow — MySQL 自带，按执行次数或总耗时聚合，粗用

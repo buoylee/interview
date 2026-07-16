@@ -87,9 +87,11 @@ SHOW PROCESSLIST;
 
 #### 分析器（Parser）
 
+SQL 刚进入 MySQL 时只是一段文本，后续组件不能直接根据这串字符选索引或安排 JOIN。分析器先把文本转换成有结构的表示，主线是：`SQL 字符串 → Token 流 → AST`。
+
 分析器做两步：
 1. **词法分析**：把 SQL 字符串拆成 Token 流。`SELECT name FROM users WHERE age > 18` → `[SELECT, name, FROM, users, WHERE, age, >, 18]`
-2. **语法分析**：把 Token 流按语法规则组装成**抽象语法树（AST）**：
+2. **语法分析**：把 Token 流按语法规则组装成**抽象语法树（Abstract Syntax Tree，AST）**：
 
 ```
 SELECT
@@ -98,13 +100,13 @@ SELECT
 └── WHERE: age > 18
 ```
 
-在这一步，MySQL 才会报 `You have an error in your SQL syntax`。注意：分析器只检查**语法**，不查列是否存在——列存不存在是优化器 / 执行器阶段才验证的。
+AST 保留的是 SQL 的结构关系，例如“查哪些列、从哪张表查、应用什么条件”；空格、换行等不影响语义的文本格式不会成为重要节点，所以称为“抽象”语法树。后续阶段不必反复解读原始 SQL，而是操作这个结构化结果。
 
-语法错误 vs 语义错误的区别：`SELECT abc FROM users` 语法正确，但如果 `abc` 列不存在，错误会在执行器调引擎时才抛出 `Unknown column 'abc'`。
+在语法分析这一步，MySQL 会发现不符合 SQL 文法的内容并报 `You have an error in your SQL syntax`。语法正确之后，MySQL 还要做**名称解析与语义检查**，把列名绑定到具体数据表；例如 `SELECT abc FROM users` 的语法没有问题，但如果 `users` 没有 `abc` 列，就会在这个准备阶段报 `Unknown column 'abc'`，而不是等到执行器向 InnoDB 取数据时才发现。
 
 #### 优化器（Optimizer）
 
-优化器拿到 AST，生成**执行计划（execution plan）**。它做的关键决策包括：
+优化器拿到已完成名称解析的查询结构，生成**执行计划（execution plan）**。也就是说，AST 描述“这条 SQL 要什么”，执行计划描述“MySQL 决定怎么取得它”。优化器做的关键决策包括：
 - 选哪个索引（基于统计信息 `information_schema.STATISTICS` + `mysql.innodb_index_stats`）
 - 多表 JOIN 的连接顺序（多表时 optimizer 会尝试 `N!` 种顺序，但受 `optimizer_search_depth` 限制，默认 62）
 - 是否用覆盖索引避免回表
@@ -218,7 +220,7 @@ WHERE TABLE_SCHEMA = 'mydb';
 1. 用 `id=42` 在 B+ 树上做二分查找，从根页开始，最多 3 次 page 读（树高 ≤ 3）
 2. **Buffer Pool 先查**：目标 page 在 Buffer Pool（默认 `innodb_buffer_pool_size=128MB`，生产常设为物理内存 50-75%）→ 内存命中，不需要磁盘 IO
 3. **Buffer Pool 未命中**：从 `.ibd` 文件读 16KB 数据页到 Buffer Pool，LRU 淘汰冷页
-4. 找到行，通过 MVCC（见 ch05）验证当前事务可见性，返回可见版本的数据
+4. 找到行，通过 MVCC（Multi-Version Concurrency Control，多版本并发控制）判断当前事务能看到哪个版本的数据并返回；完整机制见 ch05
 
 **完整时间线：**
 
@@ -269,6 +271,8 @@ client → connector(0.1ms) → parser(0.05ms) → optimizer(0.1ms)
 ```
 
 **关键数字：**
+`fsync` 是操作系统提供的持久化调用，用来强制把文件缓存中的数据真正刷到存储设备；调用越频繁，数据越安全，但提交延迟也越高。
+
 - `redo log buffer` 默认 16 MB（`innodb_log_buffer_size`）。大事务建议调大，避免提交前 buffer 满触发提前刷盘
 - `innodb_flush_log_at_trx_commit=1`（默认）：每次 commit 都 `fsync` redo log → 最安全，每次 commit 约增加 1-2ms（SSD）
 - `innodb_flush_log_at_trx_commit=2`：commit 写 OS page cache，每秒 `fsync` → 崩溃最多丢 1 秒数据
@@ -295,7 +299,7 @@ Query Cache 的设计思路：以 SQL 文本为 key，缓存整个结果集到�
 - 不能含 `NOW()`、`RAND()`、`USER()` 等非确定函数
 - 不能用在事务中（怕脏读）
 
-**实际效果：** MySQL 官方基准测试显示，启用 Query Cache 在写多读少场景下，QPS 反而下降 20-30%。8.0 直接移除，不留 `query_cache_type` 开关。
+**实际效果：** MySQL 官方基准测试显示，启用 Query Cache 在写多读少场景下，QPS（Queries Per Second，每秒处理的查询数）反而下降 20-30%。8.0 直接移除，不留 `query_cache_type` 开关。
 
 **替代方案：** 应用层缓存（Redis / Memcached）在正确的粒度（业务对象而不是 SQL 文本）上做缓存，命中率可控、失效粒度可控。
 
@@ -487,7 +491,7 @@ LIMIT 10;
 
 ### 易错点
 
-- **binlog 是 Server 层的，redo log 是 InnoDB 的**。换成 MyISAM 就没有 redo log，但 binlog 还在。两者功能不重叠：redo log 用于崩溃恢复，binlog 用于主从复制和 PITR
+- **binlog 是 Server 层的，redo log 是 InnoDB 的**。换成 MyISAM 就没有 redo log，但 binlog 还在。两者功能不重叠：redo log 用于崩溃恢复，binlog 用于主从复制和 PITR（Point-in-Time Recovery，利用全量备份和 binlog 恢复到指定时间点）
 - **Query Cache 在 8.0 已彻底移除**，不要在 8.0 的优化题里提「开启 query cache」
 - **权限在连接建立时加载，GRANT 后要重连才生效**（已有连接不受影响）
 - **`EXPLAIN` 里的 `rows` 是优化器估算值**，不是真实扫描行数；要看真实值用 `EXPLAIN ANALYZE`
@@ -498,7 +502,7 @@ LIMIT 10;
 >
 > **（连接器）** 客户端发 TCP 连接，MySQL 连接器验证用户名密码，加载该用户权限，建立会话。
 >
-> **（分析器）** SQL 文本做词法分析拆 token，语法分析生成 AST，这一步只检查语法，不查列是否存在。
+> **（分析器）** SQL 文本先经词法分析拆成 token，再由语法分析生成 AST；随后在准备阶段做名称解析与语义检查，把列名绑定到具体表。语法错误在生成 AST 时发现，列不存在则在名称解析时发现。
 >
 > **（优化器）** 读表统计信息，决定用哪个索引、JOIN 顺序，输出执行计划（cost-based）。
 >

@@ -68,6 +68,8 @@ LIMIT 10;
 
 InnoDB 数据页（`FIL_PAGE_INDEX`，类型值 `0x45BF`）的内部结构：
 
+LSN（Log Sequence Number，日志序列号）是 redo log 单调递增的进度位置；数据页记录 LSN，是为了标识这个页已经包含了哪一刻之前的修改。完整机制见 ch07 §3.3。
+
 ```
 ┌──────────────────────────────────────┐  ← 偏移 0
 │  File Header          (38 字节)       │  checksum / 页号 / 上下页指针 / LSN / 页类型

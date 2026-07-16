@@ -133,7 +133,7 @@ Optimizer 分两步工作：
 |---|---|
 | 常量折叠 | `WHERE 1+1=2 AND age>18` → `WHERE age>18` |
 | 外连接 → 内连接 | `LEFT JOIN` 的右表 WHERE 有非 NULL 条件时自动转 INNER JOIN |
-| 子查询 → JOIN | `WHERE id IN (SELECT id FROM t2 WHERE ...)` 常被改写为 semijoin |
+| 子查询 → JOIN | `WHERE id IN (SELECT id FROM t2 WHERE ...)` 常被改写为 semijoin（半连接：外表只关心内表是否至少有一行匹配，不展开所有匹配组合） |
 | 条件下推 | 把 WHERE 条件尽量下推到更靠近扫描层 |
 | 投影下推 | 把不需要的列尽早从流水线中去掉 |
 | 等值传递 | `WHERE a.id=b.id AND a.id=5` → `b.id=5` 也能走索引 |
