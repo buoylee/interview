@@ -409,6 +409,9 @@ SHOW VARIABLES LIKE 'innodb_deadlock_detect';  -- 默认 ON
 
 - **SELECT 能不加锁就不加锁**：普通 `SELECT` 走 MVCC 快照读，不加行锁，性能最好。只有真正需要「我读完之后要更新，且中间不允许别人改」才用 `SELECT ... FOR UPDATE`。
 - **事务要短**：锁在事务提交/回滚时释放（MDL 写锁在 DDL 完成时释放）。事务越长，锁持有时间越长，并发越低。把不需要在事务里的操作（如外部调用、大计算）移到事务外面。
+
+> **DB 短鎖的系統邊界**：DB row lock 只保護本地短事務臨界區；長任務若跨外部 I/O、進程 crash 或接管，不應持續占用 transaction。請依 invariant 選 immutable batch、logical freeze、reservation、lease/fencing 或 workflow，決策入口見[並發正確性與長任務協調](../../system-design/11-並發正確性與長任務協調.md)。
+
 - **UPDATE/DELETE WHERE 条件列一定要有索引**：没有索引 = 锁范围无限扩大，是线上锁等待事故最常见的原因。上线前 `EXPLAIN` 确认 `type` 不是 `ALL`。
 - **同一个业务流程，锁多张表时固定顺序**：比如下单先锁 `inventory` 再锁 `orders`，退款也按同样顺序，杜绝交叉死锁。
 - **INSERT 的唯一键冲突要处理**：捕获 `1062 Duplicate entry` 错误后及时重试或直接 `INSERT IGNORE` / `ON DUPLICATE KEY UPDATE`，避免 S 锁升级 X 锁的死锁窗口。

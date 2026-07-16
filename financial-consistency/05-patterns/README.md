@@ -4,6 +4,8 @@
 
 这一阶段把前四个业务阶段沉淀成模式决策手册。重点不是背诵 Outbox、Saga、TCC、Temporal、事务消息、CDC 的定义，而是判断真实业务问题应该用哪个模式、哪个模式不能解决什么、以及如何验证模式真的保护了一致性。
 
+進入金融領域 pattern 前，先讀[並發正確性與長任務協調](../../system-design/11-並發正確性與長任務協調.md)，辨認 invariant、boundary 與 failure model，再回到本階段選擇與組合模式。
+
 ## 学习顺序
 
 1. [决策地图](./01-decision-map.md)
