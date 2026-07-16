@@ -17,6 +17,10 @@ class InvalidOrderTransition(RuntimeError):
     pass
 
 
+class RefundReferenceConflict(RuntimeError):
+    pass
+
+
 def _normalize_money(amount: Decimal, currency: str) -> str:
     if not isinstance(amount, Decimal):
         raise InvalidAmount("amount must be a Decimal")
@@ -48,6 +52,8 @@ class OrderStatus(StrEnum):
     PAYMENT_IN_PROGRESS = "payment_in_progress"
     PAYMENT_FAILED = "payment_failed"
     PAID = "paid"
+    REFUND_IN_PROGRESS = "refund_in_progress"
+    REFUNDED = "refunded"
 
 
 @dataclass(slots=True)
@@ -58,6 +64,7 @@ class Order:
     status: OrderStatus
     created_at: datetime
     payment_reference: str | None = None
+    refund_reference: str | None = None
     version: int = 1
 
     @classmethod
@@ -99,6 +106,36 @@ class Order:
         if self.status is not OrderStatus.PAYMENT_IN_PROGRESS:
             self._reject(OrderStatus.PAYMENT_FAILED)
         self.status = OrderStatus.PAYMENT_FAILED
+        self.version += 1
+
+    def start_refund(self) -> None:
+        if self.status is OrderStatus.REFUND_IN_PROGRESS:
+            return
+        if self.status is not OrderStatus.PAID:
+            self._reject(OrderStatus.REFUND_IN_PROGRESS)
+        self.status = OrderStatus.REFUND_IN_PROGRESS
+        self.version += 1
+
+    def mark_refunded(self, provider_reference: str) -> None:
+        if self.status is OrderStatus.REFUNDED:
+            if self.refund_reference == provider_reference:
+                return
+            raise RefundReferenceConflict(
+                "provider refund reference conflicts with completed refund"
+            )
+        if self.status is not OrderStatus.REFUND_IN_PROGRESS:
+            self._reject(OrderStatus.REFUNDED)
+        if not provider_reference.strip():
+            raise ValueError("provider_reference must not be blank")
+        self.status = OrderStatus.REFUNDED
+        self.refund_reference = provider_reference
+        self.version += 1
+
+    def mark_refund_declined(self) -> None:
+        if self.status is not OrderStatus.REFUND_IN_PROGRESS:
+            self._reject(OrderStatus.PAID)
+        self.status = OrderStatus.PAID
+        self.refund_reference = None
         self.version += 1
 
     def _reject(self, target: OrderStatus) -> None:

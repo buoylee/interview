@@ -11,9 +11,10 @@ from order_service.adapters.memory import (
     StubPaymentGateway,
 )
 from order_service.api.app import create_app
-from order_service.api.dependencies import get_legacy_refund
-from order_service.application.legacy_refund import LegacyRefund
+from order_service.api.dependencies import get_refund_order
+from order_service.application.refund_order import RefundOrder
 from order_service.domain.order import Money, Order
+from order_service.ports.payment import PaymentDeclined
 
 
 PAID_ORDER_ID = UUID("00000000-0000-0000-0000-000000000101")
@@ -46,15 +47,21 @@ def _unpaid_order_with_stale_reference() -> Order:
     return order
 
 
+def _paid_order_without_reference() -> Order:
+    order = _paid_order()
+    order.payment_reference = None
+    return order
+
+
 async def _post_refund(
     store: MemoryStore,
     gateway: StubPaymentGateway,
     *,
     headers: dict[str, str] | None = None,
 ) -> httpx.Response:
-    legacy_refund = LegacyRefund(lambda: MemoryUnitOfWork(store), gateway)
+    refund_order = RefundOrder(lambda: MemoryUnitOfWork(store), gateway)
     app = create_app()
-    app.dependency_overrides[get_legacy_refund] = lambda: legacy_refund
+    app.dependency_overrides[get_refund_order] = lambda: refund_order
     transport = httpx.ASGITransport(app=app)
     try:
         async with app.router.lifespan_context(app):
@@ -89,7 +96,7 @@ async def test_refund_endpoint_preserves_accepted_response_shape() -> None:
         {
             "payment_reference": "pay-001",
             "total": Money(Decimal("10.00"), "USD"),
-            "idempotency_key": "caller-attempt-001",
+            "idempotency_key": f"refund:{PAID_ORDER_ID}",
         }
     ]
 
@@ -161,34 +168,66 @@ async def test_refund_endpoint_rejects_non_paid_order_with_stale_reference() -> 
     assert gateway.refund_calls == []
 
 
+@pytest.mark.asyncio
+async def test_refund_endpoint_rejects_paid_order_without_reference_before_commit() -> None:
+    gateway = StubPaymentGateway()
+    store = MemoryStore(
+        orders={PAID_ORDER_ID: _paid_order_without_reference()}
+    )
+
+    response = await _post_refund(
+        store,
+        gateway,
+        headers={"Idempotency-Key": "caller-attempt-001"},
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "order has no captured payment"}
+    assert store.orders[PAID_ORDER_ID].status.value == "paid"
+    assert store.commits == 0
+    assert gateway.refund_calls == []
+
+
+@pytest.mark.asyncio
+async def test_refund_endpoint_maps_definitive_decline_to_stable_409() -> None:
+    gateway = StubPaymentGateway(error=PaymentDeclined("provider rejected"))
+    store = MemoryStore(orders={PAID_ORDER_ID: _paid_order()})
+
+    response = await _post_refund(
+        store,
+        gateway,
+        headers={"Idempotency-Key": "caller-attempt-001"},
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "refund declined"}
+    assert store.orders[PAID_ORDER_ID].status.value == "paid"
+    assert store.commits == 2
+
+
 def test_unconfigured_refund_dependency_fails_only_when_resolved() -> None:
     app = create_app()
 
     assert any(route.path == "/orders/{order_id}/refunds" for route in app.routes)
     with pytest.raises(
-        RuntimeError, match="LegacyRefund dependency is not configured"
+        RuntimeError, match="RefundOrder dependency is not configured"
     ):
-        get_legacy_refund()
+        get_refund_order()
 
 
 @pytest.mark.asyncio
-async def test_caller_request_ids_expose_the_duplicate_refund_behavior() -> None:
+async def test_caller_request_ids_do_not_control_provider_idempotency() -> None:
     gateway = StubPaymentGateway()
     store = MemoryStore(orders={PAID_ORDER_ID: _paid_order()})
-    legacy_refund = LegacyRefund(lambda: MemoryUnitOfWork(store), gateway)
+    refund_order = RefundOrder(lambda: MemoryUnitOfWork(store), gateway)
 
-    await legacy_refund.execute(PAID_ORDER_ID, "caller-attempt-001")
-    await legacy_refund.execute(PAID_ORDER_ID, "caller-attempt-002")
+    await refund_order.execute(PAID_ORDER_ID)
+    await refund_order.execute(PAID_ORDER_ID)
 
     assert gateway.refund_calls == [
         {
             "payment_reference": "pay-001",
             "total": Money(Decimal("10.00"), "USD"),
-            "idempotency_key": "caller-attempt-001",
-        },
-        {
-            "payment_reference": "pay-001",
-            "total": Money(Decimal("10.00"), "USD"),
-            "idempotency_key": "caller-attempt-002",
+            "idempotency_key": f"refund:{PAID_ORDER_ID}",
         },
     ]

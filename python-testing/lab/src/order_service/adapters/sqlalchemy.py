@@ -36,6 +36,7 @@ orders = Table(
     Column("status", Text, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("payment_reference", Text),
+    Column("refund_reference", Text),
     Column("version", Integer, nullable=False),
 )
 outbox_messages = Table(
@@ -182,6 +183,7 @@ def _order_values(order: Order) -> dict[str, object]:
         "status": order.status.value,
         "created_at": order.created_at,
         "payment_reference": order.payment_reference,
+        "refund_reference": order.refund_reference,
         "version": order.version,
     }
 
@@ -194,6 +196,7 @@ def _order_from_row(row) -> Order:
         status=OrderStatus(row["status"]),
         created_at=row["created_at"],
         payment_reference=row["payment_reference"],
+        refund_reference=row["refund_reference"],
         version=row["version"],
     )
 

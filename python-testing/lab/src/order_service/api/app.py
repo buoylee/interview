@@ -5,19 +5,18 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 
-from order_service.api.dependencies import get_create_order, get_legacy_refund
+from order_service.api.dependencies import get_create_order, get_refund_order
 from order_service.api.schemas import (
     CreateOrderRequest,
     OrderResponse,
     RefundResponse,
 )
 from order_service.application.create_order import CreateOrder
-from order_service.application.legacy_refund import (
-    CapturedPaymentMissing,
-    LegacyRefund,
-)
 from order_service.application.messages import CreateOrderCommand
 from order_service.application.process_payment import OrderNotFound
+from order_service.application.refund_order import CapturedPaymentMissing, RefundOrder
+from order_service.domain.order import InvalidOrderTransition
+from order_service.ports.payment import PaymentDeclined
 
 
 def create_app() -> FastAPI:
@@ -64,8 +63,8 @@ def create_app() -> FastAPI:
     )
     async def refund_order(
         order_id: UUID,
-        use_case: Annotated[LegacyRefund, Depends(get_legacy_refund)],
-        request_id: Annotated[
+        use_case: Annotated[RefundOrder, Depends(get_refund_order)],
+        _request_id: Annotated[
             str,
             Header(
                 alias="Idempotency-Key",
@@ -75,16 +74,21 @@ def create_app() -> FastAPI:
         ],
     ) -> RefundResponse:
         try:
-            await use_case.execute(order_id, request_id)
+            await use_case.execute(order_id)
         except OrderNotFound as exc:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="order not found",
             ) from exc
-        except CapturedPaymentMissing as exc:
+        except (CapturedPaymentMissing, InvalidOrderTransition) as exc:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="order has no captured payment",
+            ) from exc
+        except PaymentDeclined as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="refund declined",
             ) from exc
         return RefundResponse(order_id=order_id, status="accepted")
 

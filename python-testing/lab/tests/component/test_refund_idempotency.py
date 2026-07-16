@@ -9,12 +9,9 @@ from order_service.adapters.memory import (
     MemoryUnitOfWork,
     StubPaymentGateway,
 )
-from order_service.application.legacy_refund import (
-    CapturedPaymentMissing,
-    LegacyRefund,
-)
 from order_service.application.process_payment import OrderNotFound
-from order_service.domain.order import Money, Order
+from order_service.application.refund_order import RefundOrder
+from order_service.domain.order import InvalidOrderTransition, Money, Order
 
 
 PAID_ORDER_ID = UUID("00000000-0000-0000-0000-000000000101")
@@ -52,29 +49,29 @@ def _unpaid_order_with_stale_reference() -> Order:
 async def test_paid_order_refund_uses_exact_provider_contract() -> None:
     store = MemoryStore(orders={PAID_ORDER_ID: _paid_order()})
     gateway = StubPaymentGateway()
-    legacy_refund = LegacyRefund(lambda: MemoryUnitOfWork(store), gateway)
+    refund = RefundOrder(lambda: MemoryUnitOfWork(store), gateway)
 
-    await legacy_refund.execute(PAID_ORDER_ID, "caller-attempt-001")
+    await refund.execute(PAID_ORDER_ID)
 
     assert gateway.refund_calls == [
         {
             "payment_reference": "pay-001",
             "total": TOTAL,
-            "idempotency_key": "caller-attempt-001",
+            "idempotency_key": f"refund:{PAID_ORDER_ID}",
         }
     ]
-    assert store.commits == 0
+    assert store.commits == 2
 
 
 @pytest.mark.asyncio
 async def test_missing_order_is_reported_without_calling_provider() -> None:
     gateway = StubPaymentGateway()
-    legacy_refund = LegacyRefund(
+    refund = RefundOrder(
         lambda: MemoryUnitOfWork(MemoryStore()), gateway
     )
 
     with pytest.raises(OrderNotFound, match=str(PAID_ORDER_ID)):
-        await legacy_refund.execute(PAID_ORDER_ID, "caller-attempt-001")
+        await refund.execute(PAID_ORDER_ID)
 
     assert gateway.refund_calls == []
 
@@ -83,12 +80,12 @@ async def test_missing_order_is_reported_without_calling_provider() -> None:
 async def test_order_without_payment_reference_is_not_refunded() -> None:
     gateway = StubPaymentGateway()
     store = MemoryStore(orders={PAID_ORDER_ID: _unpaid_order()})
-    legacy_refund = LegacyRefund(lambda: MemoryUnitOfWork(store), gateway)
+    refund = RefundOrder(lambda: MemoryUnitOfWork(store), gateway)
 
     with pytest.raises(
-        CapturedPaymentMissing, match="order has no captured payment"
+        InvalidOrderTransition, match="cannot refund order from PENDING_PAYMENT"
     ):
-        await legacy_refund.execute(PAID_ORDER_ID, "caller-attempt-001")
+        await refund.execute(PAID_ORDER_ID)
 
     assert gateway.refund_calls == []
 
@@ -99,24 +96,23 @@ async def test_non_paid_order_with_stale_payment_reference_is_not_refunded() -> 
     store = MemoryStore(
         orders={PAID_ORDER_ID: _unpaid_order_with_stale_reference()}
     )
-    legacy_refund = LegacyRefund(lambda: MemoryUnitOfWork(store), gateway)
+    refund = RefundOrder(lambda: MemoryUnitOfWork(store), gateway)
 
     with pytest.raises(
-        CapturedPaymentMissing, match="order has no captured payment"
+        InvalidOrderTransition, match="cannot refund order from PENDING_PAYMENT"
     ):
-        await legacy_refund.execute(PAID_ORDER_ID, "caller-attempt-001")
+        await refund.execute(PAID_ORDER_ID)
 
     assert gateway.refund_calls == []
 
 
-@pytest.mark.xfail(strict=True, reason="CAPSTONE-REFUND-IDEMPOTENCY")
 @pytest.mark.asyncio
 async def test_retry_with_new_request_id_does_not_refund_twice() -> None:
     gateway = StubPaymentGateway()
     store = MemoryStore(orders={PAID_ORDER_ID: _paid_order()})
-    legacy_refund = LegacyRefund(lambda: MemoryUnitOfWork(store), gateway)
+    refund = RefundOrder(lambda: MemoryUnitOfWork(store), gateway)
 
-    await legacy_refund.execute(PAID_ORDER_ID, "caller-attempt-001")
-    await legacy_refund.execute(PAID_ORDER_ID, "caller-attempt-002")
+    await refund.execute(PAID_ORDER_ID)
+    await refund.execute(PAID_ORDER_ID)
 
     assert len(gateway.refund_calls) == 1

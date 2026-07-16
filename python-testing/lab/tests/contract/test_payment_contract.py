@@ -233,3 +233,66 @@ async def test_non_json_402_is_still_a_definitive_decline() -> None:
             await HTTPPaymentGateway(client).charge(
                 order_id=ORDER_ID, total=TOTAL, idempotency_key="charge-001"
             )
+
+
+@pytest.mark.contract
+@pytest.mark.asyncio
+async def test_fake_provider_replays_same_refund_operation_by_key() -> None:
+    provider = create_fake_provider()
+    request = {
+        "headers": {"Idempotency-Key": "refund-stable"},
+        "json": {
+            "payment_reference": "pay-001",
+            "amount": "10.00",
+            "currency": "USD",
+        },
+    }
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=provider),
+        base_url="http://provider.test",
+    ) as client:
+        first = await client.post("/refunds", **request)
+        replay = await client.post("/refunds", **request)
+
+    assert first.status_code == replay.status_code == 200
+    assert replay.json() == first.json() == {
+        "status": "approved",
+        "reference": "refund-001",
+    }
+    expected_attempt = {
+        "payment_reference": "pay-001",
+        "amount": "10.00",
+        "currency": "USD",
+        "idempotency_key": "refund-stable",
+    }
+    assert provider.state.refund_attempts == [expected_attempt, expected_attempt]
+    assert provider.state.refund_operations == [expected_attempt]
+
+
+@pytest.mark.contract
+@pytest.mark.asyncio
+async def test_fake_provider_rejects_same_key_with_different_refund_body() -> None:
+    provider = create_fake_provider()
+    headers = {"Idempotency-Key": "refund-stable"}
+    original = {
+        "payment_reference": "pay-001",
+        "amount": "10.00",
+        "currency": "USD",
+    }
+    conflicting = {**original, "amount": "11.00"}
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=provider),
+        base_url="http://provider.test",
+    ) as client:
+        first = await client.post("/refunds", headers=headers, json=original)
+        conflict = await client.post(
+            "/refunds", headers=headers, json=conflicting
+        )
+
+    assert first.status_code == 200
+    assert conflict.status_code == 409
+    assert conflict.json() == {
+        "detail": "idempotency key reused with different refund body"
+    }
+    assert len(provider.state.refund_attempts) == 2
+    assert len(provider.state.refund_operations) == 1

@@ -6,8 +6,23 @@ from uuid import UUID
 
 import pytest
 
+from order_service.domain.order import (
+    InvalidOrderTransition,
+    Order,
+    OrderStatus,
+    RefundReferenceConflict,
+)
+from tests.factories import make_order
+
 ORDER_ID = UUID("00000000-0000-0000-0000-000000000001")
 NOW = datetime(2026, 7, 15, tzinfo=UTC)
+
+
+def paid_order() -> Order:
+    order = make_order()
+    order.start_payment()
+    order.mark_paid("pay-001")
+    return order
 
 
 def test_order_module_exposes_money_type() -> None:
@@ -100,6 +115,8 @@ def test_order_status_has_exact_public_members_and_values() -> None:
         ("PAYMENT_IN_PROGRESS", "payment_in_progress"),
         ("PAYMENT_FAILED", "payment_failed"),
         ("PAID", "paid"),
+        ("REFUND_IN_PROGRESS", "refund_in_progress"),
+        ("REFUNDED", "refunded"),
     ]
 
 
@@ -171,6 +188,7 @@ def test_order_create_preserves_required_fields_at_version_one() -> None:
     assert order.status is order_module.OrderStatus.PENDING_PAYMENT
     assert order.created_at == NOW
     assert order.payment_reference is None
+    assert order.refund_reference is None
     assert order.version == 1
 
 
@@ -430,3 +448,126 @@ def test_domain_package_all_is_exact_public_order_api() -> None:
         "Order",
         "OrderStatus",
     ]
+
+
+def test_only_paid_order_can_start_refund() -> None:
+    with pytest.raises(
+        InvalidOrderTransition,
+        match="PENDING_PAYMENT.*REFUND_IN_PROGRESS",
+    ):
+        make_order().start_refund()
+
+
+def test_paid_order_starts_refund_and_increments_version() -> None:
+    order = paid_order()
+    paid_version = order.version
+
+    order.start_refund()
+
+    assert order.status is OrderStatus.REFUND_IN_PROGRESS
+    assert order.version == paid_version + 1
+
+
+def test_start_refund_replay_preserves_in_progress_state() -> None:
+    order = paid_order()
+    order.start_refund()
+    started_version = order.version
+
+    order.start_refund()
+
+    assert order.status is OrderStatus.REFUND_IN_PROGRESS
+    assert order.version == started_version
+
+
+def test_only_in_progress_refund_can_be_completed() -> None:
+    order = paid_order()
+
+    with pytest.raises(
+        InvalidOrderTransition,
+        match="PAID.*REFUNDED",
+    ):
+        order.mark_refunded("refund-001")
+
+
+@pytest.mark.parametrize("provider_reference", ["", "   "])
+def test_mark_refunded_rejects_blank_reference_without_mutation(
+    provider_reference: str,
+) -> None:
+    order = paid_order()
+    order.start_refund()
+    before = (order.status, order.refund_reference, order.version)
+
+    with pytest.raises(ValueError, match="provider_reference.*blank"):
+        order.mark_refunded(provider_reference)
+
+    assert (order.status, order.refund_reference, order.version) == before
+
+
+def test_mark_refunded_records_reference_and_increments_version() -> None:
+    order = paid_order()
+    order.start_refund()
+    started_version = order.version
+
+    order.mark_refunded("refund-001")
+
+    assert order.status is OrderStatus.REFUNDED
+    assert order.refund_reference == "refund-001"
+    assert order.version == started_version + 1
+
+
+def test_refund_transitions_and_replay_are_idempotent() -> None:
+    order = paid_order()
+    order.start_refund()
+    order.mark_refunded("refund-001")
+    completed_version = order.version
+
+    order.mark_refunded("refund-001")
+
+    assert order.status is OrderStatus.REFUNDED
+    assert order.refund_reference == "refund-001"
+    assert order.version == completed_version
+
+
+def test_refunded_order_rejects_conflicting_provider_reference_explicitly() -> None:
+    order = paid_order()
+    order.start_refund()
+    order.mark_refunded("refund-001")
+    before = (order.status, order.refund_reference, order.version)
+
+    with pytest.raises(RefundReferenceConflict):
+        order.mark_refunded("refund-002")
+
+    assert (order.status, order.refund_reference, order.version) == before
+
+
+def test_only_in_progress_refund_can_be_declined() -> None:
+    order = paid_order()
+    before = (
+        order.status,
+        order.payment_reference,
+        order.refund_reference,
+        order.version,
+    )
+
+    with pytest.raises(InvalidOrderTransition, match="PAID.*PAID"):
+        order.mark_refund_declined()
+
+    assert (
+        order.status,
+        order.payment_reference,
+        order.refund_reference,
+        order.version,
+    ) == before
+
+
+def test_refund_decline_restores_paid_state_and_retains_payment() -> None:
+    order = paid_order()
+    order.start_refund()
+    in_progress_version = order.version
+
+    order.mark_refund_declined()
+
+    assert order.status is OrderStatus.PAID
+    assert order.payment_reference == "pay-001"
+    assert order.refund_reference is None
+    assert order.version == in_progress_version + 1

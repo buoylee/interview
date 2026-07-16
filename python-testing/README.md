@@ -73,7 +73,7 @@ fixture ownership 规则：module/session scope 可以共享真正只读或有�
 | 08 Async、并发与背景任务 | ✅ 完成 |
 | 09 Property 与 stateful testing | ✅ 完成 |
 | 10 测试套件可靠性与规模 | ✅ 完成 |
-| 11 CI、遗留系统与 capstone | ⬜ 待完成 |
+| 11 CI、遗留系统与 capstone | ✅ 完成 |
 
 ## 与仓库其他路线的关系
 
