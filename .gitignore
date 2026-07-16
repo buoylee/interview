@@ -27,6 +27,10 @@ __pycache__/
 .pyright/
 .ruff_cache/
 .coverage
+.coverage.*
+.hypothesis/
+.nox/
+mutants/
 htmlcov/
 .env
 .env.*
