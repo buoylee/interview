@@ -14,7 +14,10 @@ from pydantic import (
 
 
 MONEY_STRING_PATTERN = (
-    r"^(?:[1-9]\d{0,9}(?:\.\d{1,2})?|0\.(?:0[1-9]|[1-9]\d?))$"
+    r"^(?:[1-9][0-9]{0,9}(?:\.[0-9]{1,2})?|0\.(?:0[1-9]|[1-9][0-9]?))$"
+)
+CURRENCY_INPUT_PATTERN = (
+    r"^[\u0009-\u000D ]*[A-Za-z]{3}[\u0009-\u000D ]*$"
 )
 
 
@@ -44,7 +47,7 @@ CurrencyCode = Annotated[
     BeforeValidator(
         _normalize_currency,
         json_schema_input_type=Annotated[
-            str, Field(pattern=r"^\s*[A-Za-z]{3}\s*$")
+            str, Field(pattern=CURRENCY_INPUT_PATTERN)
         ],
     ),
 ]

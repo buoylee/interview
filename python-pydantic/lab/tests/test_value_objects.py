@@ -14,14 +14,15 @@ def test_currency_is_normalized_to_uppercase() -> None:
 def test_currency_validation_schema_describes_normalized_input() -> None:
     schema = TypeAdapter(CurrencyCode).json_schema(mode="validation")
     assert schema == {
-        "pattern": r"^\s*[A-Za-z]{3}\s*$",
+        "pattern": r"^[\u0009-\u000D ]*[A-Za-z]{3}[\u0009-\u000D ]*$",
         "type": "string",
     }
 
 
-def test_currency_runtime_rejects_unicode_not_allowed_by_schema() -> None:
+@pytest.mark.parametrize("value", ["uſd", "\N{NO-BREAK SPACE}USD"])
+def test_currency_runtime_rejects_unicode_not_allowed_by_schema(value: str) -> None:
     with pytest.raises(ValidationError):
-        TypeAdapter(CurrencyCode).validate_python("uſd")
+        TypeAdapter(CurrencyCode).validate_python(value)
 
 
 def test_order_id_rejects_non_string_input() -> None:
@@ -59,7 +60,10 @@ def test_money_validation_schema_does_not_advertise_json_numbers() -> None:
     assert "anyOf" not in amount_schema
 
 
-@pytest.mark.parametrize("value", ["not-money", "-1", "1.234", "12345678901.23"])
+@pytest.mark.parametrize(
+    "value",
+    ["not-money", "-1", "1.234", "12345678901.23", "1٢", "1.2٣"],
+)
 def test_money_wire_grammar_rejects_values_excluded_by_schema(value: str) -> None:
     with pytest.raises(ValidationError):
         Money.model_validate_json(
@@ -70,5 +74,5 @@ def test_money_wire_grammar_rejects_values_excluded_by_schema(value: str) -> Non
 def test_money_validation_schema_publishes_decimal_string_grammar() -> None:
     amount_schema = Money.model_json_schema(mode="validation")["properties"]["amount"]
     assert amount_schema["pattern"] == (
-        r"^(?:[1-9]\d{0,9}(?:\.\d{1,2})?|0\.(?:0[1-9]|[1-9]\d?))$"
+        r"^(?:[1-9][0-9]{0,9}(?:\.[0-9]{1,2})?|0\.(?:0[1-9]|[1-9][0-9]?))$"
     )
