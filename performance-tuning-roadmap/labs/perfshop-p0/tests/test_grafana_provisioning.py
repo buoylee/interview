@@ -119,8 +119,19 @@ class GrafanaProvisioningTests(unittest.TestCase):
 
     def test_readme_contains_executable_monitoring_runbook(self):
         readme = (LAB_ROOT / "README.md").read_text(encoding="utf-8")
+        runbook_heading = "## 6. 可执行监控与 Chaos Runbook"
+        runbook_start = readme.index(runbook_heading)
+        runbook_end = readme.index("\n## 7.", runbook_start)
+        runbook = readme[runbook_start:runbook_end]
         required_snippets = [
-            "## 6. 可执行监控与 Chaos Runbook",
+            runbook_heading,
+            "### 6.1 Baseline",
+            "### 6.2 Slow DB",
+            "### 6.3 CPU Hotspot",
+            "### 6.4 Redis Slow",
+            "### 6.5 Downstream Timeout",
+            "### 6.6 Retry Storm",
+            "### 6.7 Reset",
             "docker compose restart grafana",
             "wrk -t2 -c20 -d60s",
             "/chaos/slow-db?enabled=true",
@@ -133,7 +144,7 @@ class GrafanaProvisioningTests(unittest.TestCase):
         ]
         for snippet in required_snippets:
             with self.subTest(snippet=snippet):
-                self.assertIn(snippet, readme)
+                self.assertIn(snippet, runbook)
 
 
 if __name__ == "__main__":
