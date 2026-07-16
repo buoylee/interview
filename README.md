@@ -9,9 +9,10 @@
 
 ## 🐍 Python
 
-- 📖 [python/](python/) — Python 资深工程师教程（23 章 + 面试卡）
+- 📖 [python/](python/) — Python 资深工程师教程（26 章 + 面试卡）
 - 📖 [python-concurrency/](python-concurrency/) — Python 并发系统课：给 Java·Go 后端的「先懂再背」
 - 📖 [python-data/](python-data/) — Python 数据访问架构
+- 📖 [python-pydantic/](python-pydantic/) — Pydantic v2 数据契约与配置治理（含可跑 lab）
 - 📖 [fastapi-ops/](fastapi-ops/) — FastAPI 系统监控与调优
 
 ## 🐹 Go

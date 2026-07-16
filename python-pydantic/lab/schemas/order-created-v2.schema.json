@@ -1,0 +1,92 @@
+{
+  "$defs": {
+    "Money": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "pattern": "^(?:[1-9][0-9]{0,9}(?:\\.[0-9]{1,2})?|0\\.(?:0[1-9]|[1-9][0-9]?))$",
+          "title": "Amount",
+          "type": "string"
+        },
+        "currency": {
+          "pattern": "^[\\u0009-\\u000D ]*[A-Za-z]{3}[\\u0009-\\u000D ]*$",
+          "title": "Currency",
+          "type": "string"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "title": "Money",
+      "type": "object"
+    },
+    "OrderCreatedV2": {
+      "additionalProperties": false,
+      "properties": {
+        "customer_id": {
+          "pattern": "^cus_[0-9a-f]{12}$",
+          "title": "Customer Id",
+          "type": "string"
+        },
+        "item_count": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Item Count",
+          "type": "integer"
+        },
+        "order_id": {
+          "pattern": "^ord_[0-9a-f]{12}$",
+          "title": "Order Id",
+          "type": "string"
+        },
+        "total": {
+          "$ref": "#/$defs/Money"
+        }
+      },
+      "required": [
+        "order_id",
+        "customer_id",
+        "total",
+        "item_count"
+      ],
+      "title": "OrderCreatedV2",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "event_id": {
+      "pattern": "^msg_[0-9a-f]{12}$",
+      "title": "Event Id",
+      "type": "string"
+    },
+    "event_type": {
+      "const": "order.created",
+      "title": "Event Type",
+      "type": "string"
+    },
+    "occurred_at": {
+      "format": "date-time",
+      "title": "Occurred At",
+      "type": "string"
+    },
+    "payload": {
+      "$ref": "#/$defs/OrderCreatedV2"
+    },
+    "schema_version": {
+      "const": 2,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "event_id",
+    "event_type",
+    "schema_version",
+    "occurred_at",
+    "payload"
+  ],
+  "title": "OrderCreatedEnvelopeV2",
+  "type": "object"
+}

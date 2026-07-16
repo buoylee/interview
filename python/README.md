@@ -8,7 +8,7 @@
 
 ## 怎么读
 
-- **线性通读**(推荐第一遍):00 → 24 顺序读。00–01 建立"一切皆对象 + 名字即绑定"的总纲,后面所有"陷阱"都从这里长出来;跳过会反复卡。
+- **线性通读**(推荐第一遍):00 → 25 顺序读。00–01 建立"一切皆对象 + 名字即绑定"的总纲,后面所有"陷阱"都从这里长出来;跳过会反复卡。
 - **按主题跳读**(复习/查漏):直接进对应章,每章自带"导引 + Java/Go 对照框 + 章末面试卡",可独立读。
 - **面试前突击**:先扫 `99-interview-cards.md`,卡壳的知识点回到对应章补。
 
@@ -43,6 +43,7 @@
 | 22 | [Python↔C 边界](22-python-c-boundary.md) | 缓冲区协议、memoryview、struct/array、ctypes/cffi |
 | 23 | [数据访问(桥接章)](23-data-access-bridge.md) | 选型决策树、事务/N+1/池一句话;深度 → python-data/ |
 | 24 | [设计模式:消失/换形/仍需](24-design-patterns.md) | GoF 在 Python 里的命运;registry/工厂/观察者/插件的原语写法 |
+| 25 | [运行时数据契约(桥接章)](25-runtime-data-contracts-bridge.md) | 静态类型/运行时验证/领域规则的边界;深度 → python-pydantic/ |
 | 99 | [面试卡](99-interview-cards.md) | 各章高频题汇总 + 猜输出 drill 合集 |
 
 ## 与仓库其他目录的关系
@@ -54,3 +55,4 @@
 - **Web/服务可观测性** → [`../fastapi-ops/`](../fastapi-ops/):FastAPI 指标/追踪/日志/压测/调优。
 - **零拷贝/二进制/FFI 的语言层** 就在本章(ch22);更深的**性能剖析与原生扩展工程化**仍指 [`../performance-tuning-roadmap/`](../performance-tuning-roadmap/)。
 - **数据访问深度** → [`../python-data/`](../python-data/):driver/连接池/ORM/Session/事务边界/N+1/async/迁移/repository,含可跑 Postgres lab(池耗尽/N+1/隔离/async 吞吐实测)。第 23 章只讲"怎么选",实操在那里。
+- **数据契约深度** → [`../python-pydantic/`](../python-pydantic/):Pydantic v2 的信任边界、验证/序列化、契约分层、演进、错误、测试、性能与 pydantic-settings,含可跑 order-contracts lab。第 25 章只讲"怎么选",完整决策与实操在那里。

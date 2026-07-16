@@ -105,7 +105,7 @@ m.groups()                               # ('12', '34');热路径用 re.compile 
 
 | 场景 | 首选 | 说明 |
 |------|------|------|
-| **数据模型 + 校验** | **pydantic** | 读类型注解做运行时校验/解析;配置、API、数据边界标配(对标 Lombok+ 校验) |
+| **数据模型 + 校验** | [**pydantic**](../python-pydantic/) | 读类型注解做运行时校验/解析;配置、API、数据边界标配(对标 Lombok+ 校验) |
 | | `attrs` / `dataclasses` | 纯数据类(无重校验时 `dataclasses` 够用) |
 | **HTTP 客户端** | **httpx**(同步+异步)/ `requests`(同步经典) | 调 API |
 | **Web 框架** | **FastAPI**(异步+自动文档)/ Flask(轻)/ Django(全家桶) | |

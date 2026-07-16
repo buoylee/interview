@@ -56,6 +56,8 @@ class Settings(BaseSettings):
 settings = Settings()              # 启动时一次性加载 + 校验
 ```
 
+> **注意**：这里在 import 时写 `settings = Settings()` 只为展示最小语法。生产项目不要让任意库模块导入就读取环境；来源优先级、缓存/刷新、测试隔离和多 worker 初始化策略见 [`python-pydantic/` 第 12 章](../python-pydantic/12-pydantic-settings-in-production.md)。
+
 好处:配置**有类型、有校验、有默认、集中声明**,缺必需项启动就炸而不是运行到一半才炸。这是 FastAPI 生态的标配。
 
 ### `.env` 文件
