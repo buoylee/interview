@@ -26,6 +26,53 @@
 | `ssh-copy-id user@host` | 把公鑰裝到對端 → **免密登入** |
 | `ssh -J bastion user@internal` | 經**跳板機**連內網主機(ProxyJump) |
 
+### 🔧 實戰：配置免密金鑰登入 (Passwordless SSH)
+
+原理：**本端存私鑰（客戶端），對端存公鑰（伺服器端）**。
+
+#### 1. 本端 (Local Client) 設定
+在本地電腦執行：
+```bash
+# 1. 產生金鑰對（一路 Enter 到底，密碼留空）
+ssh-keygen -t ed25519 -C "your_email@example.com"
+# 產生：私鑰 ~/.ssh/id_ed25519 與 公鑰 ~/.ssh/id_ed25519.pub
+
+# 2. 本地權限規範 (私鑰過於開放會被拒絕使用)
+chmod 700 ~/.ssh && chmod 600 ~/.ssh/id_ed25519
+```
+
+#### 2. 對端 (Remote Server) 設定
+將本端的公鑰內容，寫入對端伺服器的受信任清單中：
+
+* **方法 A（推薦，自動拷貝）**：在**本端**執行：
+  ```bash
+  ssh-copy-id -i ~/.ssh/id_ed25519.pub user@remote_ip
+  # 若非 22 端口：ssh-copy-id -i ~/.ssh/id_ed25519.pub "-p 2222 user@remote_ip"
+  ```
+* **方法 B（手動指令）**：在**本端**執行指令直接寫入：
+  ```bash
+  cat ~/.ssh/id_ed25519.pub | ssh user@remote_ip "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
+  ```
+* **⚠️ 必須配置的對端權限 (極高頻失敗點)**：登入**對端**執行：
+  ```bash
+  chmod 755 ~ && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys
+  ```
+
+#### 3. 故障排查 (若仍需要密碼)
+在**對端**檢查 `/etc/ssh/sshd_config` 是否啟用金鑰驗證：
+```text
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+```
+*修改後需重啟對端服務：`sudo systemctl restart sshd`。*
+
+#### 4. 驗證與連線
+在**本端**執行連線指令：
+```bash
+ssh user@remote_ip
+# 預期結果：不需要輸入任何密碼，直接進入遠端終端機。
+```
+
 **`~/.ssh/config`(資深必配,告別一長串參數)**:
 
 ```ssh-config
