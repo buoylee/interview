@@ -57,6 +57,8 @@ Redis 主从复制是**异步**的：master 确认加锁成功并返回 OK 后�
 - 涉及**正确性**（钱、库存）的场景，加 **fencing token**，别只靠锁。
 - 可重入：用 hash 存 `{token: 重入次数}`，同 token 再次加锁则计数 +1，释放则 -1 到 0 才真删。
 
+> **系統邊界**：Redis lock／lease 協調 owner，不等於被保護資源本身的正確性；強 invariant 還需要 resource-side fencing、idempotency 或狀態機。完整決策見[並發正確性與長任務協調](../../system-design/11-並發正確性與長任務協調.md)。
+
 ## 5. 调优实战
 
 - **锁竞争激烈 / 吞吐低** → 多半是锁粒度太粗；拆细锁、或用分段锁。
