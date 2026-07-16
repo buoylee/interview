@@ -4,6 +4,7 @@ import unittest
 
 
 LAB_ROOT = Path(__file__).resolve().parents[1]
+PROVISIONING_ROOT = LAB_ROOT / "grafana/provisioning"
 DATASOURCE_PATH = LAB_ROOT / "grafana/provisioning/datasources/datasources.yml"
 PROVIDER_PATH = LAB_ROOT / "grafana/provisioning/dashboards/provider.yml"
 DASHBOARD_PATH = LAB_ROOT / "grafana/provisioning/dashboards/perfshop-overview.json"
@@ -84,6 +85,11 @@ class GrafanaProvisioningTests(unittest.TestCase):
         self.assertIn("folder: PerfShop", provider)
         self.assertIn("type: file", provider)
         self.assertIn("path: /etc/grafana/provisioning/dashboards", provider)
+
+    def test_optional_provisioning_directories_exist(self):
+        for directory_name in ("plugins", "notifiers", "alerting"):
+            with self.subTest(directory=directory_name):
+                self.assertTrue((PROVISIONING_ROOT / directory_name).is_dir())
 
     def test_dashboard_identity_is_stable(self):
         self.assertEqual(self.dashboard["uid"], "perfshop-overview")
