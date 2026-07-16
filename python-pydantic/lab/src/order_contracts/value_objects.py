@@ -1,4 +1,5 @@
 from decimal import Decimal
+import re
 from typing import Annotated, Any
 
 from pydantic import (
@@ -12,14 +13,25 @@ from pydantic import (
 )
 
 
+MONEY_STRING_PATTERN = (
+    r"^(?:[1-9]\d{0,9}(?:\.\d{1,2})?|0\.(?:0[1-9]|[1-9]\d?))$"
+)
+
+
 def _validate_money_input(value: Any) -> Any:
-    if not isinstance(value, (Decimal, str)):
+    if isinstance(value, str):
+        if re.fullmatch(MONEY_STRING_PATTERN, value) is None:
+            raise ValueError("money amount must be a canonical positive decimal string")
+        return value
+    if not isinstance(value, Decimal):
         raise ValueError("money amount must be a Decimal or decimal string")
     return value
 
 
 def _normalize_currency(value: Any) -> Any:
     if isinstance(value, str):
+        if not value.isascii():
+            raise ValueError("currency code must contain ASCII letters")
         return value.strip().upper()
     return value
 
@@ -43,7 +55,12 @@ Sku = Annotated[
 MoneyAmount = Annotated[
     Decimal,
     Field(gt=Decimal("0"), max_digits=12, decimal_places=2),
-    BeforeValidator(_validate_money_input, json_schema_input_type=str),
+    BeforeValidator(
+        _validate_money_input,
+        json_schema_input_type=Annotated[
+            str, Field(pattern=MONEY_STRING_PATTERN)
+        ],
+    ),
 ]
 
 

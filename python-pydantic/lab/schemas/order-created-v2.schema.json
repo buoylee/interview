@@ -4,6 +4,7 @@
       "additionalProperties": false,
       "properties": {
         "amount": {
+          "pattern": "^(?:[1-9]\\d{0,9}(?:\\.\\d{1,2})?|0\\.(?:0[1-9]|[1-9]\\d?))$",
           "title": "Amount",
           "type": "string"
         },

@@ -263,7 +263,10 @@ lab 的 `MoneyAmount` 有两层防线：
 MoneyAmount = Annotated[
     Decimal,
     Field(gt=Decimal("0"), max_digits=12, decimal_places=2),
-    BeforeValidator(_validate_money_input, json_schema_input_type=str),
+    BeforeValidator(
+        _validate_money_input,
+        json_schema_input_type=Annotated[str, Field(pattern=MONEY_STRING_PATTERN)],
+    ),
 ]
 ```
 

@@ -391,7 +391,7 @@ input_schema = Money.model_json_schema(mode="validation")
 output_schema = Money.model_json_schema(mode="serialization")
 ```
 
-当前 lab 只允许 `Money.amount` 的 JSON 输入为 decimal string；`BeforeValidator(..., json_schema_input_type=str)` 也让 validation schema 只发布 string，不再误报 runtime 会拒绝的 JSON number。Python 调用仍可直接传 `Decimal`，这是 Python API 与 JSON wire contract 的有意差异。serialization schema 同样因 serializer 的 `-> str` 声明 string。validation／serialization 两份 schema可以不同，但每一份都必须与对应 runtime 路径一致。
+当前 lab 只允许 `Money.amount` 的 JSON 输入为 canonical positive decimal string；`json_schema_input_type` 同时发布相同 regex，不再误报 runtime 会拒绝的 JSON number 或 string。Python 调用仍可直接传 `Decimal`，这是 Python API 与 JSON wire contract 的有意差异。serialization schema 同样因 serializer 的 `-> str` 声明 string。validation／serialization 两份 schema可以不同，但每一份都必须与对应 runtime 路径一致。
 
 发布 OpenAPI／AsyncAPI 或 codegen schema 时必须声明用途：
 

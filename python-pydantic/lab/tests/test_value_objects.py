@@ -19,6 +19,11 @@ def test_currency_validation_schema_describes_normalized_input() -> None:
     }
 
 
+def test_currency_runtime_rejects_unicode_not_allowed_by_schema() -> None:
+    with pytest.raises(ValidationError):
+        TypeAdapter(CurrencyCode).validate_python("uſd")
+
+
 def test_order_id_rejects_non_string_input() -> None:
     adapter = TypeAdapter(OrderId)
     with pytest.raises(ValidationError) as caught:
@@ -52,3 +57,18 @@ def test_money_validation_schema_does_not_advertise_json_numbers() -> None:
     amount_schema = Money.model_json_schema(mode="validation")["properties"]["amount"]
     assert amount_schema["type"] == "string"
     assert "anyOf" not in amount_schema
+
+
+@pytest.mark.parametrize("value", ["not-money", "-1", "1.234", "12345678901.23"])
+def test_money_wire_grammar_rejects_values_excluded_by_schema(value: str) -> None:
+    with pytest.raises(ValidationError):
+        Money.model_validate_json(
+            f'{{"amount":"{value}","currency":"USD"}}'
+        )
+
+
+def test_money_validation_schema_publishes_decimal_string_grammar() -> None:
+    amount_schema = Money.model_json_schema(mode="validation")["properties"]["amount"]
+    assert amount_schema["pattern"] == (
+        r"^(?:[1-9]\d{0,9}(?:\.\d{1,2})?|0\.(?:0[1-9]|[1-9]\d?))$"
+    )
