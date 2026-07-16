@@ -40,6 +40,8 @@
 
 未经明确选择 `docker` marker，不应启动容器。Task 3 的 bootstrap 快照可用 `uv run pytest -q` 验证包安装与 bridge 基础示例，当时结果为 `6 passed`；累计数量会随后续章节增长。
 
+CI 以 `lab/noxfile.py` 作为平台中立的可执行契约：Python 版本、测试目录、marker 与 quality gate 只维护一份。GitHub Actions、GitLab CI 或 Jenkins 只需提供相应 interpreter、Docker 与 artifact 上传能力，因此本 track 不复制三套容易漂移的完整 YAML；迁移 CI 平台时仍运行相同 Nox session。
+
 fixture ownership 规则：module/session scope 可以共享真正只读或有隔离协议的资源管理能力，但不得直接返回可变领域对象。需要多个订单或局部覆盖时，共享无状态 factory，并让每次调用创建新的 `Order`。
 
 ## 每章固定模板
