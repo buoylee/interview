@@ -25,6 +25,20 @@ def test_currency_runtime_rejects_unicode_not_allowed_by_schema(value: str) -> N
         TypeAdapter(CurrencyCode).validate_python(value)
 
 
+@pytest.mark.parametrize("whitespace", ["\t", "\n", "\v", "\f", "\r", " "])
+def test_currency_accepts_each_published_ascii_whitespace(whitespace: str) -> None:
+    result = TypeAdapter(CurrencyCode).validate_python(
+        f"{whitespace}usd{whitespace}"
+    )
+    assert result == "USD"
+
+
+@pytest.mark.parametrize("control", ["\x1c", "\x1d", "\x1e", "\x1f"])
+def test_currency_rejects_unpublished_ascii_controls(control: str) -> None:
+    with pytest.raises(ValidationError):
+        TypeAdapter(CurrencyCode).validate_python(f"{control}USD")
+
+
 def test_order_id_rejects_non_string_input() -> None:
     adapter = TypeAdapter(OrderId)
     with pytest.raises(ValidationError) as caught:

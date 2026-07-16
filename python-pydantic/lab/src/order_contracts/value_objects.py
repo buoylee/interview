@@ -35,7 +35,7 @@ def _normalize_currency(value: Any) -> Any:
     if isinstance(value, str):
         if not value.isascii():
             raise ValueError("currency code must contain ASCII letters")
-        return value.strip().upper()
+        return value.strip("\t\n\v\f\r ").upper()
     return value
 
 
