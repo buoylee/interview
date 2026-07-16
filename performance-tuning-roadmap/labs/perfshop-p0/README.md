@@ -144,7 +144,108 @@ downstream_http_request_duration_seconds_bucket{method,path}
 
 ---
 
-## 6. 三个入门场景
+## 6. 可执行监控与 Chaos Runbook
+
+Grafana 会在启动时自动导入 `PerfShop Overview`。首次启动使用：
+
+```bash
+docker compose up --build
+```
+
+只修改 Dashboard provisioning 文件时不需要重建镜像，重启 Grafana 即可：
+
+```bash
+docker compose restart grafana
+```
+
+打开 http://localhost:3000，使用 `admin/admin` 登录，在 `Dashboards → PerfShop → PerfShop Overview` 查看面板。每次实验先执行 baseline，再开启一个 chaos；实验完成后立即 reset。
+
+### 6.1 Baseline
+
+商品搜索：
+
+```bash
+wrk -t2 -c20 -d60s "http://localhost:8080/api/products/search?q=alpha"
+```
+
+商品详情与 Redis：
+
+```bash
+wrk -t2 -c20 -d60s http://localhost:8080/api/products/1
+```
+
+Downstream 推荐：
+
+```bash
+wrk -t2 -c20 -d60s http://localhost:8080/api/recommendations/1
+```
+
+记录 `HTTP QPS`、`HTTP P95 Latency`、`HTTP P99 Latency`，以及对应依赖面板的稳定区间。
+
+### 6.2 Slow DB
+
+```bash
+curl -X POST "http://localhost:8080/chaos/slow-db?enabled=true"
+wrk -t2 -c20 -d60s "http://localhost:8080/api/products/search?q=alpha"
+```
+
+观察 `DB Query QPS`、`DB Average Latency`、`DB P95 Latency`。确认 `slow_product_search` 序列出现；用 `EXPLAIN` 验证 `description LIKE '%alpha%'` 的全表扫描。小数据集下延迟差异可能不大，查询计划仍是扩展性证据。
+
+### 6.3 CPU Hotspot
+
+先在一个终端启动热点：
+
+```bash
+curl -X POST "http://localhost:8080/chaos/cpu?duration=60"
+```
+
+立即在另一个终端压测：
+
+```bash
+wrk -t2 -c20 -d60s http://localhost:8080/api/products/1
+```
+
+观察 `App CPU Usage`、`HTTP QPS`、`HTTP P99 Latency`。
+
+### 6.4 Redis Slow
+
+```bash
+curl -X POST "http://localhost:8080/chaos/redis-slow?enabled=true"
+wrk -t2 -c20 -d60s http://localhost:8080/api/products/1
+```
+
+观察 `Redis P95 Latency`、`HTTP P95 Latency`、`HTTP P99 Latency`。
+
+### 6.5 Downstream Timeout
+
+```bash
+curl -X POST "http://localhost:8080/chaos/downstream-delay?delay_ms=1000"
+wrk -t2 -c20 -d60s http://localhost:8080/api/recommendations/1
+```
+
+观察 `Downstream QPS`、`Downstream Error Rate`、`Downstream P95 Latency`、`HTTP 5xx Rate`。
+
+### 6.6 Retry Storm
+
+```bash
+curl -X POST "http://localhost:8080/chaos/downstream-delay?delay_ms=1000"
+curl -X POST "http://localhost:8080/chaos/retry-storm?enabled=true"
+wrk -t2 -c20 -d60s http://localhost:8080/api/recommendations/1
+```
+
+观察 `Downstream Retry Rate`、`Downstream QPS`、`Downstream Error Rate`，确认单次用户请求被放大成多次下游请求。
+
+### 6.7 Reset
+
+每个案例结束后执行：
+
+```bash
+curl -X POST http://localhost:8080/chaos/reset
+```
+
+使用相同 `wrk` 参数复测，确认 CPU、延迟、错误率和重试率恢复 baseline。
+
+## 7. 三个入门场景
 
 ### 场景 1：慢 SQL
 
@@ -215,7 +316,7 @@ POST /chaos/slow-downstream?delay_ms=1000
 
 ---
 
-## 7. P1-mini 进阶场景
+## 8. P1-mini 进阶场景
 
 这些场景用于把 P0 的单服务闭环扩展成面试中更有区分度的分布式诊断闭环。建议按顺序完成，每个场景都保留压测命令、PromQL、日志片段、根因判断和复测结果。
 
@@ -308,7 +409,7 @@ POST /chaos/retry-storm?enabled=true
 
 ---
 
-## 8. 学习顺序建议
+## 9. 学习顺序建议
 
 1. 先跑通 P0：健康检查、业务接口、Prometheus target、基础 Grafana。
 2. 完成慢 SQL：用 DB 指标和 EXPLAIN 给出可复现证据。
@@ -322,7 +423,7 @@ POST /chaos/retry-storm?enabled=true
 
 ---
 
-## 9. P0 验收标准
+## 10. P0 验收标准
 
 - [ ] 一条命令启动依赖和服务
 - [ ] `/health` 返回正常
@@ -334,7 +435,7 @@ POST /chaos/retry-storm?enabled=true
 
 ---
 
-## 10. P1-mini 验收标准
+## 11. P1-mini 验收标准
 
 - [ ] Redis、downstream、App、Prometheus、Grafana 能由 `docker compose up --build` 启动
 - [ ] `/api/products/{id}` 能使用 Redis cache-aside，并暴露 Redis 操作耗时
@@ -348,7 +449,7 @@ POST /chaos/retry-storm?enabled=true
 
 ---
 
-## 11. 与路线阶段的对应关系
+## 12. 与路线阶段的对应关系
 
 | P0 能力 | 对应阶段 |
 |---------|----------|

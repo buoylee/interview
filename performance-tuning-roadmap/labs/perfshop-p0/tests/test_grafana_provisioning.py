@@ -117,6 +117,24 @@ class GrafanaProvisioningTests(unittest.TestCase):
                     "s",
                 )
 
+    def test_readme_contains_executable_monitoring_runbook(self):
+        readme = (LAB_ROOT / "README.md").read_text(encoding="utf-8")
+        required_snippets = [
+            "## 6. 可执行监控与 Chaos Runbook",
+            "docker compose restart grafana",
+            "wrk -t2 -c20 -d60s",
+            "/chaos/slow-db?enabled=true",
+            "/chaos/cpu?duration=60",
+            "/chaos/redis-slow?enabled=true",
+            "/chaos/downstream-delay?delay_ms=1000",
+            "/chaos/retry-storm?enabled=true",
+            "/chaos/reset",
+            "PerfShop Overview",
+        ]
+        for snippet in required_snippets:
+            with self.subTest(snippet=snippet):
+                self.assertIn(snippet, readme)
+
 
 if __name__ == "__main__":
     unittest.main()
