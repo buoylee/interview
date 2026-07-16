@@ -2,7 +2,7 @@
 
 这是一条面向资深后端工程师的 Python 测试进阶路线。读者应已能开发 Python 服务；这里关心的不是 pytest API 清单，而是如何根据业务风险选择测试边界、建立可测架构、保留失败证据，并治理真实测试套件。
 
-仓库中的规范入口是 [`python-testing/README.md`](../python-testing/README.md)，配套可执行项目位于 [`lab/`](lab/README.md)。
+仓库中的规范入口是 [`python-testing/README.md`](../python-testing/README.md)，配套可执行项目位于 [`lab/`](lab/README.md)；面试前可从 [`99-interview-cards/`](99-interview-cards/README.md) 先做速答，再沿证据链接回到章节和测试。
 
 ## 前置知识
 
@@ -27,10 +27,11 @@
 | 09 | [Property 与 stateful testing](09-property-and-stateful-testing.md) | 用生成数据和状态机验证不变量 |
 | 10 | [测试套件可靠性与规模](10-suite-reliability-and-scale.md) | 治理 flaky、顺序依赖、xdist 与速度预算 |
 | 11 | [CI、遗留系统与 capstone](11-ci-legacy-and-capstone.md) | 完成退款缺陷的 characterization、修复与矩阵验证 |
+| 99 | [面试速答与深题](99-interview-cards/README.md) | 48 条章节速答、七张架构深题与 lab 证据索引 |
 
 ## 命令层级
 
-所有命令都从 `python-testing/lab/` 执行。首次运行先执行 `uv sync --extra dev`。
+所有命令都从 `python-testing/lab/` 执行。首次运行先执行 `uv sync --frozen --extra dev`，让 committed `uv.lock` 决定完整依赖图。
 
 | 层级 | 命令 | 环境契约 |
 |---|---|---|
@@ -41,6 +42,25 @@
 未经明确选择 `docker` marker，不应启动容器。Task 3 的 bootstrap 快照可用 `uv run pytest -q` 验证包安装与 bridge 基础示例，当时结果为 `6 passed`；累计数量会随后续章节增长。
 
 CI 以 `lab/noxfile.py` 作为平台中立的可执行契约：Python 版本、测试目录、marker 与 quality gate 只维护一份。GitHub Actions、GitLab CI 或 Jenkins 只需提供相应 interpreter、Docker 与 artifact 上传能力，因此本 track 不复制三套容易漂移的完整 YAML；迁移 CI 平台时仍运行相同 Nox session。
+
+## 最终验证证据
+
+以下结果来自 committed `uv.lock` 的 frozen 环境；它们是完成时的证据快照，不是未来新增测试必须维持的固定数量，也不承诺特定机器耗时。
+
+| 契约 | 已验证命令 | 结果 |
+|---|---|---|
+| frozen dependency graph | `uv sync --frozen --extra dev` | exit 0，审计 64 个锁定包 |
+| 默认 Docker-free feedback | `uv run pytest -q` | 176 passed，30 Docker tests deselected |
+| 无 Docker daemon 证明 | `DOCKER_HOST=unix:///private/tmp/task16-no-docker.sock uv run pytest -q` | 176 passed，30 deselected |
+| xdist isolation | `uv run pytest tests/unit tests/component tests/contract tests/property -n 2 -q --durations=10` | 176 passed，两个 worker 无冲突 |
+| Postgres integration | `uv run pytest tests/integration -m "integration and docker" -q` | 27 passed |
+| API E2E | `uv run pytest tests/e2e -m "e2e and docker" -q` | 3 passed |
+| Hypothesis generation | `uv run pytest tests/property -q --hypothesis-show-statistics` | 4 passed；Money 与 state machine 各生成 25 个 passing examples |
+| branch coverage | `uv run pytest tests/unit tests/component tests/contract tests/property --cov=order_service --cov-branch --cov-report=term-missing` | 176 passed；总覆盖 90%，报告含 branch/partial branch |
+| Python matrix | `uv run nox -s "fast-3.11" "fast-3.12" "fast-3.13" "fast-3.14"` | 四个 session 均通过，每个 176 passed |
+| infrastructure identity | `docker run --rm postgres:16-alpine postgres --version` | `PostgreSQL 16.13`；integration/E2E fixture 使用同一 image tag |
+
+相对链接与 heading anchor 也经解析验证：28 个 Markdown source、239 个相对链接、72 个 heading anchor 全部可解析。面试卡 contract 为 12 章共 48 条速答、20/20 required tags、七张固定结构深题卡。
 
 fixture ownership 规则：module/session scope 可以共享真正只读或有隔离协议的资源管理能力，但不得直接返回可变领域对象。需要多个订单或局部覆盖时，共享无状态 factory，并让每次调用创建新的 `Order`。
 
@@ -74,6 +94,7 @@ fixture ownership 规则：module/session scope 可以共享真正只读或有�
 | 09 Property 与 stateful testing | ✅ 完成 |
 | 10 测试套件可靠性与规模 | ✅ 完成 |
 | 11 CI、遗留系统与 capstone | ✅ 完成 |
+| 99 面试速答、深题与最终证据 | ✅ 完成 |
 
 ## 与仓库其他路线的关系
 

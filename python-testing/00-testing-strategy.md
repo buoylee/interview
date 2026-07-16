@@ -128,7 +128,7 @@ coverage 适合发现测试盲区和异常分支，不能替代风险矩阵。�
 | Postgres 约束、事务、锁与持久化去重 | `integration` + `docker` | 真 Postgres；必须显式选择 Docker | 合并前／CI 运行 |
 | 关键创建、支付确认与恢复旅程 | `e2e` + `docker` | 完整装配与可控支付端 | 少量发布门禁 |
 
-默认反馈命令是 `cd python-testing/lab && uv run pytest -m "not integration and not e2e and not docker" -q`。它覆盖 unit、component、contract 与轻量 property，且不会启动容器。只有显式运行 integration 或 E2E 层级时才允许使用 Docker；这个运行契约与 [lab README](lab/README.md#命令层级) 保持一致。
+默认反馈命令是 `cd python-testing/lab && uv run pytest -m "not integration and not e2e and not docker" -q`。它覆盖 unit、component、contract 与轻量 property，且不会启动容器。只有显式运行 integration 或 E2E 层级时才允许使用 Docker；这个运行契约与 [lab README](lab/README.md#分层测试命令) 保持一致。
 
 策略落地时，为每个新增测试记录三件事即可：它防止的业务风险、使用的 oracle、为什么当前边界是最小可信边界。若无法回答其中任何一项，先不要用更大的测试掩盖设计不清。
 

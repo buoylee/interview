@@ -43,7 +43,7 @@ uv run pytest tests/component/test_process_payment.py tests/contract/test_paymen
 
 先保存 timeout 类型、请求是否开始发送、provider 是否有按幂等键查询的能力，以及两次请求的 header。不要先增加 retry。最小复现让 transport 第一次在 provider 接收请求后抛 `ReadTimeout`，第二次返回成功；若代码生成新 key，fake provider 会观察到两次独立扣款意图。
 
-修复是把幂等键绑定到业务操作而非尝试次数，并将 unknown outcome 留在 `payment_in_progress`。最终 regression oracle 不是“调用了两次”，而是两次请求都满足：
+修复是把幂等键绑定到业务操作而非尝试次数，并将 unknown outcome 留在 `payment_in_progress`。最终 regression oracle 不是“调用了两次”，而是两次请求都满足；以下断言逐字摘自 [`lab/tests/component/test_process_payment.py`](lab/tests/component/test_process_payment.py)：
 
 ```python
 assert gateway.charge_calls[0]["idempotency_key"] == f"charge:{order.id}"

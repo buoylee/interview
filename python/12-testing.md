@@ -65,7 +65,7 @@ cd python-testing/lab && uv run pytest tests/unit/test_pytest_basics.py -q
 
 ## 下一步：Python 测试工程 track
 
-[Python 测试工程 track](../python-testing/README.md) 面向有后端经验的读者，以订单／支付服务为贯穿 lab，覆盖从 unit、component 到真 Postgres、HTTP contract、async/background、property/stateful、E2E 与 suite governance 的完整证据链。
+[Python 测试工程 track](../python-testing/README.md) 面向有后端经验的读者，以订单／支付服务为贯穿 lab，覆盖从 unit、component 到真 Postgres、HTTP contract、async/background、property/stateful、E2E 与 suite governance 的完整证据链。面试前可直接进入 [测试工程面试卡](../python-testing/99-interview-cards/README.md)，用 48 条速答和七张深题定位需要回读的章节与可执行证据。
 
 入口页提供 00–11 章节地图、fast/integration/E2E 命令层级、每章固定模板和进度表。先从测试策略与风险模型开始，不把覆盖率或固定“测试金字塔”比例当作目标。
 
@@ -95,4 +95,4 @@ fixture 是按依赖名组合、可设 scope 的资源图；`yield` 同时表达
 
 **Q：掌握 fixture 和 parametrize 是否等于会做测试工程？**
 
-不等于。资深测试工程还要能选择边界、设计 seam、控制真实基础设施、保留失败证据，并治理 flaky、并发与 CI；这些进入 [独立 track](../python-testing/README.md)。
+不等于。资深测试工程还要能选择边界、设计 seam、控制真实基础设施、保留失败证据，并治理 flaky、并发与 CI；这些进入 [独立 track](../python-testing/README.md)，完整表达可用 [面试速答与深题](../python-testing/99-interview-cards/README.md) 自测。

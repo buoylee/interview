@@ -17,16 +17,21 @@ HTTPX 不替 app 启停 lifespan，所以 fixture 必须显式进入 `app.router
 ```python
 # python-testing/lab/src/order_service/api/dependencies.py
 from order_service.application.create_order import CreateOrder
+from order_service.application.refund_order import RefundOrder
 
 
 def get_create_order() -> CreateOrder:
     raise RuntimeError("CreateOrder dependency is not configured")
+
+
+def get_refund_order() -> RefundOrder:
+    raise RuntimeError("RefundOrder dependency is not configured")
 ```
 
 ```python
 # python-testing/lab/src/order_service/api/schemas.py
 from decimal import Decimal
-from typing import Self
+from typing import Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_serializer
@@ -59,6 +64,11 @@ class OrderResponse(BaseModel):
             currency=order.total.currency,
             version=order.version,
         )
+
+
+class RefundResponse(BaseModel):
+    order_id: UUID
+    status: Literal["accepted"]
 ```
 
 ## 4. 设计取舍

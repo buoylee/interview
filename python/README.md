@@ -10,7 +10,7 @@
 
 - **线性通读**(推荐第一遍):00 → 24 顺序读。00–01 建立"一切皆对象 + 名字即绑定"的总纲,后面所有"陷阱"都从这里长出来;跳过会反复卡。
 - **按主题跳读**(复习/查漏):直接进对应章,每章自带"导引 + Java/Go 对照框 + 章末面试卡",可独立读。
-- **面试前突击**:先扫 `99-interview-cards.md`,卡壳的知识点回到对应章补。
+- **面试前突击**:语言机制先扫 [`99-interview-cards.md`](99-interview-cards.md)，测试架构与故障诊断进入 [Python 测试工程面试卡](../python-testing/99-interview-cards/README.md)；卡壳的知识点再回到对应章补。
 
 每章结构固定:**导引(为什么重要 / 一句话心智)→ 正文(由浅入深)→ Java/Go 对照框 → 章末面试卡(高频题 + 猜输出 + 一句话答法)**。代码块都能直接跑。
 
@@ -30,7 +30,7 @@
 | 09 | [类型系统与 typing](09-typing.md) | 渐进类型、泛型、`Protocol`/`TypedDict`/`Annotated`、mypy/pyright |
 | 10 | [模块、包、导入系统](10-modules-packages-imports.md) | import 机制与缓存、循环导入、`__main__`、`__all__` |
 | 11 | [工程化:环境、依赖、打包、工具链](11-tooling-envs-packaging.md) | venv、uv/poetry、`pyproject.toml`、ruff、打包 |
-| 12 | [测试](12-testing.md) | pytest 快速入门与框架选型；深度 → [Python 测试工程 track](../python-testing/README.md) |
+| 12 | [测试](12-testing.md) | pytest 快速入门与框架选型；深度 → [Python 测试工程 track](../python-testing/README.md)／[面试卡](../python-testing/99-interview-cards/README.md) |
 | 13 | [并发(桥接章)](13-concurrency-bridge.md) | GIL 心智、threading/multiprocessing/asyncio 怎么选 |
 | 14 | [标准库与生态地图](14-stdlib-and-ecosystem.md) | collections/itertools/pathlib/logging… + 生态地图 |
 | 15 | [CPython 执行模型](15-cpython-execution-model.md) | 字节码·code object·帧·名字解析(LOAD_FAST/GLOBAL/DEREF)·cell/闭包·自适应专门化 |

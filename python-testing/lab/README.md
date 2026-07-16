@@ -7,19 +7,18 @@
 在本目录执行：
 
 ```bash
-uv lock
-uv sync --extra dev
+uv sync --frozen --extra dev
 ```
 
-`uv.lock` 是依赖版本的可执行基线，开发和 CI 都应从它同步环境。
+`uv.lock` 是依赖版本的可执行基线，开发和 CI 都应从它同步环境。只有有意改变依赖时才运行 `uv lock` 并审查 lockfile diff。
 
-## 验证 bootstrap
+## 验证默认反馈
 
 ```bash
 uv run pytest -q
 ```
 
-当前预期输出为 `6 passed`。该命令验证可编辑安装、版本契约与 bridge 基础示例，不会连接数据库、网络服务或 Docker。
+Task 16 的 frozen evidence snapshot 为 `176 passed, 30 deselected`。数量会随 regression 增长；稳定契约是命令 exit 0、Docker tests 被默认 marker 排除，并同时验证可编辑安装、版本契约与所有快速层。完整矩阵与 Postgres 版本证据见 [track 的最终验证证据](../README.md#最终验证证据)。
 
 ## 分层测试命令
 

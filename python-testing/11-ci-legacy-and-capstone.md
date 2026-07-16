@@ -9,7 +9,7 @@
 3. 哪一层测试可以证明哪一种风险，哪些结论必须由真数据库或完整进程边界提供？
 4. 怎样让本机证据在 CI 可重复，并让失败能被快速归类，而不是重新猜测？
 
-本章以一个真实形态的退款缺陷收束整条 track。旧实现直接把调用方每次重试提供的 request ID 发送给支付商：
+本章以一个真实形态的退款缺陷收束整条 track。下面是已经删除的旧实现之概念伪代码（pseudocode，不是当前 runnable lab 源码）；它直接把调用方每次重试提供的 request ID 发送给支付商：
 
 ```python
 await gateway.refund(
@@ -52,12 +52,12 @@ await gateway.refund(
 5. E2E 证明所有边界组合后仍保留外部契约；
 6. 最后删除 legacy seam，而不是永久保留双实现。
 
-characterization test 回答「系统现在对调用方承诺了什么」。approval/golden test 则回答「一份大输出是否仍与被批准的快照一致」。前者适合小而稳定的协议事实；后者适合人工审阅价值高、结构庞大的输出。把普通 JSON API 全量快照化，会让无关字段顺序和格式变化放大审阅噪声。本 lab 因此直接断言：
+characterization test 回答「系统现在对调用方承诺了什么」。approval/golden test 则回答「一份大输出是否仍与被批准的快照一致」。前者适合小而稳定的协议事实；后者适合人工审阅价值高、结构庞大的输出。把普通 JSON API 全量快照化，会让无关字段顺序和格式变化放大审阅噪声。本 lab 因此直接断言；以下片段逐字摘自 [`lab/tests/component/test_refund_characterization.py`](lab/tests/component/test_refund_characterization.py)：
 
 ```python
 assert response.status_code == 202
 assert response.json() == {
-    "order_id": str(order_id),
+    "order_id": str(PAID_ORDER_ID),
     "status": "accepted",
 }
 ```
@@ -96,17 +96,21 @@ commit                    refund:{order_id}              save + commit
 - caller request key：保护一次 HTTP command 的重试语义，也是既有 API 的兼容字段；
 - provider operation key：标识同一笔业务退款，必须由稳定业务身份派生。
 
-把 caller key 透传到 provider，相当于把内部副作用身份交给外部调用方控制。本 lab 保留 header 验证，却不使用它构造 provider key：
+把 caller key 透传到 provider，相当于把内部副作用身份交给外部调用方控制。本 lab 保留 header 验证，却不使用它构造 provider key。以下调用逐字摘自 [`lab/src/order_service/application/refund_order.py`](lab/src/order_service/application/refund_order.py)：
 
 ```python
-idempotency_key = f"refund:{order.id}"
+result = await self._gateway.refund(
+    payment_reference=payment_reference,
+    total=order.total,
+    idempotency_key=f"refund:{order.id}",
+)
 ```
 
 稳定 key 不等于本地并发控制。两个进程可能同时读取 `REFUND_IN_PROGRESS` 并调用支付商；provider 以相同 key 去重，而本地 `version` 乐观锁确保只有一个 completion save 成功。另一个写入得到 `ConcurrentOrderUpdate`，不能吞掉后伪装成功。
 
 ### 3.4 optimistic save 的事实边界
 
-repository 使用：
+repository 的 version predicate 可用以下 SQL 等价伪代码表示（pseudocode；生产实现见 [`lab/src/order_service/adapters/sqlalchemy.py`](lab/src/order_service/adapters/sqlalchemy.py)）：
 
 ```sql
 UPDATE orders
@@ -145,7 +149,7 @@ change amplification 是一次业务变更迫使多少无关模块、fixture、s
 
 ### 5.1 先得到真实 RED
 
-旧测试明确标记已知缺陷：
+修复前的旧测试曾明确标记已知缺陷；以下是历史伪代码（pseudocode，不属于当前默认 collection）：
 
 ```python
 @pytest.mark.xfail(strict=True, reason="CAPSTONE-REFUND-IDEMPOTENCY")

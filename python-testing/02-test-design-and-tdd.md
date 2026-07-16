@@ -35,7 +35,7 @@ RED 的价值在于证明测试确实能感知目标缺失。import／attribute 
 
 ### 值对象把输入不变量收紧在入口
 
-以下文件逐字来自 [`lab/src/order_service/domain/order.py`](lab/src/order_service/domain/order.py)：
+以下是 Task 4 结束时的历史实现快照，作为本章 test-first 演进的伪代码（pseudocode）保留；累积 lab 已在 mutation seam 与退款 capstone 中继续演进，当前 runnable 源码见 [`lab/src/order_service/domain/order.py`](lab/src/order_service/domain/order.py)：
 
 ```python
 from dataclasses import dataclass
@@ -143,7 +143,7 @@ class Order:
 
 ### 测试名是可搜索的业务政策
 
-以下文件逐字来自 [`lab/tests/unit/test_order.py`](lab/tests/unit/test_order.py)：
+以下是与上述 Task 4 快照配套的历史测试伪代码（pseudocode），用于保留逐步 RED→GREEN 的证据顺序；当前 runnable regression suite 见 [`lab/tests/unit/test_order.py`](lab/tests/unit/test_order.py)：
 
 ```python
 import importlib
