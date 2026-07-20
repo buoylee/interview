@@ -65,13 +65,22 @@
 
 ### 3.2 WAL 原则
 
-WAL = **Write-Ahead Logging**（先写日志，再写数据页）。
+WAL = **Write-Ahead Logging**（先保证 redo 持久化，再允许对应脏页写出）。这里的「先」约束的是**落盘顺序**，不是说内存数据页必须等 redo 写完后才能修改。
 
-核心思路：把随机 IO（更新磁盘上散落各处的数据页）转换为顺序 IO（追加写日志文件），大幅提升写入吞吐。
+核心思路不是让数据页写入消失，而是把事务提交的持久化关键路径，从「同步等待多个数据页写回」改成「先等待连续的 redo 写入；数据页稍后由后台刷回」。
 
 **为什么 WAL 有效：**
 
-磁盘的顺序写速度通常比随机写快 10~100 倍（SSD 上差距缩小但仍存在）。一个事务改了 5 张表的 20 个页，如果立刻同步刷盘，需要 20 次随机写；但只要先把"改了什么"顺序追加到 redo log，等 checkpoint 时统一刷脏页，就把 20 次随机写合并成 1 次顺序写。
+1. **提交不等待随机数据页写回**：事务只需等待对应 redo 达到所需持久化位置；散落在不同表空间的数据页由 page cleaner 后台处理。
+2. **Group Commit 摊薄 `fsync`**：多个并发事务的 redo 可以由一次 `fsync` 覆盖，减少「每事务一次设备持久化屏障」的固定成本。
+3. **同一数据页的多次修改可以合并**：一个 InnoDB B+Tree 页默认是 16KB，不是一行。相邻主键、递增主键插入、热点库存行或计数器可能反复修改同一个 leaf page。只要该页尚未刷出，100 次修改会生成各自的 redo，但数据页可能只需写出包含最终状态的一次 16KB 镜像。
+4. **后台 I/O 更容易并行和批量调度**：前台事务不再逐个同步等待离散 page write；后台可以维持更高 I/O queue depth，让 SSD/NVMe 并行处理。
+
+**WAL 没有消灭什么：**
+
+- 如果 100 次随机更新命中 100 个不同页，最终仍要刷 100 个数据页；「同页合并」几乎没有收益。
+- 若持续写入速度超过刷脏能力，checkpoint age 会不断增长；redo 空间逼近上限后，InnoDB 必须强制加速刷脏，前台仍会出现 write stall。
+- 所以 WAL 主要降低**提交延迟**、提高并发吞吐并吸收短期尖峰；长期稳态随机写吞吐仍受数据页刷盘 IOPS 限制。
 
 **WAL 的约束：**
 1. 数据页（脏页）在被刷回磁盘之前，对应的 redo log 必须先落盘。
@@ -81,34 +90,97 @@ WAL = **Write-Ahead Logging**（先写日志，再写数据页）。
 
 #### Redo Log Buffer
 
-内存中的写缓冲区，大小由 `innodb_log_buffer_size` 控制（默认 16MB）。事务执行期间，每次修改先写入 buffer，不立刻 fsync。
+Redo Log Buffer 是 `mysqld` 进程内、由 InnoDB 管理的环形字节数组，大小由 `innodb_log_buffer_size` 控制。默认值随版本变化：MySQL 5.7/8.0 常见为 16MB，MySQL 8.4 为 64MB；应以实例查询结果为准。
+
+事务在 mini-transaction（mtr）中修改数据页并收集 redo records；`mtr_commit()` 再为这组 records 预留一段 LSN 范围，把 bytes 复制到全局 redo log buffer。底层可理解为：
+
+```text
+atomic fetch_add 预留 LSN
+    ↓
+memcpy / CPU memory store
+    ↓
+log_buffer[LSN % log_buffer_size]
+```
+
+这一步只修改 `mysqld` 的 user-space memory：没有文件 I/O，没有进入 kernel，也没有操作 SSD。并发线程可以写不同 LSN 区间；log writer 只会写出已经连续完成、没有空洞的 log blocks。
 
 ```sql
 -- 查看当前值
 SHOW VARIABLES LIKE 'innodb_log_buffer_size';
 ```
 
-buffer 什么时候刷到磁盘（redo log 文件）：
-1. 事务提交时（受 `innodb_flush_log_at_trx_commit` 控制，见下）
-2. buffer 使用量超过 1/2 时（后台线程主动刷）
-3. 每隔 1 秒由后台 master thread 刷一次
+#### Redo Log Buffer 与 OS Page Cache：实际操作什么
+
+以 MySQL 8.x + Linux 常见 buffered I/O 路径为例，redo 从生成到持久化会经过：
+
+```text
+事务线程
+  │ CPU memcpy：mtr buffer → redo log buffer
+  ▼
+mysqld user space
+InnoDB redo log buffer（匿名内存、环形数组）
+  │ write()/pwrite() 或平台等价调用
+  ▼
+Linux kernel space
+OS page cache（按 inode + file offset 管理的 file-backed memory）
+  │ fsync()/fdatasync()
+  ▼
+filesystem writeback → block layer → device driver
+  │ DMA / NVMe write + 必要的 cache flush/FUA
+  ▼
+SSD/HDD 非易失介质
+```
+
+这里的 DMA（Direct Memory Access，直接内存访问）表示设备无需 CPU 逐字节搬运即可从内存取数据；FUA（Force Unit Access，强制单次写入直达非易失介质）用于避免设备只把写入留在易失缓存中。
+
+两层虽然物理上都可能位于 DRAM，实际操作完全不同：
+
+- **InnoDB redo log buffer**：InnoDB 分配 LSN、组织 redo group、补 log block header/footer、计算 checksum；事务线程通过普通 CPU store / `memcpy` 写入。它属于 `mysqld` 进程，进程退出后内存会被回收。
+- **OS page cache**：log writer 对 redo 文件执行 `write()` / `pwrite()` 后，kernel 根据文件 inode（文件元数据对象）和 offset 找到或创建 page-cache folio（内核批量管理的一组缓存页），把 bytes 从 user space 复制进去并标记为 dirty。OS 只理解「文件某个 offset 的 bytes」，不理解 transaction、LSN 或 redo record。
+- **持久介质**：`write()` 成功通常只表示 kernel 已接收数据，不等于断电安全。log flusher 执行 `fsync()` / `fdatasync()`，kernel 才把 dirty cache 交给文件系统和 block layer，并等待设备完成必要的写入与缓存刷新。
+
+InnoDB 用不同进度表示三种事实：
+
+| 进度 | 已完成的实际操作 | 此时失败会怎样 |
+|------|------------------|----------------|
+| `log_buffer_ready_for_write_lsn()` | redo 已完整复制到 InnoDB log buffer | `mysqld` crash 会丢尚未写出的部分 |
+| `write_lsn` | log writer 已把 redo 写到 log file / OS system buffer | 单独的 `mysqld` crash 通常保留；OS crash 或断电仍可能丢 |
+| `flushed_to_disk_lsn` | log flusher 已完成 `fsync` | 正常遵守 flush 语义的存储设备上，断电后仍可恢复 |
+
+**为什么不能把两个 buffer 合并：**
+
+- 若只用 OS page cache，在常规 `write()` 路径下，InnoDB 每产生小段 redo 就要进入 kernel；而且 kernel 不会替 InnoDB 分配 LSN、判断 redo group 是否完整或计算日志 checksum。MySQL 最终仍要先在 user space 组装数据，相当于重新造一个 log buffer。
+- `mmap` 可以把 file-backed pages 映射进 user space，减少显式复制，但 InnoDB 仍需管理完整 redo group、LSN 和 checksum，并用 `msync`/`fsync` 建立持久化边界；它只让物理内存可能重叠，没有合并两层职责。
+- 若只用 InnoDB log buffer，user-space 内存无法提供文件系统、设备调度和断电持久化语义。MySQL 仍需通过 kernel 把 bytes 送到设备，并明确执行 flush。
+- 某些 `innodb_flush_method`、同步 I/O 或 direct I/O 配置可以绕过部分 OS page-cache 路径，但「redo 已在 InnoDB 中完整生成」「OS/设备已接收」「redo 已持久化」三个逻辑状态仍然存在。
+
+现代 MySQL 由不同后台职责推进这些状态：
+
+1. **Log writer**：把完整 redo blocks 从 log buffer 写到 OS system buffers，推进 `write_lsn`。
+2. **Log flusher**：执行 `fsync`，推进 `flushed_to_disk_lsn`。
+3. **事务线程**：按照 `innodb_flush_log_at_trx_commit` 等待所需 LSN；通常不是事务线程自己直接操作 redo file。
+4. **空间压力或定时任务**：即使事务尚未提交，log buffer 空间不足等情况也可能触发提前写出；不要把「write」和「fsync」视为同一个动作。
+
+底层实现参考：[MySQL Redo Log Buffer](https://dev.mysql.com/doc/dev/mysql-server/latest/PAGE_INNODB_REDO_LOG_BUF.html)、[MySQL Background Redo Log Threads](https://dev.mysql.com/doc/dev/mysql-server/latest/PAGE_INNODB_REDO_LOG_THREADS.html)、[Linux Buffered I/O](https://docs.kernel.org/filesystems/iomap/operations.html#buffered-i-o)、[Linux Volatile Write-back Cache Control](https://docs.kernel.org/block/writeback_cache_control.html)。
 
 #### innodb_flush_log_at_trx_commit 三档对比
 
 这是 InnoDB 最重要的性能 vs 持久性调节参数：
 
-| 值  | 行为                                                                 | 持久性                              | 性能   |
-|-----|----------------------------------------------------------------------|-------------------------------------|--------|
-| `0` | 每次提交只写到 redo log buffer；master thread 每秒 fsync 一次        | 崩溃最多丢 1 秒数据（进程 crash 也丢）| 最高   |
-| `1` | 每次提交都 write + fsync 到 redo log 文件（默认值）                  | 完全持久化，崩溃不丢数据            | 最低   |
-| `2` | 每次提交 write 到 OS page cache；master thread 每秒 fsync 一次       | OS crash 最多丢 1 秒（进程 crash 不丢）| 中等  |
+| 值  | commit 等待条件 | 后台行为 | 持久性 | 一般性能 |
+|-----|-----------------|----------|--------|----------|
+| `0` | 不等待该事务 redo 达到 `write_lsn` 或 `flushed_to_disk_lsn` | 后台按 timeout 等条件 write + flush | `mysqld`、OS crash 或断电都可能丢最近一段事务 | 最高 |
+| `1` | 等待 `flushed_to_disk_lsn >= commit_lsn`（默认） | log writer 写出，log flusher 完成 `fsync` 后唤醒事务 | 完整 ACID 持久性要求的配置 | 最低 |
+| `2` | 等待 `write_lsn >= commit_lsn`，不等待 `fsync` | 后台按 timeout 等条件 flush | 单独 `mysqld` crash 通常不丢；OS crash 或断电可能丢最近一段事务 | 中等 |
 
 ```sql
 SHOW VARIABLES LIKE 'innodb_flush_log_at_trx_commit';
 -- 生产 OLTP 推荐 1；高吞吐写入场景（可接受少量丢失）可设 2
 ```
 
-> 记忆口诀：**0 是最危险**（连进程 crash 都丢）；**1 是最安全**（默认）；**2 是折中**（进程崩了不丢，操作系统崩了最多丢 1 秒）。
+`innodb_flush_log_at_timeout` 控制定时 write/flush 的间隔，默认是 1 秒。但「每秒一次」不是实时保证：线程调度可能让它更晚，DDL 或其他内部活动也可能提前触发 flush。因此准确说法是「最多可能丢失最近一个实际 flush 间隔的数据」，不是永远精确 1 秒。
+
+> 记忆口诀：**0 不等 write/flush；1 等 fsync；2 等 write、不等 fsync**。只有 `1` 把事务成功返回绑定到持久化完成。
 
 #### Redo Log 文件 + 循环写
 
@@ -486,14 +558,11 @@ PURGE BINARY LOGS BEFORE '2026-05-01 00:00:00';
 是否是金融/订单类核心数据？
 ├─ 是 → 只考虑 1（双一配置），性能不足就加 SSD 或做 group commit 优化
 └─ 否 → 能接受最多丢失多少数据？
-         ├─ 1 秒内的写入 → 设置 2（OS crash 丢 1 秒，进程 crash 不丢）
-         └─ 任意量都接受 → 设置 0（最高性能，适合测试环境、日志类数据）
+         ├─ 一个实际 flush 间隔内的写入，且只接受 OS/断电风险 → 可评估 2
+         └─ 连 mysqld crash 也允许丢最近写入 → 才评估 0（通常只适合测试或可重建数据）
 ```
 
-**实际测试参考**（不同配置的 TPS 差距，仅供参考，实际取决于硬件）：
-- `innodb_flush_log_at_trx_commit=0`：可能是 1 的 5~10 倍
-- `innodb_flush_log_at_trx_commit=2`：可能是 1 的 2~3 倍
-- 配合 `binlog_group_commit_sync_delay=500`（微秒）：可在保持安全性的前提下，高并发下提升约 20~50%
+**性能判断不能套固定倍数**：收益取决于设备 `fsync` 延迟、并发提交数、binlog 配置和工作负载。高并发下先观察 Group Commit 是否已把多个事务合并进一次 `fsync`，再用同硬件、同持久性要求压测 `0/1/2`；不要拿放松持久性的结果直接与 `1` 比较后宣称数据库优化完成。
 
 ### Case C：「怎么用 mysqlbinlog 找误删数据」
 
@@ -583,7 +652,7 @@ SHOW VARIABLES LIKE 'innodb_log%';
 
 ### 必考题 3：WAL 是什么，为什么能提升性能
 
-Write-Ahead Logging：先把变更写到日志（顺序 IO），再异步把数据页写回磁盘（随机 IO）。顺序 IO 比随机 IO 快得多，所以事务提交不需要等数据页落盘，只需要等日志（redo log）落盘，提升了写入吞吐。
+Write-Ahead Logging：数据页写出前，对应 redo 必须先持久化。它没有消灭最终的数据页随机写；它把提交关键路径换成连续 redo 写，并通过 Group Commit、同页修改合并和后台并行刷脏提升吞吐。若更新命中大量不同页，最终仍要逐页刷出，稳态瓶颈仍可能回到数据页 IOPS。
 
 ### 必考题 4：Crash 后怎么恢复
 
@@ -594,9 +663,9 @@ Write-Ahead Logging：先把变更写到日志（顺序 IO），再异步把数�
 
 ### 必考题 5：innodb_flush_log_at_trx_commit 三档
 
-- `0`：每秒刷，最快，进程崩溃丢 1 秒
-- `1`：每次提交刷，最安全，默认
-- `2`：每次提交 write（到 OS cache），每秒 fsync，OS 崩溃丢 1 秒
+- `0`：commit 不等待 write 或 fsync；后台按 timeout 处理，进程 crash 也可能丢最近写入。
+- `1`：commit 等 `flushed_to_disk_lsn`，即等 `fsync` 完成；默认、完整持久化配置。
+- `2`：commit 等 `write_lsn`，即 redo 已交给 OS，但不等 `fsync`；OS crash 或断电可能丢最近一个实际 flush 间隔。
 
 ### 易错点
 
