@@ -141,12 +141,12 @@ SELECT @@global.gtid_executed;   -- 主库已提交的 GTID 集合
 
 | 维度 | 异步复制 | 半同步复制 | MGR |
 |---|---|---|---|
-| **数据持久性（主库 crash）** | 可能丢失（从库 ACK 前 crash 则丢）| 至少 1 个从库有数据（lossless 模式）| 多数节点确认，不丢 |
-| **写延迟** | 最低（不等 ACK） | +1 RTT（等 ACK，通常 1-5ms） | +1 RTT + Paxos 协议开销 |
-| **读一致性** | 弱（从库可能落后） | 弱（从库落后但有上限）| 强（单主单写模式）|
+| **数据持久性（Primary crash）** | 事务可能尚未到达副本 | lossless 模式下，返回前至少 1 个副本已持久化 relay log；不代表已 apply | 多数派维持组内决策与事务全序，可容忍少数成员故障 |
+| **写延迟** | 最低（不等 ACK） | +1 RTT（等 ACK，通常 1-5ms） | +1 RTT + 组通信/认证开销 |
+| **读一致性** | 弱（副本可能落后） | 弱（`ACK != apply`，副本仍可能读旧值） | 默认最终一致；Secondary 可能有 applier backlog |
 | **故障切换** | 手动或 MHA | 手动或 MHA | **自动**（原生选主）|
 | **部署复杂度** | 低 | 低 | 高（至少 3 节点，需要 group_replication 插件）|
-| **适用场景** | 读多写少，允许少量数据丢失的报表/分析 | 金融/交易核心，可接受极小写延迟增加 | 需要自动 HA + 强一致的核心业务 |
+| **适用场景** | 允许复制延迟和一定 RPO 的读扩展 | 希望缩小 Primary 故障丢数窗口 | 需要自动 HA 与组内多数派决策的核心业务 |
 | **MySQL 版本** | 所有版本 | 5.5+ 插件，5.7+ 内置 lossless | 5.7.17+ |
 
 ### 3.5 半同步 lossless 模式
@@ -167,6 +167,8 @@ SELECT @@global.gtid_executed;   -- 主库已提交的 GTID 集合
 
 关键差异：**ACK 在 storage engine commit 之前**。主库 crash 时：若从库已 ACK，从库有数据，新主切换安全；若从库未 ACK，主库 binlog 里有但没提交，重启后回滚，不丢。
 
+> **ACK 边界**：副本的 receiver 已接收事务并把它持久化到 relay log，才向 Primary ACK；这时 SQL/applier 可能还没有执行该事务。因此 **`ACK != apply != 副本已经可读`**。半同步主要缩小故障切换时的 RPO，不提供读己之写保证。
+
 相关参数：
 
 ```ini
@@ -186,7 +188,7 @@ rpl_semi_sync_replica_enabled         = 1
 
 ### 3.6 MGR 简述（Paxos / 单主多主 / 流控）
 
-**MGR 的一致性协议**：基于 **Paxos 变种（MySQL 内部叫 XCom）**，写入时每个事务先广播给组内所有成员，超过半数确认（`(N/2)+1` 个节点响应）后才能提交。冲突检测在广播阶段进行，多主模式下同一行被两个节点并发修改时，后提交的事务回滚。
+**MGR 的一致性协议**：基于 **Paxos 变种（MySQL 内部叫 XCom）**，组成员对事务建立全序并做冲突认证；组要继续作出决策，必须保持多数派（`(N/2)+1`）。事务进入组内有序队列，不等于每个 Secondary 的 applier 都已执行完成——默认一致性仍可能读到短暂旧值。
 
 **单主 vs 多主模式**：
 
@@ -199,7 +201,9 @@ rpl_semi_sync_replica_enabled         = 1
 
 **流控（Flow Control）**：MGR 有内置流控机制，当某个节点 apply 队列积压超过 `group_replication_flow_control_applier_threshold`（默认 25000 个事务）时，会发出 flow control 消息，让写入节点降速。表现：写入突然变慢，日志出现 `[GCS] Certification garbage collection` 或 flow control 告警。处理方式：提高从节点硬件 / 减少写入量 / 调高阈值（治标）。
 
-**MGR 最小部署**：3 节点（奇数，保证多数票），推荐用 MySQL Shell 的 `dba.createCluster()` 配置（InnoDB Cluster 方式）。
+**三节点生产基线**：采用 Single-Primary，3 个成员以 `2/3` 形成多数派，可容忍 1 个成员故障。不要把「全部 Secondary 已 apply」设成默认可用条件，否则一个慢节点或故障节点就会拖住整组；确实需要更强读一致性时，再通过 `group_replication_consistency` 选择等待点并接受额外延迟。
+
+推荐用 MySQL Shell 的 `dba.createCluster()` 配置 InnoDB Cluster。
 
 ```ini
 # my.cnf 关键配置
@@ -210,9 +214,9 @@ group_replication_group_seeds          = "node1:33061,node2:33061,node3:33061"
 group_replication_bootstrap_group      = OFF   # 只有第一个节点初始化时临时设为 ON
 ```
 
-### 3.7 读写分离三种方案对比
+### 3.7 读写分离四种方案对比
 
-读写分离核心：写 → 主库，读 → 从库。三种实现方式各有取舍：
+读写分离核心：写 → Primary，读 → Secondary。四种实现方式各有取舍：
 
 #### 方案 A：应用层（ShardingSphere / MyCAT / GORM 插件）
 
@@ -276,15 +280,33 @@ jdbc:mysql:replication://primary:3306,replica0:3306,replica1:3306/mydb
 
 适合 Java 单体应用快速上手，但对连接管理控制粒度有限，生产多用 ProxySQL 代替。
 
-#### 三方案对比总结
+#### 方案 D：MySQL Router（InnoDB Cluster）
 
-| 维度 | 应用层（ShardingSphere 等）| ProxySQL | JDBC ReplicationDriver |
-|---|---|---|---|
-| 应用侵入 | 高 | **无** | 低 |
-| 运维复杂度 | 低 | 中（需额外 HA）| 低 |
-| 连接数管理 | 差（每实例独立池）| **好**（统一代理池）| 中 |
-| SQL 粒度控制 | 高 | 高 | 低 |
-| 适用规模 | 中小 | **中大型生产** | 小型 / 原型 |
+MySQL Router 是轻量连接路由层：**不选主、不复制数据，也不执行 binlog**。Primary 选举与成员状态由 Group Replication/InnoDB Cluster 管理；Router 读取 Cluster Metadata 与实时拓扑，为新连接选择合适的在线节点。
+
+MySQL Router 8.4 bootstrap 后，经典协议常用端口是：
+
+| 端口 | 路由目标 | 应用方式 |
+|---|---|---|
+| `6446` | 当前 Primary | 明确要求读写或强一致读 |
+| `6447` | Secondary | 明确接受副本延迟的只读流量 |
+| `6450` | Primary + Secondary | Router 按事务/语句访问模式自动读写分流 |
+
+`6450` 默认启用 `wait_for_my_writes=1`：同一数据库客户端 session 先写后读时，Router 会等待目标 Secondary 应用该 session 的最后一次写入；超时后回退到读写节点。它不跨 session 传递因果关系——重连、连接池换了物理连接或另一服务发起读取时，仍应走 `6446`，或把 GTID 传给读取方并执行 `WAIT_FOR_EXECUTED_GTID_SET()`。
+
+生产环境至少部署两个 Router 实例，并让应用使用多个端点或前置负载均衡，避免 Router 自身成为接入层单点。Router 实例之间不选主，都是根据同一份 Cluster Metadata 独立路由。
+
+参考：[MySQL Router 8.4 Cluster Metadata and State](https://dev.mysql.com/doc/mysql-router/8.4/en/mysql-router-general-metadata.html)、[Read/Write Splitting Configuration](https://dev.mysql.com/doc/mysql-router/8.4/en/router-read-write-splitting-configuration.html)。
+
+#### 四方案对比总结
+
+| 维度 | 应用层（ShardingSphere 等）| ProxySQL | JDBC Replication Driver | MySQL Router |
+|---|---|---|---|---|
+| 应用侵入 | 高 | **无** | 低 | **无** |
+| 运维复杂度 | 低 | 中（需额外 HA）| 低 | 中（需多实例）|
+| 连接数管理 | 差（每实例独立池）| **好**（统一代理池）| 中 | 中 |
+| SQL 粒度控制 | 高 | 高 | 低 | 8.4 的 `6450` 支持自动分流 |
+| 适用规模 | 中小 | **中大型生产** | 小型 / 原型 | InnoDB Cluster |
 
 ### 3.8 主从延迟原因 + 定位手段
 
@@ -386,9 +408,9 @@ SELECT WAIT_FOR_EXECUTED_GTID_SET('uuid:1-12345', 1);  -- 等最多 1 秒
 
 `WAIT_FOR_EXECUTED_GTID_SET()` 是 MySQL 内置函数，可在读请求时调用，追上了就从从库读，超时就走主库。
 
-#### 策略 3：半同步保证（高要求场景）
+#### 策略 3：半同步只能缩小 RPO，不能代替读屏障
 
-lossless 半同步保证写操作返回时，**至少一个从库**已收到 binlog。如果读请求路由到的就是这个从库，则读到写。但：多个从库时无法保证路由到哪个 ACK 过的从库，且延迟仍存在（只是"量"更小）。
+lossless 半同步只保证写操作返回前至少一个副本已持久化 relay log，SQL/applier 仍可能落后。即使读请求恰好路由到 ACK 的副本，也不能据此断言新版本已经可读。读己之写仍使用策略 1、策略 2，或 §3.7 Router `6450` 的同 session `wait_for_my_writes`。
 
 #### 策略 4：接受最终一致性 + UX（User Experience，用户体验）补偿
 
@@ -398,7 +420,7 @@ lossless 半同步保证写操作返回时，**至少一个从库**已收到 bin
 |---|---|---|---|
 | 写后路由主库 | 强 | 增加 | 低 |
 | 主键 Cookie + WAIT_FOR_EXECUTED_GTID_SET | 精确 | 不增加 | 中 |
-| 半同步保证 | 近强（有概率）| 不增加 | 低（配置层）|
+| 半同步 ACK | 不保证（`ACK != apply`）| 不增加 | 低（但必须另配读屏障）|
 | 最终一致 + 乐观 UI | 无 | 不增加 | 低 |
 
 ### 3.10 并行复制（MTS）深入：为什么开了 8 个 worker 还是追不上
