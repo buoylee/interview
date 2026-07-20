@@ -157,7 +157,7 @@ SELECT @@global.gtid_executed;   -- 主库已提交的 GTID 集合
 主库写 binlog → 提交事务（storage engine commit） → 等从库 ACK → 返回客户端
 ```
 
-问题：主库 commit 之后、等到 ACK 之前宕机。这时从库没 ACK，主库上事务已提交，**但从库没收到 binlog**。新主选这个从库会丢事务。
+问题：主库 commit 之后、观察到 ACK 之前宕机。**没有观察到 ACK 不等于副本一定没收到 binlog**；可能是副本未收到、ACK 延迟或 ACK 在途中丢失。若故障切换选到未包含该事务的副本，这个已提交事务会丢失。
 
 **5.7+ lossless（AFTER_SYNC 模式，默认）**：
 
@@ -165,7 +165,7 @@ SELECT @@global.gtid_executed;   -- 主库已提交的 GTID 集合
 主库写 binlog → 等从库 ACK（binlog 落盘但还没 commit）→ commit → 返回客户端
 ```
 
-关键差异：**ACK 在 storage engine commit 之前**。主库 crash 时：若从库已 ACK，从库有数据，新主切换安全；若从库未 ACK，主库 binlog 里有但没提交，重启后回滚，不丢。
+关键差异：**ACK 在 storage engine commit 之前**。若已收到 ACK，至少一个副本已有持久化 relay log，故障切换可保留该事务；若未观察到 ACK，不能推断副本是否收到。此时 Source 自身重启，会根据完整 binlog 中的 XID 在 crash recovery 中提交 prepared 事务；若直接故障切换到未包含该事务的副本，这个未确认事务可能不在新 Primary 上。
 
 > **ACK 边界**：副本的 receiver 已接收事务并把它持久化到 relay log，才向 Primary ACK；这时 SQL/applier 可能还没有执行该事务。因此 **`ACK != apply != 副本已经可读`**。半同步主要缩小故障切换时的 RPO，不提供读己之写保证。
 
