@@ -170,6 +170,8 @@ def is_visible(record_trx_id, view):
 
 **一个直觉**：`UPDATE t SET x=x+1 WHERE id=5` 必须是当前读——如果读的是历史版本，算出来的结果是错的。所以 DML 都是当前读。
 
+`FOR UPDATE` / `FOR SHARE` 如何锁索引、为什么会等待未提交 INSERT、RR 与 RC 的锁范围差异，以及高并发项目中的使用边界，统一放在下一章 [06-locking：锁机制](../06-locking/README.md) 的「SELECT ... FOR UPDATE / FOR SHARE：语义、阻塞与生产边界」小节中说明。
+
 ---
 
 ### 3.6 RR 能否防幻读：分快照读和当前读两种回答

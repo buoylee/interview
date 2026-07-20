@@ -37,7 +37,7 @@ Next-K │  Next-Key Lock S        │  Next-Key Lock X
 **粒度**：表 > 行 > 间隙/Next-Key。粒度越粗开销越小，并发越低。
 
 **类型**：
-- S（共享锁 / 读锁）：多个事务可以同时持有，互相兼容。`SELECT ... LOCK IN SHARE MODE` 加 S 锁。
+- S（共享锁 / 读锁）：多个事务可以同时持有，互相兼容。`SELECT ... FOR SHARE` 加 S 锁；`LOCK IN SHARE MODE` 是兼容保留的旧语法。
 - X（排他锁 / 写锁）：只能一个事务持有，和任何其他 S/X 都冲突。`SELECT ... FOR UPDATE`、`UPDATE`、`DELETE`、`INSERT` 加 X 锁。
 
 ### 3.2 表级锁三种：Table Lock / MDL / AUTO-INC
@@ -94,7 +94,7 @@ Gap Lock 锁的是**索引上两条相邻记录之间的「区间」（开区间
 ```
 每个 gap 可以被独立加锁。Gap Lock 之间**互相兼容**（两个 Gap Lock 锁同一个间隙也不冲突），因为它们阻止的都是 INSERT，而不是互相阻塞读写。
 
-Gap Lock 只在 **RR（可重复读）或 Serializable** 隔离级别下生效。RC 级别无 Gap Lock。
+Gap Lock 主要在 **RR（可重复读）或 Serializable** 隔离级别下用于索引搜索和扫描。RC 下普通搜索通常不加 Gap Lock，但**外键约束检查和重复键检查仍可能使用 Gap Lock**，不能简单理解成 RC 绝对没有 Gap Lock。
 
 **什么时候加 Gap Lock？** 范围查询、或者查询条件命中不存在的行时：
 ```sql
@@ -109,7 +109,7 @@ Next-Key Lock = Record Lock + **它前面那段 Gap Lock**，区间是**左开�
 
 索引值是 5 → Next-Key Lock 锁的是 `(1, 5]`，即 5 这条记录本身 + 1 和 5 之间的间隙。
 
-InnoDB 在 RR 级别下的**当前读（FOR UPDATE / LOCK IN SHARE MODE / UPDATE / DELETE）默认加 Next-Key Lock**，而不是 Record Lock。这是 RR 防幻读的核心机制。
+InnoDB 在 RR 级别下的**当前读（FOR UPDATE / FOR SHARE / UPDATE / DELETE）默认加 Next-Key Lock**，而不是 Record Lock。这是 RR 防幻读的核心机制。
 
 ```
 表 t 中 id: 1, 5, 10
@@ -125,7 +125,7 @@ InnoDB 在 RR 级别下的**当前读（FOR UPDATE / LOCK IN SHARE MODE / UPDATE
 
 #### Insert Intention Lock（插入意向锁）
 
-INSERT 在插入之前，会先在目标位置所在的 gap 上加一个**插入意向锁（IX 类型的 Gap Lock）**。
+INSERT 在插入之前，会先在目标位置所在的 gap 上申请一个 **Insert Intention Lock（插入意向锁）**。它是一种特殊的 gap lock 请求，表示「准备在这个 gap 的某个位置插入」，**不是表级的 IX 意向排他锁**。
 
 关键行为：
 - **多个事务的插入意向锁之间互相兼容**，只要它们插的位置不同（例如一个插 id=3，一个插 id=4，两者都在 (1,5) 这个 gap，但不冲突）。
@@ -133,7 +133,79 @@ INSERT 在插入之前，会先在目标位置所在的 gap 上加一个**插入
 
 这就是 Gap Lock 防幻读的完整机制：已有 Gap Lock → INSERT 加不上插入意向锁 → INSERT 等待 → 幻读被阻止。
 
+**为什么 Insert Intention 会被 Gap Lock / Next-Key Lock 阻塞？**
+
+因为它们对同一个索引间隙提出了相反要求：
+
+```text
+Gap Lock：这个 gap 内禁止出现新的索引记录
+Insert Intention：我要在这个 gap 内插入新的索引记录
+```
+
+假设主键索引中已有 `5、10`：
+
+```sql
+-- 事务 A：id=7 不存在，RR 下锁住 (5,10)
+BEGIN;
+SELECT * FROM t WHERE id = 7 FOR UPDATE;
+
+-- 事务 B：插入位置落在 (5,10)，Insert Intention 必须等待
+BEGIN;
+INSERT INTO t(id) VALUES (7);
+```
+
+如果允许事务 B 取得 Insert Intention 并完成插入，事务 A 锁住 `(5,10)` 防止幻读的承诺就会失效。因此，事务 B 必须等事务 A 释放 Gap Lock。
+
+Next-Key Lock 也会阻塞落在其范围内的 Insert Intention，因为：
+
+```text
+Next-Key Lock = 前方 Gap Lock + 当前 Record Lock
+```
+
+真正与 Insert Intention 冲突的是其中的 **Gap Lock 部分**，不是 Record Lock 部分。只有 INSERT 的目标位置落入该 gap 时才会等待。
+
+三种关系可以这样记：
+
+```text
+Gap + Gap：可以共存；双方都只是在表达「禁止插入」
+Insert Intention + Insert Intention：插入位置不同时可以共存
+已有 Gap / Next-Key + 新请求 Insert Intention：目标位置被禁止插入，必须等待
+```
+
 ### 3.4 意向锁 IS / IX：为什么是「意向」+ 兼容矩阵
+
+> **先消除一个最容易混淆的点：IS / IX 与 Insert Intention Lock 不是同一种锁。**它们都带有「Intention」，但所处层级、锁定对象和冲突对象完全不同。
+
+| 概念 | 所在层级 | 锁定对象 | 谁会使用 | 主要作用 |
+|---|---|---|---|---|
+| IS（Intention Shared） | 表级 | 整张表 | 准备给索引记录加 S 锁的事务 | 通知表级锁请求：「表内存在或即将存在行级 S 锁」 |
+| IX（Intention Exclusive） | 表级 | 整张表 | `FOR UPDATE`、`INSERT`、`UPDATE`、`DELETE` 等准备加行级 X 锁的事务 | 通知表级锁请求：「表内存在或即将存在行级 X 锁」 |
+| Insert Intention Lock | 索引间隙级 | 目标索引 gap 中的插入位置 | `INSERT` | 通知索引锁系统：「准备在这个 gap 的某个位置插入」 |
+
+它们解决的是两个不同问题：
+
+```text
+IS / IX：协调「表级锁」与「行级锁」
+Insert Intention：协调 INSERT 与目标 gap 上已有的 Gap / Next-Key Lock
+```
+
+同一条 INSERT 会先后同时出现 IX 和 Insert Intention，并不是二选一：
+
+```sql
+INSERT INTO t(id) VALUES (7);
+```
+
+```text
+t 表：加 IX
+  ↓
+PRIMARY 索引中 id=7 所在的 gap：申请 Insert Intention
+  ↓
+新插入的 id=7 索引记录：加 X Record Lock
+```
+
+因此可以这样记忆：
+
+> **IX 挂在表门口，说明里面有人准备改行；Insert Intention 挂在索引空位上，说明有人准备往这里插入。**
 
 **问题起源**：事务 A 持有表 t 里某几行的行锁，此时事务 B 要加表级 X 锁。没有意向锁的话，B 必须逐行扫描确认有没有行锁——O(n)。
 
@@ -145,35 +217,210 @@ INSERT 在插入之前，会先在目标位置所在的 gap 上加一个**插入
 
 意向锁是引擎自动加的，应用层感知不到。
 
+#### IS / IX 什么时候出现？与隔离级别有关吗？
+
+判断规则只有两条：
+
+```text
+准备给表内索引记录加 S 锁 → 先给表加 IS
+准备给表内索引记录加 X 锁 → 先给表加 IX
+```
+
+| SQL | 表级意向锁 | 后续索引锁 |
+|---|---|---|
+| 普通 `SELECT`（RC / RR） | 通常没有 | MVCC 快照读，不加行锁 |
+| `SELECT ... FOR SHARE` | IS | S Record / Gap / Next-Key Lock，取决于隔离级别和扫描范围 |
+| `SELECT ... FOR UPDATE` | IX | X Record / Gap / Next-Key Lock，取决于隔离级别和扫描范围 |
+| `INSERT` | IX | Insert Intention + 新记录的 X Lock |
+| `UPDATE` / `DELETE` | IX | X Record / Gap / Next-Key Lock |
+
+IS / IX **不只在 RR 下使用**。RC、RR 甚至其他隔离级别，只要语句准备加行级 S/X 锁，就要先遵守相同的表级意向锁协议；隔离级别改变的是后续使用 Record、Gap 还是 Next-Key Lock，不是要不要使用 IS / IX。
+
+IS / IX 也不只是「省掉逐行扫描」的性能优化，它还防止表锁和行锁并发申请时出现竞态。假如没有意向锁：
+
+```text
+事务 A：检查表内暂时没有行锁，准备取得表级 X
+事务 B：恰好在检查后给 id=7 加了 X Record Lock
+事务 A：取得表级 X
+结果：表级 X 和行级 X 错误地同时存在
+```
+
+有了多粒度锁协议后，事务 B 必须先取得 IX：
+
+```text
+B 先取得 IX → A 的表级 X 与 IX 冲突，A 等待
+A 先取得表级 X → B 的 IX 与表级 X 冲突，B 等待
+```
+
+所以 IS / IX 同时承担两件事：**O(1) 判断表级锁能否取得，以及保证表锁与行锁的申请顺序不会产生竞态**。它们不负责锁住数据，也不负责防幻读。
+
 **兼容矩阵（表级）**：
 
-|            | IS（持有） | IX（持有） | S 表锁（持有）| X 表锁（持有）|
-|------------|:---:|:---:|:---:|:---:|
-| IS（请求） |  ✓  |  ✓  |  ✓  |  ✗  |
-| IX（请求） |  ✓  |  ✓  |  ✗  |  ✗  |
-| S 表锁（请求）|  ✓  |  ✗  |  ✓  |  ✗  |
-| X 表锁（请求）|  ✗  |  ✗  |  ✗  |  ✗  |
+下面所有矩阵统一使用这个方向：
+
+```text
+横向的栏（column）＝当前事务新请求的锁
+纵向的行（row）   ＝其他事务已经持有、或者在锁队列中排在前面的锁
+✓                 ＝新请求可以立即取得，不需要等待
+✗                 ＝新请求必须等待现有锁释放
+```
+
+| 已持有的锁 ↓ / 新请求的锁 → | IS 请求 | IX 请求 | S 表锁请求 | X 表锁请求 |
+|---|:---:|:---:|:---:|:---:|
+| 已持有 IS | ✓ | ✓ | ✓ | ✗ |
+| 已持有 IX | ✓ | ✓ | ✗ | ✗ |
+| 已持有 S 表锁 | ✓ | ✗ | ✓ | ✗ |
+| 已持有 X 表锁 | ✗ | ✗ | ✗ | ✗ |
 
 规律：IS / IX 之间全部兼容（意向锁只是声明，不互相阻塞）；S 表锁和 IX 不兼容（表上有行在写，不能加读锁）；X 表锁和任何锁都不兼容。
 
 **行级锁兼容矩阵**：
 
-|                        | Record S | Record X | Gap Lock | Next-Key S | Next-Key X | Insert Intention |
-|------------------------|:---:|:---:|:---:|:---:|:---:|:---:|
-| Record S（请求）       |  ✓  |  ✗  |  ✓  |  ✓  |  ✗  |  ✓  |
-| Record X（请求）       |  ✗  |  ✗  |  ✓  |  ✗  |  ✗  |  ✓  |
-| Gap Lock（请求）       |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |  ✓  |
-| Next-Key S（请求）     |  ✓  |  ✗  |  ✓  |  ✓  |  ✗  |  ✓  |
-| Next-Key X（请求）     |  ✗  |  ✗  |  ✓  |  ✗  |  ✗  |  ✓  |
-| Insert Intention（请求）|  ✓  |  ✓  |  **✗**  |  ✗  |  **✗**  |  ✓  |
+这张表继续使用相同方向：**每一行是已经存在的锁，每一栏是现在要申请的新锁**。
 
-关键点：Insert Intention 和 Gap Lock / Next-Key Lock 不兼容——这正是 Gap Lock 阻止幻读插入的机制。
+| 已存在或排在前面的锁 ↓ / 新请求的锁 → | Record S 请求 | Record X 请求 | Gap 请求 | Next-Key S 请求 | Next-Key X 请求 | Insert Intention 请求 |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| 已有 Record S | ✓ | ✗ | ✓ | ✓ | ✗ | ✓ |
+| 已有 Record X | ✗ | ✗ | ✓ | ✗ | ✗ | ✓ |
+| 已有 Gap Lock | ✓ | ✓ | ✓ | ✓ | ✓ | **✗** |
+| 已有 Next-Key S | ✓ | ✗ | ✓ | ✓ | ✗ | **✗** |
+| 已有 Next-Key X | ✗ | ✗ | ✓ | ✗ | ✗ | **✗** |
+| 已有 Insert Intention | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-### 3.5 RR 下当前读怎么防幻读（Next-Key + 插入意向锁配合）
+读矩阵时先找「已有锁」所在的行，再找「新请求」所在的栏。例如：
+
+```text
+已有 Gap Lock 这一行
+  × 新请求 Insert Intention 这一栏
+  = ✗，INSERT 必须等待
+```
+
+这个等待关系是**有方向的**，因此矩阵不能沿对角线直接镜像：
+
+- 已有 Gap / Next-Key Lock 时，新请求的 Insert Intention 必须等待，否则就能绕过「禁止向 gap 插入」的保证。
+- 已有 Insert Intention 时，后来申请的普通 Gap / Next-Key Lock 不需要反过来等待它。Insert Intention 是插入过程中的短暂请求；让后来的 Gap / Next-Key 请求等待它，可能制造没有必要的循环等待。
+- 两个 Insert Intention 如果准备插入不同位置，可以同时存在；真正插入同一个唯一键时，后续还会由唯一键检查和记录锁处理冲突。
+
+因此，最需要记住的格子是：**已有 Gap / Next-Key Lock + 新请求 Insert Intention = 等待**。这正是 RR 下 Gap / Next-Key Lock 能阻止幻读插入的机制。
+
+规则依据：[MySQL 8.4 Reference Manual — InnoDB Locking](https://dev.mysql.com/doc/refman/8.4/en/innodb-locking.html)；矩阵的方向性来自 InnoDB 对「新锁请求是否必须等待队列中已有锁」的判断，参见 [`rec_lock_check_conflict`](https://github.com/mysql/mysql-server/blob/trunk/storage/innobase/lock/lock0lock.cc)。
+
+### 3.5 SELECT ... FOR UPDATE / FOR SHARE：语义、阻塞与生产边界
+
+#### 它们不是「更强一点的普通 SELECT」
+
+普通 `SELECT` 是 MVCC 快照读；`FOR UPDATE` 和 `FOR SHARE` 是锁定读（Locking Read），会读取最新版本并为后续事务操作取得锁：
+
+| 语句 | 主要语义 | 取得的记录锁 | 对其他事务的主要影响 |
+|---|---|---|---|
+| 普通 `SELECT` | 读取一致性快照 | 不加行锁 | 通常不阻塞写入，也不被未提交写入阻塞 |
+| `SELECT ... FOR SHARE` | 保证读到的记录在本事务内不被修改或删除 | S Lock | 其他 `FOR SHARE` 可并发；X Lock、UPDATE、DELETE 需要等待 |
+| `SELECT ... FOR UPDATE` | 读取最新记录并预留排他修改权 | X Lock | 其他 S/X locking read、UPDATE、DELETE 需要等待 |
+
+因此，应把 `FOR UPDATE` 理解成「更新操作的前半段」，而不是普通查询附加一个选项。`FOR SHARE` 也不是无害读；它虽然允许其他共享锁定读，但会阻塞需要 X Lock 的写操作。
+
+这些记录锁会持续到事务 `COMMIT` 或 `ROLLBACK`。在 `autocommit=1` 且没有显式事务时，锁会在语句结束后立即释放，通常无法保护后续另一条 SQL。
+
+#### 为什么未提交 INSERT 不阻塞普通 SELECT，却会阻塞 locking read？
+
+```sql
+-- 事务 A
+BEGIN;
+INSERT INTO t(id) VALUES (7);
+-- 尚未提交，id=7 被 A 的 X Record Lock 保护
+```
+
+此时事务 B 的不同读法结果不同：
+
+```sql
+-- 普通快照读：不等待，也看不到未提交的 id=7
+SELECT * FROM t WHERE id BETWEEN 5 AND 10;
+
+-- 锁定读：扫描到 id=7 时，需要等待 A 决定 COMMIT 或 ROLLBACK
+SELECT * FROM t WHERE id BETWEEN 5 AND 10 FOR UPDATE;
+SELECT * FROM t WHERE id BETWEEN 5 AND 10 FOR SHARE;
+```
+
+数据库不能让 B 直接读取 A 的未提交数据，否则会脏读；也不能让 locking read 永远把 `id=7` 当成不存在，因为 A 可能马上提交。它只能等待：
+
+```text
+A COMMIT   → B 确认 id=7 存在，再取得相应 S/X Lock
+A ROLLBACK → id=7 被撤销，B 继续并返回不包含 id=7 的结果
+```
+
+这里真正阻塞 B 的是未提交记录上的 **X Record Lock**，不是 Insert Intention，也不是 RR 特有的 Gap Lock。因此改成 RC 仍然可能等待；任何可靠的隔离级别都不能让两个事务同时拥有同一条记录的排他修改权。
+
+如果接口不允许等待，可以显式选择：
+
+```sql
+SELECT ... FOR UPDATE NOWAIT;       -- 取得不到锁就立即报错
+SELECT ... FOR UPDATE SKIP LOCKED;  -- 跳过已锁记录，主要用于任务队列
+```
+
+`SKIP LOCKED` 返回的不是一致性视图，不适合普通交易判断；它适合多个 worker 从 queue-like table 并发领取任务。
+
+#### RR 和 RC 到底改变了什么？
+
+| 场景 | RR | RC |
+|---|---|---|
+| 普通 SELECT 遇到未提交记录 | MVCC，不等待、不读取未提交版本 | MVCC，不等待、不读取未提交版本 |
+| locking read 遇到未提交记录的 X Lock | 等待 | **同样等待** |
+| 完整唯一索引等值命中 | 通常只锁 Record | 通常只锁 Record |
+| 完整唯一索引等值未命中 | 锁住目标值所在 gap | 普通搜索通常不锁 gap |
+| 非唯一索引 / 范围搜索 | 通常使用 Next-Key Lock，保护记录和 gap | 主要锁命中记录，非匹配记录锁提前释放 |
+| 外键 / 重复键检查 | 可能使用额外 Record / Gap Lock | **仍可能使用**额外 Record / Gap Lock |
+
+RC 能减少 RR 的 Gap / Next-Key Lock 放大，但不能消除 Record Lock 冲突。真正危险的组合是：
+
+```text
+RR
++ FOR UPDATE / FOR SHARE
++ 非唯一索引、范围查询、记录不存在或索引失效
++ 长事务
++ 高并发
+```
+
+#### 大型高并发项目怎么使用？
+
+大型项目通常不会禁用 locking read，但会把它限制在少数必须悲观串行化的短事务中。绝大多数请求优先使用更小的并发控制原语：
+
+| 业务需求 | 优先选择 |
+|---|---|
+| 只展示数据 | 普通 `SELECT` |
+| 单行条件修改 | 一条原子 `UPDATE ... WHERE ...` |
+| 低冲突并发修改 | `version` 乐观锁 / Compare-And-Set |
+| 唯一性判断 | UNIQUE 约束 + 直接 INSERT |
+| 读多行后做复杂判断并修改多行 | 短事务内精确使用 `FOR UPDATE` |
+| 只需保证依赖记录暂时不被改或删 | `FOR SHARE`，使用场景通常更少 |
+| 多 worker 领取任务 | `FOR UPDATE SKIP LOCKED` |
+
+例如扣减单行库存，通常优先使用原子 UPDATE：
+
+```sql
+UPDATE inventory
+SET stock = stock - 1
+WHERE product_id = ?
+  AND stock >= 1;
+```
+
+只有当业务必须先读取多条记录、进行无法放进一条 SQL 的复杂校验，再修改多行或多表时，才适合使用 `FOR UPDATE`。
+
+locking read 的生产约束：
+
+- 必须走明确的主键、唯一索引或经过验证的窄范围索引。
+- 持锁期间不调用 RPC、HTTP 或其他外部系统。
+- 多行加锁使用统一顺序，避免交叉等待。
+- 事务必须短，并处理 `1205 lock wait timeout` 和 `1213 deadlock` 重试。
+- 不需要保护「记录不存在」或「范围内不能插入」时，可以评估让该事务使用 RC。
+- `NOWAIT` 用于快速失败；`SKIP LOCKED` 主要限于任务队列，不当作一般一致性查询。
+
+规则依据：[MySQL 8.4 Locking Reads](https://dev.mysql.com/doc/refman/8.4/en/innodb-locking-reads.html)、[Locks Set by Different SQL Statements](https://dev.mysql.com/doc/refman/8.4/en/innodb-locks-set.html) 和 [SELECT — NOWAIT / SKIP LOCKED](https://dev.mysql.com/doc/refman/8.4/en/select.html)。
+
+### 3.6 RR 下当前读怎么防幻读（Next-Key + 插入意向锁配合）
 
 **幻读**的定义：同一事务内，两次相同查询返回了不同的行数（通常是中间有其他事务 INSERT）。
 
-MVCC 的快照读（普通 SELECT）通过读 undo log 快照避免幻读，但**当前读（`FOR UPDATE`、`LOCK IN SHARE MODE`、`UPDATE`、`DELETE`）会绕过快照，直接读最新数据**，MVCC 此时无效。
+MVCC 的快照读（普通 SELECT）通过读 undo log 快照避免幻读，但**当前读（`FOR UPDATE`、`FOR SHARE` / `LOCK IN SHARE MODE`、`UPDATE`、`DELETE`）会绕过快照，直接读最新数据**，MVCC 此时无效。
 
 RR 用 Next-Key Lock 防当前读的幻读，完整流程：
 
@@ -199,21 +446,21 @@ COMMIT;
   -- B 的 Insert Intention Lock 加上，INSERT 执行成功
 ```
 
-**注意**：RC 级别没有 Gap Lock，所以 RC 下当前读会出现幻读。这是 RC vs RR 在锁行为上最核心的区别。
+**注意**：RC 下普通索引搜索和扫描通常不使用 Gap Lock，所以当前读允许其他事务在搜索范围内插入新记录；但外键约束检查和重复键检查仍可能使用 Gap Lock。这是 RC vs RR 在锁行为上的核心区别。
 
-### 3.6 索引选择影响锁范围
+### 3.7 索引选择影响锁范围
 
 InnoDB 行锁加在**索引**上，不是加在行上。这条规则有三个重要推论：
 
-**推论 1：没走索引 → 全表每行都被锁**
+**推论 1：没走索引 → 全表扫描，RR 下可能锁住每条扫描记录**
 
 ```sql
 -- age 列没有索引
 UPDATE t SET status = 1 WHERE age = 25;
 ```
-引擎无法定位，只能全表扫描。扫描过程中对遇到的每行都加 Next-Key Lock。结果等同于表锁，但比表锁更糟——锁的是「扫描过的行」，不一定是真正满足条件的行。
+引擎无法定位，只能扫描整个聚簇索引。在 RR 下，扫描过程中对遇到的索引记录加 Next-Key Lock，并通常持有到事务结束，效果接近锁表；在 RC 下仍然必须全表扫描，但不匹配 `age=25` 的记录锁会在判断后释放，主要保留真正需要修改的记录锁。
 
-解决方法：在 WHERE 条件的列上建索引。
+因此，RC 只能缩小**持锁范围**，不能缩小**扫描范围**；真正的解决方法仍是在 WHERE 条件列上建立合适索引。
 
 **推论 2：走了非唯一二级索引 → 锁范围包含索引值相同的所有行 + 间隙**
 
@@ -242,7 +489,130 @@ SELECT * FROM t WHERE id = 5 FOR UPDATE;
 
 `WHERE varchar_col = 100`（类型不匹配导致隐式转换）、`WHERE DATE(created_at) = '2026-01-01'`（函数包裹）等情况下索引失效，效果同推论 1。
 
-### 3.7 死锁怎么产生、怎么读 INNODB STATUS 的 deadlock 日志
+### 3.8 INSERT / UPDATE / DELETE 到底怎么加锁
+
+`INSERT`、`UPDATE`、`DELETE` 属于会修改数据的 DML（Data Manipulation Language）语句。它们不会先把整张 InnoDB 表加上排他表锁，而是遵循两层流程：
+
+1. 在表上加 **IX（意向排他锁）**，声明本事务准备修改某些索引记录。
+2. 根据实际执行计划，在聚簇索引、二级索引或索引间隙上加 Record / Gap / Next-Key / Insert Intention Lock。
+
+锁哪些记录由**实际扫描的索引范围**决定，不是只看 SQL 文本中的 `WHERE`。普通行级锁会一直持有到事务 `COMMIT` 或 `ROLLBACK`；`AUTO-INC` 锁是单独的机制，部分模式下只持有到当前 INSERT 语句结束。
+
+#### INSERT：先声明插入位置，再锁住新记录
+
+```sql
+INSERT INTO users(id, email, age)
+VALUES (7, 'a@example.com', 25);
+```
+
+可以把主要流程理解为：
+
+```text
+表上加 IX
+  ↓
+在各目标索引的插入位置申请 Insert Intention Lock
+  ↓
+检查主键、唯一索引和外键约束
+  ↓
+写入聚簇索引以及相关二级索引
+  ↓
+给新插入的索引记录加 X Record Lock，持有到事务结束
+```
+
+关键边界：
+
+- Insert Intention Lock 表示「准备在这个 gap 的某个位置插入」，不是把整个 gap 独占。两个事务在同一个 gap 插入不同值，通常可以并发。
+- 如果目标 gap 已经被其他事务的 Gap / Next-Key Lock 覆盖，Insert Intention Lock 会等待。
+- 简单 INSERT 给新记录加的是 **X Record Lock**，不是 Next-Key Lock，不会因为插入一行就禁止别人向它前面的整个 gap 插入。
+- 普通 INSERT 遇到重复唯一键时，会对冲突记录申请共享锁；`INSERT ... ON DUPLICATE KEY UPDATE` 遇到冲突时则申请排他锁并更新该记录。
+- 外键检查会给检查到的父表或子表索引记录加 S Record Lock，即使约束检查最终失败也可能产生锁。
+- 自增值分配还可能涉及 AUTO-INC 锁或轻量互斥量，这和这里的索引记录锁是两个维度。
+
+#### UPDATE：先按索引搜索并锁定，再修改相关索引
+
+```sql
+UPDATE users
+SET age = 26
+WHERE id = 7;
+```
+
+主要流程是：
+
+```text
+表上加 IX
+  ↓
+按照执行计划搜索 WHERE 条件
+  ↓
+锁住搜索过程中需要保护的索引记录或范围
+  ↓
+锁住对应的聚簇索引记录
+  ↓
+修改聚簇索引；如果索引列变化，同时修改相关二级索引
+```
+
+锁范围取决于搜索方式：
+
+- **完整唯一索引等值查询且记录存在**：只需要该索引记录的 X Record Lock。例如主键 `id=7`。
+- **完整唯一索引等值查询但记录不存在**：RR 下锁住该值所在的 gap；RC 下普通搜索通常不锁 gap。
+- **非唯一索引或范围查询**：RR 下锁住实际扫描范围的 X Next-Key Lock；RC 下主要保留需要更新记录的 X Record Lock。
+- **没有可用索引**：RR 下扫描聚簇索引并可能将所有扫描记录的 Next-Key Lock 持有到事务结束；RC 同样全表扫描，但不匹配记录的锁会在判断后释放。
+
+如果 UPDATE 通过二级索引找到记录，例如：
+
+```sql
+-- idx_name(name)，idx_age(age)
+UPDATE users
+SET age = 26
+WHERE name = 'Ada';
+```
+
+它至少涉及三部分：
+
+1. 锁住 `idx_name` 中被扫描和命中的索引记录或范围。
+2. 根据二级索引中的主键值，锁住对应的聚簇索引记录。
+3. 因为 `age` 被修改，还要删除旧的 `idx_age(age=25)` 索引项并插入新的 `idx_age(age=26)` 索引项，期间执行必要的索引写入和重复键检查。
+
+因此，UPDATE 不一定只锁 WHERE 使用的一个索引；它还必须保护真正的数据行和所有被修改的索引项。
+
+#### DELETE：搜索阶段与 UPDATE 相同，再把记录标记删除
+
+```sql
+DELETE FROM users
+WHERE id = 7;
+```
+
+DELETE 的搜索和加锁规则基本与 UPDATE 相同：
+
+- 完整唯一索引等值命中：锁对应的 X Record Lock。
+- 非唯一索引或范围扫描：RR 下通常使用 X Next-Key Lock。
+- 没有可用索引：仍然要扫描整个聚簇索引，RR 下可能产生接近锁表的效果。
+- 通过二级索引找到记录时，既要锁搜索使用的二级索引记录，也要锁对应的聚簇索引记录，并处理其他二级索引项。
+
+InnoDB 执行 DELETE 时，通常先把聚簇索引和二级索引记录标记为删除；真正的物理清理由后台 purge 完成。其他事务在当前事务提交或回滚前，不能修改这些被锁住的记录。
+
+如果存在外键：
+
+- 删除父表记录时，需要检查是否存在引用它的子表记录，并锁住检查到的索引记录。
+- 配置 `ON DELETE CASCADE` 时，还会继续删除子表记录，因此锁会沿着级联链扩散到其他表。
+
+#### RR 与 RC 对 DML 锁范围的影响
+
+| 场景 | RR（Repeatable Read） | RC（Read Committed） |
+|---|---|---|
+| 唯一索引等值命中 | X Record Lock | X Record Lock |
+| 唯一索引等值未命中 | 锁住目标值所在 gap | 普通搜索通常不锁 gap |
+| 非唯一索引 / 范围搜索 | X Next-Key Lock，保护记录和 gap | 主要锁需要修改的记录，不匹配记录锁提前释放 |
+| 没有可用索引 | 全表扫描，扫描记录可能持续持有 Next-Key Lock | 仍然全表扫描，但不匹配记录锁会释放 |
+| INSERT | Insert Intention + 新记录 X Lock | 基本相同 |
+| 外键 / 重复键检查 | 可能产生额外 Record / Gap Lock | **仍可能产生**额外 Record / Gap Lock |
+
+所以必须分清两个问题：
+
+> **索引决定扫描多少记录；隔离级别决定扫描过程中加什么锁、哪些锁需要持有到事务结束。**
+
+规则依据：[MySQL 8.4 Reference Manual — Locks Set by Different SQL Statements in InnoDB](https://dev.mysql.com/doc/refman/8.4/en/innodb-locks-set.html)。
+
+### 3.9 死锁怎么产生、怎么读 INNODB STATUS 的 deadlock 日志
 
 #### 死锁产生的三种经典模式
 
@@ -359,7 +729,7 @@ Record lock, heap no 6 PHYSICAL RECORD: n_fields 4; compact format; info bits 0
 | `lock_mode X locks gap before rec` | Gap X |
 | `lock_mode X locks insert intention` | Insert Intention X |
 
-### 3.8 8.0 推荐用 performance_schema.data_locks 排查
+### 3.10 8.0 推荐用 performance_schema.data_locks 排查
 
 MySQL 5.7 的 `information_schema.innodb_trx + innodb_locks + innodb_lock_waits` 在 8.0 中被迁移到 `performance_schema`，信息更全：
 
@@ -454,7 +824,7 @@ SHOW VARIABLES LIKE 'innodb_deadlock_detect';  -- 默认 ON
 修复方向：
 - **统一加锁顺序**：所有涉及多行/多表的业务，按同一个固定顺序（例如主键从小到大）依次加锁
 - **缩短事务**：拆成更小的事务，减少同时持有多把锁的窗口期
-- **降低隔离级别到 RC**：RC 无 Gap Lock，可以减少因 Gap Lock 导致的死锁（代价是可能出现幻读，需要业务层容忍或自行处理）
+- **降低隔离级别到 RC**：RC 的普通搜索和扫描通常不使用 Gap Lock，可以减少相关死锁（外键和重复键检查仍可能使用；代价是当前读可能出现幻读，需要业务层容忍或处理）
 - **批量操作改为逐行处理**：`WHERE id IN (1,2,3)` 批量更新时加锁顺序不确定，改为按 `id` 从小到大逐行 UPDATE
 - **重试机制兜底**：死锁被 InnoDB 自动检测并回滚一个事务，应用层捕获 `Error 1213 Deadlock` 后自动重试
 
@@ -469,7 +839,7 @@ SHOW VARIABLES LIKE 'innodb_deadlock_detect';  -- 默认 ON
 ```
 
 解决：
-- 如果业务允许，把 RR 降到 RC：`SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;`——RC 无 Gap Lock，INSERT 并发大幅提升
+- 如果业务允许，把 RR 降到 RC：`SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;`——普通搜索不再使用 Gap Lock 时，INSERT 并发通常会改善；外键和重复键检查仍是例外
 - 检查范围查询是否必要，能否改为精确等值查询
 - 唯一键冲突改用 `INSERT ... ON DUPLICATE KEY UPDATE` 减少 S → X 锁升级的窗口
 
@@ -487,7 +857,7 @@ SHOW VARIABLES LIKE 'innodb_deadlock_detect';  -- 默认 ON
 
 ### "RR 能完全解决幻读吗" — 标准答案
 
-不能完全解决。MVCC 快照读解决了普通 `SELECT` 的幻读；Next-Key Lock 解决了**当前读（`FOR UPDATE` / `LOCK IN SHARE MODE` / `UPDATE` / `DELETE`）** 的幻读。但如果事务内先用快照读读了一次，再用当前读读第二次，两次结果会不一致，这种情况 RR 不能防。要彻底防幻读，用 Serializable（但并发极低）。
+不能完全解决。MVCC 快照读解决了普通 `SELECT` 的幻读；Next-Key Lock 解决了**当前读（`FOR UPDATE` / `FOR SHARE` / `UPDATE` / `DELETE`）** 的幻读。但如果事务内先用快照读读了一次，再用当前读读第二次，两次结果会不一致，这种情况 RR 不能防。要彻底防幻读，用 Serializable（但并发极低）。
 
 ### "没走索引时锁会变成什么" — 两句话答法
 
@@ -516,13 +886,13 @@ IS / IX 是表级「声明旗」，让需要加表级锁的操作能 O(1) 检测
 
 - **行锁是加在索引上，不是加在行数据上**：主键索引 = 聚簇索引，二级索引加行锁时还会在聚簇索引上加对应记录的 Record Lock（防止其他事务通过主键直接改这行）
 - **Gap Lock 之间不冲突**：两个事务可以同时持有同一个 Gap 的 Gap Lock，它们只阻止 INSERT，不互相阻塞
-- **RC 级别无 Gap Lock，也无 Next-Key Lock**：RC 只有 Record Lock，所以在 RC 下更改同一行才会阻塞，INSERT 不受影响
+- **RC 不是绝对没有 Gap Lock**：普通索引搜索和扫描通常不使用 Gap / Next-Key Lock，但外键约束检查和重复键检查仍可能使用 Gap Lock；RC 也不能避免无索引 SQL 的全表扫描
 - **MDL 不是行锁**：MDL 是 Server 层的元数据保护，与 InnoDB 行锁是不同维度的锁，常被混淆
 - **锁释放时机是事务提交/回滚，不是语句结束**：即使一条 `UPDATE` 执行完了，它加的行锁要等事务 `COMMIT` 或 `ROLLBACK` 才释放
 
 ## 7. 一句话总结
 
-InnoDB 的锁是「意向锁挂表层（O(1) 冲突检测）+ 行级锁挂索引上（Record / Gap / Next-Key / Insert Intention）」的两层设计；RR 默认加 Next-Key Lock 防幻读，等值命中唯一索引时退化为 Record Lock；行锁依赖索引，不走索引就是全表锁；死锁靠 INNODB STATUS 定位交叉等待，根治要么统一加锁顺序，要么缩短事务，要么 RC 级别去掉 Gap Lock。
+InnoDB 的锁是「意向锁挂表层（O(1) 冲突检测 + 多粒度锁正确性）+ 行级锁挂索引上（Record / Gap / Next-Key / Insert Intention）」的两层设计；IS / IX 与隔离级别无关，RR 的 locking read 通常用 Next-Key Lock 防幻读，等值命中唯一索引时退化为 Record Lock；不走索引就必须全表扫描，RR 下可能让扫描记录持续持锁；死锁治理要统一加锁顺序、缩短事务并缩小扫描范围，不需要保护 gap 的事务可评估使用 RC。
 
 ## Scenarios
 
