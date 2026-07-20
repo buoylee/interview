@@ -381,6 +381,19 @@ binlog ✓ → crash → redo commit 未写
 
 这个设计保证：以 **binlog 为最终裁判**，主库重启后的状态和 binlog 中记录的状态始终一致，从库按 binlog 回放也始终与主库一致。
 
+#### COMMIT、可见性与数据页落盘不是一件事
+
+一次 DML 会先修改 Buffer Pool 中的数据页并产生 undo/redo；`COMMIT` 确认的是事务状态与日志持久化边界，不要求立刻把整张脏页写回表空间。
+
+| 问题 | 由什么决定 | 正确边界 |
+|---|---|---|
+| 最新行版本在哪里 | Buffer Pool 中的数据页 | 写入先发生在内存页；该页此时通常是脏页 |
+| 其他事务能否读到 | 事务是否提交、隔离级别、MVCC ReadView | 未提交版本通常不可见（`READ UNCOMMITTED` 除外）；已提交也不代表旧 ReadView 会改看新版本 |
+| 提交后 crash 能否恢复 | redo log 的提交 LSN 与刷盘策略 | redo 先于数据页落盘，重启时可重放已提交修改；持久性强度仍取决于 `innodb_flush_log_at_trx_commit` 等配置 |
+| 数据页何时写回表空间 | page cleaner、checkpoint 与脏页淘汰 | `COMMIT` 成功不等于数据页已经落盘；脏页可以稍后异步写回 |
+
+一句话收口：**可见性看事务/MVCC，崩溃持久性看 redo，数据页落盘看 checkpoint/page cleaner。**
+
 ### 3.7 组提交 Group Commit
 
 #### 背景：两阶段提交的性能瓶颈
