@@ -54,6 +54,13 @@ Foundation
 
 Later plans may consume terminology, diagram node IDs, navigation conventions, and invariants established by earlier plans. They must not silently rename those interfaces. If source evidence forces a correction, update the owning earlier document in the same commit and record the reason.
 
+## Execution Environment Decisions
+
+- Treat each `npx @mermaid-js/mermaid-cli` command in the phase plans as the preferred trusted-local renderer, not as authorization to download and execute a package.
+- When the pinned CLI is not already installed or cached, validate every Mermaid block in an isolated Mermaid 11.x browser runtime instead.
+- For browser validation, record the exact Mermaid block hash, representative rendered-node checks, and zero browser console errors before committing.
+- Never execute a network-fetched npm package against the notes worktree merely to validate diagrams.
+
 ## Per-Article Definition of Done
 
 Every mechanism article follows the same reading progression. This is a content contract, not a template that permits repetitive filler:

@@ -26,6 +26,7 @@
 - Record evidence as commit + repository-relative path + symbol; line numbers are auxiliary.
 - Distinguish Source-confirmed, Architectural interpretation, General principle, and External dependency claims.
 - Use editable Markdown-compatible diagrams only.
+- Use a trusted local Mermaid CLI only when already installed or cached; otherwise apply the browser-isolated Mermaid 11.x verification policy recorded in the plan-suite index, once per diagram block.
 - Make one focused commit per independently reviewable article or overview integration.
 
 ---
