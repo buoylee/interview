@@ -33,7 +33,7 @@
 
 **Archive existing:**
 
-- Move: ai/claude-code-source/README.md
+- Move as ai/claude-code-source/_archive/2026-06-runtime-pipeline/README-old-entry.md: ai/claude-code-source/README.md
 - Move: ai/claude-code-source/00-coding-agent-big-picture.md
 - Move: ai/claude-code-source/01-runtime-entry.md
 - Move: ai/claude-code-source/02-query-loop.md
@@ -76,6 +76,7 @@
 **Files:**
 
 - Move all current top-level active notes listed in File Structure.
+- Preserve the old top-level README as ai/claude-code-source/_archive/2026-06-runtime-pipeline/README-old-entry.md so it does not collide with the new archive guide.
 - Move ai/claude-code-source/deep-dives/ into ai/claude-code-source/_archive/2026-06-runtime-pipeline/deep-dives/.
 - Create ai/claude-code-source/_archive/2026-06-runtime-pipeline/README.md.
 
@@ -117,6 +118,7 @@ Expected inventory:
 ~~~text
 ai/claude-code-source/_archive/2026-06-runtime-pipeline/
   README.md
+  README-old-entry.md
   00-coding-agent-big-picture.md
   ...
   14-interview-playbook.md
@@ -149,6 +151,7 @@ git diff --check
 Expected:
 
 - all previous active files appear under the dated archive;
+- the old active README appears as README-old-entry.md and the new README.md is the archive guide;
 - no previous active 00–14 file remains at the top level;
 - older archive entries remain;
 - no content appears as deleted without a corresponding rename.
