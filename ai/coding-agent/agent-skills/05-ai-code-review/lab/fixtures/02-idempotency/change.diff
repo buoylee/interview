@@ -1,0 +1,5 @@
+--- a/implementation.py
++++ b/implementation.py
+@@ -5 +5 @@
+-    def charge(self, amount_cents):
++    def charge(self, idempotency_key, amount_cents):

@@ -1,0 +1,16 @@
+--- a/implementation.py
++++ b/implementation.py
+@@ -1,0 +2,6 @@
++from dataclasses import dataclass
++
++
++@dataclass(frozen=True)
++class Config:
++    timeout_ms: int
+@@ -5 +11,5 @@
+-    return json.loads(raw)
++    try:
++        data = json.loads(raw)
++        return Config(timeout_ms=int(data["timeout_ms"]))
++    except Exception:
++        return Config(timeout_ms=1000)

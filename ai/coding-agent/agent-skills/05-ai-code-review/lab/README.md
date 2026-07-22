@@ -11,7 +11,7 @@
 ```text
 lab/
 ├── README.md
-├── run_lab.py
+├── run-fixtures.py
 ├── results-template.md
 ├── fixtures/
 │   └── <NN-slug>/
@@ -29,7 +29,7 @@ lab/
 
 每個fixture必須self-contained，只使用Python standard library，不import其他fixture。`before.py`是change前candidate；`buggy.py`是initial review target；`fixed.py`是re-review target；兩個test files透過runner指定candidate module，不靠修改tracked files。
 
-`change.diff`必須等於runner以`before.py`與`buggy.py`產生的unified diff。它是review packet的一部分，不是答案。
+`change.diff`必須等於runner以`before.py`與`buggy.py`產生的zero-context unified diff；reviewer另有完整`buggy.py`可讀。它是review packet的一部分，不是答案。
 
 ## Reviewer Input Boundary
 
@@ -92,7 +92,21 @@ Runner設定`PYTHONDONTWRITEBYTECODE=1`，不在fixtures留下`__pycache__`。`-
 7. 若測re-review，提供fixed candidate與new diff，重複review並在再次解封前freeze。
 8. 把完整run複製到`results-template.md`的副本，原template保持可重用。
 
-AI trial在既有Coding Agent harness中執行。`run_lab.py`永遠不呼叫OpenAI、Anthropic或任何provider API，也不需要API key。
+AI trial在既有Coding Agent harness中執行。`run-fixtures.py`永遠不呼叫OpenAI、Anthropic或任何provider API，也不需要API key。
+
+## Operator Commands
+
+Default command是delivery gate，只讀取並驗證tracked artifacts：
+
+```bash
+# Verify all declared behavior without changing artifacts
+python3 ai/coding-agent/agent-skills/05-ai-code-review/lab/run-fixtures.py
+
+# Regenerate diffs after intentionally editing before.py or buggy.py
+python3 ai/coding-agent/agent-skills/05-ai-code-review/lab/run-fixtures.py --write-diffs
+```
+
+`--write-diffs`是fixture maintenance action，不是一般review trial或delivery verification的一部分。它只應在刻意修改`before.py`/`buggy.py`後使用；生成後仍要回到default command確認read-only gate通過。
 
 ## Result Recording
 

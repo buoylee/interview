@@ -1,0 +1,5 @@
+--- a/implementation.py
++++ b/implementation.py
+@@ -2 +2 @@
+-    return value
++    return value.lower()

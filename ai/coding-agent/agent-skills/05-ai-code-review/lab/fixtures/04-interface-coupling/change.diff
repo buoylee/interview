@@ -1,0 +1,12 @@
+--- a/implementation.py
++++ b/implementation.py
+@@ -2 +2,5 @@
+-    def summary(self, customer_id, orders):
++    def __init__(self, repository):
++        self.repository = repository
++
++    def summary(self, customer_id):
++        rows = self.repository.connection.orders
+@@ -5 +9 @@
+-            for row in orders
++            for row in rows
