@@ -34,7 +34,9 @@
 | Library | Local path | Commit / tag |
 |---|---|---|
 | Matt Pocock Skills | `/Users/buoy/Development/gitrepo/skills` | `ed37663cc5fbef691ddfecd080dff42f7e7e350d` (`v1.1.0-40-ged37663`) |
-| Superpowers | `/Users/buoy/Development/gitrepo/superpowers` | `f2cbfbefebbfef77321e4c9abc9e949826bea9d7` (`v5.1.0`) |
+| Superpowers | `/Users/buoy/Development/gitrepo/superpowers` | `d884ae04edebef577e82ff7c4e143debd0bbec99` (`v6.1.1`) |
+
+Superpowers 在本設計稿第一次確認後由 `v5.1.0` 更新到 `v6.1.1`；2026-07-21 已重新讀取目前的 `README.md`、14 個 `SKILL.md` 與 SDD review artifacts。後續實作只能描述這個新快照，不得沿用舊版「兩個獨立 reviewer agent」的拓撲。
 
 每個來源分析頁都要在頁首記錄：
 
@@ -310,6 +312,8 @@ Preflight
 
 缺少 spec 時不得聲稱完成 Spec Compliance；缺少 business invariants 時不得聲稱證明了 data consistency。
 
+Superpowers `v6.1.1` 的 task-scoped review package 是這個通用 contract 的具體案例：controller 產生 task brief、implementer report，以及固定 `BASE_SHA..HEAD_SHA` 的 commit list、stat 和 extended-context diff；fresh reviewer 只讀這些 bounded artifacts 與 global constraints。它解決 context pollution 和 diff truncation，但不會自動補齊專案沒有明文提供的 domain invariants 或 production policy。
+
 ### 12.3 Deterministic Checks First
 
 compiler、tests、linters、static analysis 和可重複執行的 checks 先跑。AI reviewer 專注語義、跨檔關係、隱含不變量與設計 trade-off，不重做工具更擅長的工作。
@@ -332,6 +336,8 @@ Project Overlay 按風險增加：
 - Data Migration and Compatibility
 
 實作者不能批准自己的變更。Reviewer 使用 fresh context，只接收明確的 review packet。不同軸的報告可以去重，但不能用總分掩蓋某軸的 Critical finding。
+
+這四個軸是本專題定義的 production review protocol，不等同於某個上游 skill 的 reviewer 拓撲。Superpowers `v6.1.1` 在每個 task 使用同一位 fresh task reviewer，依序輸出 Spec Compliance 與 Code Quality 兩個 verdict；所有 tasks 完成後，再啟動一次 broad whole-branch final review。
 
 ### 12.5 Finding Contract
 
@@ -357,8 +363,10 @@ Project Overlay 按風險增加：
 
 從 Superpowers 取：
 
-- Spec Compliance 先於 Code Quality；
-- fresh reviewer 與 fix/re-review loop；
+- 每個 task 先做 pre-flight plan check，再交給 fresh implementer；
+- task brief、implementer report、固定 base/head 的 diff package 與 durable progress ledger；
+- 同一位 fresh task reviewer 依序判斷 Spec Compliance 與 Code Quality；這是兩個 logical verdict，不是兩個 reviewer agents；
+- Critical / Important finding 的 fix/re-review loop，以及 tasks 完成後的 whole-branch final review；
 - receiving review 時的技術驗證；
 - verification before completion。
 
