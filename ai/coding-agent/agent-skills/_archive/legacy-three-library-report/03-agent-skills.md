@@ -1,5 +1,8 @@
 # Agent-skills 深挖 (addyosmani/agent-skills)
 
+> [!WARNING]
+> 這是已封存的三庫比較舊快照，只保留作為思考歷史。Matt Pocock 的 skill 數量、invocation model、workflow 與 distribution 描述已漂移；Superpowers 內容也不代表目前固定的 `v6.1.1` 快照。新的主線文件不得引用本頁作為當前事實來源。
+
 > 三个仓库里**最像"标准产品"**的那一个。它把整个 SDLC 的 6 个阶段直接做成 7 个 slash command,加 22 个 skill 加 3 个 subagent,边界最清晰、最适合团队/企业落地。
 > 仓库:<https://github.com/addyosmani/agent-skills>(本报告依据本地快照,主分支顶部 commit `3ff4b51`)
 

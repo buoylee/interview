@@ -1,5 +1,8 @@
 # Design — Agent Skills 仓库对比报告
 
+> [!WARNING]
+> 這是已封存的三庫比較舊快照，只保留作為思考歷史。Matt Pocock 的 skill 數量、invocation model、workflow 與 distribution 描述已漂移；Superpowers 內容也不代表目前固定的 `v6.1.1` 快照。新的主線文件不得引用本頁作為當前事實來源。
+
 > 内部规划文档,定义最终交付的 4 份 md 各自写什么、为什么这么拆。
 > 写完报告后此文件保留,作为后续修订的依据。
 

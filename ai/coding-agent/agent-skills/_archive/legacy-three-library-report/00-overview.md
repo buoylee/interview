@@ -1,5 +1,8 @@
 # Agent Skills 三大仓库对比报告 — 总览
 
+> [!WARNING]
+> 這是已封存的三庫比較舊快照，只保留作為思考歷史。Matt Pocock 的 skill 數量、invocation model、workflow 與 distribution 描述已漂移；Superpowers 內容也不代表目前固定的 `v6.1.1` 快照。新的主線文件不得引用本頁作為當前事實來源。
+
 > 对比对象:
 > - **superpowers** — `obra/superpowers` (Jesse Vincent),v5.1.0
 > - **mattpocock-skills** — `mattpocock/skills` (Matt Pocock)

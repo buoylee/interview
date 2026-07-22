@@ -1,5 +1,8 @@
 # Superpowers 深挖 (obra/superpowers)
 
+> [!WARNING]
+> 這是已封存的三庫比較舊快照，只保留作為思考歷史。Matt Pocock 的 skill 數量、invocation model、workflow 與 distribution 描述已漂移；Superpowers 內容也不代表目前固定的 `v6.1.1` 快照。新的主線文件不得引用本頁作為當前事實來源。
+
 > 三个仓库里**最重的那一个**。它把自己叫做 "complete software development methodology",而不是单纯的 skill 集。
 > 仓库:<https://github.com/obra/superpowers>(本报告依据本地 v5.1.0 快照)
 
