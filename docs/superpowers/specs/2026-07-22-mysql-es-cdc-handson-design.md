@@ -97,7 +97,7 @@ Canal 应称为基于 MySQL binlog 的 CDC（Change Data Capture，变更数据�
 - MySQL 已提交事务的 binlog 在 Canal 成功发布前没有被清理。
 - Kafka 记录在消费者、DLQ replay 或 rebuild replayer 完成前仍在 retention 范围内。
 - MySQL 使用 ROW binlog，并在兼容性测试中固定和验证 binlog_row_image 等关键配置。
-- 同一商品的事件使用 product_id 作为 Kafka key，因而落入同一 partition。
+- Canal partitionHash 使用 product_id 计算目标 Kafka partition，因而同一商品落入同一 partition；消费者不依赖 Kafka record key。
 - 投影逻辑对同一 MySQL 状态是确定性的。
 - Elasticsearch、Kafka、Canal 和消费者最终恢复可用。
 - 数据或 mapping 错误可以被修正，DLQ 会被处理，而不是永久搁置。
@@ -271,7 +271,9 @@ product_search_revision：
 
 ### 6.2 Kafka 事件
 
-Kafka message key 固定为 product_id。最小事件语义包含：
+Canal 1.1.8 使用 product_id 作为 partition hash 输入，但发送 ProducerRecord 时 record key 为 null。消费者必须从 Canal flat message 的 data 中解析 product_id，不能读取 record.key 作为业务 ID。官方实现位置：<https://github.com/alibaba/canal/blob/canal-1.1.8/connector/kafka-connector/src/main/java/com/alibaba/otter/canal/connector/kafka/producer/CanalKafkaProducer.java#L200-L266>
+
+最小事件语义包含：
 
 - product_id；
 - revision；
@@ -513,7 +515,7 @@ O_start 必须早于数据库快照建立。这样：
 - 多表状态到 Elasticsearch 文档的投影；
 - revision 单调性和旧 revision 判定；
 - soft delete 与 tombstone；
-- Kafka key 和 partition 策略；
+- Canal product_id partitionHash、null record key 与同商品同 partition 策略；
 - 错误分类、retry budget 与 DLQ；
 - 对账 diff 分类和 repair 决策；
 - 所有 generation 的 tombstone 预期状态。
