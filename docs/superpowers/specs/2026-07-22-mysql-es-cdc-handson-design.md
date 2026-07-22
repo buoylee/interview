@@ -23,7 +23,7 @@ Canal 应称为基于 MySQL binlog 的 CDC（Change Data Capture，变更数据�
 - Canal 本身不理解业务投影，不负责 Elasticsearch 写入的逐项成功、幂等、乱序防护、死信、对账、修复或全量重建。
 - “MySQL 与 Elasticsearch 最终一致”是端到端系统属性，不是某一个中间件的产品属性。
 - 本项目不宣称 exactly-once。目标语义是 at-least-once 传递，加确定性投影、版本防护、可重试消费、DLQ、独立对账和可重建索引。
-- 当 binlog 或 Kafka 日志出现不可回放缺口时，增量链路不能自行补回历史事件；系统必须显式进入 REBUILD_REQUIRED，并从 MySQL 当前事实状态重建 Elasticsearch。
+- 当 binlog 或 Kafka 日志出现不可回放缺口时，增量链路不能自行补回历史事件；系统必须显式进入 REBUILD_REQUIRED，并从 MySQL 当前事实状态重建 Elasticsearch。若缺口位于 Canal 的 MySQL 源位点，还必须先有证据地重建一个有效 Canal cursor，不能只重建 ES。
 
 ## 2. 背景与问题边界
 
@@ -448,7 +448,7 @@ DLQ key 使用原 topic-partition-offset 或等价稳定标识。若进程在 DL
 | replay | 消费者在 offset 提交前崩溃 | 重放、revision 幂等 | 可自动恢复 |
 | data / poison | mapping 冲突、无法解析的记录 | 有界重试后 DLQ | DEGRADED，处理 DLQ 后恢复 |
 | stale event | 旧 revision 晚到 | 拒绝覆盖、记录 metric | 若无其他差异仍可 HEALTHY |
-| log gap | binlog 被清理、Kafka retention 过期、offset 丢失 | 禁止静默跳过，要求全量重建 | REBUILD_REQUIRED |
+| log gap | binlog 被清理、Kafka retention 过期、offset 丢失 | 禁止静默跳过；Kafka 缺口要求全量重建，MySQL binlog 缺口还要求先重建有效 Canal cursor | REBUILD_REQUIRED |
 | projection drift | 消费者 bug、人工修改 ES | 独立对账，按范围 repair 或 rebuild | DEGRADED 或 REBUILD_REQUIRED |
 | permanent outage | 依赖永久不可用 | 持续暴露失败，不承诺收敛 | DEGRADED |
 | source loss | MySQL 事实数据损坏或丢失 | 超出本项目恢复能力 | 无法保证 |
@@ -507,6 +507,20 @@ O_start 必须早于数据库快照建立。这样：
 - MySQL 已经不存在的历史版本；
 - 未保存到任何事实源的事件语义；
 - MySQL 本身损坏造成的事实丢失。
+
+### 10.4 MySQL binlog 缺口后的 Canal cursor
+
+全量重建只修复 Elasticsearch 当前投影，不会自动修复仍指向已清理 binlog 的 Canal 源位点。确认 MySQL binlog 缺口后，恢复流程必须：
+
+1. 关闭并持有业务写闸门，排空进行中的事实变更；
+2. 保存旧 Canal destination cursor、哈希和缺失 file/position 证据；
+3. 记录当前有效 MySQL file/position/GTID；
+4. 以一次性显式恢复模式让 Canal 落到当前有效位点，再恢复普通模式重启；
+5. 通过每个 Kafka partition 的 barrier 证明新 cursor 后的首批事件可达；
+6. 从新的 `O_start` 执行一致性快照、重叠 replay、验证与 alias 切换；
+7. 只在新 generation PASS 后清除 LOG_GAP。
+
+任何静默删除整个 Canal 数据目录、长期打开自动跳到最新位点，或只完成 ES rebuild 就恢复 HEALTHY 的做法都不满足本设计。
 
 ## 11. 测试设计
 
@@ -751,7 +765,8 @@ v1 不包含：
 - 搜索相关性调优或前端搜索页面；
 - 把 Elasticsearch 当作写入事实源；
 - 金融账务、余额或结算领域；
-- 零写入暂停的索引切换。
+- 零写入暂停的索引切换；
+- tombstone 的物理压缩或删除。未来若引入，必须另行设计不依赖 Elasticsearch 有限 delete-version 保留期的旧事件防复活屏障。
 
 这些边界不削弱实验的正确性目标；它们防止项目在验证端到端一致性之前扩张成完整数据平台。
 
