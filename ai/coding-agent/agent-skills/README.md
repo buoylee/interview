@@ -39,6 +39,7 @@ Superpowers 更像 end-to-end methodology；Matt Pocock Skills 更像 composable
 3. [Superpowers 學習入口](./02-superpowers/README.md)：讀方法論、14 個 skills和邊界。
 4. [Matt Pocock Skills 學習入口](./03-matt-pocock/README.md)：讀主流程、常用 8 + 2 + 2和完整索引。
 5. [兩庫差異與組合](./04-comparison-and-composition.md)：決定 primary lifecycle和最小充分組合。
+6. [AI Code Review 專題](./05-ai-code-review/README.md)：從fixed candidate、independent judgment走到可驗證review claim。
 
 ### Superpowers 章節
 
@@ -52,6 +53,12 @@ Superpowers 更像 end-to-end methodology；Matt Pocock Skills 更像 composable
 - [8 個核心 Skills Guide](./03-matt-pocock/02-core-skills-guide.md)
 - [品質基礎、條件能力與邊界](./03-matt-pocock/03-quality-foundations-and-boundaries.md)
 
+### AI Code Review 章節
+
+- [專題入口](./05-ai-code-review/README.md)
+- [AI Code Review 心智模型](./05-ai-code-review/01-mental-model.md)
+- [兩個 Skill 庫的 Code Review 機制](./05-ai-code-review/02-two-library-mechanisms.md)
+
 ## 按任務跳讀
 
 | 你現在要做什麼 | 先讀 | 得到什麼 |
@@ -62,6 +69,8 @@ Superpowers 更像 end-to-end methodology；Matt Pocock Skills 更像 composable
 | 只學 Matt最常用部分 | [Matt 8 + 2 + 2](./03-matt-pocock/README.md#8--2--2-選擇模型) | 核心workflow、quality foundations和conditional能力 |
 | 改善domain words/interface/seam | [品質基礎](./03-matt-pocock/03-quality-foundations-and-boundaries.md) | domain modeling、codebase design與architecture boundary |
 | 判斷兩庫怎麼搭配 | [差異與組合](./04-comparison-and-composition.md) | 四種最小組合與conflict rules |
+| 建立AI review的工程模型 | [AI Code Review 心智模型](./05-ai-code-review/01-mental-model.md) | candidate truth、review claim、delivery decision與八階段loop |
+| 比較兩庫review機制 | [兩庫 Code Review 機制](./05-ai-code-review/02-two-library-mechanisms.md) | task/branch gate與Standards/Spec兩軸的真實差異 |
 | 追查舊三庫報告 | [Legacy Archive](./_archive/legacy-three-library-report/README.md) | 只作歷史背景，不作當前source of truth |
 
 ## Source Snapshots
@@ -81,15 +90,13 @@ Snapshot facts包括 skill數量、目錄分類、agent topology、scripts、ins
 - Superpowers `v6.1.1` 的完整 lifecycle和14個skills；
 - Matt Pocock snapshot的完整41-skill索引，深讀最常用 `8 + 2 + 2`；
 - 兩庫沿十個軸的比較、四種最小充分組合與衝突優先序；
+- AI Code Review的decision-system心智模型與兩庫source mechanism boundary；
 - 舊版三庫報告的獨立archive，避免與當前source混用。
 
 本層刻意先回答「上游提供什麼、差在哪裡、如何組合」，不假裝已經定義本專案的production gate。
 
 ## 後續規範層
 
-下一階段會在此 foundation上加入兩個 Normative 層，目前先不建立尚不存在的導航連結：
+AI Code Review已提供[專題入口](./05-ai-code-review/README.md)、[心智模型](./05-ai-code-review/01-mental-model.md)與[兩庫機制](./05-ai-code-review/02-two-library-mechanisms.md)。下一交付階段會補上production protocol、evaluation contract和六組可執行Python fixtures；文件建立後才加入live links。
 
-1. **AI Code Review 專題**：定義 review inputs、independent axes、risk lenses、finding schema、evidence verification、aggregation、fix/re-review與go/no-go，並以六組可執行 Python fixtures驗證 reviewer是否真的找得到production defects。
-2. **Production Engineering Profile**：建立跨語言 Core Profile加Project Overlay，覆蓋data consistency、resilience、module/interface、compatibility、security、performance、observability、testing和delivery/recovery，再說明何時加規範、寫薄wrapper或fork upstream。
-
-它們完成後，這個入口會改成可直接跳讀的live navigation；在那之前，以本頁列出的foundation文件為已完成source of truth。
+**Production Engineering Profile**仍是後續scope：建立跨語言 Core Profile加Project Overlay，覆蓋data consistency、resilience、module/interface、compatibility、security、performance、observability、testing和delivery/recovery，再說明何時加規範、寫薄wrapper或fork upstream。目前不建立尚不存在的導航連結。
