@@ -13,7 +13,7 @@
 ## Completion Rules
 
 - 每個Core rule在Applicability Matrix恰有一個狀態：`applicable`、`not-applicable + reason`或`deferred + owner/date`。
-- Guidance、`TBD`、`unknown`與example不能作production fact；delivery前所有blocking deferred清零。
+- Guidance、unresolved placeholder、`unknown`與example不能作production fact；delivery前所有blocking deferred清零。
 - 數值要有unit與boundary；語義要列success/failure/forbidden states；evidence要能定位candidate/version。
 - 一個owner是具名role/team，不是`engineering`或`someone`。
 - 變更domain、dependency、SLO、consumer、security或recovery fact時，觸發Overlay review。

@@ -33,7 +33,10 @@ Generic skill若自行補答案會over-engineer或猜錯；若只做已明示hap
 ## Documents in This Section
 
 1. [Production Quality Model](./01-production-quality-model.md)：四層公式、applicability、evidence、severity與rule schema。
-2. Cross-language Core Profile、Project Overlay template與skills integration會在後續交付建立；文件實際存在後再加live links。
+2. [Cross-Language Core Profile](./02-core-profile.md)：10個domains、30條stable rules與七欄contract。
+3. [Project Overlay Template](./03-project-overlay-template.md)：把project-specific facts、evidence和owners填成可引用policy。
+4. [把Profile接進Agent Skills](./04-integrating-with-skills.md)：stage-by-stage injection與Overlay/Core/wrapper/fork決策。
+5. [Adoption Playbook](../07-adoption-playbook.md)：risk tiers、project instructions、exception與upstream refresh。
 
 ## How to Use Core and Overlay
 
