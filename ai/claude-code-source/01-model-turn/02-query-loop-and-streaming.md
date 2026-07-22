@@ -1,6 +1,6 @@
 # 02：Query Loop 与 Streaming——一次模型输出怎样变成下一步
 
-[← 上一篇：Context Assembly](01-context-assembly.md) · [本部分总览](README.md) · 下一篇：Controlled Effects（后续计划建立）
+[← 上一篇：Context Assembly](01-context-assembly.md) · [本部分总览](README.md) · [下一篇：Controlled Effects](../02-controlled-effects/README.md)
 
 > 模型视图准备好后，runtime 如何把一次模型输出推进成最终回答或下一轮决策？
 
@@ -8,7 +8,7 @@
 
 ## 1. 先把 Query Loop 放回 A3、A4 与 A7
 
-**[Architectural interpretation]** 本章放大 [A3 Model Request and Stream、A4 Runtime Decision 与 A7 Tool Observation and State Update](../00-one-agent-turn.md#1-权威全景图a1a8)。它消费上一篇已经构造完成的 `ModelView { system, messages, tools, request_options }`，在本地只把 Q6 Controlled Effects 看成一个不透明边界：输入是 Tool Intent，输出是可关联的 Tool Observation；权限、执行、sandbox 与文件安全算法都由下一部分负责。
+**[Architectural interpretation]** 本章放大 [A3 Model Request and Stream、A4 Runtime Decision 与 A7 Tool Observation and State Update](../00-one-agent-turn.md#1-权威全景图a1a8)。它消费上一篇已经构造完成的 `ModelView { system, messages, tools, request_options }`，在本地只把 [Q6 Controlled Effects](../02-controlled-effects/README.md) 看成一个不透明边界：输入是 Tool Intent，输出是可关联的 Tool Observation；权限、执行、sandbox 与文件安全算法都由下一部分负责。
 
 这里继续沿用上一篇的两只时钟：一次 **agent-turn / query-entry** 可以包含多次 **model-request / feedback iteration**。下图中的 Q1→Q8 描述一次 iteration；只有 Q8 选择 Continue，才会在同一个 `query` 内回到新的 Q1→Q2。
 
@@ -868,6 +868,6 @@ Strict pairing mode 代表另一种取舍：检测到损坏就拒绝投影，避
 
 现在 runtime 已经消费一次或多次 model responses：partial deltas 没有被误当成协议历史，completed Tool Intent blocks 可以在 response streaming 期间提前越过 Q6，而 text-only 只有在整个 response 完成且从未见 intent 后才成为 terminal。Tool 路径保留了 assistant intents，并把同 ID 的 observations 规范化为 user-side results；当前 batch 若选择 Continue，response 与 pairings 都已闭合，`State.messages` 包含 `previous messages + assistant intents + observations + applicable feedback attachments`。Transport fallback 若发生，也已在同一次 model-boundary generator 内隔离 old attempt，而没有伪造新的 Q1 iteration；runtime-only abort/transition/executor state 仍未被当成 Model View，durable transcript 的物理写入与恢复也仍由其 owner 负责。
 
-Query Loop 已经得到 Tool Intent；下一部分要回答它如何被解析、调度、授权并转化为机器效果。
+Query Loop 已经得到 Tool Intent；[Controlled Effects](../02-controlled-effects/README.md) 接着回答它如何被解析、调度、授权并转化为机器效果。Q6 在本章仍保持 opaque，后续细节不会反向混入 Query Loop 的 continuation ownership。
 
-[← 上一篇：Context Assembly](01-context-assembly.md) · [本部分总览](README.md) · 下一篇：Controlled Effects（后续计划建立）
+[← 上一篇：Context Assembly](01-context-assembly.md) · [本部分总览](README.md) · [下一篇：Controlled Effects](../02-controlled-effects/README.md)

@@ -1,6 +1,6 @@
 # 01：Tool Contract 与 Orchestration——意图怎样成为可配对的机器观察
 
-[← 上一篇：Query Loop 与 Streaming](../01-model-turn/02-query-loop-and-streaming.md) · 下一篇：Permission Decision（后续章节）
+[← 上一篇：Controlled Effects 总览](README.md) · [下一篇：Permission Decision](02-permission-decision.md)
 
 > 模型只产生了结构化 Tool Intent；Claude Code 如何把它可靠地变成机器效果，并把结果送回模型？
 
@@ -8,7 +8,7 @@
 
 ## 1. 先把 Controlled Effects 放回 A5–A7
 
-上一篇停在 Query Loop 已经识别出完整 Tool Intent 的时刻。本章放大 [A5 Tool Intent、A6 Controlled Machine Effect 与 A7 Tool Observation and State Update](../00-one-agent-turn.md#1-权威全景图a1a8)，只回答一条局部主线：
+[总览](README.md) 已经从 Query Loop 接住完整 Tool Intent，并画出 E1–E8。本章先放大 [A5 Tool Intent、A6 Controlled Machine Effect 与 A7 Tool Observation and State Update](../00-one-agent-turn.md#1-权威全景图a1a8) 的共同 Tool contract，只回答一条局部主线：
 
 ```text
 Tool Intent { id, name, input }
@@ -826,4 +826,4 @@ Permission 回答“这项 effect 是否允许尝试”；Sandbox 回答“获�
 
 下一问不再是“Tool contract 有没有 permission gate”，而是：面对一个结构合法、准备执行的 Tool 调用，谁根据哪些规则、模式与交互状态给出 allow、ask 或 deny？这由下一篇 Permission Decision 回答。
 
-[← 上一篇：Query Loop 与 Streaming](../01-model-turn/02-query-loop-and-streaming.md) · 下一篇：Permission Decision（后续章节）
+[← 上一篇：Controlled Effects 总览](README.md) · [下一篇：Permission Decision](02-permission-decision.md)

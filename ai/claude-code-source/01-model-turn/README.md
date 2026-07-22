@@ -10,7 +10,7 @@
 
 本章放大 [00 的权威 A1–A8 全景图](../00-one-agent-turn.md#1-权威全景图a1a8)，不再画第二张全轨道图：M1–M5 展开 A2 Model View Assembly，M6 对应 A3 Model Request and Stream，M7 覆盖 A4 Runtime Decision 与 A5 Tool Intent；A7 返回的 Tool Observation 则成为下一次 M3 Conversation Messages 的候选事实。
 
-A6 Controlled Machine Effect 在这里始终是不透明边界。本章只规定它接收什么 Tool Intent、返回什么 Tool Observation；工具查找、授权、执行环境和文件安全不属于 Model Turn。
+[A6 Controlled Machine Effect](../02-controlled-effects/README.md) 在这里始终是不透明边界。本章只规定它接收什么 Tool Intent、返回什么 Tool Observation；工具查找、授权、执行环境和文件安全不属于 Model Turn。
 
 ## 2. M1–M7：先看完整因果链
 
@@ -133,7 +133,7 @@ Concept ownership 到这里保持清楚：
 - 本 README 拥有完整 Model Turn 故事与阅读路由；
 - Context Assembly 拥有 Model View 的组成、precedence 与 projection；
 - Query Loop / Streaming 拥有 completed-block detection、pairing contract、continuation 与 termination；
-- Controlled Effects 拥有 Tool 解析、调度、授权和机器效果，但在本章保持不透明；
+- [Controlled Effects](../02-controlled-effects/README.md) 拥有 Tool 解析、调度、授权和机器效果，但在本章保持不透明；
 - Session Continuity 拥有 durable persistence、recovery 与 compaction；
 - Subagent Delegation 拥有 child lifecycle 与 delegation internals。
 
@@ -148,6 +148,6 @@ Concept ownership 到这里保持清楚：
 1. [Context Assembly：模型在一次决策前看见什么](01-context-assembly.md)——放大 M1–M5 以及 M6 的 request 输入，解释 Model View 的 composition 与 projection。
 2. [Query Loop 与 Streaming：一次模型输出怎样变成下一步](02-query-loop-and-streaming.md)——从 M6 继续到 M7，解释 completed blocks、Tool Intent / Observation pairing、feedback continuation 与 terminal text。
 
-读完第二篇后，下一问是：已经得到的 Tool Intent 如何被解析、调度、授权并转化为机器效果？这就是 Controlled Effects 的 plain-text handoff；该后续部分尚未建立，因此这里暂不创建链接。
+读完第二篇后，下一问是：已经得到的 Tool Intent 如何被解析、调度、授权并转化为机器效果？继续阅读 [02：Controlled Effects 总览](../02-controlled-effects/README.md)。它会放大 A5–A7；本章的 Q6 仍保持 opaque，不在 Model Turn 内复制 effect 细节。
 
 [← 上一篇：一次完整的 Agent Turn](../00-one-agent-turn.md) · [下一篇：Context Assembly](01-context-assembly.md)

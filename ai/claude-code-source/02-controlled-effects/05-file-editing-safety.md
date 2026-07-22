@@ -1,6 +1,6 @@
 # 05：File Editing Safety——Read 之后，为什么仍然可能写错文件
 
-[← 上一篇：Sandbox Runtime](04-sandbox-runtime.md)
+[← 上一篇：Sandbox Runtime](04-sandbox-runtime.md) · 下一篇：Session Continuity（后续计划）
 
 一个 FileEdit 已经得到 Permission Allow，仍然可能不安全：路径可能不是模型以为的目标；模型看过的内容可能已经过期；`old_string` 可能不存在或出现多次；写入可能在替换完成后、结果返回前失败。
 
@@ -727,4 +727,4 @@ Boundary:
 
 在 context pressure、interruption 与 later process 之间，究竟哪些 state 会持续存在，哪些只留在当前 runtime？
 
-[← 上一篇：Sandbox Runtime](04-sandbox-runtime.md)
+[← 上一篇：Sandbox Runtime](04-sandbox-runtime.md) · 下一篇：Session Continuity（后续计划）

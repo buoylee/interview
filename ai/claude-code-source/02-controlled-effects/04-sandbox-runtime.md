@@ -1,6 +1,6 @@
 # 04：Sandbox Runtime——获准命令怎样进入 containment 与结果边界
 
-[← 上一篇：Bash Security Analysis](03-bash-security-analysis.md) · 下一篇：File Editing Safety（尚未创建）
+[← 上一篇：Bash Security Analysis](03-bash-security-analysis.md) · [下一篇：File Editing Safety](05-file-editing-safety.md)
 
 结论先行：Sandbox Runtime 不是第二套 Permission，也不是“Allow 的另一种写法”。Permission 已经回答“这条候选命令能否继续尝试”；Sandbox Runtime 才回答“这次获准的进程是否适用 containment、要把什么 policy/config 交给 runtime、最后从哪条路径启动”。
 
@@ -729,4 +729,4 @@ Boundary:
   that a direct file edit is scoped, conflict-free, or atomic.
 ```
 
-[← 上一篇：Bash Security Analysis](03-bash-security-analysis.md) · 下一篇：File Editing Safety（尚未创建）
+[← 上一篇：Bash Security Analysis](03-bash-security-analysis.md) · [下一篇：File Editing Safety](05-file-editing-safety.md)

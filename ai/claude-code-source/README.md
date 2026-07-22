@@ -34,22 +34,22 @@
 
 ### 总览路径
 
-本页 README → [00：一次完整的 Agent Turn](00-one-agent-turn.md) → [01：Model Turn 总览](01-model-turn/README.md)。适合先获得全局认知，再决定是否进入两篇细节文章；Controlled Effects 之后的部分与 99 Interview Playbook 仍是未来路线。
+本页 README → [00：一次完整的 Agent Turn](00-one-agent-turn.md) → [01：Model Turn 总览](01-model-turn/README.md) → [02：Controlled Effects 总览](02-controlled-effects/README.md)。这条路径先建立 A1–A8 全局闭环，再分别获得“模型怎样决策”和“意图怎样成为受控机器事实”的局部全景；Session Continuity 之后的部分与 99 Interview Playbook 仍是未来路线。
 
 ### 完整学习路径
 
-从本页开始，依次阅读 [00](00-one-agent-turn.md) → [01 Model Turn 总览](01-model-turn/README.md) → [Context Assembly](01-model-turn/01-context-assembly.md) → [Query Loop 与 Streaming](01-model-turn/02-query-loop-and-streaming.md)。当前已存在的路径到此为止；后续再按路线图进入 Controlled Effects、Session Continuity、Subagent Delegation 与 99 Interview Playbook。
+从本页开始，依次阅读 [00](00-one-agent-turn.md) → [01 Model Turn 总览](01-model-turn/README.md) → [Context Assembly](01-model-turn/01-context-assembly.md) → [Query Loop 与 Streaming](01-model-turn/02-query-loop-and-streaming.md) → [02 Controlled Effects 总览](02-controlled-effects/README.md) → [Tool Contract 与 Orchestration](02-controlled-effects/01-tool-contract-and-orchestration.md) → [Permission Decision](02-controlled-effects/02-permission-decision.md) → [Bash Security Analysis](02-controlled-effects/03-bash-security-analysis.md) → [Sandbox Runtime](02-controlled-effects/04-sandbox-runtime.md) → [File Editing Safety](02-controlled-effects/05-file-editing-safety.md)。这是当前全部可阅读内容；Session Continuity、Subagent Delegation 与 99 Interview Playbook 仍是未来文字路标。
 
 ### 面试复习路径
 
-[00：一次完整的 Agent Turn](00-one-agent-turn.md) → [Model Turn 面试压缩](01-model-turn/README.md#7-面试时的压缩回答) → [Context Assembly 面试表达](01-model-turn/01-context-assembly.md#9-面试表达从结论到深入追问) → [Query Loop 面试表达](01-model-turn/02-query-loop-and-streaming.md#9-面试表达先讲循环再讲-streaming-的正确性成本)。未来的 99 Interview Playbook 建立前，回答卡住就回到对应 A1–A8 节点。
+[00：一次完整的 Agent Turn](00-one-agent-turn.md) → [Model Turn 面试压缩](01-model-turn/README.md#7-面试时的压缩回答) → [Context Assembly 面试表达](01-model-turn/01-context-assembly.md#9-面试表达从结论到深入追问) → [Query Loop 面试表达](01-model-turn/02-query-loop-and-streaming.md#9-面试表达先讲循环再讲-streaming-的正确性成本) → [Controlled Effects 面试表达](02-controlled-effects/README.md#12-面试表达) → [Tool Contract 面试表达](02-controlled-effects/01-tool-contract-and-orchestration.md#10-面试表达先说合同再说编排优化) → [Permission 面试表达](02-controlled-effects/02-permission-decision.md#12-面试表达) → [Bash Security 面试表达](02-controlled-effects/03-bash-security-analysis.md#10-面试回答) → [Sandbox Runtime 面试表达](02-controlled-effects/04-sandbox-runtime.md#10-面试表达) → [File Editing Safety 面试表达](02-controlled-effects/05-file-editing-safety.md#14-面试表达)。未来的 99 Interview Playbook 建立前，回答卡住就回到对应 A1–A8 或 E1–E8 节点。
 
 ## 四部分学习路线图
 
-第一部分已经可以阅读；其余部分目前只是明确标注的未来文字路标，不是链接：
+前两部分已经可以阅读；后两部分目前只是明确标注的未来文字路标，不是链接：
 
 1. [01 Model Turn](01-model-turn/README.md)：模型如何获得世界并持续决策，放大 A2–A5 与 A7 的反馈边。
-2. `02-controlled-effects/`（未来路线）：工具意图如何变成受控机器效果，放大 A5–A7。
+2. [02 Controlled Effects](02-controlled-effects/README.md)：工具意图如何变成受控机器效果，放大 A5–A7。
 3. `03-session-continuity/`（未来路线）：任务如何跨中断、压缩和恢复继续，放大 A7–A8 的时间维度。
 4. `04-subagent-delegation/`（未来路线）：父循环如何通过显式边界委派给子循环，放大 A8 的委派扩展。
 

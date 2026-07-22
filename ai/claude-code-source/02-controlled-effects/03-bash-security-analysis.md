@@ -1,6 +1,6 @@
 # 03：Bash Security Analysis——命令字符串怎样变成可授权的语义事实
 
-[← 上一篇：Permission Decision](02-permission-decision.md) · 下一篇：Sandbox Runtime（尚未创建）
+[← 上一篇：Permission Decision](02-permission-decision.md) · [下一篇：Sandbox Runtime](04-sandbox-runtime.md)
 
 结论先行：Bash permission analysis 不是对 raw command 做一次 `startsWith`，而是先回答“这段 shell 程序可能组合了哪些命令与文件效果”，再为每个可独立检查的 component 产生 Bash-specific facts、rule candidates 和 `PermissionResult`。generic Permission 仍然拥有最终授权；Sandbox Runtime 则在授权之后回答执行 containment。
 
@@ -635,3 +635,5 @@ async checkPermissions(input, context): Promise<PermissionResult> {
 B1–B6 到此只完成 authorization evidence：哪些 command component、rule、path或 uncertainty让 Bash返回 Allow、Deny、Ask或passthrough。即使最终 Permission选择 Allow，目标 command仍未在本文的分析节点执行。
 
 下一站是 **Sandbox Runtime**：它要回答获准进程怎样被启动、filesystem/network等 containment怎样应用，以及 runtime result怎样返回。那是执行边界，不是 Bash rule matching的延长；Sandbox不能把 Permission Deny改成 Allow，Permission Allow也不证明 sandboxed target effect已经成功。
+
+[← 上一篇：Permission Decision](02-permission-decision.md) · [下一篇：Sandbox Runtime](04-sandbox-runtime.md)

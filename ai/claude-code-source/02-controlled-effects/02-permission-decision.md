@@ -1,6 +1,6 @@
 # 02：Permission Decision——候选副作用怎样变成 Allow、Ask 或 Deny
 
-[← 上一篇：Tool Contract 与 Orchestration](01-tool-contract-and-orchestration.md) · 下一篇：Bash Security Analysis
+[← 上一篇：Tool Contract 与 Orchestration](01-tool-contract-and-orchestration.md) · [下一篇：Bash Security Analysis](03-bash-security-analysis.md)
 
 Permission 不是“弹一个确认框”，而是一条发生在**目标 Tool effect** 之前的授权决策流水线。它把一个已经解析、尚未执行的 Tool 候选，与 PreToolUse decision、当前 mode、规则、Tool-specific 分析和交互能力合并，返回 typed `Allow | Ask | Deny`。
 
@@ -614,25 +614,32 @@ Permission 回答“是否授权尝试”，Sandbox 回答“获准能力最多�
 | Allow 后为何还会失败？ | Permission只授权尝试；Sandbox、OS与 Tool execution仍是后续 owner。 |
 | 用户点击“允许”会写 settings 吗？ | 不一定。只有响应带 updates，且 destination支持 persistence时才持久化；live apply与durable update也分开。 |
 
-## 13. 当前系统状态与 Bash handoff
+## 13. 回到 P5 的 Bash handoff
 
-现在 authorization question 已闭合：PreToolUse entry router先选择 direct、forced 或 normal route；normal P1–P7 接收尚未执行的目标 candidate effect，构造 effective context，消费 hard/mode facts、rule evidence 与 Tool-specific result，返回 Allow、Ask 或 Deny，并在响应明确携带 updates 时更新 permission state。到 P7 为止，**目标 Tool effect** 仍未发生；control-plane effects 可能已经发生。
+本篇已经给出了 PreToolUse entry router 与 normal P1–P7 的完整 authorization 画面；但下一篇的**阅读顺序不是 runtime downstream**。它会回到并放大 P5 Tool-specific Permission Check：当候选 Tool 是 Bash 时，generic Permission 必须先把一个尚未 final-authorized、目标 command 尚未执行的 Bash candidate 交给 `BashTool.checkPermissions`。
 
-若结果不是 Allow，generic executor返回 no-target-effect outcome。若结果是 Allow，它只把候选交给下一道边界；对 Bash 而言，下一问是：
+Bash analysis 随后解析 compound command、operators、redirects 与 rule candidates，返回 Bash-specific `PermissionResult` 和 semantic facts；控制权再交回 generic Permission，继续完成 P5 的 Tool-specific result consumption，再由 P6/P7 结合 mode、rules、Ask resolution 与 optional updates 得到 final decision。不是 Allow 的结果在目标 command effect 前闭合；只有此后得到的 final Allow，才允许 generic executor 进入 Sandbox / process effect boundary。
 
 ```text
-Bash Security Analysis handoff
+Bash Security Analysis zoom-in handoff
 
 Input:
-  a Bash candidate that Permission permits to continue
+  a Bash candidate that has not received final authorization
+  and whose target command has not executed
 
-Next owner:
+Zoomed owner:
   Bash-specific parsing, compound-command decomposition,
   command/rule-candidate derivation, read-only and danger analysis
 
-Invariant:
-  Permission Allow is not proof that the command is harmless,
-  and it is not proof that the command has executed.
+Output:
+  Bash-specific PermissionResult and semantic facts
+
+Return:
+  generic Permission resumes P5, then completes P6 and P7
+
+Downstream invariant:
+  only a later final Allow can enter Sandbox / process execution;
+  Bash analysis itself does not execute the target command.
 ```
 
-[← 上一篇：Tool Contract 与 Orchestration](01-tool-contract-and-orchestration.md) · 下一篇：Bash Security Analysis
+[← 上一篇：Tool Contract 与 Orchestration](01-tool-contract-and-orchestration.md) · [下一篇：Bash Security Analysis](03-bash-security-analysis.md)

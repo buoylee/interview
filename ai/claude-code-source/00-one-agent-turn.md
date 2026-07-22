@@ -54,6 +54,8 @@ flowchart TD
 
 **A8 Continue, Stop, Recover, or Delegate** 根据协议是否闭合、任务状态和控制信号选择下一条边：继续请求模型、停止、重建可继续状态，或把一个有边界的任务委派给 child loop。
 
+A5–A7 的 canonical 名称和边仍以本图为准；它们怎样从 inert Tool Intent 经过 runtime control 变成 same-ID Tool Observation，由 [02：Controlled Effects 总览](02-controlled-effects/README.md) 沿 E1–E8 深入展开。
+
 ### 1.2 每条箭头表达什么
 
 | 箭头 | 因果含义 |
@@ -301,4 +303,4 @@ durable_transcript:
 
 [← 返回学习轨道 README](README.md) · [下一篇：Model Turn 总览](01-model-turn/README.md)
 
-这张全景图成立后，下一步先建立 A2–A5/A7 的 Model Turn 局部全景，再进入 A2 的 Context Assembly 细节。
+这张全景图成立后，下一步先建立 A2–A5/A7 的 Model Turn 局部全景，再进入 A2 的 Context Assembly 与 Query Loop 细节；当 Query Loop 交出完整 Tool Intent 时，[Controlled Effects](02-controlled-effects/README.md) 再接住 A5–A7，而不另造一条主线。
