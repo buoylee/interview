@@ -79,12 +79,16 @@ Canal 应称为基于 MySQL binlog 的 CDC（Change Data Capture，变更数据�
 - 搜索别名只暴露 searchable=true 的文档；
 - 晚到旧事件不能重新激活已经删除的商品。
 
-全量重建允许省略已失效商品以压缩物理索引。每个索引 generation 必须在 manifest 中声明 deletion_mode：
+全量重建也必须为每个已失效商品写入精确的 tombstone，不允许为了压缩索引而物理省略。原因是 Elasticsearch 删除文档后只在有限窗口内保留删除版本；若版本信息已经回收，延迟更久的旧写可能把已经删除的商品重新创建出来。Elasticsearch Delete API 说明该窗口由 index.gc_deletes 控制，默认值为 60 秒：<https://www.elastic.co/guide/en/elasticsearch/reference/8.19/docs-delete.html>
 
-- tombstone：失效商品必须存在精确的 tombstone；
-- compacted：失效商品必须物理缺失。
+因此所有可服务的索引 generation 都采用唯一删除模式：
 
-验证器按 generation 的 deletion_mode 计算唯一预期物理状态，因此“tombstone 或缺失”不是一次验证中的模糊二选一。无论哪种模式，搜索别名中的可观察结果必须完全相同。
+- 失效商品必须存在 searchable=false 的 tombstone；
+- tombstone 的 source_revision 必须等于 MySQL 最新 revision；
+- tombstone 与普通文档使用相同的 external version 防护；
+- 搜索别名只暴露 searchable=true 的文档。
+
+这会保留额外文档，但删除版本屏障不再依赖 index.gc_deletes 等有限保留窗口，验证器也只有一个明确的预期物理状态。
 
 ### 3.4 最终一致性成立的恢复前提
 
@@ -453,9 +457,9 @@ DLQ key 使用原 topic-partition-offset 或等价稳定标识。若进程在 DL
 
 ### 10.1 构建阶段
 
-1. 创建新物理索引 products_v{generation}，写入 schema_version、deletion_mode=compacted 和构建 manifest。
+1. 创建新物理索引 products_v{generation}，写入 schema_version、deletion_mode=tombstone 和构建 manifest。
 2. 在打开 MySQL 扫描快照之前，记录 revision topic 每个 partition 的当前 Kafka end offset，记为 O_start。
-3. 打开 MySQL 一致性快照，扫描并批量写入所有 active 商品及其 snapshot revision。
+3. 打开 MySQL 一致性快照，扫描全部商品 revision；active 商品写入完整搜索文档，inactive 商品写入带 snapshot revision 的 tombstone。
 4. 启动 shadow replayer，从每个 partition 的 O_start 开始向新索引追增量。
 5. shadow replayer 对每条事件重新读取 MySQL 当前状态，并使用 revision 防护。扫描与重放的重复是安全的。
 
@@ -512,7 +516,7 @@ O_start 必须早于数据库快照建立。这样：
 - Kafka key 和 partition 策略；
 - 错误分类、retry budget 与 DLQ；
 - 对账 diff 分类和 repair 决策；
-- generation deletion_mode 的预期状态。
+- 所有 generation 的 tombstone 预期状态。
 
 消费者和验证器各自拥有独立测试样本，避免共享实现把同一个 bug 同时固化。
 
@@ -621,7 +625,7 @@ result.json 至少记录：
 - Kafka lag 已按场景定义归零；
 - unresolved DLQ 为零；
 - 独立对账逐文档、逐字段、逐 revision 完全相等；
-- 删除语义符合 generation manifest；
+- 所有失效商品都有最新 revision 的 tombstone，且不会由搜索别名返回；
 - 实际恢复路径符合场景预期；
 - 没有通过跳过事件、删除证据或手工篡改预期结果制造成功。
 
