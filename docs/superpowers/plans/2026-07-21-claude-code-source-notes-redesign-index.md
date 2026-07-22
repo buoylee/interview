@@ -56,9 +56,9 @@ Later plans may consume terminology, diagram node IDs, navigation conventions, a
 
 ## Execution Environment Decisions
 
-- Treat each `npx @mermaid-js/mermaid-cli` command in the phase plans as the preferred trusted-local renderer, not as authorization to download and execute a package.
-- When the pinned CLI is not already installed or cached, validate every Mermaid block in an isolated Mermaid 11.x browser runtime instead.
-- For browser validation, record the exact Mermaid block hash, representative rendered-node checks, and zero browser console errors before committing.
+- Treat each `npx @mermaid-js/mermaid-cli` command in the phase plans as an optional trusted-local visual-QA path, not as authorization to download and execute a package.
+- The required Mermaid gate is renderer-independent: extract the exact block including its final newline, record its hash, assert the expected diagram type, stable IDs and terminology, and decisive node/edge structure, then include the diagram in independent semantic review.
+- When a trusted local CLI or isolated browser runtime is available, an actual render is useful supplementary visual QA. If that environment is unavailable, rendering must not block review or commit once the required hash, static assertions, and semantic review pass.
 - Never execute a network-fetched npm package against the notes worktree merely to validate diagrams.
 
 ## Per-Article Definition of Done
@@ -107,7 +107,8 @@ After each plan:
 - Confirm that its overview is understandable without opening source code.
 - Confirm that every detail attaches to a flow node, state, invariant, failure branch, or module contract.
 - Confirm that standard behavior appears before variants.
-- Render all Mermaid blocks.
+- For every Mermaid block, record the exact hash and pass static diagram-type, stable-ID, terminology, and decisive node/edge assertions.
+- Include every diagram in independent semantic review; use an actual render as optional, non-blocking visual QA when a trusted local CLI or isolated browser is available.
 - Verify local links and navigation.
 - Commit only that phase’s files.
 
