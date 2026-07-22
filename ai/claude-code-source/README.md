@@ -34,24 +34,24 @@
 
 ### 总览路径
 
-本页 README → [00：一次完整的 Agent Turn](00-one-agent-turn.md) → 各部分 README（建立后）→ 99 Interview Playbook（建立后）。适合先获得全局认知，再决定往哪里放大。
+本页 README → [00：一次完整的 Agent Turn](00-one-agent-turn.md) → [01：Model Turn 总览](01-model-turn/README.md)。适合先获得全局认知，再决定是否进入两篇细节文章；Controlled Effects 之后的部分与 99 Interview Playbook 仍是未来路线。
 
 ### 完整学习路径
 
-从本页开始，按编号读取每一个文件：00 → 第一至第四部分的 README 与细节文章 → 99 Interview Playbook。编号就是因果顺序，不先跳到源码变体。
+从本页开始，依次阅读 [00](00-one-agent-turn.md) → [01 Model Turn 总览](01-model-turn/README.md) → [Context Assembly](01-model-turn/01-context-assembly.md) → [Query Loop 与 Streaming](01-model-turn/02-query-loop-and-streaming.md)。当前已存在的路径到此为止；后续再按路线图进入 Controlled Effects、Session Continuity、Subagent Delegation 与 99 Interview Playbook。
 
 ### 面试复习路径
 
-[00：一次完整的 Agent Turn](00-one-agent-turn.md) → 各章末尾的面试回答（建立后）→ 99 Interview Playbook（建立后）；回答卡住时，再回到相应 A1–A8 节点。
+[00：一次完整的 Agent Turn](00-one-agent-turn.md) → [Model Turn 面试压缩](01-model-turn/README.md#7-面试时的压缩回答) → [Context Assembly 面试表达](01-model-turn/01-context-assembly.md#9-面试表达从结论到深入追问) → [Query Loop 面试表达](01-model-turn/02-query-loop-and-streaming.md#9-面试表达先讲循环再讲-streaming-的正确性成本)。未来的 99 Interview Playbook 建立前，回答卡住就回到对应 A1–A8 节点。
 
 ## 四部分学习路线图
 
-以下是后续建设路线，目前只是文字路标，不是链接：
+第一部分已经可以阅读；其余部分目前只是明确标注的未来文字路标，不是链接：
 
-1. `01-model-turn/`：模型如何获得世界并持续决策，放大 A2–A4。
-2. `02-controlled-effects/`：工具意图如何变成受控机器效果，放大 A5–A7。
-3. `03-session-continuity/`：任务如何跨中断、压缩和恢复继续，放大 A7–A8 的时间维度。
-4. `04-subagent-delegation/`：父循环如何通过显式边界委派给子循环，放大 A8 的委派扩展。
+1. [01 Model Turn](01-model-turn/README.md)：模型如何获得世界并持续决策，放大 A2–A5 与 A7 的反馈边。
+2. `02-controlled-effects/`（未来路线）：工具意图如何变成受控机器效果，放大 A5–A7。
+3. `03-session-continuity/`（未来路线）：任务如何跨中断、压缩和恢复继续，放大 A7–A8 的时间维度。
+4. `04-subagent-delegation/`（未来路线）：父循环如何通过显式边界委派给子循环，放大 A8 的委派扩展。
 
 四部分完成后，`99-interview-playbook.md` 才把机制压缩成 30 秒结论、白板流程和深入追问入口。
 

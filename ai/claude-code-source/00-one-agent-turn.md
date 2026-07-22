@@ -299,6 +299,6 @@ durable_transcript:
 
 现在已经有一条不依赖源码函数名的完整主链：模型看到视图，提出意图；runtime 控制效果，写回观察；状态闭合后，系统才能继续、停止、恢复或委派。后续章节只放大这些节点，不另造一套 agent 心智模型。
 
-[← 返回学习轨道 README](README.md)
+[← 返回学习轨道 README](README.md) · [下一篇：Model Turn 总览](01-model-turn/README.md)
 
-这张全景图成立后，下一步要先回答：模型在 A2 到底看到了什么？
+这张全景图成立后，下一步先建立 A2–A5/A7 的 Model Turn 局部全景，再进入 A2 的 Context Assembly 细节。

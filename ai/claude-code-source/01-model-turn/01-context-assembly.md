@@ -1,6 +1,6 @@
 # 01：Context Assembly——模型在一次决策前看见什么
 
-[← 上一篇：一次完整的 Agent Turn](../00-one-agent-turn.md) · 下一篇：Query Loop 与 Streaming（下一章）
+[← 上一篇：Model Turn 总览](README.md) · [下一篇：Query Loop 与 Streaming](02-query-loop-and-streaming.md)
 
 > 模型发起一次决策前，Claude Code 如何决定它此刻能看到什么？
 
@@ -742,4 +742,4 @@ REPL 的 builder 把 custom 当作 base system candidate，但仍从独立路径
 
 模型视图已经构造完成；下一步是 runtime 如何消费模型 stream，并决定继续、执行工具还是结束。
 
-[← 上一篇：一次完整的 Agent Turn](../00-one-agent-turn.md) · 下一篇：Query Loop 与 Streaming（下一章）
+[← 上一篇：Model Turn 总览](README.md) · [下一篇：Query Loop 与 Streaming](02-query-loop-and-streaming.md)

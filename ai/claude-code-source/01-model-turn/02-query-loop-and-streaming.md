@@ -1,6 +1,6 @@
 # 02：Query Loop 与 Streaming——一次模型输出怎样变成下一步
 
-[← 上一篇：Context Assembly](01-context-assembly.md) · 下一篇：Controlled Effects（下一部分）
+[← 上一篇：Context Assembly](01-context-assembly.md) · [本部分总览](README.md) · 下一篇：Controlled Effects（后续计划建立）
 
 > 模型视图准备好后，runtime 如何把一次模型输出推进成最终回答或下一轮决策？
 
@@ -870,4 +870,4 @@ Strict pairing mode 代表另一种取舍：检测到损坏就拒绝投影，避
 
 Query Loop 已经得到 Tool Intent；下一部分要回答它如何被解析、调度、授权并转化为机器效果。
 
-[← 上一篇：Context Assembly](01-context-assembly.md) · 下一篇：Controlled Effects（下一部分）
+[← 上一篇：Context Assembly](01-context-assembly.md) · [本部分总览](README.md) · 下一篇：Controlled Effects（后续计划建立）
