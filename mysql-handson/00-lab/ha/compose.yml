@@ -1,0 +1,61 @@
+name: mysql-ha
+
+x-db-common: &db-common
+  image: mysql:8.4.10
+  restart: on-failure
+  environment:
+    MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-ha-root}
+    MYSQL_ROOT_HOST: "%"
+  volumes:
+    - ./config/common.cnf:/etc/mysql/conf.d/ha-common.cnf:ro
+    - ./init:/docker-entrypoint-initdb.d:ro
+  healthcheck:
+    test: ["CMD-SHELL", "mysqladmin ping -h127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+    interval: 3s
+    timeout: 2s
+    retries: 40
+    start_period: 20s
+  networks: [ha-net]
+
+services:
+  db1:
+    <<: *db-common
+    hostname: db1
+    container_name: mysql-ha-db1
+    command: ["--server-id=1", "--report-host=db1"]
+    ports: ["13306:3306"]
+    volumes:
+      - ./config/common.cnf:/etc/mysql/conf.d/ha-common.cnf:ro
+      - ./init:/docker-entrypoint-initdb.d:ro
+      - db1-data:/var/lib/mysql
+
+  db2:
+    <<: *db-common
+    hostname: db2
+    container_name: mysql-ha-db2
+    command: ["--server-id=2", "--report-host=db2"]
+    ports: ["13307:3306"]
+    volumes:
+      - ./config/common.cnf:/etc/mysql/conf.d/ha-common.cnf:ro
+      - ./init:/docker-entrypoint-initdb.d:ro
+      - db2-data:/var/lib/mysql
+
+  db3:
+    <<: *db-common
+    hostname: db3
+    container_name: mysql-ha-db3
+    command: ["--server-id=3", "--report-host=db3"]
+    ports: ["13308:3306"]
+    volumes:
+      - ./config/common.cnf:/etc/mysql/conf.d/ha-common.cnf:ro
+      - ./init:/docker-entrypoint-initdb.d:ro
+      - db3-data:/var/lib/mysql
+
+networks:
+  ha-net:
+    name: mysql-ha-net
+
+volumes:
+  db1-data:
+  db2-data:
+  db3-data:
