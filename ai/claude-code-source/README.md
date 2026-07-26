@@ -65,6 +65,8 @@
 - 每条 `Source-confirmed` 证据统一写成 `snapshot commit + repository-relative path + symbol`；三项必须出现在同一证据记录中，行号只能辅助定位，不能替代 symbol 或机制解释。
 - 当结论性质可能混淆时，使用三类标签：`Source-confirmed` 表示快照直接支持，`Architectural interpretation` 表示由多处行为归纳，`General principle` 表示不依赖 Claude Code 实现的通用约束。
 
+全轨道的 claim-oriented 验证入口见 [Source Evidence Index](appendices/source-evidence-index.md)。
+
 ## 如何使用代码摘录与图
 
 先陈述机制、不变量和状态边界，再给最小代码摘录。摘录只证明当前结论，并附 `snapshot commit + repository-relative path + symbol`；它不展开无关分支，也不把文章重新变成源码地图。

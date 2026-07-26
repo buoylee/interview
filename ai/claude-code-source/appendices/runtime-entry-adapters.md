@@ -95,6 +95,8 @@ Session flags 如何找到 durable source、补配 Tool result 并重建下一 t
 
 ## 6. 三个最小 source lens
 
+本附录 RA claims 的 claim-oriented 证据表见 [Source Evidence Index](source-evidence-index.md#6-runtime-entry-adapter-boundary)。
+
 以下都固定在快照 `712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf`；省略号只移除与当前 adapter 问题无关的参数和分支。
 
 ### Lens 1：top-level 输入形态决定 string 还是 structured stream

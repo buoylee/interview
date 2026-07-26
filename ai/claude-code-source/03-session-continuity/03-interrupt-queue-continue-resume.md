@@ -464,6 +464,8 @@ resumeSession(sessionSelector, newInput):
 
 ## 9. 五个 decisive source lenses
 
+本章 R1–R9 的 claim-oriented 证据表见 [Source Evidence Index](../appendices/source-evidence-index.md#44-r1r9-interrupt-queue-continue-resume)。
+
 下面只保留改变 lifecycle结论的短 excerpt；无关 branches已省略。
 
 ### 9.1 Abort propagation

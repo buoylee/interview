@@ -461,6 +461,8 @@ analyzeBashForPermission(input, context):
 
 以下 excerpt 只在机制解释之后出现。每个 tuple 都写全 snapshot、repository-relative path 与 symbol。
 
+本章 B1–B6 的 claim-oriented 证据表见 [Source Evidence Index](../appendices/source-evidence-index.md#33-b1b6-bash-security-analysis)。
+
 ### Lens A：security parse只有三种结果
 
 **[Source-confirmed tuple]** `(712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf, src/utils/bash/ast.ts, ParseForSecurityResult / parseForSecurityFromAst)`

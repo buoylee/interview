@@ -190,6 +190,8 @@ Fork是D2 / D3的route与context-construction variant。它让rendered system pr
 
 ## 8. 决定性源码坐标
 
+本部分 D1–D8 的 claim-oriented 证据表见 [Source Evidence Index](../appendices/source-evidence-index.md#51-d1d8-delegation-spine)。
+
 下面只保留跨层主干；全部结论、分支与短excerpt留在四篇owner文章。源码快照固定为`712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf`。
 
 1. **Generic Tool execution进入`AgentTool.call`。** `712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf` + [`src/services/tools/toolExecution.ts`](https://github.com/buoylee/Claude-Code-true/blob/712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf/src/services/tools/toolExecution.ts) + `checkPermissionsAndCallTool`；随后多态调用同一快照的 [`src/tools/AgentTool/AgentTool.tsx`](https://github.com/buoylee/Claude-Code-true/blob/712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf/src/tools/AgentTool/AgentTool.tsx) + `AgentTool.call`。

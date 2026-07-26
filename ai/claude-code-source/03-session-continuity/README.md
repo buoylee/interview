@@ -225,6 +225,8 @@ Child task storage、mailbox、communication、cancellation和result return属�
 
 ## 7. 决定性源码坐标
 
+本部分沿用 **[Source-confirmed]**、**[Architectural interpretation]** 与 **[General principle]** 分类；S1–S7 的 claim-oriented 证据表见 [Source Evidence Index](../appendices/source-evidence-index.md#41-s1s7-continuity-spine)。
+
 本总览只保留能证明跨层边界的四个入口，完整 branch 与限制留在三篇 owner 章节：
 
 1. **Transcript append 不是 snapshot overwrite。** `712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf` + [`src/utils/sessionStorage.ts`](https://github.com/buoylee/Claude-Code-true/blob/712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf/src/utils/sessionStorage.ts) + `recordTranscript`。

@@ -14,6 +14,8 @@
 
 本章负责先建立全景模型，因此不把任何结论标成 **[Source-confirmed]**；后续部分会在放大具体节点时，把该标签和完整三段式源码证据放在对应结论旁。
 
+本章 A1–A8 的 claim-oriented 证据表见 [Source Evidence Index](appendices/source-evidence-index.md#1-a1a8-canonical-turn)。
+
 ## 1. 权威全景图：A1–A8
 
 **[Architectural interpretation]** 本节给出后续章节共用的综合机制模型，不声称图中的每条边都由一个单独源码 symbol 实现。

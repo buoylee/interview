@@ -502,6 +502,8 @@ function applyTargetedEdit(path, observedState, oldText, newText):
 
 ## 11. 决定性源码 lenses
 
+本章 F1–F6 的 claim-oriented 证据表见 [Source Evidence Index](../appendices/source-evidence-index.md#35-f1f6-file-editing-safety)。
+
 ### Lens A：Tool-specific validation 在 Permission 前
 
 **[Source-confirmed tuple]** `(712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf, src/services/tools/toolExecution.ts, checkPermissionsAndCallTool)`。

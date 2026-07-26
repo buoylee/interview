@@ -506,6 +506,8 @@ function advanceAfterToolFeedback(queryContext, loopState, assistant, results) {
 
 前面的机制不依赖读者打开源码。现在只看三处会改变 Model View 形状的 lens：选择哪套 system instructions、把 Tool 变成什么 schema、何时把 queued input 变成 attachment。
 
+本章 M1–M6 的 claim-oriented 证据表见 [Source Evidence Index](../appendices/source-evidence-index.md#21-m1m7-model-view-spine)。
+
 下面的代码块是**按源码顺序裁剪的控制流片段**，不是重排后的伪代码。每一处裁剪都用 `[省略：……]` 标出；未标记的语句保留对应 symbol 的源码顺序与分支关系。
 
 ### 7.1 源码 lens 1：effective system precedence

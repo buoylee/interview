@@ -346,6 +346,8 @@ caller:
 
 ## 8. 决定性源码镜头
 
+本章 K1–K8 的 claim-oriented 证据表见 [Source Evidence Index](../appendices/source-evidence-index.md#53-k1k8-fork-prompt-cache-worktree)。
+
 以下 excerpt 都来自固定 snapshot `712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf`。excerpt 为教学压缩；链接给出 repository-relative path、symbol 与固定 commit 上下文。
 
 ### Lens 1：route / gate 与 recursion guard

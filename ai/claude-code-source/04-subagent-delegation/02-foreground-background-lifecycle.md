@@ -402,6 +402,8 @@ async function manageLocalAgentTask(
 
 ## 8. 决定性源码镜头
 
+本章 D5 lifecycle 的 claim-oriented 证据表见 [Source Evidence Index](../appendices/source-evidence-index.md#51-d1d8-delegation-spine)。
+
 所有源码事实固定在 commit `712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf`。证据身份使用 `commit + repository-relative path + symbol`；链接中的行号只是该固定快照的定位信息。
 
 ### Lens 1：foreground 与 async registration 写同一种 record、不同 mode flag

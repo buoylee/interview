@@ -322,6 +322,8 @@ async function runAgentTool(
 
 ## 7. 决定性源码镜头
 
+本章 D1–D4 / D7–D8 的 claim-oriented 证据表见 [Source Evidence Index](../appendices/source-evidence-index.md#51-d1d8-delegation-spine)。
+
 所有源码事实固定在 commit `712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf`。下面使用 `commit + repository-relative path + symbol` 作为证据身份；pinned link 的行号只用于定位，不作为正文结构。
 
 ### Lens 1：route 落定后，foreground registration 先于 iterator

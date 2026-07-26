@@ -684,6 +684,8 @@ surface original rejection
 
 ## 9. 六个决定性 Source Lens
 
+本章 C1–C8 的 claim-oriented 证据表见 [Source Evidence Index](../appendices/source-evidence-index.md#43-c1c8-compaction)。
+
 源码只截取能改变心智模型的片段，不沿几百行 implementation 逐行复述。
 
 ### 9.1 Lens A：threshold 保留 model-specific headroom

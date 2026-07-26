@@ -465,6 +465,8 @@ function executeResolvedIntent(tool, intent, context): ToolObservation {
 
 前面已经先讲完机制。下面四个 lenses 分别证明 branch-local resolution、partition、per-call wrapper 与 final normalization；Lens 1 用两个最小 excerpt 对照 Batch 与 Streaming，其余各用一个。所有省略都用显式 marker 标出，不用行号组织阅读。
 
+本章 E1–E8 的 claim-oriented 证据表见 [Source Evidence Index](../appendices/source-evidence-index.md#31-e1e8-controlled-effect-spine)。
+
 ### 7.1 Lens 1：Batch 有 bounded fallback，Streaming miss 在 admission 闭合
 
 **[Source-confirmed]** 证据：snapshot `712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf` + `src/services/tools/toolExecution.ts` + `runToolUse`；`src/services/tools/StreamingToolExecutor.ts` + `addTool`；`src/Tool.ts` + `findToolByName`。

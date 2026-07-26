@@ -380,6 +380,8 @@ function resolveAsk(ask, response, effectiveContext):
 
 前面已经讲完机制，下面只放会改变因果的短 excerpt。所有 tuple 都包含 snapshot、repository-relative path 与 symbol。
 
+本章 P1–P7 的 claim-oriented 证据表见 [Source Evidence Index](../appendices/source-evidence-index.md#32-p1p7-permission-decision)。
+
 ### 8.1 Lens 1：PreToolUse decision 先选择入口路径
 
 **[Source-confirmed]** 证据零：snapshot `712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf` + [`src/services/tools/toolExecution.ts:795`](https://github.com/buoylee/Claude-Code-true/blob/712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf/src/services/tools/toolExecution.ts#L795-L931) + `checkPermissionsAndCallTool`，先收集 PreToolUse result，再调用入口 router。证据一：同一 snapshot + [`src/services/tools/toolHooks.ts:332`](https://github.com/buoylee/Claude-Code-true/blob/712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf/src/services/tools/toolHooks.ts#L332-L433) + `resolveHookPermissionDecision`。证据二：同一 snapshot + [`src/hooks/useCanUseTool.tsx:28`](https://github.com/buoylee/Claude-Code-true/blob/712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf/src/hooks/useCanUseTool.tsx#L28-L42) + `useCanUseTool` 的 `forceDecision` branch。证据三：同一 snapshot + [`src/utils/permissions/permissions.ts:1071`](https://github.com/buoylee/Claude-Code-true/blob/712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf/src/utils/permissions/permissions.ts#L1071-L1156) + `checkRuleBasedPermissions`。

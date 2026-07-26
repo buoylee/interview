@@ -555,6 +555,8 @@ Transport fallback 不执行这段 `while` 的 outer `continue`：它在同一�
 
 到这里，读者不看源码也应该能讲清 Q1–Q8。下面只选择会改变 continuation、Message shape、ordering 或 repair 结果的分支，不按文件行号重走 `queryLoop`。
 
+本章 Q1–Q8 的 claim-oriented 证据表见 [Source Evidence Index](../appendices/source-evidence-index.md#22-q1q8-query-loop-spine)。
+
 以下 TypeScript 代码块都是**按同一 symbol 的源码顺序裁剪**的切片。插入的 `// [省略：……]` 是本文唯一新增内容，用来明确标出不连续位置；其余语句保持源码顺序，不把伪代码伪装成 excerpt。
 
 ### 7.1 源码 lens 1：累积真实 Tool Intent，再决定继续或结束

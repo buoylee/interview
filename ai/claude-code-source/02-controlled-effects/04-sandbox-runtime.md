@@ -78,6 +78,8 @@ flowchart TD
 
 ### 2.2 Repository evidence boundary
 
+本章 X1–X6 与 external applicability 的 claim-oriented 证据表见 [Source Evidence Index](../appendices/source-evidence-index.md#34-x1x6-sandbox-runtime)。
+
 | claim | Claude Code source proves | external sandbox-runtime source required | platform-dependent |
 | --- | --- | --- | --- |
 | sandbox selection / bypass | `shouldUseSandbox` 的 enablement、policy-permitted override、empty input、excluded command顺序 | 只有 delegated support/dependency predicate internals需要 | 是 |

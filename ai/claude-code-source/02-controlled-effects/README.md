@@ -320,6 +320,8 @@ Controlled Effects交付same-ID observation与runtime update；Query Loop才判�
 
 下面只用三个source lens固定会改变整体心智模型的branch；内部细节留在五篇owner章节。
 
+本部分 E1–E8 的 claim-oriented 证据表见 [Source Evidence Index](../appendices/source-evidence-index.md#31-e1e8-controlled-effect-spine)。
+
 ### Lens 1：Batch fallback与Streaming miss不共享同一入口
 
 **[Source-confirmed]** 证据：snapshot `712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf` + [`src/services/tools/toolExecution.ts`](https://github.com/buoylee/Claude-Code-true/blob/712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf/src/services/tools/toolExecution.ts) + `runToolUse`；同一snapshot + [`src/services/tools/StreamingToolExecutor.ts`](https://github.com/buoylee/Claude-Code-true/blob/712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf/src/services/tools/StreamingToolExecutor.ts) + `addTool`。

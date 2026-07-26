@@ -137,6 +137,8 @@ Concept ownership 到这里保持清楚：
 - Session Continuity 拥有 durable persistence、recovery 与 compaction；
 - Subagent Delegation 拥有 child lifecycle 与 delegation internals。
 
+本部分 M1–M7 / Q1–Q8 的 claim-oriented 证据表见 [Source Evidence Index](../appendices/source-evidence-index.md#2-model-turnm1m7--q1q8)。
+
 ## 7. 面试时的压缩回答
 
 > Claude Code 的 Model Turn 是一个可重复的 request/feedback loop。runtime 先把 system、selected messages、tool schemas 和动态 attachments 投影成当次 Model View，再调用模型并消费 stream。完整 Tool Intent 一形成就能进入受控效果边界，但 text-only 必须等整个 response 完成且没有 intent 才成立。每个已采用的 Tool Intent 都要由同 ID Tool Observation 闭合，闭合结果再进入下一份 Model View；因此一次用户任务对应的 agent turn 可以包含多次模型请求。runtime-only 控制状态和 Durable Transcript 都不等于模型当前可见窗口。

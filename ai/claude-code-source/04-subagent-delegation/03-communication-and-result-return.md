@@ -269,6 +269,8 @@ collectAgentResult(taskId) -> Pending | TerminalResult:
 
 ## 8. 决定性源码镜头
 
+本章 G1–G8 / D6–D8 的 claim-oriented 证据表见 [Source Evidence Index](../appendices/source-evidence-index.md#52-g1g8-communication-and-result-return)。
+
 以下 excerpt 都来自固定 snapshot `712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf`。excerpt 为教学压缩；链接给出 path + symbol 的完整固定提交上下文。
 
 ### Lens 1：local routing 的成功只到 queue append

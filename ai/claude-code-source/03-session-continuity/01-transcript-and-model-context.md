@@ -539,6 +539,8 @@ function reconstructModelView(sessionId, newInput):
 
 ## 8. 四个决定性 Source Lens
 
+本章 T1–T7 的 claim-oriented 证据表见 [Source Evidence Index](../appendices/source-evidence-index.md#42-t1t7-transcript-and-model-context)。
+
 源码片段只保留能改变心智模型的几行；它们不是按行号追踪整个实现。
 
 ### 8.1 Lens A：live observer 与 durable append 是两层
