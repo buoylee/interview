@@ -72,8 +72,9 @@ network_connected() {
 
 wait_for_router() {
   local router="$1"
+  local attempts="${2:-60}"
   assert_router_target "$router"
-  for _ in $(seq 1 60); do
+  for _ in $(seq 1 "$attempts"); do
     if "${DC[@]}" run --rm shell mysqladmin ping -h"$router" -P6446 -uroot -p"$ROOT_PASSWORD" --silent; then
       return 0
     fi
@@ -218,4 +219,16 @@ wait_for_online() {
     sleep 1
   done
   return 1
+}
+
+validate_gtid_hex() {
+  local value="$1"
+  case "$value" in ''|*[!0-9A-Fa-f]*) return 1 ;; esac
+  [ $((${#value} % 2)) -eq 0 ]
+}
+
+query_member() {
+  local member="$1" sql="$2"
+  validate_db_name "$member"
+  "${DC[@]}" exec -T "$member" mysql -uroot -p"$ROOT_PASSWORD" -Nse "$sql"
 }
