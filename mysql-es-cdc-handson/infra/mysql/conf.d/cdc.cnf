@@ -1,0 +1,9 @@
+[mysqld]
+server-id=1
+log-bin=mysql-bin
+binlog-format=ROW
+binlog-row-image=FULL
+binlog-expire-logs-seconds=86400
+gtid-mode=ON
+enforce-gtid-consistency=ON
+default-time-zone=+00:00

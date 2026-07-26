@@ -1,0 +1,7 @@
+CREATE USER IF NOT EXISTS 'canal'@'%' IDENTIFIED BY 'canalpass';
+GRANT SELECT, SHOW VIEW, REPLICATION SLAVE, REPLICATION CLIENT
+ON *.* TO 'canal'@'%';
+
+CREATE USER IF NOT EXISTS 'verifier'@'%' IDENTIFIED BY 'verifierpass';
+GRANT SELECT ON product_catalog.* TO 'verifier'@'%';
+FLUSH PRIVILEGES;

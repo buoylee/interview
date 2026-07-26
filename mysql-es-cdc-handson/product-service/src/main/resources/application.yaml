@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: product-service
+  datasource:
+    url: jdbc:mysql://localhost:3308/product_catalog?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    username: product
+    password: productpass
+  threads:
+    virtual:
+      enabled: true
+
+server:
+  port: 8081
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
