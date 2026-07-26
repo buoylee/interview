@@ -143,6 +143,16 @@ adapter_worker_is_started() {
       "something goes wrong when starting up the canal client adapters"
 }
 
+formal_mapping_is_loaded() {
+  local host_mapping_sha container_mapping_sha
+
+  host_mapping_sha=$(sha256sum infra/canal-adapter/conf/es8/products.yml | awk '{ print $1 }') &&
+    container_mapping_sha=$("${compose[@]}" exec -T canal-adapter \
+      sha256sum /opt/canal-adapter/conf/es8/products.yml | awk '{ print $1 }') &&
+    test "$host_mapping_sha" = "$container_mapping_sha" &&
+    adapter_mapping_load_is_current "$adapter_cutoff" "$adapter_log"
+}
+
 adapter_web_responds() {
   http_code=$(curl --silent --show-error \
     --connect-timeout 2 \
@@ -164,6 +174,7 @@ runtime_evidence_is_ready() {
     tcp_ports_are_reachable &&
     server_destination_is_started &&
     adapter_worker_is_started &&
+    formal_mapping_is_loaded &&
     adapter_web_responds
 }
 
@@ -176,6 +187,7 @@ for attempt in $(seq 1 "$max_attempts"); do
       "- TCP ports 127.0.0.1:11121 and 127.0.0.1:11122: reachable" \
       "- products_adapter destination/filter/start log evidence: present" \
       "- es8/products_adapter-g1 connect/subscribe log evidence: present" \
+      "- formal es8 products mapping: exact image file plus current-Java-run load evidence" \
       "- official Adapter web interface: HTTP $http_code (reachability only; not readiness)"
     exit 0
   fi
@@ -205,5 +217,6 @@ report_check "host TCP ports are reachable" tcp_ports_are_reachable
 report_check "products_adapter destination log evidence exists" \
   server_destination_is_started
 report_check "Adapter worker log evidence exists" adapter_worker_is_started
+report_check "formal products mapping loaded in current Adapter run" formal_mapping_is_loaded
 report_check "official Adapter web interface responds" adapter_web_responds
 exit 1

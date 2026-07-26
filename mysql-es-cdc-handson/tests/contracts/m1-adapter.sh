@@ -10,7 +10,9 @@ docker compose \
 
 rendered_config=$(mktemp "${TMPDIR:-/tmp}/m1-adapter-compose.XXXXXX")
 profile_config=$(mktemp "${TMPDIR:-/tmp}/m1-adapter-profile-compose.XXXXXX")
-trap 'rm -f "$rendered_config" "$profile_config"' EXIT
+mapping_select=$(mktemp "${TMPDIR:-/tmp}/m1-adapter-mapping-select.XXXXXX")
+expected_mapping_select=$(mktemp "${TMPDIR:-/tmp}/m1-adapter-expected-select.XXXXXX")
+trap 'rm -f "$rendered_config" "$profile_config" "$mapping_select" "$expected_mapping_select"' EXIT
 docker compose \
   -f infra/compose.yaml \
   -f infra/compose.adapter.yaml \
@@ -86,6 +88,112 @@ grep -Fq "canal.tcp.server.host: canal-adapter-server:11111" \
   infra/canal-adapter/conf/application.yml
 grep -Eq '^  accessKey:[[:space:]]*$' infra/canal-adapter/conf/application.yml
 grep -Eq '^  secretKey:[[:space:]]*$' infra/canal-adapter/conf/application.yml
+
+test -f infra/canal-adapter/conf/es8/products.yml
+test -f infra/elasticsearch/adapter-index.json
+test -f scenarios/definitions/m1-basic.json
+test -x scenarios/scripts/lib-adapter.sh
+test -x scenarios/scripts/run-m1-basic.sh
+test -x scenarios/scripts/assert-m1-evidence.sh
+test -x scenarios/scripts/derive-m1-result.sh
+test -f evidence/m1/.gitkeep
+if git check-ignore -q evidence/m1/.gitkeep; then
+  echo "evidence/m1/.gitkeep must be tracked while runtime M1 evidence stays ignored" >&2
+  exit 1
+fi
+
+grep -Fxq "dataSourceKey: defaultDS" infra/canal-adapter/conf/es8/products.yml
+grep -Fxq "destination: products_adapter" infra/canal-adapter/conf/es8/products.yml
+grep -Fxq "groupId: g1" infra/canal-adapter/conf/es8/products.yml
+grep -Fxq "  _index: products_adapter_v1" infra/canal-adapter/conf/es8/products.yml
+grep -Fxq "  _id: _id" infra/canal-adapter/conf/es8/products.yml
+grep -Fxq "  upsert: true" infra/canal-adapter/conf/es8/products.yml
+grep -Fxq "    FROM products p" infra/canal-adapter/conf/es8/products.yml
+grep -Fxq "  etlCondition: WHERE p.id > {}" infra/canal-adapter/conf/es8/products.yml
+grep -Fxq "  commitBatch: 1000" infra/canal-adapter/conf/es8/products.yml
+
+awk '
+  /^[[:space:]]+SELECT$/ { in_select = 1; next }
+  /^[[:space:]]+FROM products p$/ { in_select = 0 }
+  in_select {
+    sub(/^[[:space:]]+/, "")
+    sub(/,[[:space:]]*$/, "")
+    print
+  }
+' infra/canal-adapter/conf/es8/products.yml >"$mapping_select"
+cat >"$expected_mapping_select" <<'EOF'
+p.id AS _id
+p.id AS product_id
+p.sku
+p.name
+p.description
+p.category_id
+p.price_cents
+p.status
+DATE_FORMAT(p.updated_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS updated_at
+EOF
+diff -u "$expected_mapping_select" "$mapping_select"
+! grep -Eq 'category_name|inventory|searchable|source_revision' \
+  infra/canal-adapter/conf/es8/products.yml
+
+jq -e '
+  .settings == {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "refresh_interval": "1s"
+  } and
+  .mappings.dynamic == "strict" and
+  (.mappings.properties | keys | sort) == [
+    "category_id",
+    "description",
+    "name",
+    "price_cents",
+    "product_id",
+    "sku",
+    "status",
+    "updated_at"
+  ] and
+  .mappings.properties == {
+    "product_id": {"type": "long"},
+    "sku": {"type": "keyword"},
+    "name": {"type": "text"},
+    "description": {"type": "text"},
+    "category_id": {"type": "long"},
+    "price_cents": {"type": "long"},
+    "status": {"type": "keyword"},
+    "updated_at": {"type": "date"}
+  } and
+  (keys | sort) == ["mappings", "settings"] and
+  (.mappings | keys | sort) == ["dynamic", "properties"]
+' infra/elasticsearch/adapter-index.json >/dev/null
+
+jq -e '
+  . == {
+    "scenario_id": "m1-basic",
+    "purpose": "Observe Adapter insert and update behavior and the official 1.1.8 computed updated_at gap",
+    "source_products": [{
+      "id": 1101,
+      "sku": "M1-1101",
+      "name": "Adapter Keyboard",
+      "description": "initial",
+      "category_id": 10,
+      "price_cents": 100,
+      "status": "ACTIVE"
+    }],
+    "mutations": [{
+      "operation": "change_price",
+      "product_id": 1101,
+      "price_cents": 120
+    }],
+    "expected_observation": {
+      "result": "OBSERVED_INSERT_UPDATE_WITH_COMPUTED_FIELD_GAP",
+      "source_updated_at_non_null": true,
+      "target_updated_at_is_null": true,
+      "updated_at_matches_source": false,
+      "final_consistency_claim": false
+    }
+  }
+' scenarios/definitions/m1-basic.json >/dev/null
 
 if test "${1:-}" = "--live"; then
   exec scenarios/scripts/verify-m1-topology.sh

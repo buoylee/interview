@@ -69,3 +69,12 @@ require_log_patterns_since() {
     log_pattern_exists_since "$cutoff" "$log_file" "$required_pattern" || return 1
   done
 }
+
+adapter_mapping_load_is_current() {
+  local cutoff="$1"
+  local log_file="$2"
+
+  require_log_patterns_since "$cutoff" "$log_file" \
+    "## Start loading es mapping config ..." \
+    "## ES mapping config loaded"
+}

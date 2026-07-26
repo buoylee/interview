@@ -1,0 +1,21 @@
+dataSourceKey: defaultDS
+destination: products_adapter
+groupId: g1
+esMapping:
+  _index: products_adapter_v1
+  _id: _id
+  upsert: true
+  sql: >
+    SELECT
+      p.id AS _id,
+      p.id AS product_id,
+      p.sku,
+      p.name,
+      p.description,
+      p.category_id,
+      p.price_cents,
+      p.status,
+      DATE_FORMAT(p.updated_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS updated_at
+    FROM products p
+  etlCondition: WHERE p.id > {}
+  commitBatch: 1000

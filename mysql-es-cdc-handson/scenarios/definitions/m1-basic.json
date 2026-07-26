@@ -1,0 +1,29 @@
+{
+  "scenario_id": "m1-basic",
+  "purpose": "Observe Adapter insert and update behavior and the official 1.1.8 computed updated_at gap",
+  "source_products": [
+    {
+      "id": 1101,
+      "sku": "M1-1101",
+      "name": "Adapter Keyboard",
+      "description": "initial",
+      "category_id": 10,
+      "price_cents": 100,
+      "status": "ACTIVE"
+    }
+  ],
+  "mutations": [
+    {
+      "operation": "change_price",
+      "product_id": 1101,
+      "price_cents": 120
+    }
+  ],
+  "expected_observation": {
+    "result": "OBSERVED_INSERT_UPDATE_WITH_COMPUTED_FIELD_GAP",
+    "source_updated_at_non_null": true,
+    "target_updated_at_is_null": true,
+    "updated_at_matches_source": false,
+    "final_consistency_claim": false
+  }
+}
