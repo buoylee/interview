@@ -205,8 +205,15 @@ def assert_scenario(
         active_events = [
             event for event, _ in parsed_events if event["phase"] == "fault_active"
         ]
-        target = active_events[0].get("target") if len(active_events) == 1 else None
-        if target not in {"db1", "db2", "db3"}:
+        target_value = (
+            active_events[0].get("target") if len(active_events) == 1 else None
+        )
+        target = (
+            target_value
+            if isinstance(target_value, str) and target_value in {"db1", "db2", "db3"}
+            else None
+        )
+        if target is None:
             errors.append("slow-member fault target is missing or invalid")
         before_metrics = _metric_snapshot(metrics or [], "before", errors)
         active_metrics = _metric_snapshot(metrics or [], "active", errors)

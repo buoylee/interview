@@ -98,6 +98,33 @@ class ScenarioAssertionTest(unittest.TestCase):
         report = assert_scenario("slow-member", [], events, metrics)
         self.assertIn("slow-member target metrics are missing", report["errors"])
 
+    def test_slow_member_fails_closed_for_non_string_fault_targets(self):
+        """Catches malformed JSON target values escaping the scenario report."""
+        metrics = [
+            {"phase": "before", "members": {"db3": {
+                "applier_queue": 0,
+                "flow_control_applier_threshold": 10,
+                "flow_control_mode": "QUOTA",
+            }}},
+            {"phase": "active", "members": {"db3": {
+                "applier_queue": 12,
+                "flow_control_applier_threshold": 10,
+                "flow_control_mode": "QUOTA",
+            }}},
+        ]
+        for target in ([], {}, 3):
+            with self.subTest(target=target):
+                events = [
+                    {"phase": "fault_begin", "at": "2026-01-01T00:00:00+00:00"},
+                    {"phase": "fault_active", "at": "2026-01-01T00:00:01+00:00", "target": target},
+                    {"phase": "fault_end", "at": "2026-01-01T00:00:03+00:00"},
+                ]
+                report = assert_scenario("slow-member", [], events, metrics)
+                self.assertFalse(report["ok"])
+                self.assertIn(
+                    "slow-member fault target is missing or invalid", report["errors"]
+                )
+
     def test_quorum_loss_allows_no_success_in_active_window(self):
         records = [
             result("router-a", "2026-01-01T00:00:02+00:00", Outcome.SUCCESS),
