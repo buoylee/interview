@@ -5,4 +5,7 @@ target/
 .DS_Store
 evidence/*
 !evidence/.gitkeep
+!evidence/m0/
+evidence/m0/*
+!evidence/m0/.gitkeep
 infra/runtime/

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ProductMutationServiceIT" tests="3" errors="0" skipped="0" failures="0">
+  <testcase name="all_search_relevant_changes_advance_one_revision"/>
+  <testcase name="a_failed_business_write_rolls_back_its_revision"/>
+  <testcase name="inventory_mutation_after_delete_rolls_back_without_advancing_revision"/>
+</testsuite>

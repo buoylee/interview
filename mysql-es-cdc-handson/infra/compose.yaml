@@ -105,6 +105,47 @@ services:
     volumes:
       - ./toxiproxy/proxies.json:/config/proxies.json:ro
 
+  product-service:
+    image: mysql-es-cdc-handson/product-service:0.1.0-local
+    build:
+      context: ../product-service
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/product_catalog?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: product
+      SPRING_DATASOURCE_PASSWORD: productpass
+    ports: ["8081:8081"]
+
+  search-sync-consumer:
+    profiles: ["m0-tools"]
+    image: mysql-es-cdc-handson/search-sync-consumer:0.1.0-local
+    build:
+      context: ../search-sync-consumer
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8082
+    ports: ["8082:8082"]
+
+  consistency-verifier:
+    profiles: ["m0-tools"]
+    image: mysql-es-cdc-handson/consistency-verifier:0.1.0-local
+    build:
+      context: ../consistency-verifier
+    depends_on:
+      mysql:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8083
+    ports: ["8083:8083"]
+
 volumes:
   mysql-data:
   kafka-data:

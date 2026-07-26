@@ -2,20 +2,42 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
-docker compose -f infra/compose.yaml config --quiet
+docker compose -f infra/compose.yaml --profile m0-tools config --quiet
 
 rendered_config=$(mktemp "${TMPDIR:-/tmp}/m0-compose.XXXXXX")
-trap 'rm -f "$rendered_config"' EXIT
-docker compose -f infra/compose.yaml config --format json >"$rendered_config"
+default_config=$(mktemp "${TMPDIR:-/tmp}/m0-compose-default.XXXXXX")
+trap 'rm -f "$rendered_config" "$default_config"' EXIT
+docker compose -f infra/compose.yaml --profile m0-tools config --format json >"$rendered_config"
+docker compose -f infra/compose.yaml config --format json >"$default_config"
 
 jq -e '
-  (.services | keys) == ["canal","elasticsearch","kafka","kafka-init","mysql","toxiproxy"] and
+  (.services | keys) == ["canal","elasticsearch","kafka","kafka-init","mysql","product-service","toxiproxy"] and
+  .services["product-service"] != null and
+  .services["search-sync-consumer"] == null and
+  .services["consistency-verifier"] == null
+' "$default_config" >/dev/null
+
+jq -e '
+  (.services | keys) == ["canal","consistency-verifier","elasticsearch","kafka","kafka-init","mysql","product-service","search-sync-consumer","toxiproxy"] and
   .services.mysql.image == "mysql:8.4.8" and
   .services.canal.image == "canal/canal-server:v1.1.8" and
   .services.kafka.image == "apache/kafka:4.1.2" and
   .services["kafka-init"].image == "apache/kafka:4.1.2" and
   .services.elasticsearch.image == "docker.elastic.co/elasticsearch/elasticsearch:8.17.0" and
   .services.toxiproxy.image == "ghcr.io/shopify/toxiproxy:2.12.0" and
+  .services["product-service"].image == "mysql-es-cdc-handson/product-service:0.1.0-local" and
+  .services["search-sync-consumer"].image == "mysql-es-cdc-handson/search-sync-consumer:0.1.0-local" and
+  .services["consistency-verifier"].image == "mysql-es-cdc-handson/consistency-verifier:0.1.0-local" and
+  (.services["product-service"].depends_on | keys) == ["mysql"] and
+  .services["product-service"].depends_on.mysql.condition == "service_healthy" and
+  .services["search-sync-consumer"].profiles == ["m0-tools"] and
+  .services["consistency-verifier"].profiles == ["m0-tools"] and
+  (.services["search-sync-consumer"].depends_on | keys) == ["elasticsearch","kafka-init"] and
+  .services["search-sync-consumer"].depends_on.elasticsearch.condition == "service_healthy" and
+  .services["search-sync-consumer"].depends_on["kafka-init"].condition == "service_completed_successfully" and
+  (.services["consistency-verifier"].depends_on | keys) == ["elasticsearch","mysql"] and
+  .services["consistency-verifier"].depends_on.elasticsearch.condition == "service_healthy" and
+  .services["consistency-verifier"].depends_on.mysql.condition == "service_healthy" and
   (.services["kafka-init"].depends_on | keys) == ["kafka"] and
   .services["kafka-init"].depends_on.kafka.condition == "service_healthy" and
   (.services.canal.depends_on | keys) == ["kafka-init","mysql","toxiproxy"] and
@@ -40,6 +62,9 @@ jq -e '
   ([.services.canal.ports[] | [.published, .target]] == [["11111",11111],["11112",11112]]) and
   ([.services.elasticsearch.ports[] | [.published, .target]] == [["9200",9200]]) and
   ([.services.toxiproxy.ports[] | [.published, .target]] == [["8474",8474],["8666",8666],["8667",8667],["8668",8668]]) and
+  ([.services["product-service"].ports[] | [.published, .target]] == [["8081",8081]]) and
+  ([.services["search-sync-consumer"].ports[] | [.published, .target]] == [["8082",8082]]) and
+  ([.services["consistency-verifier"].ports[] | [.published, .target]] == [["8083",8083]]) and
   .services.canal.environment.CANAL_AUTO_RESET_LATEST_POS_MODE == "false" and
   (.services.canal.command == ["/bin/bash","-c","chown admin:admin /home/admin/canal-data && exec /home/admin/app.sh"]) and
   any(.services.canal.volumes[]; .type == "volume" and .source == "canal-data" and .target == "/home/admin/canal-data")

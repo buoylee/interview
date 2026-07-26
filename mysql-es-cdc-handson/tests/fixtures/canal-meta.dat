@@ -1,0 +1,1 @@
+{"destination":"products","clientDatas":[{"clientIdentity":{"destination":"products","clientId":1001,"filter":""},"cursor":{"identity":{"sourceAddress":{"address":"toxiproxy","port":8668},"slaveId":-1},"postion":{"included":false,"journalName":"mysql-bin.000002","position":4096,"timestamp":1785072000000,"serverId":1,"gtid":"fixture:1-9"}}}]}
