@@ -24,7 +24,7 @@
 
 - 上游 [Model Turn](../01-model-turn/README.md) 和 [Query Loop](../01-model-turn/02-query-loop-and-streaming.md) 负责确认完整 Tool Intent，并把 Controlled Effects 保持为 Q6 opaque boundary；
 - 下游 Query Loop 负责在 response 与 Tool batch 都闭合后决定 Continue 或 Stop；
-- 未来的 Session Continuity 才负责 transcript write/flush、compaction、interruption persistence 与 later-process recovery。
+- [Session Continuity](../03-session-continuity/README.md) 负责 transcript write/flush、compaction、interruption persistence 与 later-process recovery。
 
 所以 E8 结束时只是“当前 feedback 已可合法继续”，不是“session 已持久化”，也不是“runtime 必须再次调用模型”。
 
@@ -390,6 +390,6 @@ Tool layer先把result放进带原ID的user-side message，并按barrier/drain�
 
 读完这五篇后，Controlled Effects的当前状态已经闭合：intent已经得到明确terminal observation，runtime-only state与model-visible feedback已经分开，Query Loop也拥有合法的continue/stop输入。
 
-下一问属于未来的 **Session Continuity**：这些Messages、observations、permission/file state与interruption facts，哪些会跨context pressure与later process持续存在？当前路径只保留这个plain-text handoff，不创建不存在的链接。
+下一问由 [Session Continuity](../03-session-continuity/README.md) 接住：这些Messages、observations、permission/file state与interruption facts，哪些会跨context pressure与later process持续存在？Controlled Effects 到此仍只拥有 live Tool cancellation、result normalization与same-ID Observation，不拥有持久化和恢复机制。
 
 [← 上一篇：Query Loop 与 Streaming](../01-model-turn/02-query-loop-and-streaming.md) · [下一篇：Tool Contract 与 Orchestration](01-tool-contract-and-orchestration.md)

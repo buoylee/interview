@@ -50,9 +50,9 @@ flowchart TD
 
 **A6 Controlled Machine Effect** 由 runtime 查找实际工具，准备并校验输入，经过授权判断和执行环境约束后，才可能读取文件、修改文件或启动进程。拒绝和失败也是这一阶段的合法结果。
 
-**A7 Tool Observation and State Update** 把成功、失败、拒绝或中断整理成能关联原 tool intent 的 observation，并更新协议 Messages、runtime turn state 与 durable transcript。机器世界由此重新变成模型下一轮可理解的信息。
+**A7 Tool Observation and State Update** 把成功、失败、拒绝或中断整理成能关联原 tool intent 的 observation，并分别更新协议 Messages、runtime turn state 与 durable transcript。三者的写入时点、可见性和生命周期不同；机器世界只有经过 projection，才会成为模型下一轮可理解的信息。
 
-**A8 Continue, Stop, Recover, or Delegate** 根据协议是否闭合、任务状态和控制信号选择下一条边：继续请求模型、停止、重建可继续状态，或把一个有边界的任务委派给 child loop。
+**A8 Continue, Stop, Recover, or Delegate** 根据协议是否闭合、任务状态和控制信号选择下一条边：普通 Continue 从 live projected state 回到 A2；Recover 从 persisted state 重建 fresh runtime 与 model view，再回到 A2；两者都启动下一次请求，而不是恢复旧调用栈。具体时间边界由 [03：Session Continuity](03-session-continuity/README.md) 展开。
 
 A5–A7 的 canonical 名称和边仍以本图为准；它们怎样从 inert Tool Intent 经过 runtime control 变成 same-ID Tool Observation，由 [02：Controlled Effects 总览](02-controlled-effects/README.md) 沿 E1–E8 深入展开。
 
@@ -74,6 +74,8 @@ A5–A7 的 canonical 名称和边仍以本图为准；它们怎样从 inert Too
 | A8 → Delegation → A7 | child loop 通过显式结果边界返回，结果作为 parent 的 observation 重新入环。 |
 
 这张图故意只保留因果骨架：先建立唯一的 canonical loop，再在后续部分放大模型上下文、工具控制、跨时间恢复和委派等局部机制。
+
+沿时间轴看，A7 产生的是三类不同状态：durable transcript 保存可恢复事件，model-visible Messages 是下一次 A2 的投影，runtime-only controls 只服务当前执行。A8 选择普通 Continue 时可从 live state 重投影；选择 Recover 时则从 durable source 构造新 runtime 与新 view。两条 next-turn return edge 最终都回到 A2 → A3，而不会绕过 request assembly。
 
 ## 2. 核心对象：谁看见、谁拥有、活多久
 

@@ -1,6 +1,6 @@
 # 01：Transcript 与 Model Context——“会话历史”不是一份数组
 
-[← 返回：Controlled Effects 总览](../02-controlled-effects/README.md) · [回到：一条 Agent Turn 全景](../00-one-agent-turn.md)
+[← 返回：Session Continuity 总览](README.md) · [下一章：Compaction](02-compaction.md)
 
 > Claude Code 说“会话历史”时，究竟是在说落盘记录、当前模型窗口，还是正在运行的一次 turn？
 
@@ -772,3 +772,5 @@ Full replay 保留细节，却受 context budget 限制；compacted projection �
 > 当模型 context budget 成为限制时，Claude Code 如何决定什么时候 compact、压缩哪些历史、保留哪段 Tool Intent / Observation tail、怎样构造 post-compact messages，以及失败时如何继续而不破坏 session continuity？
 
 这正是 Compaction 要接住的主线。
+
+[← 返回：Session Continuity 总览](README.md) · [下一章：Compaction](02-compaction.md)

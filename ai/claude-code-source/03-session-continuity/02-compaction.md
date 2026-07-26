@@ -1,6 +1,6 @@
 # 02：Compaction——压缩的是当前延续，不是删除会话历史
 
-[← 上一章：Transcript 与 Model Context](01-transcript-and-model-context.md)
+[← 上一章：Transcript 与 Model Context](01-transcript-and-model-context.md) · [下一章：Interrupt / Queue / Continue / Resume](03-interrupt-queue-continue-resume.md)
 
 > Context window 快满时，Claude Code 怎样减少历史，又不让正在进行的任务“失忆”？
 
@@ -986,7 +986,7 @@ Session Memory failure通常返回 `null` 并 fallback到 full。Full automatic 
 
 整条阅读路线只追一个问题：**旧 projection 在什么条件下被保留，什么条件下才被一份成功的 `CompactionResult` 替换？**
 
-## 16. 交给未来 Interrupt / Queue / Continue / Resume 的问题
+## 16. 交给 Interrupt / Queue / Continue / Resume 的问题
 
 Context pressure 现在已经解决：runtime可以在同一 Query Loop中，把过大的 model-visible continuation转换成 boundary、summary、retained tail与适用 metadata，再继续普通请求。
 
@@ -1001,4 +1001,6 @@ durable tail 恰好停在 incomplete Tool Intent / Observation
 
 下一步需要回答的不是“怎样再压缩”，而是：谁 signal active work、queued input何时进入 model-visible plane、Continue与Resume怎样选择 durable source，以及为什么 later continuation是一轮新 invocation而不是恢复旧 stack。
 
-这部分留给未来的 Interrupt / Queue / Continue / Resume 主题；当前不创建尚不存在的 Markdown 链接。
+下一章 [Interrupt / Queue / Continue / Resume](03-interrupt-queue-continue-resume.md) 接住这条主线：它区分 active cancellation、queued steering、session selection 与 fresh-runtime reconstruction。
+
+[← 上一章：Transcript 与 Model Context](01-transcript-and-model-context.md) · [下一章：Interrupt / Queue / Continue / Resume](03-interrupt-queue-continue-resume.md)
