@@ -1,18 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
-[ -f "$STATE" ] || { echo "missing fault state" >&2; exit 2; }
-source "$STATE"
-
-case "${SCENARIO:-}" in
-  planned-switchover|primary-crash|primary-partition|quorum-loss|slow-member|router-failure|member-rejoin) ;;
-  *) die "invalid recovery scenario in state" ;;
-esac
+parse_fault_state
 
 rejoin() {
   local target="$1" seed state
   assert_db_target "$target"
-  docker update --restart=on-failure "mysql-ha-$target" >/dev/null 2>&1 || true
+  docker update --restart=always "mysql-ha-$target" >/dev/null
   "${DC[@]}" up -d "$target"
   record_event rejoin_begin "$SCENARIO" "$target"
   for _ in $(seq 1 60); do
@@ -35,18 +29,29 @@ rejoin() {
   record_event rejoin_online "$SCENARIO" "$target"
 }
 
+threshold_for() {
+  case "$1" in
+    db1) printf '%s\n' "$STATE_THRESHOLD_DB1" ;;
+    db2) printf '%s\n' "$STATE_THRESHOLD_DB2" ;;
+    db3) printf '%s\n' "$STATE_THRESHOLD_DB3" ;;
+    *) die "invalid threshold member: $1" ;;
+  esac
+}
+
 case "$SCENARIO" in
   planned-switchover) ;;
   primary-crash|member-rejoin) rejoin "$TARGET" ;;
   primary-partition)
     assert_db_target "$TARGET"
     assert_ha_network
-    docker network connect "$NETWORK" "mysql-ha-$TARGET" >/dev/null 2>&1 || true
+    if ! network_connected "mysql-ha-$TARGET"; then
+      docker network connect "$NETWORK" "mysql-ha-$TARGET" >/dev/null
+    fi
     rejoin "$TARGET"
     ;;
   quorum-loss)
     record_event quorum_restore_begin "$SCENARIO" "$TARGETS"
-    for member in $TARGETS; do rejoin "$member"; done
+    for member in "${STATE_TARGETS[@]}"; do rejoin "$member"; done
     ;;
   slow-member)
     assert_db_target "$TARGET"
@@ -54,12 +59,13 @@ case "$SCENARIO" in
     for member in db1 db2 db3; do
       assert_db_target "$member"
       "${DC[@]}" exec -T "$member" mysql -uroot -p"$ROOT_PASSWORD" \
-        -e "SET GLOBAL group_replication_flow_control_applier_threshold=$OLD_FLOW_THRESHOLD"
+        -e "SET GLOBAL group_replication_flow_control_applier_threshold=$(threshold_for "$member")"
     done
     ;;
   router-failure)
     assert_router_target router-a
     "${DC[@]}" up -d router-a
+    wait_for_router router-a || die "router-a did not accept traffic"
     ;;
 esac
 
