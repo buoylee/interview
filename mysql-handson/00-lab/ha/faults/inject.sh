@@ -9,6 +9,7 @@ target=""
 targets=""
 old_flow_thresholds=""
 quorum_targets=()
+quorum_block_timeout=""
 
 write_state() {
   local temporary_state="$STATE.tmp.$$"
@@ -32,24 +33,29 @@ member_threshold() {
 
 wait_for_quorum_blocked() {
   local member="$1"
-  local timeout="${MYSQL_HA_QUORUM_BLOCK_TIMEOUT_SECONDS:-30}"
+  local timeout="$2"
   local deadline values offline_mode super_read_only member_state
 
   validate_db_name "$member"
-  [[ "$timeout" =~ ^[1-9][0-9]*$ ]] \
-    || die "MYSQL_HA_QUORUM_BLOCK_TIMEOUT_SECONDS must be a positive integer"
 
   # The 30-second production default comfortably exceeds the Lab's configured
   # detection plus 5-second unreachable-majority timeout. Tests may shorten it.
   deadline=$((SECONDS + timeout))
   while [ "$SECONDS" -lt "$deadline" ]; do
-    values="$(
+    if values="$(
       "${DC[@]}" exec -T "$member" mysql -uroot -p"$ROOT_PASSWORD" -Nse \
         "SELECT @@offline_mode, @@super_read_only, COALESCE((SELECT MEMBER_STATE FROM performance_schema.replication_group_members WHERE MEMBER_ID = @@server_uuid), 'MISSING')" \
-        2>/dev/null || true
-    )"
-    if [ -n "$values" ]; then
-      read -r offline_mode super_read_only member_state <<< "$values"
+        2>/dev/null
+    )"; then
+      if [[ "$values" =~ ^([01])[[:blank:]]+([01])[[:blank:]]+([^[:space:]]+)$ ]]; then
+        offline_mode="${BASH_REMATCH[1]}"
+        super_read_only="${BASH_REMATCH[2]}"
+        member_state="${BASH_REMATCH[3]}"
+      else
+        offline_mode=""
+        super_read_only=""
+        member_state=""
+      fi
       case "$offline_mode:$super_read_only" in
         0:1|1:0|1:1)
           record_event quorum_blocked "$scenario" "$member"
@@ -79,6 +85,12 @@ case "$scenario" in
     [ "$scenario" != primary-partition ] || assert_ha_network
     ;;
   quorum-loss)
+    quorum_block_timeout=30
+    if [ "${MYSQL_HA_QUORUM_BLOCK_TIMEOUT_SECONDS+x}" = x ]; then
+      quorum_block_timeout="$MYSQL_HA_QUORUM_BLOCK_TIMEOUT_SECONDS"
+    fi
+    [[ "$quorum_block_timeout" =~ ^[1-9][0-9]*$ ]] \
+      || die "MYSQL_HA_QUORUM_BLOCK_TIMEOUT_SECONDS must be a positive integer"
     target="$(primary_member)"
     while IFS= read -r member; do
       quorum_targets+=("$member")
@@ -177,5 +189,5 @@ esac
 record_event fault_active "$scenario" "${target:-$targets}"
 
 if [ "$scenario" = quorum-loss ]; then
-  wait_for_quorum_blocked "$target"
+  wait_for_quorum_blocked "$target" "$quorum_block_timeout"
 fi
