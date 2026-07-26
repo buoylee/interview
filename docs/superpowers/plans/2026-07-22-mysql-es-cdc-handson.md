@@ -29,7 +29,7 @@ If implementation evidence contradicts the design, stop at the current milestone
 - Every Elasticsearch Bulk item is classified. Top-level HTTP success is insufficient, and a non-version-conflict 409 is not STALE.
 - Reconciliation owns an independent query, expected model, projector, canonicalizer, tests, and target reader.
 - A confirmed MySQL or Kafka log gap cannot be repaired by bounded document repair or offset skipping.
-- A MySQL binlog gap is not closed by rebuilding Elasticsearch alone. With the write gate closed, reset mode must first publish and ACK one reset-time recovery anchor in each partition so ACK-derived `meta.dat` can advance. A reset=false restart must preserve that exact cursor and offset vector, then a distinct normal-mode sentinel in each partition must prove exactly-next-event before rebuild can restore HEALTHY.
+- A MySQL binlog gap is not closed by rebuilding Elasticsearch alone. With the write gate closed, reset mode must first publish and ACK one reset-time recovery anchor in each partition so ACK-derived `meta.dat` can advance. An ordered `SHOW BINARY LOGS` manifest and numeric file indices must prove the new cursor differs from the old missing cursor and is at or beyond the valid lower bound. A reset=false restart must preserve that exact cursor and require `anchor vector == restart-before vector == restart-after vector`, then a distinct normal-mode sentinel in each partition must prove exactly-next-event before rebuild can restore HEALTHY.
 - Canal 1.1.8 uses release-native `file-instance.xml`: `FailbackLogPositionManager` falls back from memory to `MetaLogPositionManager`, which reads the acknowledged MQ client cursor persisted by `FileMixedMetaManager` as destination-scoped `meta.dat`. The unwired `FileMixedLogPositionManager`/`parse.dat` path is not enabled because its MQ ACK/restart boundary has not been proven.
 - Canal 1.1.8 static-destination stop can throw at `CanalMQRunnable.future.cancel(true)` because `start(destinations)` did not set that future. One observed restart preserved the ACK cursor and offsets, but no general shutdown-safety claim follows; every restart gate must prove persisted cursor identity, unchanged Kafka end offsets, exact resume, and one next event.
 - All scenario waits are condition based and bounded. Fixed sleep is never a success criterion.
@@ -151,7 +151,7 @@ consistency-verifier may not import com.interview.mysqlescdc.consumer. Shared tr
 - Cutover closes the write gate, emits and observes one marker per partition, waits for primary and shadow positions, pauses primary, independently verifies, then moves both aliases in one request.
 - products_search must retain the exact searchable=true filter after cutover.
 - Every generation retains tombstones; no compacted generation exists.
-- For a purged Canal source position, cursor recovery is linked to the rebuild run and separately records reset-time anchor offsets/events, the ACK-derived cursor hash/position, normal-restart cursor/offset identity, and per-partition normal-mode sentinel offsets/events.
+- For a purged Canal source position, cursor recovery is linked to the rebuild run and separately records the ordered retained-binlog manifest; lower/reset/normal file indices and positions; reset-time anchor offsets/events; the ACK-derived cursor hash; normal-restart cursor/offset identity; and per-partition normal-mode sentinel offsets/events.
 
 ## Coverage Matrix
 

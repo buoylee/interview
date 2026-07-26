@@ -165,10 +165,13 @@ CREATE TABLE IF NOT EXISTS canal_position_recovery (
   old_cursor_sha256 CHAR(64) NOT NULL,
   old_journal_name VARCHAR(255) NOT NULL,
   old_position BIGINT NOT NULL,
+  retained_binlog_files_json JSON NULL,
   reset_lower_bound_journal VARCHAR(255) NULL,
+  reset_lower_bound_file_index INT NULL,
   reset_lower_bound_position BIGINT NULL,
   reset_cursor_sha256 CHAR(64) NULL,
   reset_journal_name VARCHAR(255) NULL,
+  reset_file_index INT NULL,
   reset_position BIGINT NULL,
   reset_anchor_run_id BINARY(16) NULL,
   reset_anchor_offsets_json JSON NULL,
@@ -176,6 +179,7 @@ CREATE TABLE IF NOT EXISTS canal_position_recovery (
   reset_restart_offsets_before_json JSON NULL,
   normal_restart_cursor_sha256 CHAR(64) NULL,
   normal_restart_journal_name VARCHAR(255) NULL,
+  normal_restart_file_index INT NULL,
   normal_restart_position BIGINT NULL,
   normal_restart_offsets_after_json JSON NULL,
   normal_sentinel_run_id BINARY(16) NULL,
@@ -652,7 +656,7 @@ scan snapshot into generation
 continue through the normal barrier, verification, and cutover path
 ~~~
 
-The coordinator must not accept the recovery record unless it contains the old cursor hash and missing file/position; gate-stable reset lower bound; ACK-derived reset cursor hash and retained file/position; three reset-time anchor records/next offsets; preserved cursor identity plus unchanged Kafka offsets across reset=false restart; and three distinct normal-mode sentinel records/next offsets observed exactly once at their expected next offsets. The reset-anchor and normal-sentinel run IDs must differ. LOG_GAP remains active until the rebuilt generation passes and cutover completes.
+The coordinator must not accept the recovery record unless it contains the old cursor hash and missing file/position; one ordered retained-binlog manifest captured from `SHOW BINARY LOGS`; gate-stable reset lower-bound journal/index/position; ACK-derived reset cursor hash and retained journal/index/position; three reset-time anchor records/next offsets; preserved cursor identity plus unchanged Kafka offsets across reset=false restart; and three distinct normal-mode sentinel records/next offsets observed exactly once at their expected next offsets. The manifest entries at each recorded index must equal the recorded journal, the reset cursor must differ from the old missing cursor and compare at or beyond the lower bound by `(file_index, position)`, and `reset_anchor_offsets_json == reset_restart_offsets_before_json == normal_restart_offsets_after_json`. The reset-anchor and normal-sentinel run IDs must differ. LOG_GAP remains active until the rebuilt generation passes and cutover completes.
 
 - [ ] **Step 2: Observe exact barrier offsets in every partition**
 
@@ -745,7 +749,7 @@ git commit -m "feat(cdc-lab): coordinate verified rebuild cutovers"
 
 **Interfaces:**
 
-- Runtime evidence for each rebuild contains source watermark, `O_start`, `O_barrier`, shadow offsets, verification run, alias request/response, gate duration, and recovery actions. A MySQL-binlog-gap run additionally contains the old cursor artifact/hash and missing position, reset lower bound, reset-time anchor records/vector, ACK-derived reset cursor hash/position, reset=false restart cursor/offset identity, and distinct normal-mode sentinel records/vector.
+- Runtime evidence for each rebuild contains source watermark, `O_start`, `O_barrier`, shadow offsets, verification run, alias request/response, gate duration, and recovery actions. A MySQL-binlog-gap run additionally contains the old cursor artifact/hash and missing position; the ordered `SHOW BINARY LOGS` retained-file manifest; lower-bound and reset cursor file indices/positions; reset-time anchor records/vector; ACK-derived reset cursor hash; reset=false restart cursor/index/position and offset identity; and distinct normal-mode sentinel records/vector.
 
 - [ ] **Step 1: Define the concurrent-scan scenario**
 
@@ -797,8 +801,8 @@ The gap scenario:
 3. Capture the gate-stable `SHOW MASTER STATUS` file, position, and GTID set as the reset lower bound.
 4. Start only Canal once with `CANAL_AUTO_RESET_LATEST_POS_MODE=true docker compose -f infra/compose.yaml up -d --force-recreate canal`. This opt-in uses Canal's documented `canal.auto.reset.latest.pos.mode`; normal Compose startup remains false.
 5. While reset mode is still active and the business write gate remains closed, call the gate-owned recovery endpoint to insert one `cdc_barrier` row for each partition under a dedicated **reset-anchor run ID**. This internal control path is the only allowed writer under the gate. Observe the three raw null-key Kafka records in partitions 0/1/2, wait until Canal has ACKed them, and record each record plus `offset + 1` as `reset_anchor_offsets_json`.
-6. Only after the reset-time anchors are ACKed, poll `meta.dat` until it names a journal still present in `SHOW BINARY LOGS`, its decoded position covers the anchors and is at or beyond the reset lower bound, and Canal no longer reports the purged source position. Record `reset_cursor_sha256`, decoded journal/position, and the Kafka end-offset vector. Waiting for ACK-derived `meta.dat` to advance before producing/ACKing anchors is a protocol error and must time out as FAIL.
-7. Restart Canal with `CANAL_AUTO_RESET_LATEST_POS_MODE=false`. Immediately before restart record the reset cursor identity/hash/decoded position and Kafka end offsets; before producing any new row after restart, require the same cursor identity/hash/position, unchanged end offsets, and startup from that exact acknowledged cursor. A reset that works only with auto-reset left enabled is a failure. The known 1.1.8 static-destination stop NPE must be recorded but cannot replace any check or be generalized as harmless.
+6. Only after the reset-time anchors are ACKed, poll `meta.dat` until it names a journal still present in `SHOW BINARY LOGS` and Canal no longer reports the purged source position. Capture the current `SHOW BINARY LOGS` filenames in returned order as the retained-binlog manifest; look up both the gate-stable lower-bound journal and reset journal in that same array and persist their zero-based `file_index`. Require the reset `(file_index, position)` to compare at or beyond the lower-bound tuple, require the reset journal/position to differ from the old missing cursor, and require `reset_anchor_offsets_json` to equal the Kafka end-offset vector recorded immediately before normal restart. Record `reset_cursor_sha256`. Waiting for ACK-derived `meta.dat` to advance before producing/ACKing anchors is a protocol error and must time out as FAIL; comparing journal strings without the manifest indices is also a failure.
+7. Restart Canal with `CANAL_AUTO_RESET_LATEST_POS_MODE=false`. Immediately before restart record the reset cursor identity/hash/decoded journal/index/position and Kafka end offsets; before producing any new row after restart, require the same cursor identity/hash/journal/index/position, require `reset_anchor_offsets_json == reset_restart_offsets_before_json == normal_restart_offsets_after_json`, and require startup from that exact acknowledged cursor. A reset that works only with auto-reset left enabled is a failure. The known 1.1.8 static-destination stop NPE must be recorded but cannot replace any check or be generalized as harmless.
 8. After the reset=false restart, call the recovery endpoint again with a distinct **normal-sentinel run ID** and insert one deterministically mapped `cdc_barrier` row per partition. Starting from the pre-restart per-partition end-offset vector, observe each sentinel exactly once at that partition's expected next offset and store all three records plus their next offsets. Reset-time anchors cannot satisfy this normal-mode sentinel gate.
 9. Submit the complete evidence to `/canal-recovery/complete`; only then may the coordinator capture O_start, open its consistent snapshot, start shadow replay, and reopen writes.
 
@@ -875,7 +879,7 @@ Expected both times:
 - active and inactive source rows exist exactly in the promoted generation;
 - pre-cutover failure leaves old aliases; post-cutover failure keeps new aliases;
 - confirmed Kafka gap returns to HEALTHY only after successful rebuild and fresh PASS;
-- confirmed MySQL binlog gap returns to HEALTHY only after reset-time anchors are ACKed, `meta.dat` covers them, reset=false restart preserves cursor/offset identity, distinct normal-mode sentinels prove exactly-next-event in all partitions, and the linked rebuild produces a fresh PASS;
+- confirmed MySQL binlog gap returns to HEALTHY only after reset-time anchors are ACKed; retained-binlog indices prove `meta.dat` left the old cursor and covers the valid lower bound; anchor/restart-before/restart-after vectors are equal; distinct normal-mode sentinels prove exactly-next-event in all partitions; and the linked rebuild produces a fresh PASS;
 - alias state, write gate, primary consumer, and shadow worker are never left ambiguous.
 
 - [ ] **Step 8: Commit M5**
@@ -897,6 +901,6 @@ Do not start M6 until:
 - old and shadow paths both pass the barrier before verification;
 - both aliases move atomically only after an independent zero-diff PASS;
 - failures before and after the alias boundary recover according to persisted truth;
-- a purged MySQL position cannot clear LOG_GAP until reset-time anchors advance the ACK-derived cursor, reset=false restart preserves exact cursor/offset identity, distinct normal-mode sentinels prove exactly-next-event in all three partitions, and the linked rebuild passes;
+- a purged MySQL position cannot clear LOG_GAP until reset-time anchors advance the ACK-derived cursor; an ordered retained-binlog manifest proves the new indexed cursor differs from the old missing cursor and is at or beyond the lower bound; reset=false restart preserves exact cursor identity with `anchor == restart-before == restart-after` vectors; distinct normal-mode sentinels prove exactly-next-event in all three partitions; and the linked rebuild passes;
 - a confirmed Kafka gap is recoverable only through a successful rebuild;
 - two reset M5 runs finish with HEALTHY, zero DLQ, zero diff, and open writes.

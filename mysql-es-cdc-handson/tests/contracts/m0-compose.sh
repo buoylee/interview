@@ -16,8 +16,19 @@ jq -e '
   .services["kafka-init"].image == "apache/kafka:4.1.2" and
   .services.elasticsearch.image == "docker.elastic.co/elasticsearch/elasticsearch:8.17.0" and
   .services.toxiproxy.image == "ghcr.io/shopify/toxiproxy:2.12.0" and
+  (.services["kafka-init"].depends_on | keys) == ["kafka"] and
+  .services["kafka-init"].depends_on.kafka.condition == "service_healthy" and
+  (.services.canal.depends_on | keys) == ["kafka-init","mysql","toxiproxy"] and
   .services.canal.depends_on["kafka-init"].condition == "service_completed_successfully" and
+  .services.canal.depends_on.mysql.condition == "service_healthy" and
+  .services.canal.depends_on.toxiproxy.condition == "service_started" and
+  (.services.toxiproxy.depends_on | keys) == ["elasticsearch","kafka","mysql"] and
+  .services.toxiproxy.depends_on.elasticsearch.condition == "service_healthy" and
+  .services.toxiproxy.depends_on.kafka.condition == "service_healthy" and
+  .services.toxiproxy.depends_on.mysql.condition == "service_healthy" and
   .services["kafka-init"].entrypoint == ["/bin/bash","/create-topics.sh"] and
+  .services.kafka.environment.KAFKA_NODE_ID == "1" and
+  .services.kafka.environment.KAFKA_CONTROLLER_QUORUM_VOTERS == "1@kafka:9093" and
   .services.kafka.environment.KAFKA_PROCESS_ROLES == "broker,controller" and
   .services.kafka.environment.KAFKA_CONTROLLER_LISTENER_NAMES == "CONTROLLER" and
   .services.kafka.environment.KAFKA_INTER_BROKER_LISTENER_NAME == "BROKER" and

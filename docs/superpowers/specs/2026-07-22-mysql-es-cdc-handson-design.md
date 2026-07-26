@@ -520,8 +520,8 @@ Canal 1.1.8 还有一个受限的正常停止行为：静态 destination 由 `Ca
 2. 记录写闸稳定时仍有效的 MySQL file/position/GTID，作为 reset lower bound；
 3. 仅以 `CANAL_AUTO_RESET_LATEST_POS_MODE=true` 启动 Canal，然后通过闸内专用 recovery endpoint 写入三个 **reset-time recovery anchor**；它们使用独立 recovery run ID 和确定映射到 partition 0/1/2 的 token，不是 normal-mode 验证事件；
 4. 逐 partition 观察 anchor 的原始 Kafka record 并等待 Canal MQ ACK。只有这些新事件被 ACK 后，ACK-derived `meta.dat` 才有依据推进；不得在没有 anchor/ACK 时等待它自行越过 lower bound；
-5. 要求 `meta.dat` 指向仍保留的 binlog，覆盖全部 anchor，记录新 SHA-256、解码 file/position 与 anchor 的 per-partition next-offset vector；
-6. 关闭 reset，以 `reset=false` normal restart。restart 前后要求 `meta.dat` identity/hash/position 与 Kafka end-offset vector 均不变，并从该 exact acknowledged cursor resume；
+5. 要求 `meta.dat` 指向仍保留的 binlog，覆盖全部 anchor。把当次 `SHOW BINARY LOGS` 返回的文件名按原顺序保存为 retained-binlog manifest，并在同一 manifest 中记录 lower bound 与新 cursor 的零基 `file_index`；机械要求新 `(file_index, position)` 不小于 lower bound、且 journal/position 不等于旧 missing cursor。记录新 SHA-256 与 anchor 的 per-partition next-offset vector；
+6. 关闭 reset，以 `reset=false` normal restart。restart 前后要求 `meta.dat` identity/hash/file_index/position 不变，并要求 `anchor next-offset vector == restart-before end-offset vector == restart-after end-offset vector`，再证明从该 exact acknowledged cursor resume；
 7. normal restart 后再通过 recovery endpoint 写入一套使用不同 run ID 的 **normal-mode sentinel**。逐 partition 从 restart 前记录的 expected next offset 观察且只观察到对应 sentinel 一次，证明 exactly-next-event；不得把 reset-time anchor 当成 post-restart sentinel；
 8. 完整证据提交后，才可从新的 `O_start` 执行一致性快照、重叠 replay、验证与 alias 切换；
 9. 只在新 generation PASS 后清除 LOG_GAP。
