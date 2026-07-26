@@ -1,0 +1,10 @@
+shell.options.useWizards = false;
+const user = os.getenv('MYSQL_CLUSTER_ADMIN') || 'icadmin';
+const password = os.getenv('MYSQL_CLUSTER_ADMIN_PASSWORD') || 'ha-cluster';
+const seed = os.getenv('MYSQL_SEED') || 'db1';
+const target = os.getenv('MYSQL_TARGET_MEMBER');
+if (!target) throw new Error('MYSQL_TARGET_MEMBER is required');
+shell.connect({scheme: 'mysql', user, password, host: seed, port: 3306});
+const cluster = dba.getCluster('haLabCluster');
+cluster.rejoinInstance({scheme: 'mysql', user, password, host: target, port: 3306});
+print(JSON.stringify(cluster.status({extended: 1}), null, 2));

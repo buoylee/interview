@@ -1,6 +1,6 @@
 DC := docker compose --project-name mysql-ha --file compose.yml
 
-.PHONY: config up-db down reset ps logs up bootstrap routers init status switchover mysql-a mysql-b workload-start workload-stop workload-once workload-burst test verify
+.PHONY: config up-db down reset ps logs up bootstrap routers init status switchover mysql-a mysql-b workload-start workload-stop workload-once workload-burst test verify fault restore
 
 config:
 	$(DC) config --quiet
@@ -27,6 +27,7 @@ logs:
 
 bootstrap: up-db
 	$(DC) run --rm cluster-bootstrap
+	@bash -c 'source ./faults/lib.sh; wait_for_online 3'
 
 routers: bootstrap
 	$(DC) up -d router-a router-b
@@ -78,3 +79,9 @@ test:
 
 verify:
 	$(DC) run --rm verifier python -m verifier.verify --expected-online $${EXPECTED_ONLINE:-3}
+
+fault:
+	./faults/inject.sh $${SCENARIO:?set SCENARIO}
+
+restore:
+	./faults/restore.sh
