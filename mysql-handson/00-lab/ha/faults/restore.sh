@@ -67,39 +67,78 @@ gtid_executed_hex() {
 }
 
 prove_quorum_recovery_seed() {
-  local seed="$1" out="$2" seed_hex member member_hex waited subset
+  local seed="$1" out="$2" phase="$3" seed_hex member member_hex waited subset
   assert_db_target "$seed"
   seed_hex="$(gtid_executed_hex "$seed")"
   printf '%s\n' "$seed" > "$out-seed.txt"
-  : > "$out-gtid-before.jsonl"
-  : > "$out-gtid-subset.jsonl"
+  printf '%s\n' "$seed_hex" > "$out-gtid-$phase-seed-hex.txt"
+  : > "$out-gtid-$phase.jsonl"
   for member in db1 db2 db3; do
-    member_hex="$(gtid_executed_hex "$member")"
-    printf '{"member":"%s","gtidExecutedHex":"%s"}\n' \
-      "$member" "$member_hex" >> "$out-gtid-before.jsonl"
     waited="$(query_member "$member" \
       "SELECT WAIT_FOR_EXECUTED_GTID_SET(CONVERT(UNHEX('$seed_hex') USING utf8mb4), 30)")" \
       || die "GTID barrier failed on $member"
     [ "$waited" = 0 ] || die "$member does not contain candidate seed GTIDs"
+    member_hex="$(gtid_executed_hex "$member")"
     subset="$(query_member "$seed" \
       "SELECT GTID_SUBSET(CONVERT(UNHEX('$member_hex') USING utf8mb4), CONVERT(UNHEX('$seed_hex') USING utf8mb4))")" \
       || die "GTID subset check failed for $member"
     case "$subset" in 0|1) ;; *) die "invalid GTID subset result for $member" ;; esac
-    printf '{"member":"%s","containsSeed":true,"subsetOfSeed":%s}\n' \
-      "$member" "$subset" >> "$out-gtid-subset.jsonl"
+    printf '{"phase":"%s","member":"%s","seedGtidHex":"%s","memberGtidHexAfterWait":"%s","containsSeed":true,"subsetOfSeed":%s}\n' \
+      "$phase" "$member" "$seed_hex" "$member_hex" "$subset" >> "$out-gtid-$phase.jsonl"
     [ "$subset" = 1 ] || die "candidate seed does not contain all GTIDs from $member"
   done
 }
 
-stop_group_replication() {
-  local out="$1" member state stop_status stop_output
-  : > "$out-group-stopped.jsonl"
+quiesce_routers() {
+  local out="$1" timeout="$2" router
+  for router in router-a router-b; do assert_router_target "$router"; done
+  "${DC[@]}" stop router-a router-b \
+    > "$out-router-stop.stdout.txt" 2> "$out-router-stop.stderr.txt" \
+    || die "could not stop both Routers before quorum recovery"
+  : > "$out-router-stopped.jsonl"
+  for router in router-a router-b; do
+    wait_for_router_stopped "$router" "$timeout" \
+      || die "$router did not reach stopped state"
+    printf '{"router":"%s","running":false}\n' "$router" >> "$out-router-stopped.jsonl"
+  done
+}
+
+apply_member_fences() {
+  local out="$1" member
   for member in db1 db2 db3; do
-    stop_output="$out-stop-$member.txt"
+    "${DC[@]}" exec -T "$member" mysql -uroot -p"$ROOT_PASSWORD" \
+      -e 'SET GLOBAL read_only=ON; SET GLOBAL super_read_only=ON; SET GLOBAL offline_mode=ON' \
+      > "$out-fence-$member.stdout.txt" 2> "$out-fence-$member.stderr.txt" \
+      || die "could not fence writes on $member"
+  done
+}
+
+verify_member_fences() {
+  local out="$1" phase="$2" member values
+  : > "$out-fence-$phase.jsonl"
+  for member in db1 db2 db3; do
+    values="$(query_member "$member" \
+      'SELECT @@GLOBAL.read_only, @@GLOBAL.super_read_only, @@GLOBAL.offline_mode')" \
+      || die "could not verify write fence on $member"
+    [ "$values" = $'1\t1\t1' ] || die "write fence is not exact on $member"
+    printf '{"phase":"%s","member":"%s","readOnly":1,"superReadOnly":1,"offlineMode":1}\n' \
+      "$phase" "$member" >> "$out-fence-$phase.jsonl"
+  done
+}
+
+stop_group_replication() {
+  local out="$1" member state stop_status stdout_path stderr_path
+  : > "$out-group-stopped.jsonl"
+  : > "$out-stop-status.jsonl"
+  for member in db1 db2 db3; do
+    stdout_path="$out-stop-$member.stdout.txt"
+    stderr_path="$out-stop-$member.stderr.txt"
     stop_status=0
     "${DC[@]}" exec -T "$member" mysql -uroot -p"$ROOT_PASSWORD" \
-      -e 'STOP GROUP_REPLICATION' > "$stop_output" 2>&1 \
+      -e 'STOP GROUP_REPLICATION' > "$stdout_path" 2> "$stderr_path" \
       || stop_status=$?
+    printf '{"member":"%s","exitStatus":%s}\n' \
+      "$member" "$stop_status" >> "$out-stop-status.jsonl"
     if [ "$stop_status" -ne 0 ]; then
       state="$(query_member "$member" \
         "SELECT COALESCE((SELECT MEMBER_STATE FROM performance_schema.replication_group_members WHERE MEMBER_ID = @@server_uuid), 'MISSING')")" \
@@ -142,17 +181,54 @@ wait_for_quorum_topology() {
   return 1
 }
 
-quorum_writable_primary() {
-  local seed="$1" primary writable
-  primary="$(query_member "$seed" \
-    "SELECT MEMBER_HOST FROM performance_schema.replication_group_members WHERE MEMBER_STATE = 'ONLINE' AND MEMBER_ROLE = 'PRIMARY'")" \
-    || return 1
-  validate_db_name "$primary" || return 1
-  writable="$(query_member "$primary" \
-    'SELECT @@GLOBAL.read_only, @@GLOBAL.super_read_only, @@GLOBAL.offline_mode')" \
-    || return 1
-  [ "$writable" = $'0\t0\t0' ] || return 1
+restore_post_reboot_access() {
+  local seed="$1" out="$2" member role values primary="" sql
+  : > "$out-post-access.jsonl"
+  for member in db1 db2 db3; do
+    role="$(query_member "$seed" \
+      "SELECT MEMBER_ROLE FROM performance_schema.replication_group_members WHERE MEMBER_HOST = '$member' AND MEMBER_STATE = 'ONLINE'")" \
+      || die "could not identify recovered role for $member"
+    case "$role" in
+      PRIMARY)
+        [ -z "$primary" ] || die "recovered cluster has more than one Primary"
+        primary="$member"
+        sql='SET GLOBAL super_read_only=OFF; SET GLOBAL read_only=OFF; SET GLOBAL offline_mode=OFF'
+        ;;
+      SECONDARY)
+        sql='SET GLOBAL read_only=ON; SET GLOBAL super_read_only=ON; SET GLOBAL offline_mode=OFF'
+        ;;
+      *) die "invalid recovered role for $member" ;;
+    esac
+    "${DC[@]}" exec -T "$member" mysql -uroot -p"$ROOT_PASSWORD" -e "$sql" \
+      > "$out-post-access-$member.stdout.txt" 2> "$out-post-access-$member.stderr.txt" \
+      || die "could not restore post-reboot access on $member"
+    values="$(query_member "$member" \
+      'SELECT @@GLOBAL.read_only, @@GLOBAL.super_read_only, @@GLOBAL.offline_mode')" \
+      || die "could not verify post-reboot access on $member"
+    if [ "$role" = PRIMARY ]; then
+      [ "$values" = $'0\t0\t0' ] || die "recovered Primary is not writable"
+      printf '{"member":"%s","role":"PRIMARY","readOnly":0,"superReadOnly":0,"offlineMode":0}\n' \
+        "$member" >> "$out-post-access.jsonl"
+    else
+      [ "$values" = $'1\t1\t0' ] || die "recovered Secondary is not read-only"
+      printf '{"member":"%s","role":"SECONDARY","readOnly":1,"superReadOnly":1,"offlineMode":0}\n' \
+        "$member" >> "$out-post-access.jsonl"
+    fi
+  done
+  [ -n "$primary" ] || die "recovered cluster has no Primary"
   printf '%s\n' "$primary"
+}
+
+start_routers() {
+  local out="$1" timeout="$2" router
+  "${DC[@]}" up -d router-a router-b \
+    > "$out-router-start.stdout.txt" 2> "$out-router-start.stderr.txt" \
+    || die "could not start both Routers after quorum recovery"
+  : > "$out-router-ready.jsonl"
+  for router in router-a router-b; do
+    wait_for_router "$router" "$timeout" || die "$router did not accept traffic"
+    printf '{"router":"%s","ready":true}\n' "$router" >> "$out-router-ready.jsonl"
+  done
 }
 
 probe_router_rollback() {
@@ -174,10 +250,15 @@ restore_quorum_loss() {
   timeout="$(restore_timeout)"
   out="$HA_ROOT/evidence/quorum-recovery"
   record_event quorum_restore_begin "$SCENARIO" "$TARGETS"
-  for suffix in seed.txt gtid-before.jsonl gtid-subset.jsonl group-stopped.jsonl reboot-dry-run.txt reboot-actual.txt topology.txt writable-primary.txt router-rollback-probe.json; do
+  for suffix in seed.txt gtid-initial-seed-hex.txt gtid-final-seed-hex.txt gtid-initial.jsonl gtid-final.jsonl fence-initial.jsonl fence-final.jsonl group-stopped.jsonl stop-status.jsonl reboot-dry-run.txt reboot-actual.txt topology.txt writable-primary.txt post-access.jsonl router-stopped.jsonl router-ready.jsonl router-rollback-probe.json router-stop.stdout.txt router-stop.stderr.txt router-start.stdout.txt router-start.stderr.txt; do
     rm -f "$out-$suffix"
   done
-  for member in db1 db2 db3; do rm -f "$out-stop-$member.txt"; done
+  for member in db1 db2 db3; do
+    rm -f "$out-stop-$member.stdout.txt" "$out-stop-$member.stderr.txt" \
+      "$out-fence-$member.stdout.txt" "$out-fence-$member.stderr.txt" \
+      "$out-post-access-$member.stdout.txt" "$out-post-access-$member.stderr.txt"
+  done
+  quiesce_routers "$out" "$timeout"
   for member in "${STATE_TARGETS[@]}"; do
     docker update --restart=always "mysql-ha-$member" >/dev/null
     "${DC[@]}" up -d "$member"
@@ -185,14 +266,18 @@ restore_quorum_loss() {
   for member in db1 db2 db3; do
     wait_for_mysql "$member" "$timeout" || die "member did not become reachable: $member"
   done
-  prove_quorum_recovery_seed "$TARGET" "$out"
+  apply_member_fences "$out"
+  verify_member_fences "$out" initial
+  prove_quorum_recovery_seed "$TARGET" "$out" initial
+  prove_quorum_recovery_seed "$TARGET" "$out" final
+  verify_member_fences "$out" final
   stop_group_replication "$out"
   run_quorum_reboot "$TARGET" "$out"
   wait_for_quorum_topology "$TARGET" "$timeout" > "$out-topology.txt" \
     || die "cluster did not recover exactly three ONLINE members and one Primary"
-  primary="$(quorum_writable_primary "$TARGET")" \
-    || die "recovered cluster does not have exactly one writable Primary"
+  primary="$(restore_post_reboot_access "$TARGET" "$out")"
   printf '%s\n' "$primary" > "$out-writable-primary.txt"
+  start_routers "$out" "$timeout"
   probe_router_rollback "$out" "$timeout"
 }
 

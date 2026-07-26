@@ -83,6 +83,21 @@ wait_for_router() {
   return 1
 }
 
+wait_for_router_stopped() {
+  local router="$1" attempts="${2:-60}" running
+  assert_router_target "$router"
+  for _ in $(seq 1 "$attempts"); do
+    running="$(docker inspect --format '{{.State.Running}}' "mysql-ha-$router" 2>/dev/null)" \
+      || return 1
+    case "$running" in
+      false) return 0 ;;
+      true) sleep 1 ;;
+      *) return 1 ;;
+    esac
+  done
+  return 1
+}
+
 parse_fault_state() {
   local line key value
   local seen_scenario=0 seen_target=0 seen_targets=0 seen_thresholds=0
