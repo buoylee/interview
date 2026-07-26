@@ -550,6 +550,4 @@ then rejoin the same Query Loop and parent result contract.
 
 K8 已经重新接回 D7 / D8：background 可用时，implicit fork 的 launch acknowledgement与later terminal data进入 parent Tool / later-turn contract；global background-disable 时，同一次 Agent Tool call 直接返回 terminal Observation。两条路最终都回到 A7 Tool Observation 与 A8 parent next action。至此四篇机制文章已经闭合 child construction、lifecycle、communication/result 与 fork/cache 四条边界。
 
-至此 Part 04 已接回完整 A1–A8 学习主轴。下一站是未来的 `99-interview-playbook.md`；该文件创建前这里只保留纯文字方向，不创建链接。
-
-[← 上一篇：Agent Communication / Result Return](03-communication-and-result-return.md) · [返回 Part 04 总览](README.md)
+[← 上一篇：Agent Communication / Result Return](03-communication-and-result-return.md) · [返回 Part 04 总览](README.md) · [下一步：99 Interview Playbook](../99-interview-playbook.md)

@@ -34,15 +34,15 @@
 
 ### 总览路径
 
-本页 README → [00：一次完整的 Agent Turn](00-one-agent-turn.md) → [01：Model Turn 总览](01-model-turn/README.md) → [02：Controlled Effects 总览](02-controlled-effects/README.md) → [03：Session Continuity 总览](03-session-continuity/README.md) → [04：Subagent Delegation 总览](04-subagent-delegation/README.md)。这条路径先建立 A1–A8 全局闭环，再分别获得“模型怎样决策”“意图怎样成为受控机器事实”“任务怎样跨 context pressure 与 process lifecycle 继续”和“parent Tool call 怎样适配成隔离 child loop”的局部全景；99 Interview Playbook 仍是未来路线。
+本页 README → [00：一次完整的 Agent Turn](00-one-agent-turn.md) → [01：Model Turn 总览](01-model-turn/README.md) → [02：Controlled Effects 总览](02-controlled-effects/README.md) → [03：Session Continuity 总览](03-session-continuity/README.md) → [04：Subagent Delegation 总览](04-subagent-delegation/README.md) → [99：Interview Playbook](99-interview-playbook.md)。这条路径先建立 A1–A8 全局闭环，再分别获得“模型怎样决策”“意图怎样成为受控机器事实”“任务怎样跨 context pressure 与 process lifecycle 继续”和“parent Tool call 怎样适配成隔离 child loop”的局部全景；最后用 Playbook 把同一架构压缩成可伸缩的面试回答。
 
 ### 完整学习路径
 
-从本页开始，依次阅读 [00](00-one-agent-turn.md) → [01 Model Turn 总览](01-model-turn/README.md) → [Context Assembly](01-model-turn/01-context-assembly.md) → [Query Loop 与 Streaming](01-model-turn/02-query-loop-and-streaming.md) → [02 Controlled Effects 总览](02-controlled-effects/README.md) → [Tool Contract 与 Orchestration](02-controlled-effects/01-tool-contract-and-orchestration.md) → [Permission Decision](02-controlled-effects/02-permission-decision.md) → [Bash Security Analysis](02-controlled-effects/03-bash-security-analysis.md) → [Sandbox Runtime](02-controlled-effects/04-sandbox-runtime.md) → [File Editing Safety](02-controlled-effects/05-file-editing-safety.md) → [03 Session Continuity 总览](03-session-continuity/README.md) → [Transcript 与 Model Context](03-session-continuity/01-transcript-and-model-context.md) → [Compaction](03-session-continuity/02-compaction.md) → [Interrupt / Queue / Continue / Resume](03-session-continuity/03-interrupt-queue-continue-resume.md) → [04 Subagent Delegation 总览](04-subagent-delegation/README.md) → [Child Loop 与 Context Isolation](04-subagent-delegation/01-child-loop-and-context-isolation.md) → [Foreground / Background Lifecycle](04-subagent-delegation/02-foreground-background-lifecycle.md) → [Agent Communication / Result Return](04-subagent-delegation/03-communication-and-result-return.md) → [Fork / Prompt Cache](04-subagent-delegation/04-fork-and-prompt-cache.md)。这是当前全部可阅读内容；99 Interview Playbook 仍是未来文字路标。
+从本页开始，依次阅读 [00](00-one-agent-turn.md) → [01 Model Turn 总览](01-model-turn/README.md) → [Context Assembly](01-model-turn/01-context-assembly.md) → [Query Loop 与 Streaming](01-model-turn/02-query-loop-and-streaming.md) → [02 Controlled Effects 总览](02-controlled-effects/README.md) → [Tool Contract 与 Orchestration](02-controlled-effects/01-tool-contract-and-orchestration.md) → [Permission Decision](02-controlled-effects/02-permission-decision.md) → [Bash Security Analysis](02-controlled-effects/03-bash-security-analysis.md) → [Sandbox Runtime](02-controlled-effects/04-sandbox-runtime.md) → [File Editing Safety](02-controlled-effects/05-file-editing-safety.md) → [03 Session Continuity 总览](03-session-continuity/README.md) → [Transcript 与 Model Context](03-session-continuity/01-transcript-and-model-context.md) → [Compaction](03-session-continuity/02-compaction.md) → [Interrupt / Queue / Continue / Resume](03-session-continuity/03-interrupt-queue-continue-resume.md) → [04 Subagent Delegation 总览](04-subagent-delegation/README.md) → [Child Loop 与 Context Isolation](04-subagent-delegation/01-child-loop-and-context-isolation.md) → [Foreground / Background Lifecycle](04-subagent-delegation/02-foreground-background-lifecycle.md) → [Agent Communication / Result Return](04-subagent-delegation/03-communication-and-result-return.md) → [Fork / Prompt Cache](04-subagent-delegation/04-fork-and-prompt-cache.md) → [99 Interview Playbook](99-interview-playbook.md)。最后一篇只压缩与演练前文，不接管详细机制的 ownership。
 
 ### 面试复习路径
 
-[00：一次完整的 Agent Turn](00-one-agent-turn.md) → [Model Turn 面试压缩](01-model-turn/README.md#7-面试时的压缩回答) → [Context Assembly 面试表达](01-model-turn/01-context-assembly.md#9-面试表达从结论到深入追问) → [Query Loop 面试表达](01-model-turn/02-query-loop-and-streaming.md#9-面试表达先讲循环再讲-streaming-的正确性成本) → [Controlled Effects 面试表达](02-controlled-effects/README.md#12-面试表达) → [Tool Contract 面试表达](02-controlled-effects/01-tool-contract-and-orchestration.md#10-面试表达先说合同再说编排优化) → [Permission 面试表达](02-controlled-effects/02-permission-decision.md#12-面试表达) → [Bash Security 面试表达](02-controlled-effects/03-bash-security-analysis.md#10-面试回答) → [Sandbox Runtime 面试表达](02-controlled-effects/04-sandbox-runtime.md#10-面试表达) → [File Editing Safety 面试表达](02-controlled-effects/05-file-editing-safety.md#14-面试表达)。未来的 99 Interview Playbook 建立前，回答卡住就回到对应 A1–A8 或 E1–E8 节点。
+[99：Interview Playbook](99-interview-playbook.md) → [00：一次完整的 Agent Turn](00-one-agent-turn.md) → [Source Evidence Index](appendices/source-evidence-index.md)。先用 Playbook 练 30 秒、3 分钟、白板、权衡与失败注入；某个机制答不稳时，再从 Playbook 的 owner link 回到对应章节，最后用证据索引核对 `path + symbol`。
 
 ## 四部分学习路线图
 
@@ -53,7 +53,7 @@
 3. [03 Session Continuity](03-session-continuity/README.md)：任务如何跨中断、压缩和恢复继续，放大 A7–A8 的时间维度。
 4. [04 Subagent Delegation](04-subagent-delegation/README.md)：普通 parent Tool call 如何适配成隔离 child loop，再以 normalized result 接回 A7–A8，放大 A5–A7 的 Agent Tool specialization。
 
-四部分完成后，`99-interview-playbook.md` 才把机制压缩成 30 秒结论、白板流程和深入追问入口。
+四部分完成后，[99 Interview Playbook](99-interview-playbook.md) 把同一套机制压缩成 30 秒结论、3 分钟因果走查、白板流程和深入追问入口。
 
 ## 可选附录（不进入顺序学习路径）
 
