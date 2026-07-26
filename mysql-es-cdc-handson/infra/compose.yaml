@@ -9,7 +9,10 @@ services:
       MYSQL_DATABASE: product_catalog
       MYSQL_USER: product
       MYSQL_PASSWORD: productpass
-    ports: ["3308:3306"]
+    ports:
+      - target: 3306
+        published: "3308"
+        host_ip: 127.0.0.1
     volumes:
       - mysql-data:/var/lib/mysql
       - ./mysql/conf.d/cdc.cnf:/etc/mysql/conf.d/cdc.cnf:ro
@@ -37,7 +40,10 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
-    ports: ["29092:29092"]
+    ports:
+      - target: 29092
+        published: "29092"
+        host_ip: 127.0.0.1
     volumes:
       - kafka-data:/tmp/kraft-combined-logs
     healthcheck:
@@ -70,7 +76,13 @@ services:
         condition: service_completed_successfully
       toxiproxy:
         condition: service_started
-    ports: ["11111:11111", "11112:11112"]
+    ports:
+      - target: 11111
+        published: "11111"
+        host_ip: 127.0.0.1
+      - target: 11112
+        published: "11112"
+        host_ip: 127.0.0.1
     volumes:
       - ./canal/canal.properties:/home/admin/canal-server/conf/canal.properties:ro
       - ./canal/instance.properties:/home/admin/canal-server/conf/products/instance.properties:ro
@@ -82,7 +94,10 @@ services:
       discovery.type: single-node
       xpack.security.enabled: "false"
       ES_JAVA_OPTS: -Xms512m -Xmx512m
-    ports: ["9200:9200"]
+    ports:
+      - target: 9200
+        published: "9200"
+        host_ip: 127.0.0.1
     volumes:
       - elasticsearch-data:/usr/share/elasticsearch/data
     healthcheck:
@@ -94,7 +109,19 @@ services:
   toxiproxy:
     image: ghcr.io/shopify/toxiproxy:2.12.0
     command: ["-host=0.0.0.0", "-config=/config/proxies.json"]
-    ports: ["8474:8474", "8666:8666", "8667:8667", "8668:8668"]
+    ports:
+      - target: 8474
+        published: "8474"
+        host_ip: 127.0.0.1
+      - target: 8666
+        published: "8666"
+        host_ip: 127.0.0.1
+      - target: 8667
+        published: "8667"
+        host_ip: 127.0.0.1
+      - target: 8668
+        published: "8668"
+        host_ip: 127.0.0.1
     depends_on:
       mysql:
         condition: service_healthy
@@ -116,7 +143,10 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/product_catalog?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
       SPRING_DATASOURCE_USERNAME: product
       SPRING_DATASOURCE_PASSWORD: productpass
-    ports: ["8081:8081"]
+    ports:
+      - target: 8081
+        published: "8081"
+        host_ip: 127.0.0.1
 
   search-sync-consumer:
     profiles: ["m0-tools"]
@@ -130,7 +160,10 @@ services:
         condition: service_healthy
     environment:
       SERVER_PORT: 8082
-    ports: ["8082:8082"]
+    ports:
+      - target: 8082
+        published: "8082"
+        host_ip: 127.0.0.1
 
   consistency-verifier:
     profiles: ["m0-tools"]
@@ -144,7 +177,10 @@ services:
         condition: service_healthy
     environment:
       SERVER_PORT: 8083
-    ports: ["8083:8083"]
+    ports:
+      - target: 8083
+        published: "8083"
+        host_ip: 127.0.0.1
 
 volumes:
   mysql-data:

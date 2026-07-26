@@ -18,6 +18,25 @@ jq -e '
 ' "$default_config" >/dev/null
 
 jq -e '
+  ([
+    .services | to_entries[] as $service |
+    ($service.value.ports // [])[] |
+    {service: $service.key, host_ip, published, target}
+  ] | sort_by(.service, .published, .target)) == [
+    {"service":"canal","host_ip":"127.0.0.1","published":"11111","target":11111},
+    {"service":"canal","host_ip":"127.0.0.1","published":"11112","target":11112},
+    {"service":"elasticsearch","host_ip":"127.0.0.1","published":"9200","target":9200},
+    {"service":"kafka","host_ip":"127.0.0.1","published":"29092","target":29092},
+    {"service":"mysql","host_ip":"127.0.0.1","published":"3308","target":3306},
+    {"service":"product-service","host_ip":"127.0.0.1","published":"8081","target":8081},
+    {"service":"toxiproxy","host_ip":"127.0.0.1","published":"8474","target":8474},
+    {"service":"toxiproxy","host_ip":"127.0.0.1","published":"8666","target":8666},
+    {"service":"toxiproxy","host_ip":"127.0.0.1","published":"8667","target":8667},
+    {"service":"toxiproxy","host_ip":"127.0.0.1","published":"8668","target":8668}
+  ]
+' "$default_config" >/dev/null
+
+jq -e '
   (.services | keys) == ["canal","consistency-verifier","elasticsearch","kafka","kafka-init","mysql","product-service","search-sync-consumer","toxiproxy"] and
   .services.mysql.image == "mysql:8.4.8" and
   .services.canal.image == "canal/canal-server:v1.1.8" and
@@ -68,6 +87,27 @@ jq -e '
   .services.canal.environment.CANAL_AUTO_RESET_LATEST_POS_MODE == "false" and
   (.services.canal.command == ["/bin/bash","-c","chown admin:admin /home/admin/canal-data && exec /home/admin/app.sh"]) and
   any(.services.canal.volumes[]; .type == "volume" and .source == "canal-data" and .target == "/home/admin/canal-data")
+' "$rendered_config" >/dev/null
+
+jq -e '
+  ([
+    .services | to_entries[] as $service |
+    ($service.value.ports // [])[] |
+    {service: $service.key, host_ip, published, target}
+  ] | sort_by(.service, .published, .target)) == [
+    {"service":"canal","host_ip":"127.0.0.1","published":"11111","target":11111},
+    {"service":"canal","host_ip":"127.0.0.1","published":"11112","target":11112},
+    {"service":"consistency-verifier","host_ip":"127.0.0.1","published":"8083","target":8083},
+    {"service":"elasticsearch","host_ip":"127.0.0.1","published":"9200","target":9200},
+    {"service":"kafka","host_ip":"127.0.0.1","published":"29092","target":29092},
+    {"service":"mysql","host_ip":"127.0.0.1","published":"3308","target":3306},
+    {"service":"product-service","host_ip":"127.0.0.1","published":"8081","target":8081},
+    {"service":"search-sync-consumer","host_ip":"127.0.0.1","published":"8082","target":8082},
+    {"service":"toxiproxy","host_ip":"127.0.0.1","published":"8474","target":8474},
+    {"service":"toxiproxy","host_ip":"127.0.0.1","published":"8666","target":8666},
+    {"service":"toxiproxy","host_ip":"127.0.0.1","published":"8667","target":8667},
+    {"service":"toxiproxy","host_ip":"127.0.0.1","published":"8668","target":8668}
+  ]
 ' "$rendered_config" >/dev/null
 
 for image in \
