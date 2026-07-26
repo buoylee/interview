@@ -25,8 +25,10 @@ class FaultScriptTest(unittest.TestCase):
             "set -eu\n"
             "printf '%s\\n' \"$*\" >> \"$FAKE_DOCKER_LOG\"\n"
             "case \"$*\" in\n"
-            "  *\"MEMBER_ROLE='PRIMARY'\"*) printf 'db1\\n' ;;\n"
-            "  *\"MEMBER_ROLE='SECONDARY'\"*) [ -z \"${FAKE_SECONDARIES:-}\" ] || printf '%s\\n' \"$FAKE_SECONDARIES\" ;;\n"
+            "  *\"exec -T db1\"*\"MEMBER_ROLE='PRIMARY'\"*) [ \"${FAKE_EMPTY_DB1_PRIMARY:-0}\" = 1 ] || printf 'db1\\n' ;;\n"
+            "  *\"exec -T db2\"*\"MEMBER_ROLE='PRIMARY'\"*) [ -z \"${FAKE_PRIMARY_DB2:-}\" ] || printf '%s\\n' \"$FAKE_PRIMARY_DB2\" ;;\n"
+            "  *\"exec -T db1\"*\"MEMBER_ROLE='SECONDARY'\"*) [ \"${FAKE_EMPTY_DB1_SECONDARY:-0}\" = 1 ] || { [ -z \"${FAKE_SECONDARIES:-}\" ] || printf '%s\\n' \"$FAKE_SECONDARIES\"; } ;;\n"
+            "  *\"exec -T db2\"*\"MEMBER_ROLE='SECONDARY'\"*) [ -z \"${FAKE_SECONDARIES_DB2:-}\" ] || printf '%s\\n' \"$FAKE_SECONDARIES_DB2\" ;;\n"
             "  *\"COUNT(*) FROM performance_schema.replication_group_members\"*) printf '3\\n' ;;\n"
             "  *\"network connect\"*) [ \"${FAKE_FAIL_NETWORK_CONNECT:-0}\" = 0 ] || exit 1 ;;\n"
             "  *inspect*) printf 'mysql-ha\\n' ;;\n"
@@ -41,6 +43,12 @@ class FaultScriptTest(unittest.TestCase):
             "FAKE_SECONDARIES": secondaries,
         }
         return temporary, root, log, environment
+
+    def call_lib_function(self, root, environment, function):
+        return subprocess.run(
+            ["bash", "-c", f"source '{root}/faults/lib.sh'; {function}"],
+            cwd=root, env=environment, text=True, capture_output=True,
+        )
 
     def test_faults_are_scoped_to_project_and_network(self):
         text = (ROOT / "faults/lib.sh").read_text(encoding="utf-8")
@@ -109,6 +117,28 @@ class FaultScriptTest(unittest.TestCase):
                 self.assertFalse((root / "evidence/events.jsonl").exists())
                 calls = log.read_text(encoding="utf-8") if log.exists() else ""
                 self.assertNotIn(" stop ", calls)
+
+    def test_primary_member_skips_empty_success_and_uses_next_seed(self):
+        temporary, root, _log, environment = self.controlled_root()
+        self.addCleanup(temporary.cleanup)
+        environment["FAKE_EMPTY_DB1_PRIMARY"] = "1"
+        environment["FAKE_PRIMARY_DB2"] = "db2"
+
+        result = self.call_lib_function(root, environment, "primary_member")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "db2")
+
+    def test_secondary_members_skips_empty_success_and_uses_next_seed(self):
+        temporary, root, _log, environment = self.controlled_root()
+        self.addCleanup(temporary.cleanup)
+        environment["FAKE_EMPTY_DB1_SECONDARY"] = "1"
+        environment["FAKE_SECONDARIES_DB2"] = "db2\ndb3"
+
+        result = self.call_lib_function(root, environment, "secondary_members")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), ["db2", "db3"])
 
     def test_state_and_restore_contracts_are_strict(self):
         lib = (ROOT / "faults/lib.sh").read_text(encoding="utf-8")

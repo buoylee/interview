@@ -174,12 +174,40 @@ query_group() {
   return 1
 }
 
+validate_member_query_output() {
+  local mode="$1" output="$2" member seen="," count=0
+  while IFS= read -r member; do
+    [ -n "$member" ] || return 1
+    validate_db_name "$member"
+    case "$seen" in *",$member,"*) return 1 ;; esac
+    seen="$seen$member,"
+    count=$((count + 1))
+  done <<< "$output"
+  [ "$count" -gt 0 ] || return 1
+  [ "$mode" != primary ] || [ "$count" -eq 1 ]
+}
+
+query_nonempty_group_members() {
+  local mode="$1" sql="$2" seed output
+  for seed in db1 db2 db3; do
+    if output="$("${DC[@]}" exec -T "$seed" mysql -uroot -p"$ROOT_PASSWORD" -Nse "$sql" 2>/dev/null)" \
+      && [ -n "$output" ] \
+      && (validate_member_query_output "$mode" "$output") 2>/dev/null; then
+      printf '%s\n' "$output"
+      return 0
+    fi
+  done
+  return 1
+}
+
 primary_member() {
-  query_group "SELECT MEMBER_HOST FROM performance_schema.replication_group_members WHERE MEMBER_ROLE='PRIMARY' AND MEMBER_STATE='ONLINE'"
+  query_nonempty_group_members primary \
+    "SELECT MEMBER_HOST FROM performance_schema.replication_group_members WHERE MEMBER_ROLE='PRIMARY' AND MEMBER_STATE='ONLINE'"
 }
 
 secondary_members() {
-  query_group "SELECT MEMBER_HOST FROM performance_schema.replication_group_members WHERE MEMBER_ROLE='SECONDARY' AND MEMBER_STATE='ONLINE' ORDER BY MEMBER_HOST"
+  query_nonempty_group_members secondary \
+    "SELECT MEMBER_HOST FROM performance_schema.replication_group_members WHERE MEMBER_ROLE='SECONDARY' AND MEMBER_STATE='ONLINE' ORDER BY MEMBER_HOST"
 }
 
 wait_for_online() {
