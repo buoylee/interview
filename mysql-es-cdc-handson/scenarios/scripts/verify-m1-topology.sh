@@ -2,6 +2,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
+source scenarios/scripts/lib-m1-log-window.sh
 
 compose=(docker compose -f infra/compose.yaml -f infra/compose.adapter.yaml)
 max_attempts="${M1_VERIFY_MAX_ATTEMPTS:-30}"
@@ -13,11 +14,60 @@ http_body=$(mktemp "${TMPDIR:-/tmp}/m1-http.XXXXXX")
 trap 'rm -f "$top_output" "$server_log" "$adapter_log" "$http_body"' EXIT
 
 capture_runtime() {
-  "${compose[@]}" top canal-adapter canal-adapter-server >"$top_output" 2>/dev/null &&
+  adapter_marker_before=$(current_java_process_marker canal-adapter canal-adapter) &&
+    server_marker_before=$(current_java_process_marker canal-adapter-server otter-canal) &&
+    "${compose[@]}" top canal-adapter canal-adapter-server >"$top_output" 2>/dev/null &&
     "${compose[@]}" exec -T canal-adapter-server \
       cat /home/admin/canal-server/logs/products_adapter/products_adapter.log \
       >"$server_log" 2>/dev/null &&
-    "${compose[@]}" logs --no-color canal-adapter >"$adapter_log" 2>/dev/null
+    "${compose[@]}" exec -T canal-adapter \
+      cat /opt/canal-adapter/logs/adapter/adapter.log \
+      >"$adapter_log" 2>/dev/null &&
+    adapter_marker_after=$(current_java_process_marker canal-adapter canal-adapter) &&
+    server_marker_after=$(current_java_process_marker canal-adapter-server otter-canal) &&
+    test "${adapter_marker_before%%|*}" = "${adapter_marker_after%%|*}" &&
+    test "${server_marker_before%%|*}" = "${server_marker_after%%|*}"
+}
+
+current_java_process_marker() {
+  local service="$1"
+  local app_name="$2"
+
+  "${compose[@]}" exec -T "$service" sh -s -- "$app_name" <<'SH'
+set -eu
+
+app_name="$1"
+pid=""
+matches=0
+for process_dir in /proc/[0-9]*; do
+  test -r "$process_dir/cmdline" || continue
+  command_line=$(tr '\000' ' ' <"$process_dir/cmdline" 2>/dev/null || true)
+  case "$command_line" in
+    *"-DappName=$app_name "*)
+      matches=$((matches + 1))
+      uid=$(awk '/^Uid:/ { print $2 }' "$process_dir/status")
+      test "$uid" = "1000" || exit 1
+      pid=${process_dir##*/}
+      ;;
+  esac
+done
+test "$matches" -eq 1
+
+start_ticks=$(awk '{ print $22 }' "/proc/$pid/stat")
+ticks_per_second=$(getconf CLK_TCK)
+uptime_seconds=$(awk '{ print $1 }' /proc/uptime)
+now_epoch_ms=$(date -u +%s%3N)
+start_epoch_ms=$(awk \
+  -v now_ms="$now_epoch_ms" \
+  -v uptime="$uptime_seconds" \
+  -v ticks="$start_ticks" \
+  -v hz="$ticks_per_second" \
+  'BEGIN { printf "%.0f\n", now_ms - ((uptime - (ticks / hz)) * 1000) + 100 }')
+start_epoch_seconds=$((start_epoch_ms / 1000))
+start_milliseconds=$((start_epoch_ms % 1000))
+start_utc=$(date -u -d "@$start_epoch_seconds" '+%Y-%m-%d %H:%M:%S')
+printf '%s|%s.%03d\n' "$pid" "$start_utc" "$start_milliseconds"
+SH
 }
 
 java_process_is_admin() {
@@ -46,19 +96,22 @@ tcp_ports_are_reachable() {
 }
 
 server_destination_is_started() {
-  grep -Fq "start CannalInstance for 1-products_adapter" "$server_log" &&
-    grep -Fq 'init table filter : ^product_catalog\.products$' "$server_log" &&
-    grep -Fq "start successful...." "$server_log"
+  server_cutoff=${server_marker_before#*|}
+  require_log_patterns_since "$server_cutoff" "$server_log" \
+    "start CannalInstance for 1-products_adapter" \
+    'init table filter : ^product_catalog\.products$' \
+    "start successful...."
 }
 
 adapter_worker_is_started() {
-  grep -Fq "Load canal adapter: es8 succeed" "$adapter_log" &&
-    grep -Fq "Start adapter for canal-client mq topic: products_adapter-g1 succeed" \
-      "$adapter_log" &&
-    grep -Fq "Start to connect destination: products_adapter" "$adapter_log" &&
-    grep -Fq "Subscribe destination: products_adapter succeed" "$adapter_log" &&
-    ! grep -Fq "something goes wrong when starting up the canal client adapters" \
-      "$adapter_log"
+  adapter_cutoff=${adapter_marker_before#*|}
+  require_log_patterns_since "$adapter_cutoff" "$adapter_log" \
+    "Load canal adapter: es8 succeed" \
+    "Start adapter for canal-client mq topic: products_adapter-g1 succeed" \
+    "Start to connect destination: products_adapter" \
+    "Subscribe destination: products_adapter succeed" &&
+    ! log_pattern_exists_since "$adapter_cutoff" "$adapter_log" \
+      "something goes wrong when starting up the canal client adapters"
 }
 
 adapter_web_responds() {
