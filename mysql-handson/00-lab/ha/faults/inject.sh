@@ -46,7 +46,9 @@ case "$scenario" in
     ;;
   quorum-loss)
     target="$(primary_member)"
-    mapfile -t quorum_targets < <(secondary_members)
+    while IFS= read -r member; do
+      quorum_targets+=("$member")
+    done < <(secondary_members)
     [ "${#quorum_targets[@]}" -eq 2 ] || die "quorum-loss requires exactly two ONLINE secondaries"
     [ "${quorum_targets[0]}" != "${quorum_targets[1]}" ] || die "quorum-loss secondaries must be distinct"
     assert_db_target "$target"

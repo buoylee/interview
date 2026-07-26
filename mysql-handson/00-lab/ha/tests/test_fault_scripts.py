@@ -31,6 +31,7 @@ class FaultScriptTest(unittest.TestCase):
             "  *\"exec -T db2\"*\"MEMBER_ROLE='SECONDARY'\"*) [ -z \"${FAKE_SECONDARIES_DB2:-}\" ] || printf '%s\\n' \"$FAKE_SECONDARIES_DB2\" ;;\n"
             "  *\"COUNT(*) FROM performance_schema.replication_group_members\"*) printf '3\\n' ;;\n"
             "  *\"network connect\"*) [ \"${FAKE_FAIL_NETWORK_CONNECT:-0}\" = 0 ] || exit 1 ;;\n"
+            "  *\" stop db2 db3\"*) [ -f \"$FAKE_STATE_PATH\" ] && grep -q '\"phase\":\"fault_begin\"' \"$FAKE_EVENTS_PATH\" || exit 9 ;;\n"
             "  *inspect*) printf 'mysql-ha\\n' ;;\n"
             "esac\n",
             encoding="utf-8",
@@ -41,6 +42,8 @@ class FaultScriptTest(unittest.TestCase):
             "PATH": f"{bin_dir}:{os.environ['PATH']}",
             "FAKE_DOCKER_LOG": str(log),
             "FAKE_SECONDARIES": secondaries,
+            "FAKE_STATE_PATH": str(root / "evidence/fault-state.env"),
+            "FAKE_EVENTS_PATH": str(root / "evidence/events.jsonl"),
         }
         return temporary, root, log, environment
 
@@ -118,6 +121,23 @@ class FaultScriptTest(unittest.TestCase):
                 calls = log.read_text(encoding="utf-8") if log.exists() else ""
                 self.assertNotIn(" stop ", calls)
 
+    def test_quorum_loss_two_secondaries_stops_explicit_services_after_state(self):
+        temporary, root, log, environment = self.controlled_root("db2\ndb3")
+        self.addCleanup(temporary.cleanup)
+
+        result = subprocess.run(
+            ["/bin/bash", "faults/inject.sh", "quorum-loss"], cwd=root,
+            env=environment, text=True, capture_output=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(" stop db2 db3", log.read_text(encoding="utf-8"))
+        state = (root / "evidence/fault-state.env").read_text(encoding="utf-8")
+        self.assertIn("TARGETS=db2,db3\n", state)
+        phases = [line.split('"phase":"', 1)[1].split('"', 1)[0]
+                  for line in (root / "evidence/events.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(phases, ["fault_begin", "fault_active"])
+
     def test_primary_member_skips_empty_success_and_uses_next_seed(self):
         temporary, root, _log, environment = self.controlled_root()
         self.addCleanup(temporary.cleanup)
@@ -146,7 +166,8 @@ class FaultScriptTest(unittest.TestCase):
         restore = (ROOT / "faults/restore.sh").read_text(encoding="utf-8")
         self.assertIn("parse_fault_state", lib)
         self.assertNotIn('source "$STATE"', restore)
-        self.assertIn("mapfile -t quorum_targets", inject)
+        self.assertNotIn("mapfile", inject)
+        self.assertIn("while IFS= read -r member", inject)
         self.assertIn('"${quorum_targets[@]}"', inject)
         self.assertIn("OLD_FLOW_THRESHOLDS", inject)
         self.assertIn("--restart=always", restore)
