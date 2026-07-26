@@ -6,3 +6,4 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 COPY workload /app/workload
 COPY tests /app/tests
 ENV PYTHONPATH=/app
+CMD ["python", "-m", "workload.runner", "--help"]

@@ -18,6 +18,30 @@ x-db-common: &db-common
   networks: [ha-net]
 
 services:
+  workload-a:
+    build:
+      context: .
+      dockerfile: workload/Dockerfile
+    command: ["python", "-m", "workload.runner", "--router-label", "router-a", "--router-host", "router-a"]
+    environment:
+      MYSQL_APP_USER: ${MYSQL_APP_USER:-ha_app}
+      MYSQL_APP_PASSWORD: ${MYSQL_APP_PASSWORD:-ha-app}
+    volumes: ["./evidence:/evidence"]
+    depends_on: [router-a]
+    networks: [ha-net]
+
+  workload-b:
+    build:
+      context: .
+      dockerfile: workload/Dockerfile
+    command: ["python", "-m", "workload.runner", "--router-label", "router-b", "--router-host", "router-b"]
+    environment:
+      MYSQL_APP_USER: ${MYSQL_APP_USER:-ha_app}
+      MYSQL_APP_PASSWORD: ${MYSQL_APP_PASSWORD:-ha-app}
+    volumes: ["./evidence:/evidence"]
+    depends_on: [router-b]
+    networks: [ha-net]
+
   db1:
     <<: *db-common
     hostname: db1

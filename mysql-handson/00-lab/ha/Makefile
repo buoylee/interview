@@ -1,6 +1,6 @@
 DC := docker compose --project-name mysql-ha --file compose.yml
 
-.PHONY: config up-db down reset ps logs up bootstrap routers init status switchover mysql-a mysql-b
+.PHONY: config up-db down reset ps logs up bootstrap routers init status switchover mysql-a mysql-b workload-start workload-stop workload-once workload-burst
 
 config:
 	$(DC) config --quiet
@@ -52,3 +52,22 @@ mysql-a:
 
 mysql-b:
 	$(DC) run --rm shell mysql -hrouter-b -P6446 -uha_app -pha-app ha_lab
+
+workload-start:
+	@mkdir -p evidence
+	$(DC) up -d --build workload-a workload-b
+
+workload-stop:
+	-$(DC) stop workload-a workload-b
+
+workload-once:
+	@mkdir -p evidence
+	$(DC) run --rm workload-a python -m workload.runner --router-label router-a --router-host router-a --max-requests $${N:-10} --interval-ms 0
+	$(DC) run --rm workload-b python -m workload.runner --router-label router-b --router-host router-b --max-requests $${N:-10} --interval-ms 0
+
+workload-burst:
+	@mkdir -p evidence
+	$(DC) run --rm workload-a python -m workload.runner --router-label burst-a --router-host router-a --max-requests $${N:-1000} --interval-ms 0 & pid_a=$$!; \
+	$(DC) run --rm workload-b python -m workload.runner --router-label burst-b --router-host router-b --max-requests $${N:-1000} --interval-ms 0 & pid_b=$$!; \
+	wait $$pid_a; status_a=$$?; wait $$pid_b; status_b=$$?; \
+	[ $$status_a -eq 0 ] && [ $$status_b -eq 0 ]
