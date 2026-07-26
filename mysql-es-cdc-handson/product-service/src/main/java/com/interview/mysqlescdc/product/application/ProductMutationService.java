@@ -53,9 +53,10 @@ public class ProductMutationService {
     @Transactional
     public long replaceInventory(long productId, int available, int reserved) {
         requireOne(jdbc.sql("""
-                UPDATE inventory
-                SET available_quantity = :available, reserved_quantity = :reserved
-                WHERE product_id = :id
+                UPDATE inventory i
+                JOIN products p ON p.id = i.product_id
+                SET i.available_quantity = :available, i.reserved_quantity = :reserved
+                WHERE i.product_id = :id AND p.status = 'ACTIVE'
                 """).param("available", available).param("reserved", reserved)
                 .param("id", productId).update(), productId);
         return bump(productId);
@@ -89,11 +90,11 @@ public class ProductMutationService {
     }
 
     private long bump(long productId) {
-        jdbc.sql("""
+        requireOne(jdbc.sql("""
                 UPDATE product_search_revision
                 SET revision = revision + 1
                 WHERE product_id = :id AND active = TRUE
-                """).param("id", productId).update();
+                """).param("id", productId).update(), productId);
         return currentRevision(productId);
     }
 
