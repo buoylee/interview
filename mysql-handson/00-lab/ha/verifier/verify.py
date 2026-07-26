@@ -60,7 +60,11 @@ def evaluate(
     if len(primaries) != 1:
         errors.append(f"expected exactly one ONLINE PRIMARY, got {len(primaries)}")
 
-    reconciliation_complete = snapshots_converged and not convergence_errors
+    reconciliation_complete = (
+        snapshots_converged
+        and len(online) == expected_online
+        and not convergence_errors
+    )
     if reconciliation_complete:
         for request_id in acknowledged:
             if request_id not in canonical:

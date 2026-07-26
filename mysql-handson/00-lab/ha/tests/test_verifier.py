@@ -5,7 +5,14 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from verifier.verify import evaluate, fetch_topology, main
+from verifier.verify import (
+    evaluate,
+    fetch_gtid_executed,
+    fetch_ids,
+    fetch_topology,
+    main,
+    wait_for_gtid,
+)
 from workload.model import LedgerRecord, Outcome
 
 
@@ -113,6 +120,16 @@ class VerifierTest(unittest.TestCase):
         self.assertEqual(report["unknown"]["absent"], [])
         self.assertIn("missing member snapshot: db2", report["errors"])
 
+    def test_unknown_is_not_absent_when_expected_online_is_degraded(self):
+        report = evaluate(
+            [record("u1", Outcome.UNKNOWN)],
+            {"db1": []},
+            [{"host": "db1", "role": "PRIMARY", "state": "ONLINE"}],
+            expected_online=3,
+        )
+        self.assertEqual(report["unknown"]["absent"], [])
+        self.assertIn("expected 3 ONLINE members, got 1", report["errors"])
+
     def test_topology_failure_writes_report_and_exits_nonzero(self):
         report, error = self.run_main_with(
             fetch_topology_side_effect=RuntimeError("network unavailable"),
@@ -163,6 +180,31 @@ class VerifierTest(unittest.TestCase):
             report["errors"],
         )
 
+    def test_gtid_timeout_writes_report_and_exits_nonzero(self):
+        topology = [{"host": "db1", "role": "PRIMARY", "state": "ONLINE"}]
+        report, error = self.run_main_with(
+            topology=topology,
+            member_ids={"db1": []},
+            wait_for_gtid_result=False,
+        )
+        self.assertIsInstance(error, SystemExit)
+        self.assertNotEqual(error.code, 0)
+        self.assertIn("db1 did not apply the Primary GTID set", report["errors"])
+
+    def test_gtid_wait_error_writes_report_and_exits_nonzero(self):
+        topology = [{"host": "db1", "role": "PRIMARY", "state": "ONLINE"}]
+        report, error = self.run_main_with(
+            topology=topology,
+            member_ids={"db1": []},
+            wait_for_gtid_side_effect=RuntimeError("wait disconnected"),
+        )
+        self.assertIsInstance(error, SystemExit)
+        self.assertNotEqual(error.code, 0)
+        self.assertIn(
+            "GTID barrier check failed on db1: RuntimeError",
+            report["errors"],
+        )
+
     def test_snapshot_failure_writes_report_and_exits_nonzero(self):
         topology = [
             {"host": "db1", "role": "PRIMARY", "state": "ONLINE"},
@@ -188,6 +230,54 @@ class VerifierTest(unittest.TestCase):
         self.assertTrue(connection.cursor_value.closed)
         self.assertTrue(connection.closed)
 
+    def test_fetch_ids_closes_cursor_and_connection_on_success_and_error(self):
+        for cursor, raises in (
+            (DataCursor(fetchall_result=[("request-1",)]), False),
+            (FailingCursor(), True),
+        ):
+            with self.subTest(raises=raises):
+                connection = FakeConnection(cursor)
+                with patch("verifier.verify.connect", return_value=connection):
+                    if raises:
+                        with self.assertRaises(RuntimeError):
+                            fetch_ids("db1")
+                    else:
+                        self.assertEqual(fetch_ids("db1"), ["request-1"])
+                self.assertTrue(cursor.closed)
+                self.assertTrue(connection.closed)
+
+    def test_fetch_gtid_closes_cursor_and_connection_on_success_and_error(self):
+        for cursor, raises in (
+            (DataCursor(fetchone_result=("gtid-set",)), False),
+            (FailingCursor(), True),
+        ):
+            with self.subTest(raises=raises):
+                connection = FakeConnection(cursor)
+                with patch("verifier.verify.connect", return_value=connection):
+                    if raises:
+                        with self.assertRaises(RuntimeError):
+                            fetch_gtid_executed("db1")
+                    else:
+                        self.assertEqual(fetch_gtid_executed("db1"), "gtid-set")
+                self.assertTrue(cursor.closed)
+                self.assertTrue(connection.closed)
+
+    def test_wait_for_gtid_closes_cursor_and_connection_on_success_and_error(self):
+        for cursor, raises in (
+            (DataCursor(fetchone_result=(0,)), False),
+            (FailingCursor(), True),
+        ):
+            with self.subTest(raises=raises):
+                connection = FakeConnection(cursor)
+                with patch("verifier.verify.connect", return_value=connection):
+                    if raises:
+                        with self.assertRaises(RuntimeError):
+                            wait_for_gtid("db1", "gtid-set")
+                    else:
+                        self.assertTrue(wait_for_gtid("db1", "gtid-set"))
+                self.assertTrue(cursor.closed)
+                self.assertTrue(connection.closed)
+
     def run_main_with(
         self,
         topology=None,
@@ -195,6 +285,8 @@ class VerifierTest(unittest.TestCase):
         fetch_gtid_side_effect=None,
         member_ids=None,
         fetch_ids_side_effect=None,
+        wait_for_gtid_result=True,
+        wait_for_gtid_side_effect=None,
     ):
         member_ids = member_ids or {}
         fetch_ids_side_effect = fetch_ids_side_effect or {}
@@ -219,7 +311,11 @@ class VerifierTest(unittest.TestCase):
                     side_effect=fetch_gtid_side_effect,
                     return_value="gtid-set",
                 ),
-                patch("verifier.verify.wait_for_gtid", return_value=True),
+                patch(
+                    "verifier.verify.wait_for_gtid",
+                    return_value=wait_for_gtid_result,
+                    side_effect=wait_for_gtid_side_effect,
+                ),
                 patch("verifier.verify.fetch_ids", side_effect=fake_fetch_ids),
             ):
                 try:
@@ -237,8 +333,27 @@ class FailingCursor:
     def __init__(self):
         self.closed = False
 
-    def execute(self, _query):
+    def execute(self, _query, _params=None):
         raise RuntimeError("query failed")
+
+    def close(self):
+        self.closed = True
+
+
+class DataCursor:
+    def __init__(self, fetchall_result=None, fetchone_result=None):
+        self.closed = False
+        self.fetchall_result = fetchall_result
+        self.fetchone_result = fetchone_result
+
+    def execute(self, _query, _params=None):
+        pass
+
+    def fetchall(self):
+        return self.fetchall_result
+
+    def fetchone(self):
+        return self.fetchone_result
 
     def close(self):
         self.closed = True
