@@ -15,6 +15,10 @@ Canal 是 MySQL binlog CDC（变更数据捕获）/增量订阅组件，不是�
 
 M0 尚未提供 Elasticsearch consumer/write、逐 Bulk item 判定、revision 防倒退、DLQ、独立对账或全量重建，因此不宣称最终一致性、exactly-once processing 或 shutdown safety。
 
+## M1: official Adapter comparison
+
+The [Canal and Adapter evidence boundary](docs/01-canal-boundary.md) records black-box behavior for the official 1.1.8 Adapter. `products_adapter_v1` is a disposable comparison index; it is never the serving index and is not evidence of the final consistency contract. The pinned byte/1000 experiment observed target coercion to `-24`, not the intended Bulk partial failure; run `make scenario-m1` and `make verify-m1` to regenerate and verify the ignored runtime evidence and rendered boundary.
+
 ## 运行
 
 前置：Docker Compose v2、Java 21、`jq`、`curl`。Maven Wrapper 已固定构建工具；只有重新生成 Wrapper 时才需要本机 Maven。请将 `JAVA_HOME` 指向本机的 Temurin 21；项目不硬编码机器路径。

@@ -1,0 +1,18 @@
+{
+  "scenario_id": "m1-bulk-partial",
+  "target_mapping": "price_cents is byte",
+  "same_source_transaction": [
+    {"product_id": 1401, "price_cents": 100, "expected_mapping": "valid"},
+    {"product_id": 1402, "price_cents": 1000, "expected_mapping": "invalid"}
+  ],
+  "later_source_transaction": {
+    "product_id": 1403,
+    "price_cents": 101,
+    "purpose": "prove whether Adapter advances beyond the failed batch"
+  },
+  "partial_observation_deadline_seconds": 30,
+  "later_observation_deadline_seconds": 30,
+  "retry_observation_deadline_seconds": 30,
+  "question": "Does Adapter advance, retry, partially apply, or require ETL after one item fails?",
+  "final_consistency_claim": false
+}
