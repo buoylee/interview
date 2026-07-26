@@ -1,5 +1,30 @@
 #!/usr/bin/env bash
 
+process_identity_is_unchanged() {
+  local before="$1"
+  local after="$2"
+  local before_pid before_ticks before_extra
+  local after_pid after_ticks after_extra
+
+  IFS='|' read -r before_pid before_ticks before_extra <<<"$before"
+  IFS='|' read -r after_pid after_ticks after_extra <<<"$after"
+
+  test -z "$before_extra" &&
+    test -z "$after_extra" &&
+    test -n "$before_pid" &&
+    test -n "$before_ticks" &&
+    test -n "$after_pid" &&
+    test -n "$after_ticks" &&
+    test "$before" = "$before_pid|$before_ticks" &&
+    test "$after" = "$after_pid|$after_ticks" || return 1
+
+  case "$before_pid$before_ticks$after_pid$after_ticks" in
+    *[!0-9]*) return 1 ;;
+  esac
+
+  test "$before" = "$after"
+}
+
 log_pattern_exists_since() {
   local cutoff="$1"
   local log_file="$2"

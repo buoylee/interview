@@ -14,8 +14,18 @@ http_body=$(mktemp "${TMPDIR:-/tmp}/m1-http.XXXXXX")
 trap 'rm -f "$top_output" "$server_log" "$adapter_log" "$http_body"' EXIT
 
 capture_runtime() {
-  adapter_marker_before=$(current_java_process_marker canal-adapter canal-adapter) &&
-    server_marker_before=$(current_java_process_marker canal-adapter-server otter-canal) &&
+  adapter_snapshot=$(current_java_process_state canal-adapter canal-adapter snapshot) &&
+    server_snapshot=$(current_java_process_state canal-adapter-server otter-canal snapshot) &&
+    IFS='|' read -r adapter_pid adapter_start_ticks adapter_cutoff adapter_extra <<<"$adapter_snapshot" &&
+    IFS='|' read -r server_pid server_start_ticks server_cutoff server_extra <<<"$server_snapshot" &&
+    test -z "$adapter_extra" &&
+    test -z "$server_extra" &&
+    test -n "$adapter_cutoff" &&
+    test -n "$server_cutoff" &&
+    adapter_identity="$adapter_pid|$adapter_start_ticks" &&
+    server_identity="$server_pid|$server_start_ticks" &&
+    process_identity_is_unchanged "$adapter_identity" "$adapter_identity" &&
+    process_identity_is_unchanged "$server_identity" "$server_identity" &&
     "${compose[@]}" top canal-adapter canal-adapter-server >"$top_output" 2>/dev/null &&
     "${compose[@]}" exec -T canal-adapter-server \
       cat /home/admin/canal-server/logs/products_adapter/products_adapter.log \
@@ -23,20 +33,27 @@ capture_runtime() {
     "${compose[@]}" exec -T canal-adapter \
       cat /opt/canal-adapter/logs/adapter/adapter.log \
       >"$adapter_log" 2>/dev/null &&
-    adapter_marker_after=$(current_java_process_marker canal-adapter canal-adapter) &&
-    server_marker_after=$(current_java_process_marker canal-adapter-server otter-canal) &&
-    test "${adapter_marker_before%%|*}" = "${adapter_marker_after%%|*}" &&
-    test "${server_marker_before%%|*}" = "${server_marker_after%%|*}"
+    adapter_identity_after=$(current_java_process_state canal-adapter canal-adapter identity) &&
+    server_identity_after=$(current_java_process_state canal-adapter-server otter-canal identity) &&
+    process_identity_is_unchanged "$adapter_identity" "$adapter_identity_after" &&
+    process_identity_is_unchanged "$server_identity" "$server_identity_after"
 }
 
-current_java_process_marker() {
+current_java_process_state() {
   local service="$1"
   local app_name="$2"
+  local output_mode="$3"
 
-  "${compose[@]}" exec -T "$service" sh -s -- "$app_name" <<'SH'
+  "${compose[@]}" exec -T "$service" sh -s -- "$app_name" "$output_mode" <<'SH'
 set -eu
 
 app_name="$1"
+output_mode="$2"
+case "$output_mode" in
+  identity|snapshot) ;;
+  *) exit 1 ;;
+esac
+
 pid=""
 matches=0
 for process_dir in /proc/[0-9]*; do
@@ -53,7 +70,21 @@ for process_dir in /proc/[0-9]*; do
 done
 test "$matches" -eq 1
 
-start_ticks=$(awk '{ print $22 }' "/proc/$pid/stat")
+stat_line=$(cat "/proc/$pid/stat")
+stat_tail=${stat_line##*) }
+test "$stat_tail" != "$stat_line"
+set -- $stat_tail
+test "$#" -ge 20
+start_ticks=${20}
+case "$pid$start_ticks" in
+  ''|*[!0-9]*) exit 1 ;;
+esac
+
+if test "$output_mode" = identity; then
+  printf '%s|%s\n' "$pid" "$start_ticks"
+  exit 0
+fi
+
 ticks_per_second=$(getconf CLK_TCK)
 uptime_seconds=$(awk '{ print $1 }' /proc/uptime)
 now_epoch_ms=$(date -u +%s%3N)
@@ -66,7 +97,7 @@ start_epoch_ms=$(awk \
 start_epoch_seconds=$((start_epoch_ms / 1000))
 start_milliseconds=$((start_epoch_ms % 1000))
 start_utc=$(date -u -d "@$start_epoch_seconds" '+%Y-%m-%d %H:%M:%S')
-printf '%s|%s.%03d\n' "$pid" "$start_utc" "$start_milliseconds"
+printf '%s|%s|%s.%03d\n' "$pid" "$start_ticks" "$start_utc" "$start_milliseconds"
 SH
 }
 
@@ -96,7 +127,6 @@ tcp_ports_are_reachable() {
 }
 
 server_destination_is_started() {
-  server_cutoff=${server_marker_before#*|}
   require_log_patterns_since "$server_cutoff" "$server_log" \
     "start CannalInstance for 1-products_adapter" \
     'init table filter : ^product_catalog\.products$' \
@@ -104,7 +134,6 @@ server_destination_is_started() {
 }
 
 adapter_worker_is_started() {
-  adapter_cutoff=${adapter_marker_before#*|}
   require_log_patterns_since "$adapter_cutoff" "$adapter_log" \
     "Load canal adapter: es8 succeed" \
     "Start adapter for canal-client mq topic: products_adapter-g1 succeed" \
