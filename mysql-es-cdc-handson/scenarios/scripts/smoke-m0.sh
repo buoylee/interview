@@ -137,6 +137,15 @@ cursor_changed_from() {
     test "$(sha256_file "$work_dir/candidate-meta.dat")" != "$baseline_sha"
 }
 
+cursor_advanced_from() {
+  local before_decoded_cursor="$1"
+  copy_meta "$work_dir/candidate-meta.dat" &&
+    ./scenarios/scripts/decode-canal-meta.sh "$work_dir/candidate-meta.dat" \
+      >"$work_dir/candidate-meta.json" &&
+    ./scenarios/scripts/assert-cursor-advanced.sh \
+      "$before_decoded_cursor" "$work_dir/candidate-meta.json"
+}
+
 canal_running_with_products() {
   local container_id
   container_id="$("${compose[@]}" ps -q canal)"
@@ -258,11 +267,8 @@ done
   tail -n "+$restart_canal_log_line" "$work_dir/canal-after-restart.log"
   tail -n "+$restart_stdout_log_line" "$work_dir/stdout-after-restart.log"
 } >"$work_dir/canal-stop-observation.log"
-if grep -Fq 'NullPointerException' "$work_dir/canal-stop-observation.log"; then
-  stop_npe=true
-else
-  stop_npe=false
-fi
+./scenarios/scripts/classify-canal-stop-npe.sh \
+  "$work_dir/canal-stop-observation.log" >"$work_dir/canal-stop-npe.json"
 
 copy_meta "$work_dir/post-restart-meta.dat"
 ./scenarios/scripts/decode-canal-meta.sh "$work_dir/post-restart-meta.dat" \
@@ -310,7 +316,8 @@ jq -e '
   (.old | any(.revision == "1"))
 ' "$work_dir/revision2.json" >/dev/null
 
-wait_until "revision-2 post-ACK cursor advance" 60 cursor_changed_from "$post_sha"
+wait_until "revision-2 post-ACK decoded cursor advance" 60 \
+  cursor_advanced_from "$work_dir/post-restart-meta.json"
 cp "$work_dir/candidate-meta.json" "$work_dir/post-revision2-meta.json"
 post_revision2_sha="$(sha256_file "$work_dir/candidate-meta.dat")"
 
@@ -322,7 +329,6 @@ jq -n \
   --arg pre_sha "$pre_sha" \
   --arg post_sha "$post_sha" \
   --arg post_revision2_sha "$post_revision2_sha" \
-  --argjson stop_npe "$stop_npe" \
   --arg resume_excerpt "$resume_excerpt" \
   --slurpfile rev1 "$work_dir/revision1.json" \
   --slurpfile rev2 "$work_dir/revision2.json" \
@@ -331,7 +337,8 @@ jq -n \
   --slurpfile rev2_meta "$work_dir/post-revision2-meta.json" \
   --slurpfile pre_offsets "$work_dir/pre-restart-offsets.json" \
   --slurpfile post_offsets "$work_dir/post-restart-offsets.json" \
-  --slurpfile rev2_offsets "$work_dir/revision2-offsets.json" '
+  --slurpfile rev2_offsets "$work_dir/revision2-offsets.json" \
+  --slurpfile stop_npe "$work_dir/canal-stop-npe.json" '
   {
     milestone: "M0",
     contract: "mysql-canal-kafka-capture-restart-v1",
@@ -351,16 +358,14 @@ jq -n \
       meta: $post_meta[0],
       kafka_end_offsets: $post_offsets[0],
       startup_exact_resume: {matched:true,log_excerpt:$resume_excerpt},
-      known_stop_npe: {
-        present:$stop_npe,
-        scope:"Canal 1.1.8 static-destination normal-stop observation only; not a success condition and not a shutdown-safety guarantee."
-      }
+      known_stop_npe: $stop_npe[0].known_stop_npe,
+      unexpected_npe: $stop_npe[0].unexpected_npe
     },
     revision2: {
       kafka: {partition:$rev1_partition,offset:$rev2_offset,key:null},
       raw: $rev2[0],
       exactly_once_at_expected_next_offset: true,
-      post_ack_cursor_advanced: ($post_revision2_sha != $post_sha),
+      post_ack_cursor_advanced: true,
       post_ack_meta_sha256: $post_revision2_sha,
       post_ack_meta: $rev2_meta[0],
       kafka_end_offset_delta: [range(0;3) as $i | {

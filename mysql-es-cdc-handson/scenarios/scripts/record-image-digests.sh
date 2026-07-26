@@ -81,13 +81,21 @@ expected_registry="$(printf '%s\n' "${registry_refs[@]}" | jq -Rsc 'split("\n")[
 expected_local="$(printf '%s\n' "${local_refs[@]}" | jq -Rsc 'split("\n")[:-1] | sort')"
 
 jq -e --argjson expected_registry "$expected_registry" --argjson expected_local "$expected_local" '
+  def ref_repository:
+    split("@")[0]
+    | if test(":[^/]+$") then sub(":[^/]+$"; "") else . end;
+  def matching_repo_digests:
+    . as $image
+    | ($image.ref | ref_repository) as $repository
+    | [$image.repo_digests[] | select((split("@")[0]) == $repository)];
+
   (map(select(.kind == "registry") | .ref) | sort) == $expected_registry and
   (map(select(.kind == "local-build") | .ref) | sort) == $expected_local and
   all(.[]; (.ref | contains(":latest") | not)) and
   all(.[]; (.id | type) == "string" and (.id | startswith("sha256:"))) and
   all(.[] | select(.kind == "registry");
-    (.repo_digests | length) > 0 and
-    all(.repo_digests[]; test("@sha256:[0-9a-f]{64}$")))
+    (matching_repo_digests | length) == 1 and
+    (matching_repo_digests[0] | test("@sha256:[0-9a-f]{64}$")))
 ' "$inspect_data" >/dev/null || {
   echo "image identity input is incomplete: every pinned registry ref, including eclipse-temurin:21-jre, needs a real RepoDigest; every app image needs a local image ID" >&2
   exit 1
@@ -96,6 +104,14 @@ jq -e --argjson expected_registry "$expected_registry" --argjson expected_local 
 jq -n \
   --arg captured_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --slurpfile inspected "$inspect_data" '
+  def ref_repository:
+    split("@")[0]
+    | if test(":[^/]+$") then sub(":[^/]+$"; "") else . end;
+  def matching_repo_digests:
+    . as $image
+    | ($image.ref | ref_repository) as $repository
+    | [$image.repo_digests[] | select((split("@")[0]) == $repository)];
+
   {
     milestone: "M0",
     captured_at: $captured_at,
@@ -106,7 +122,7 @@ jq -n \
           kind: .kind,
           ref: .ref,
           id: .id,
-          repo_digest: .repo_digests[0]
+          repo_digest: (matching_repo_digests[0])
         }
       else
         {

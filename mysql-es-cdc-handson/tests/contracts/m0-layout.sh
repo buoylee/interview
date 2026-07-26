@@ -16,6 +16,8 @@ for path in \
   scenarios/scripts/wait-for-http.sh \
   scenarios/scripts/smoke-m0.sh \
   scenarios/scripts/decode-canal-meta.sh \
+  scenarios/scripts/assert-cursor-advanced.sh \
+  scenarios/scripts/classify-canal-stop-npe.sh \
   scenarios/scripts/assert-m0-evidence.sh \
   scenarios/scripts/record-image-digests.sh \
   scenarios/scripts/verify-product-transactions.sh \

@@ -1,0 +1,5 @@
+2026-07-26 08:49:52.603 [Thread-5] ERROR c.a.o.c.common.zookeeper.running.ServerRunningMonitor - processActiveExit failed
+java.lang.NullPointerException: null
+	at com.alibaba.otter.canal.server.CanalMQStarter$CanalMQRunnable.stop(CanalMQStarter.java:245)
+	at com.alibaba.otter.canal.server.CanalMQStarter.stopDestination(CanalMQStarter.java:128)
+	at com.alibaba.otter.canal.deployer.CanalController$1.processActiveExit(CanalController.java:179)

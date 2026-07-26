@@ -9,21 +9,29 @@
   },
   "pre_restart": {
     "meta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "meta": {"contract":"canal-1.1.8-file-mixed-meta-ack-cursor","journal":"mysql-bin.000002","position":4096},
+    "meta": {"contract":"canal-1.1.8-file-mixed-meta-ack-cursor","journal":"mysql-bin.000002","position":4096,"source":{"address":"toxiproxy","port":8668}},
     "kafka_end_offsets": [{"partition":0,"end_offset":0},{"partition":1,"end_offset":0},{"partition":2,"end_offset":1}]
   },
   "post_restart": {
     "meta_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "meta": {"journal":"mysql-bin.000002","position":4096},
+    "meta": {"journal":"mysql-bin.000002","position":4096,"source":{"address":"toxiproxy","port":8668}},
     "kafka_end_offsets": [{"partition":0,"end_offset":0},{"partition":1,"end_offset":0},{"partition":2,"end_offset":1}],
     "startup_exact_resume": {"matched":true},
-    "known_stop_npe": {"present":true,"scope":"Canal 1.1.8 stop observation only; not a success condition and not a shutdown-safety guarantee."}
+    "known_stop_npe": {
+      "present":true,
+      "count":1,
+      "excerpts":["java.lang.NullPointerException: null\n\tat com.alibaba.otter.canal.server.CanalMQStarter$CanalMQRunnable.stop(CanalMQStarter.java:245)\n\tat com.alibaba.otter.canal.server.CanalMQStarter.stopDestination(CanalMQStarter.java:128)"],
+      "scope":"Canal 1.1.8 static-destination future-null CanalMQRunnable.stop observation only; not a success condition and not a shutdown-safety guarantee."
+    },
+    "unexpected_npe": {"present":false,"count":0,"excerpts":[]}
   },
   "revision2": {
     "kafka": {"partition":2,"offset":1,"key":null},
     "raw": {"database":"product_catalog","table":"product_search_revision","data":[{"product_id":"1001","revision":"2"}],"old":[{"revision":"1"}]},
     "exactly_once_at_expected_next_offset": true,
     "post_ack_cursor_advanced": true,
+    "post_ack_meta_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "post_ack_meta": {"journal":"mysql-bin.000002","position":5000,"source":{"address":"toxiproxy","port":8668}},
     "kafka_end_offset_delta": [{"partition":0,"before":0,"after":0,"delta":0},{"partition":1,"before":0,"after":0,"delta":0},{"partition":2,"before":1,"after":2,"delta":1}]
   }
 }

@@ -1,0 +1,4 @@
+2026-07-26 08:49:52.603 [Thread-5] ERROR example.OtherComponent - unexpected failure
+java.lang.NullPointerException: null
+	at example.OtherComponent.stop(OtherComponent.java:99)
+	at example.Main.shutdown(Main.java:10)
