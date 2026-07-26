@@ -50,3 +50,20 @@ def m1_managed_target($get; $expected; $price):
 def m1_source_timestamp:
   type == "string" and
   test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{6}Z$");
+
+def m1_rfc3339_millis_epoch:
+  if type != "string" or
+      (test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$") | not)
+  then null
+  else
+    . as $timestamp |
+    ($timestamp | sub("[.][0-9]{3}Z$";"Z")) as $whole_seconds |
+    (try ($whole_seconds | fromdateiso8601) catch null) as $epoch_seconds |
+    if $epoch_seconds == null or
+        (($epoch_seconds | strftime("%Y-%m-%dT%H:%M:%SZ")) != $whole_seconds)
+    then null
+    else
+      ($timestamp | capture("[.](?<milliseconds>[0-9]{3})Z$").milliseconds | tonumber) as $milliseconds |
+      (($epoch_seconds * 1000) + $milliseconds)
+    end
+  end;

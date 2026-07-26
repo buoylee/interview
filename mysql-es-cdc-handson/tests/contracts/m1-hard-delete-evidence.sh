@@ -33,21 +33,31 @@ trap 'rm -rf "$fixture"' EXIT
 
 container_id="cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 java_identity="50|444444"
+accepted_regressions=0
+
+record_accepted_delete_regression() {
+  local description="$1"
+  bash scenarios/scripts/derive-m1-hard-delete-result.sh "$fixture" >"$fixture/result.json"
+  if bash scenarios/scripts/assert-m1-hard-delete-evidence.sh "$fixture" >/dev/null 2>&1; then
+    echo "hard-delete evidence accepted $description" >&2
+    accepted_regressions=$((accepted_regressions + 1))
+  fi
+}
 m1_task3_write_common_setup \
   "$fixture" m1-hard-delete 1301 M1-1301 "Delete Keyboard" "hard-delete observation"
 m1_task3_write_mapping_proofs "$fixture" "$container_id" "$java_identity"
 
 printf '%s\n' \
-  '{"direct_sql_fault_injection":true,"normal_business_path":false,"transaction":"START TRANSACTION; DELETE FROM product_search_revision WHERE product_id = 1301; DELETE FROM inventory WHERE product_id = 1301; DELETE FROM products WHERE id = 1301; COMMIT;","started_at":"2026-07-26T15:00:02Z","committed_at":"2026-07-26T15:00:03Z"}' \
+  '{"direct_sql_fault_injection":true,"normal_business_path":false,"transaction":"START TRANSACTION; DELETE FROM product_search_revision WHERE product_id = 1301; DELETE FROM inventory WHERE product_id = 1301; DELETE FROM products WHERE id = 1301; COMMIT;","started_at":"2026-07-26T15:00:02.000Z","committed_at":"2026-07-26T15:00:03.000Z"}' \
   >"$fixture/direct-sql.json"
 printf '%s\n' \
-  '{"product_id":1301,"product_row_count":0,"revision_row_count":0,"inventory_row_count":0,"captured_at":"2026-07-26T15:00:04Z"}' \
+  '{"product_id":1301,"product_row_count":0,"revision_row_count":0,"inventory_row_count":0,"captured_at":"2026-07-26T15:00:04.000Z"}' \
   >"$fixture/mysql-absence-snapshot.json"
 printf '%s\n' \
   '{"_index":"products_adapter_v1","_id":"1301","found":false}' \
   >"$fixture/es-snapshot.json"
 printf '%s\n' \
-  '{"deadline_seconds":60,"deadline_reached":false,"observation_completed":true,"completed_at":"2026-07-26T15:00:05Z"}' \
+  '{"deadline_seconds":60,"deadline_reached":false,"observation_completed":true,"completed_at":"2026-07-26T15:00:05.000Z"}' \
   >"$fixture/target-observation.json"
 
 bash scenarios/scripts/derive-m1-hard-delete-result.sh "$fixture" >"$fixture/result.json"
@@ -63,7 +73,7 @@ jq -e '
 
 # Still-present target is an observed gap only after the bounded deadline.
 cp "$fixture/es-initial-snapshot.json" "$fixture/es-snapshot.json"
-jq '.deadline_reached = true | .completed_at = "2026-07-26T15:01:04Z"' \
+jq '.deadline_reached = true | .completed_at = "2026-07-26T15:01:04.000Z"' \
   "$fixture/target-observation.json" >"$fixture/target-observation.tmp"
 mv "$fixture/target-observation.tmp" "$fixture/target-observation.json"
 bash scenarios/scripts/derive-m1-hard-delete-result.sh "$fixture" >"$fixture/result.json"
@@ -86,13 +96,18 @@ jq '.deadline_reached = true' "$fixture/target-observation.json" \
   >"$fixture/target-observation.tmp"
 mv "$fixture/target-observation.tmp" "$fixture/target-observation.json"
 cp "$fixture/direct-sql.json" "$fixture/direct-sql-time.valid.json"
-jq '.committed_at = "2026-07-26T14:59:59Z"' \
+jq '.started_at = "2026-07-26 15:00:02.000Z"' \
   "$fixture/direct-sql-time.valid.json" >"$fixture/direct-sql.json"
-bash scenarios/scripts/derive-m1-hard-delete-result.sh "$fixture" >"$fixture/result.json"
-if bash scenarios/scripts/assert-m1-hard-delete-evidence.sh "$fixture" >/dev/null 2>&1; then
-  echo "hard-delete evidence accepted a commit timestamp before SQL start" >&2
-  exit 1
-fi
+record_accepted_delete_regression "a non-RFC3339 timestamp"
+jq '.started_at = "2026-02-30T15:00:02.000Z"' \
+  "$fixture/direct-sql-time.valid.json" >"$fixture/direct-sql.json"
+record_accepted_delete_regression "an invalid calendar timestamp"
+jq '.committed_at = .started_at' \
+  "$fixture/direct-sql-time.valid.json" >"$fixture/direct-sql.json"
+record_accepted_delete_regression "equal causal timestamps"
+jq '.committed_at = "2026-07-26T14:59:59.999Z"' \
+  "$fixture/direct-sql-time.valid.json" >"$fixture/direct-sql.json"
+record_accepted_delete_regression "a commit timestamp before SQL start"
 mv "$fixture/direct-sql-time.valid.json" "$fixture/direct-sql.json"
 
 cp "$fixture/mysql-absence-snapshot.json" "$fixture/mysql-absence-snapshot.valid.json"
@@ -103,6 +118,8 @@ if bash scenarios/scripts/assert-m1-hard-delete-evidence.sh "$fixture" >/dev/nul
   echo "hard-delete evidence accepted source rows that were not absent" >&2
   exit 1
 fi
+
+test "$accepted_regressions" -eq 0
 mv "$fixture/mysql-absence-snapshot.valid.json" "$fixture/mysql-absence-snapshot.json"
 
 cp "$fixture/direct-sql.json" "$fixture/direct-sql.valid.json"

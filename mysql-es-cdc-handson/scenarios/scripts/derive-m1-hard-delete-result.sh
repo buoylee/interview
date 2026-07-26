@@ -51,8 +51,7 @@ jq -L scenarios/scripts -n '
     committed_at:$sql[0].committed_at
   } and
     ($sql[0].started_at | type) == "string" and
-    ($sql[0].committed_at | type) == "string" and
-    $sql[0].started_at <= $sql[0].committed_at) as $direct_sql_proven |
+    ($sql[0].committed_at | type) == "string") as $direct_sql_proven |
   ($absence[0].product_id == 1301 and
     $absence[0].product_row_count == 0 and
     $absence[0].revision_row_count == 0 and
@@ -66,8 +65,15 @@ jq -L scenarios/scripts -n '
     $observation[0].observation_completed == true and
     ($observation[0].deadline_reached | type) == "boolean" and
     ($observation[0].completed_at | type) == "string") as $bounded_observation_complete |
-  ($sql[0].committed_at <= $absence[0].captured_at and
-    $absence[0].captured_at <= $observation[0].completed_at) as $timestamps_ordered |
+  ($sql[0].started_at | m1_rfc3339_millis_epoch) as $sql_started_ms |
+  ($sql[0].committed_at | m1_rfc3339_millis_epoch) as $sql_committed_ms |
+  ($absence[0].captured_at | m1_rfc3339_millis_epoch) as $absence_ms |
+  ($observation[0].completed_at | m1_rfc3339_millis_epoch) as $observation_ms |
+  ($sql_started_ms != null and $sql_committed_ms != null and
+    $absence_ms != null and $observation_ms != null and
+    $sql_started_ms < $sql_committed_ms and
+    $sql_committed_ms < $absence_ms and
+    $absence_ms < $observation_ms) as $timestamps_ordered |
   ($target[0].found == false and
     $target[0]._index == "products_adapter_v1" and
     $target[0]._id == "1301") as $delete_observed |

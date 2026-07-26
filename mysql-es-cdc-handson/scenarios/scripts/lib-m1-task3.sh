@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
 
+m1_task3_utc_millis() {
+  jq -nr '
+    now as $sample |
+    ($sample | floor) as $epoch_seconds |
+    ((($sample - $epoch_seconds) * 1000) | floor) as $milliseconds |
+    ($epoch_seconds | gmtime | strftime("%Y-%m-%dT%H:%M:%S")) + "." +
+      ($milliseconds | tostring | "00" + . | .[-3:]) + "Z"
+  '
+}
+
 m1_task3_container_id() {
   local id
   id=$(compose_adapter ps -aq canal-adapter | tr -d '\r\n') || return 1
@@ -38,11 +48,14 @@ printf '%s|%s\n' "$pid" "$start_ticks"
 SH
 }
 
-m1_task3_adapter_is_stopped() {
+m1_task3_container_running() {
   local container_id="$1"
   local running
   running=$(docker inspect --format '{{.State.Running}}' "$container_id") || return 1
-  test "$running" = "false"
+  case "$running" in
+    true|false) printf '%s\n' "$running" ;;
+    *) return 1 ;;
+  esac
 }
 
 m1_task3_reset_fixture_and_index() {

@@ -16,7 +16,7 @@ rm -rf "$out"
 mkdir -p "$out"
 cp "scenarios/definitions/$scenario.json" "$out/input-commands.json"
 
-started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+started_at=$(m1_task3_utc_millis)
 poll_until 60 product_api_is_ready
 bash tests/contracts/m1-adapter.sh --live >/dev/null
 m1_task3_reset_fixture_and_index "$product_id" "$out/index-create.json"
@@ -33,19 +33,21 @@ m1_task3_capture_initial "$product_id" \
 container_before=$(m1_task3_container_id)
 identity_before=$(m1_task3_adapter_identity)
 jq -n --arg container "$container_before" --arg identity "$identity_before" \
-  --arg captured "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" '
+  --arg captured "$(m1_task3_utc_millis)" '
   {container_id:$container,java_identity:$identity,captured_at:$captured}
 ' >"$out/adapter-before-stop.json"
 
 compose_adapter stop canal-adapter
-stopped_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+stopped_at=$(m1_task3_utc_millis)
 container_stopped=$(m1_task3_container_id)
 test "$container_stopped" = "$container_before"
-m1_task3_adapter_is_stopped "$container_stopped"
+container_running=$(m1_task3_container_running "$container_stopped")
+test "$container_running" = "false"
 jq -n --arg container "$container_stopped" --arg identity "$identity_before" \
-  --arg captured "$stopped_at" '
+  --argjson container_running "$container_running" --arg captured "$stopped_at" '
   {
     container_id:$container,stopped_java_identity:$identity,
+    container_running:$container_running,
     java_process_absent:true,captured_at:$captured
   }
 ' >"$out/adapter-stopped.json"
@@ -61,7 +63,7 @@ curl -fsS --connect-timeout 2 --max-time 10 -X PUT \
   -d '{"availableQuantity":7,"reservedQuantity":2}' \
   | jq -e 'select(. == {"productId":1201,"revision":3})' \
   >"$out/inventory-response.json"
-source_mutated_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+source_mutated_at=$(m1_task3_utc_millis)
 m1_task3_snapshot_source "$product_id" "$out/mysql-while-down-snapshot.json"
 m1_task3_capture_es "$product_id" "$out/es-while-down-snapshot.json"
 m1_task3_es_matches_source_price \
@@ -69,7 +71,7 @@ m1_task3_es_matches_source_price \
 
 compose_adapter start canal-adapter
 poll_until 30 m1_task3_adapter_identity >/dev/null
-restarted_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+restarted_at=$(m1_task3_utc_millis)
 container_after=$(m1_task3_container_id)
 identity_after=$(m1_task3_adapter_identity)
 test "$container_after" = "$container_before"
@@ -93,7 +95,7 @@ if ! poll_until 60 m1_task3_es_matches_source_price \
     "$product_id" "$out/mysql-while-down-snapshot.json" 200; then
   deadline_reached=true
 fi
-completed_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+completed_at=$(m1_task3_utc_millis)
 m1_task3_capture_es "$product_id" "$out/es-snapshot.json"
 m1_task3_snapshot_source "$product_id" "$out/mysql-snapshot.json"
 jq -n --argjson deadline_reached "$deadline_reached" --arg completed "$completed_at" '

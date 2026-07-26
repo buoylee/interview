@@ -37,17 +37,28 @@ trap 'rm -rf "$fixture"' EXIT
 container_id="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 before_identity="40|111111"
 after_identity="41|222222"
+accepted_regressions=0
+
+record_accepted_restart_regression() {
+  local description="$1"
+  bash scenarios/scripts/derive-m1-restart-result.sh "$fixture" >"$fixture/result.json"
+  if bash scenarios/scripts/assert-m1-restart-evidence.sh "$fixture" >/dev/null 2>&1; then
+    echo "restart evidence accepted $description" >&2
+    accepted_regressions=$((accepted_regressions + 1))
+  fi
+}
 m1_task3_write_common_setup \
   "$fixture" m1-restart 1201 M1-1201 "Restart Keyboard" "restart observation"
 m1_task3_write_mapping_proofs "$fixture" "$container_id" "$after_identity"
 
 jq -n --arg container "$container_id" --arg identity "$before_identity" '
-  {container_id:$container,java_identity:$identity,captured_at:"2026-07-26T14:00:02Z"}
+  {container_id:$container,java_identity:$identity,captured_at:"2026-07-26T14:00:02.000Z"}
 ' >"$fixture/adapter-before-stop.json"
 jq -n --arg container "$container_id" --arg identity "$before_identity" '
   {
     container_id:$container,stopped_java_identity:$identity,
-    java_process_absent:true,captured_at:"2026-07-26T14:00:03Z"
+    container_running:false,java_process_absent:true,
+    captured_at:"2026-07-26T14:00:03.000Z"
   }
 ' >"$fixture/adapter-stopped.json"
 printf '%s\n' '{"productId":1201,"revision":2}' >"$fixture/price-response.json"
@@ -60,16 +71,16 @@ jq '.product.price_cents = 200 |
   "$fixture/mysql-initial-snapshot.json" >"$fixture/mysql-while-down-snapshot.json"
 cp "$fixture/es-initial-snapshot.json" "$fixture/es-while-down-snapshot.json"
 jq -n --arg container "$container_id" --arg identity "$after_identity" '
-  {container_id:$container,java_identity:$identity,captured_at:"2026-07-26T14:00:05Z"}
+  {container_id:$container,java_identity:$identity,captured_at:"2026-07-26T14:00:05.000Z"}
 ' >"$fixture/adapter-after-start.json"
 cp "$fixture/mysql-while-down-snapshot.json" "$fixture/mysql-snapshot.json"
 jq '._source.price_cents = 200' \
   "$fixture/es-initial-snapshot.json" >"$fixture/es-snapshot.json"
 printf '%s\n' \
-  '{"deadline_seconds":60,"deadline_reached":false,"observation_completed":true,"completed_at":"2026-07-26T14:00:06Z"}' \
+  '{"deadline_seconds":60,"deadline_reached":false,"observation_completed":true,"completed_at":"2026-07-26T14:00:06.000Z"}' \
   >"$fixture/target-observation.json"
 printf '%s\n' \
-  '{"started_at":"2026-07-26T14:00:00Z","stopped_at":"2026-07-26T14:00:03Z","source_mutated_at":"2026-07-26T14:00:04Z","restarted_at":"2026-07-26T14:00:05Z","completed_at":"2026-07-26T14:00:06Z"}' \
+  '{"started_at":"2026-07-26T14:00:00.000Z","stopped_at":"2026-07-26T14:00:03.000Z","source_mutated_at":"2026-07-26T14:00:04.000Z","restarted_at":"2026-07-26T14:00:05.000Z","completed_at":"2026-07-26T14:00:06.000Z"}' \
   >"$fixture/timestamps.json"
 
 bash scenarios/scripts/derive-m1-restart-result.sh "$fixture" >"$fixture/result.json"
@@ -83,10 +94,10 @@ jq -e '
 
 # A complete bounded deadline may record the observed gap without failing the runner.
 cp "$fixture/es-initial-snapshot.json" "$fixture/es-snapshot.json"
-jq '.deadline_reached = true | .completed_at = "2026-07-26T14:01:05Z"' \
+jq '.deadline_reached = true | .completed_at = "2026-07-26T14:01:05.000Z"' \
   "$fixture/target-observation.json" >"$fixture/target-observation.tmp"
 mv "$fixture/target-observation.tmp" "$fixture/target-observation.json"
-jq '.completed_at = "2026-07-26T14:01:05Z"' "$fixture/timestamps.json" \
+jq '.completed_at = "2026-07-26T14:01:05.000Z"' "$fixture/timestamps.json" \
   >"$fixture/timestamps.tmp"
 mv "$fixture/timestamps.tmp" "$fixture/timestamps.json"
 bash scenarios/scripts/derive-m1-restart-result.sh "$fixture" >"$fixture/result.json"
@@ -111,14 +122,28 @@ jq '.deadline_reached = true' "$fixture/target-observation.json" \
   >"$fixture/target-observation.tmp"
 mv "$fixture/target-observation.tmp" "$fixture/target-observation.json"
 cp "$fixture/timestamps.json" "$fixture/timestamps.valid.json"
-jq '.completed_at = "2026-07-26T13:59:59Z"' \
+jq '.started_at = "2026-07-26 14:00:00.000Z"' \
   "$fixture/timestamps.valid.json" >"$fixture/timestamps.json"
-bash scenarios/scripts/derive-m1-restart-result.sh "$fixture" >"$fixture/result.json"
-if bash scenarios/scripts/assert-m1-restart-evidence.sh "$fixture" >/dev/null 2>&1; then
-  echo "restart evidence accepted timestamps that contradict the state order" >&2
-  exit 1
-fi
+record_accepted_restart_regression "a non-RFC3339 timestamp"
+jq '.started_at = "2026-02-30T14:00:00.000Z"' \
+  "$fixture/timestamps.valid.json" >"$fixture/timestamps.json"
+record_accepted_restart_regression "an invalid calendar timestamp"
+jq '.stopped_at = .started_at' \
+  "$fixture/timestamps.valid.json" >"$fixture/timestamps.json"
+record_accepted_restart_regression "equal causal timestamps"
+jq '.completed_at = "2026-07-26T13:59:59.999Z"' \
+  "$fixture/timestamps.valid.json" >"$fixture/timestamps.json"
+record_accepted_restart_regression "timestamps that contradict the state order"
 mv "$fixture/timestamps.valid.json" "$fixture/timestamps.json"
+
+cp "$fixture/adapter-stopped.json" "$fixture/adapter-stopped.valid.json"
+jq '.container_running = true' "$fixture/adapter-stopped.valid.json" \
+  >"$fixture/adapter-stopped.json"
+record_accepted_restart_regression "a stopped audit with container_running true"
+jq 'del(.container_running)' "$fixture/adapter-stopped.valid.json" \
+  >"$fixture/adapter-stopped.json"
+record_accepted_restart_regression "a stopped audit missing container_running"
+mv "$fixture/adapter-stopped.valid.json" "$fixture/adapter-stopped.json"
 
 cp "$fixture/adapter-after-start.json" "$fixture/adapter-after-start.valid.json"
 jq '.container_id = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' \
@@ -128,6 +153,8 @@ if bash scenarios/scripts/assert-m1-restart-evidence.sh "$fixture" >/dev/null 2>
   echo "restart evidence accepted a recreated Adapter container" >&2
   exit 1
 fi
+
+test "$accepted_regressions" -eq 0
 mv "$fixture/adapter-after-start.valid.json" "$fixture/adapter-after-start.json"
 
 cp "$fixture/current-run-mapping-proof.json" "$fixture/current-run-mapping-proof.valid.json"

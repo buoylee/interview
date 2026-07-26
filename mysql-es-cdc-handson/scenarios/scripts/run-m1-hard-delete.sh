@@ -30,7 +30,7 @@ curl -fsS --connect-timeout 2 --max-time 10 -X POST \
 m1_task3_capture_initial "$product_id" \
   "$out/mysql-initial-snapshot.json" "$out/es-initial-snapshot.json"
 
-sql_started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+sql_started_at=$(m1_task3_utc_millis)
 mysql_adapter <<'SQL'
 START TRANSACTION;
 DELETE FROM product_search_revision WHERE product_id = 1301;
@@ -38,7 +38,7 @@ DELETE FROM inventory WHERE product_id = 1301;
 DELETE FROM products WHERE id = 1301;
 COMMIT;
 SQL
-sql_committed_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+sql_committed_at=$(m1_task3_utc_millis)
 jq -n --arg started "$sql_started_at" --arg committed "$sql_committed_at" '
   {
     direct_sql_fault_injection:true,
@@ -61,7 +61,7 @@ esac
 jq -n \
   --argjson product "$product_count" --argjson revision "$revision_count" \
   --argjson inventory "$inventory_count" \
-  --arg captured "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" '
+  --arg captured "$(m1_task3_utc_millis)" '
   {
     product_id:1301,product_row_count:$product,
     revision_row_count:$revision,inventory_row_count:$inventory,
@@ -77,7 +77,7 @@ deadline_reached=false
 if ! poll_until 60 es_document_is_absent "$product_id"; then
   deadline_reached=true
 fi
-completed_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+completed_at=$(m1_task3_utc_millis)
 m1_task3_capture_es "$product_id" "$out/es-snapshot.json"
 jq -n --argjson deadline_reached "$deadline_reached" --arg completed "$completed_at" '
   {

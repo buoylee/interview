@@ -66,6 +66,7 @@ jq -L scenarios/scripts -n '
     ($before_state.java_identity | m1_identity) and
     $stopped_state.container_id == $before_state.container_id and
     $stopped_state.stopped_java_identity == $before_state.java_identity and
+    $stopped_state.container_running == false and
     $stopped_state.java_process_absent == true and
     $after_state.container_id == $before_state.container_id and
     ($after_state.java_identity | m1_identity) and
@@ -80,22 +81,30 @@ jq -L scenarios/scripts -n '
     ($observation[0].deadline_reached | type) == "boolean" and
     ($observation[0].completed_at | type) == "string") as $bounded_observation_complete |
   ($timestamps[0]) as $time |
+  ($time.started_at | m1_rfc3339_millis_epoch) as $started_ms |
+  ($before_state.captured_at | m1_rfc3339_millis_epoch) as $before_ms |
+  ($time.stopped_at | m1_rfc3339_millis_epoch) as $stopped_ms |
+  ($stopped_state.captured_at | m1_rfc3339_millis_epoch) as $stopped_audit_ms |
+  ($time.source_mutated_at | m1_rfc3339_millis_epoch) as $mutated_ms |
+  ($time.restarted_at | m1_rfc3339_millis_epoch) as $restarted_ms |
+  ($after_state.captured_at | m1_rfc3339_millis_epoch) as $after_ms |
+  ($time.completed_at | m1_rfc3339_millis_epoch) as $completed_ms |
+  ($observation[0].completed_at | m1_rfc3339_millis_epoch) as $observation_ms |
   (($time | keys | sort) == [
       "completed_at","restarted_at","source_mutated_at","started_at","stopped_at"
     ] and
-    ($time.started_at | type) == "string" and
-    ($time.stopped_at | type) == "string" and
-    ($time.source_mutated_at | type) == "string" and
-    ($time.restarted_at | type) == "string" and
-    ($time.completed_at | type) == "string" and
-    $time.started_at <= $before_state.captured_at and
-    $before_state.captured_at <= $time.stopped_at and
-    $stopped_state.captured_at == $time.stopped_at and
-    $time.stopped_at <= $time.source_mutated_at and
-    $time.source_mutated_at <= $time.restarted_at and
-    $after_state.captured_at == $time.restarted_at and
-    $time.restarted_at <= $time.completed_at and
-    $observation[0].completed_at == $time.completed_at) as $timestamps_ordered |
+    $started_ms != null and $before_ms != null and $stopped_ms != null and
+    $stopped_audit_ms != null and $mutated_ms != null and
+    $restarted_ms != null and $after_ms != null and
+    $completed_ms != null and $observation_ms != null and
+    $started_ms < $before_ms and
+    $before_ms < $stopped_ms and
+    $stopped_audit_ms == $stopped_ms and
+    $stopped_ms < $mutated_ms and
+    $mutated_ms < $restarted_ms and
+    $after_ms == $restarted_ms and
+    $restarted_ms < $completed_ms and
+    $observation_ms == $completed_ms) as $timestamps_ordered |
   (m1_managed_target($target[0];$expected_product;200)) as $latest_target_observed |
   (m1_managed_target($target[0];$expected_product;100)) as $stale_target_observed |
   ($input_match and $setup_complete and $mutations_complete and
