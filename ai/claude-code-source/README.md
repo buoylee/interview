@@ -55,6 +55,10 @@
 
 四部分完成后，`99-interview-playbook.md` 才把机制压缩成 30 秒结论、白板流程和深入追问入口。
 
+## 可选附录（不进入顺序学习路径）
+
+- [Runtime Entry Adapters](appendices/runtime-entry-adapters.md)：比较 CLI、REPL、text/stream-json stdin 与 SDK 怎样在 A1 之前归一化输入并交给共同的 turn/query 合同。
+
 ## 源码快照与证据标签
 
 - 本轨道的源码快照固定为 `712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf`；版本变化不能悄悄改写既有结论。

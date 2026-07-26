@@ -163,6 +163,8 @@ User: locate and fix a failing test.
 - **状态变更：** Messages 获得 user 内容；Durable Transcript 记录任务进入事件；runtime turn state 进入组装阶段。
 - **输出：** A2 可以消费的目标与约束。
 
+如果要追问 CLI、REPL、text/stream-json stdin 与 SDK 如何把各自输入送到这个 A1 边界，读可选附录 [Runtime Entry Adapters](appendices/runtime-entry-adapters.md)；它不改变本章的 A1–A8 权威主线。
+
 ### 5.2 A2：组装第一次模型视图
 
 - **输入：** user message、适用指令、可用工具定义，以及 runtime 选中的必要上下文。
