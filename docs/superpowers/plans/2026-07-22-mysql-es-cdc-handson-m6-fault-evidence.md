@@ -181,18 +181,35 @@ Expected: FAIL because the catalog and schemas do not exist.
           "additionalProperties":false,
           "required":[
             "old_cursor_sha256","old_missing_journal","old_missing_position",
-            "reset_journal","reset_position","normal_restart_preserved",
-            "anchor_next_offsets","first_post_reset_event"
+            "reset_lower_bound_journal","reset_lower_bound_position",
+            "reset_cursor_sha256","reset_journal","reset_position",
+            "reset_anchor_run_id","reset_anchor_next_offsets","reset_anchor_events",
+            "reset_restart_offsets_before","normal_restart_cursor_sha256",
+            "normal_restart_journal","normal_restart_position",
+            "normal_restart_offsets_after","normal_restart_preserved",
+            "normal_sentinel_run_id","normal_sentinel_next_offsets","normal_sentinel_events"
           ],
           "properties":{
             "old_cursor_sha256":{"type":"string","pattern":"^[a-f0-9]{64}$"},
             "old_missing_journal":{"type":"string","minLength":1},
             "old_missing_position":{"type":"integer","minimum":4},
+            "reset_lower_bound_journal":{"type":"string","minLength":1},
+            "reset_lower_bound_position":{"type":"integer","minimum":4},
+            "reset_cursor_sha256":{"type":"string","pattern":"^[a-f0-9]{64}$"},
             "reset_journal":{"type":"string","minLength":1},
             "reset_position":{"type":"integer","minimum":4},
+            "reset_anchor_run_id":{"type":"string","format":"uuid"},
+            "reset_anchor_next_offsets":{"type":"object","minProperties":3,"maxProperties":3},
+            "reset_anchor_events":{"type":"object","minProperties":3,"maxProperties":3},
+            "reset_restart_offsets_before":{"type":"object","minProperties":3,"maxProperties":3},
+            "normal_restart_cursor_sha256":{"type":"string","pattern":"^[a-f0-9]{64}$"},
+            "normal_restart_journal":{"type":"string","minLength":1},
+            "normal_restart_position":{"type":"integer","minimum":4},
+            "normal_restart_offsets_after":{"type":"object","minProperties":3,"maxProperties":3},
             "normal_restart_preserved":{"const":true},
-            "anchor_next_offsets":{"type":"object","minProperties":3,"maxProperties":3},
-            "first_post_reset_event":{"type":"object"}
+            "normal_sentinel_run_id":{"type":"string","format":"uuid"},
+            "normal_sentinel_next_offsets":{"type":"object","minProperties":3,"maxProperties":3},
+            "normal_sentinel_events":{"type":"object","minProperties":3,"maxProperties":3}
           }
         }
       ]
@@ -219,7 +236,34 @@ jq -e '
 ' "$bundle/result.json" >/dev/null
 
 if test "$(jq -r '.scenario_id' "$bundle/result.json")" = canal-outage-beyond-binlog-retention; then
-  jq -e '.canal_position_recovery != null and .canal_position_recovery.normal_restart_preserved == true and (.canal_position_recovery.anchor_next_offsets | length) == 3' "$bundle/result.json" >/dev/null
+  jq -e '
+    .canal_position_recovery as $r |
+    $r != null and
+    $r.normal_restart_preserved == true and
+    $r.reset_cursor_sha256 == $r.normal_restart_cursor_sha256 and
+    $r.reset_journal == $r.normal_restart_journal and
+    $r.reset_position == $r.normal_restart_position and
+    $r.reset_restart_offsets_before == $r.normal_restart_offsets_after and
+    $r.reset_anchor_run_id != $r.normal_sentinel_run_id and
+    ($r.reset_anchor_next_offsets | length) == 3 and
+    ($r.reset_anchor_events | length) == 3 and
+    ($r.normal_sentinel_next_offsets | length) == 3 and
+    ($r.normal_sentinel_events | length) == 3 and
+    ([$r.reset_anchor_next_offsets,$r.reset_anchor_events,
+      $r.reset_restart_offsets_before,$r.normal_restart_offsets_after,
+      $r.normal_sentinel_next_offsets,$r.normal_sentinel_events] |
+      all(.[]; keys == ["0","1","2"])) and
+    all([0,1,2][];
+      . as $partition |
+      ($partition | tostring) as $key |
+      $r.reset_anchor_events[$key].partition == $partition and
+      ($r.reset_anchor_events[$key].offset + 1) == $r.reset_anchor_next_offsets[$key] and
+      $r.reset_anchor_events[$key].run_id == $r.reset_anchor_run_id and
+      $r.normal_sentinel_next_offsets[$key] == ($r.normal_restart_offsets_after[$key] + 1) and
+      $r.normal_sentinel_events[$key].partition == $partition and
+      ($r.normal_sentinel_events[$key].offset + 1) == $r.normal_sentinel_next_offsets[$key] and
+      $r.normal_sentinel_events[$key].run_id == $r.normal_sentinel_run_id)
+  ' "$bundle/result.json" >/dev/null
 fi
 ~~~
 
@@ -548,7 +592,7 @@ Exact assertions:
 
 1. Normal restart: before stopping Canal, prove the acknowledged `/home/admin/canal-data/products/meta.dat` cursor is persisted and record its hash/decoded position plus Kafka end offsets. After restart require the same hash/position, startup from that exact cursor, unchanged offsets caused by restart itself, and exactly one post-restart mutation at the next offset before it reaches ES. Record the known 1.1.8 static-destination `future == null` stop NPE if observed, without treating one successful restart as a universal shutdown guarantee.
 2. Within retention: mutate while Canal is stopped, prove the recorded binlog file still exists, start Canal, prove all revisions catch up without repair/rebuild.
-3. Beyond retention: prove the required binlog file is absent and Canal reports the missing position, activate `LOG_GAP`, require `REBUILD_REQUIRED`, restore retention, run M5's write-gated cursor rebootstrap and full rebuild, then require HEALTHY. Evidence must contain the old `meta.dat` SHA-256, old missing file/position, gate-stable reset file/position, normal-mode restart hash/position and offset result, and first post-reset event in all three partitions. Rebuild-only recovery is a failure.
+3. Beyond retention: prove the required binlog file is absent and Canal reports the missing position, activate `LOG_GAP`, require `REBUILD_REQUIRED`, restore retention, run M5's write-gated cursor rebootstrap and full rebuild, then require HEALTHY. Evidence must contain the old `meta.dat` SHA-256 and missing file/position; gate-stable reset lower bound; three reset-time anchor records/next offsets actually ACKed before `meta.dat` advances; reset cursor hash/position; equal cursor identity and Kafka offset vectors across reset=false restart; and three distinct normal-mode sentinel records observed exactly once at the expected next offset in partitions 0/1/2. Reusing reset anchors as normal sentinels or rebuild-only recovery is a failure.
 4. Kafka unavailable: apply Kafka timeout toxic, mutate, prove Canal/consumer cannot advance and state is CATCHING_UP, remove toxic, require automatic convergence.
 5. Consumer offset expired: prove committed offset is below beginning offset, require automatic `LOG_GAP` detection and REBUILD_REQUIRED, restore retention and run M5.
 

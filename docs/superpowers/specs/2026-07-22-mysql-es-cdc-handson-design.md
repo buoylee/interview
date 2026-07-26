@@ -516,13 +516,15 @@ O_start 必须早于数据库快照建立。这样：
 
 Canal 1.1.8 还有一个受限的正常停止行为：静态 destination 由 `CanalMQStarter.start(destinations)` 通过 `executorService.execute(...)` 启动，没有设置 `CanalMQRunnable.future`；停止时 `stop(true)` 在 `future.cancel(true)` 处会因 `future == null` 抛出 NPE。本项目一次实测中，NPE 未损坏已 ACK 的 cursor 或 Kafka offset，但这不能推广为所有 shutdown 都无害。每次 restart 证据必须同时证明：停止前 cursor 已 ACK 并落盘；`meta.dat` 的 SHA-256 与解码 file/position 跨 restart 不变；restart 日志读取该 exact cursor；Kafka end offsets 不因 restart 改变；首个 post-restart 事件只出现一次且位于预期下一 offset。
 
-1. 关闭并持有业务写闸门，排空进行中的事实变更；
-2. 保存旧 Canal destination `meta.dat`、哈希和缺失 file/position 证据；
-3. 记录当前有效 MySQL file/position/GTID；
-4. 以一次性显式恢复模式让 Canal 落到当前有效位点，再恢复普通模式重启；
-5. 通过每个 Kafka partition 的 barrier 证明新 cursor 后的首批事件可达；
-6. 从新的 `O_start` 执行一致性快照、重叠 replay、验证与 alias 切换；
-7. 只在新 generation PASS 后清除 LOG_GAP。
+1. 关闭并持有业务写闸门，排空进行中的事实变更；保存旧 Canal destination `meta.dat`、SHA-256 和缺失 file/position 证据；
+2. 记录写闸稳定时仍有效的 MySQL file/position/GTID，作为 reset lower bound；
+3. 仅以 `CANAL_AUTO_RESET_LATEST_POS_MODE=true` 启动 Canal，然后通过闸内专用 recovery endpoint 写入三个 **reset-time recovery anchor**；它们使用独立 recovery run ID 和确定映射到 partition 0/1/2 的 token，不是 normal-mode 验证事件；
+4. 逐 partition 观察 anchor 的原始 Kafka record 并等待 Canal MQ ACK。只有这些新事件被 ACK 后，ACK-derived `meta.dat` 才有依据推进；不得在没有 anchor/ACK 时等待它自行越过 lower bound；
+5. 要求 `meta.dat` 指向仍保留的 binlog，覆盖全部 anchor，记录新 SHA-256、解码 file/position 与 anchor 的 per-partition next-offset vector；
+6. 关闭 reset，以 `reset=false` normal restart。restart 前后要求 `meta.dat` identity/hash/position 与 Kafka end-offset vector 均不变，并从该 exact acknowledged cursor resume；
+7. normal restart 后再通过 recovery endpoint 写入一套使用不同 run ID 的 **normal-mode sentinel**。逐 partition 从 restart 前记录的 expected next offset 观察且只观察到对应 sentinel 一次，证明 exactly-next-event；不得把 reset-time anchor 当成 post-restart sentinel；
+8. 完整证据提交后，才可从新的 `O_start` 执行一致性快照、重叠 replay、验证与 alias 切换；
+9. 只在新 generation PASS 后清除 LOG_GAP。
 
 任何静默删除整个 Canal 数据目录、长期打开自动跳到最新位点，或只完成 ES rebuild 就恢复 HEALTHY 的做法都不满足本设计。
 
