@@ -65,7 +65,9 @@ process.stdout.write(JSON.stringify(result));
                 result = self.run_reboot(environment)
                 self.assertEqual(set(result["reboot"][0]["options"]), {"dryRun"})
 
-    def controlled_root(self, final_verify_fails=False):
+    def controlled_root(
+        self, final_verify_fails=False, extra_gtid_member=None, id_mismatch=False,
+    ):
         temporary = tempfile.TemporaryDirectory()
         root = Path(temporary.name) / "ha"
         (root / "scenarios").mkdir(parents=True)
@@ -83,14 +85,29 @@ process.stdout.write(JSON.stringify(result));
             "#!/usr/bin/env bash\n"
             "set -eu\n"
             "printf '%s\\n' \"$*\" >> \"$FAKE_DOCKER_LOG\"\n"
+            "member=\n"
             "case \"$*\" in\n"
-            "  *\"SET PERSIST_ONLY group_replication_start_on_boot = OFF\"*) printf 'OFF' > \"$FAKE_START_ON_BOOT\" ;;\n"
-            "  *\"SET PERSIST_ONLY group_replication_start_on_boot = ON\"*) printf 'ON' > \"$FAKE_START_ON_BOOT\" ;;\n"
-            "  *\"SELECT VARIABLE_VALUE FROM performance_schema.persisted_variables\"*) cat \"$FAKE_START_ON_BOOT\" ;;\n"
+            "  *\"exec -T db1\"*) member=db1 ;;\n"
+            "  *\"exec -T db2\"*) member=db2 ;;\n"
+            "  *\"exec -T db3\"*) member=db3 ;;\n"
+            "esac\n"
+            "case \"$*\" in\n"
+            "  *\"SET PERSIST_ONLY group_replication_start_on_boot = OFF\"*) printf 'OFF' > \"$FAKE_START_ON_BOOT_DIR/$member\" ;;\n"
+            "  *\"SET PERSIST_ONLY group_replication_start_on_boot = ON\"*) printf 'ON' > \"$FAKE_START_ON_BOOT_DIR/$member\" ;;\n"
+            "  *\"SELECT VARIABLE_VALUE FROM performance_schema.persisted_variables\"*) cat \"$FAKE_START_ON_BOOT_DIR/$member\" ;;\n"
             "  *\"MEMBER_ROLE='PRIMARY'\"*) printf 'db1\\n' ;;\n"
-            "  *\"SELECT @@GLOBAL.gtid_executed\"*) printf 'uuid:1-20\\n' ;;\n"
+            "  *\"SELECT MEMBER_HOST FROM performance_schema.replication_group_members WHERE MEMBER_STATE = 'ONLINE' AND MEMBER_ROLE = 'PRIMARY'\"*) printf 'db1\\n' ;;\n"
+            "  *\"SELECT @@GLOBAL.gtid_executed\"*)\n"
+            "    if [ \"${FAKE_EXTRA_GTID_MEMBER:-}\" = \"$member\" ]; then printf 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:1-20:21\\n'; else printf 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:1-20\\n'; fi\n"
+            "    ;;\n"
             "  *\"WAIT_FOR_EXECUTED_GTID_SET\"*) printf '0\\n' ;;\n"
-            "  *\"SELECT request_id FROM ha_lab.orders\"*) printf 'request-1\\nrequest-2\\n' ;;\n"
+            "  *\"GTID_SUBSET\"*) case \"$*\" in *':21'*) printf '0\\n' ;; *) printf '1\\n' ;; esac ;;\n"
+            "  *\"SELECT request_id FROM ha_lab.orders\"*)\n"
+            "    if [ \"${FAKE_ID_MISMATCH:-0}\" = 1 ] && [[ \"$*\" = *\"-hrouter-a\"* ]]; then printf 'request-1\\nrequest-extra\\n'; else printf 'request-1\\nrequest-2'; fi\n"
+            "    ;;\n"
+            "  *\"SUM(MEMBER_ROLE = 'PRIMARY')\"*) printf '3\\t1\\n' ;;\n"
+            "  *\"@@GLOBAL.read_only\"*) printf '0\\t0\\t0\\n' ;;\n"
+            "  *\"WHERE request_id = 'recovery-probe-\"*) printf '0\\n' ;;\n"
             "  *\"COUNT(*) FROM performance_schema.replication_group_members\"*) printf '3\\n' ;;\n"
             "  *\"MYSQL_REBOOT_DRY_RUN=1\"*\"mysqlsh --js --file=/bootstrap/reboot.js\"*) printf '{\\\"dryRun\\\":true,\\\"cluster\\\":\\\"haLabCluster\\\",\\\"seed\\\":\\\"db1\\\",\\\"ok\\\":true}\\n' ;;\n"
             "  *\"MYSQL_REBOOT_DRY_RUN=0\"*\"mysqlsh --js --file=/bootstrap/reboot.js\"*) printf '{\\\"status\\\":\\\"OK\\\"}\\n' ;;\n"
@@ -99,7 +116,10 @@ process.stdout.write(JSON.stringify(result));
             encoding="utf-8",
         )
         fake_docker.chmod(0o755)
-        (root / "start-on-boot").write_text("ON", encoding="utf-8")
+        start_on_boot_dir = root / "start-on-boot"
+        start_on_boot_dir.mkdir()
+        for member, value in zip(("db1", "db2", "db3"), ("ON", "OFF", "ON")):
+            (start_on_boot_dir / member).write_text(value, encoding="utf-8")
         fake_make = bin_dir / "make"
         fake_make.write_text(
             "#!/usr/bin/env bash\n"
@@ -122,7 +142,9 @@ process.stdout.write(JSON.stringify(result));
             "FAKE_MAKE_LOG": str(make_log),
             "FAKE_VERIFY_COUNT": str(root / "verify-count"),
             "FAKE_FINAL_VERIFY_FAIL": "1" if final_verify_fails else "0",
-            "FAKE_START_ON_BOOT": str(root / "start-on-boot"),
+            "FAKE_START_ON_BOOT_DIR": str(start_on_boot_dir),
+            "FAKE_EXTRA_GTID_MEMBER": extra_gtid_member or "",
+            "FAKE_ID_MISMATCH": "1" if id_mismatch else "0",
         }
         return temporary, root, docker_log, make_log, environment
 
@@ -143,21 +165,46 @@ process.stdout.write(JSON.stringify(result));
         self.assertIn("up -d db1 db2 db3", calls)
         self.assertIn("up -d router-a router-b", calls)
         self.assertEqual(calls.count("WAIT_FOR_EXECUTED_GTID_SET"), 3)
-        self.assertLess(calls.index("stop router-a router-b"), calls.index("WAIT_FOR_EXECUTED_GTID_SET"))
-        self.assertLess(calls.index("WAIT_FOR_EXECUTED_GTID_SET"), calls.index("stop db1 db2 db3"))
-        self.assertEqual(calls.count("SET PERSIST_ONLY group_replication_start_on_boot = OFF"), 3)
-        self.assertEqual(calls.count("SET PERSIST_ONLY group_replication_start_on_boot = ON"), 3)
-        self.assertLess(
-            calls.rindex("SET PERSIST_ONLY group_replication_start_on_boot = OFF"),
-            calls.index("stop db1 db2 db3"),
-        )
+        self.assertEqual(calls.count("GTID_SUBSET"), 3)
+        self.assertLess(calls.index("WAIT_FOR_EXECUTED_GTID_SET"), calls.index("stop router-a router-b"))
+        self.assertLess(calls.index("GTID_SUBSET"), calls.index("stop router-a router-b"))
+        self.assertLess(calls.index("stop router-a router-b"), calls.index("stop db1 db2 db3"))
+        self.assertEqual(calls.count("SET PERSIST_ONLY group_replication_start_on_boot = OFF"), 4)
+        self.assertEqual(calls.count("SET PERSIST_ONLY group_replication_start_on_boot = ON"), 2)
+        off_calls = [
+            index for index in range(len(calls))
+            if calls.startswith("SET PERSIST_ONLY group_replication_start_on_boot = OFF", index)
+        ]
+        self.assertLess(off_calls[2], calls.index("stop db1 db2 db3"))
         self.assertLess(calls.index("MYSQL_REBOOT_DRY_RUN=1"), calls.index("MYSQL_REBOOT_DRY_RUN=0"))
         self.assertLess(calls.index("up -d db1 db2 db3"), calls.index("MYSQL_REBOOT_DRY_RUN=1"))
         self.assertIn("COUNT(*) FROM performance_schema.replication_group_members", calls)
+        self.assertIn("SUM(MEMBER_ROLE = 'PRIMARY')", calls)
+        self.assertIn("@@GLOBAL.read_only", calls)
+        self.assertIn("START TRANSACTION; INSERT INTO ha_lab.orders", calls)
+        self.assertIn("ROLLBACK", calls)
         self.assertEqual(
             (root / "evidence/complete-outage/before-ids.txt").read_bytes(),
             (root / "evidence/complete-outage/after-ids.txt").read_bytes(),
         )
+        self.assertEqual(
+            (root / "evidence/complete-outage/before-ids.txt").read_bytes(),
+            b"request-1\nrequest-2",
+        )
+        self.assertEqual(
+            [json.loads(line) for line in (root / "evidence/complete-outage/gtid-subset.jsonl").read_text().splitlines()],
+            [
+                {"member": "db1", "subsetOfSeed": 1},
+                {"member": "db2", "subsetOfSeed": 1},
+                {"member": "db3", "subsetOfSeed": 1},
+            ],
+        )
+        rollback_probe = json.loads(
+            (root / "evidence/complete-outage/router-rollback-probe.json").read_text(),
+        )
+        self.assertTrue(rollback_probe["requestId"].startswith("recovery-probe-"))
+        self.assertEqual(rollback_probe["remainingRows"], 0)
+        self.assertTrue(rollback_probe["rolledBack"])
         self.assertEqual(
             [json.loads(line)["phase"] for line in (root / "evidence/complete-outage/events.jsonl").read_text().splitlines()],
             ["outage_begin", "dry_run_begin", "actual_reboot_begin", "recovery_verified"],
@@ -166,7 +213,7 @@ process.stdout.write(JSON.stringify(result));
             [json.loads(line) for line in (root / "evidence/complete-outage/start-on-boot-before.jsonl").read_text().splitlines()],
             [
                 {"member": "db1", "persistedStartOnBoot": "ON"},
-                {"member": "db2", "persistedStartOnBoot": "ON"},
+                {"member": "db2", "persistedStartOnBoot": "OFF"},
                 {"member": "db3", "persistedStartOnBoot": "ON"},
             ],
         )
@@ -174,7 +221,7 @@ process.stdout.write(JSON.stringify(result));
             [json.loads(line) for line in (root / "evidence/complete-outage/start-on-boot-after.jsonl").read_text().splitlines()],
             [
                 {"member": "db1", "persistedStartOnBoot": "ON"},
-                {"member": "db2", "persistedStartOnBoot": "ON"},
+                {"member": "db2", "persistedStartOnBoot": "OFF"},
                 {"member": "db3", "persistedStartOnBoot": "ON"},
             ],
         )
@@ -185,6 +232,43 @@ process.stdout.write(JSON.stringify(result));
         self.assertIn("-C", make_log.read_text(encoding="utf-8"))
         self.assertEqual((root / "evidence/complete-outage/seed.txt").read_text(), "db1\n")
         self.assertIn('"primary":1', (root / "evidence/complete-outage/final-status.json").read_text())
+
+    def test_extra_member_gtid_aborts_before_router_or_database_outage(self):
+        """Catches a lower-GTID seed being chosen while another member has extra history."""
+        temporary, root, docker_log, _make_log, environment = self.controlled_root(
+            extra_gtid_member="db3",
+        )
+        self.addCleanup(temporary.cleanup)
+
+        result = subprocess.run(
+            ["bash", "scenarios/complete-outage.sh"], cwd=root, env=environment,
+            text=True, capture_output=True,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        calls = docker_log.read_text(encoding="utf-8")
+        self.assertEqual(calls.count("GTID_SUBSET"), 3)
+        self.assertNotIn("stop router-a router-b", calls)
+        self.assertNotIn("stop db1 db2 db3", calls)
+        self.assertNotIn("mysqlsh --js --file=/bootstrap/reboot.js", calls)
+
+    def test_row_id_mismatch_prevents_final_status_and_success_publication(self):
+        """Catches command-substitution normalization hiding a post-recovery ID mismatch."""
+        temporary, root, docker_log, _make_log, environment = self.controlled_root(
+            id_mismatch=True,
+        )
+        self.addCleanup(temporary.cleanup)
+
+        result = subprocess.run(
+            ["bash", "scenarios/complete-outage.sh"], cwd=root, env=environment,
+            text=True, capture_output=True,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        calls = docker_log.read_text(encoding="utf-8")
+        self.assertNotIn("mysqlsh --js --file=/bootstrap/status.js", calls)
+        phases = [json.loads(line)["phase"] for line in (root / "evidence/complete-outage/events.jsonl").read_text().splitlines()]
+        self.assertNotIn("recovery_verified", phases)
 
     def test_complete_outage_does_not_publish_success_when_final_verifier_fails(self):
         """Catches a success event written before final topology and data gates complete."""
