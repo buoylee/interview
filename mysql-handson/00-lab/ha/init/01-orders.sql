@@ -1,0 +1,13 @@
+CREATE DATABASE IF NOT EXISTS ha_lab;
+
+CREATE TABLE IF NOT EXISTS ha_lab.orders (
+  request_id VARCHAR(96) NOT NULL,
+  payload JSON NOT NULL,
+  via_router VARCHAR(32) NOT NULL,
+  written_by VARCHAR(64) NOT NULL,
+  created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (request_id)
+) ENGINE=InnoDB;
+
+CREATE USER IF NOT EXISTS 'ha_app'@'%' IDENTIFIED BY 'ha-app';
+GRANT SELECT, INSERT, UPDATE ON ha_lab.* TO 'ha_app'@'%';

@@ -2,7 +2,7 @@ name: mysql-ha
 
 x-db-common: &db-common
   image: mysql:8.4.10
-  restart: on-failure
+  restart: always
   environment:
     MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-ha-root}
     MYSQL_ROOT_HOST: "%"
@@ -50,6 +50,72 @@ services:
       - ./config/common.cnf:/etc/mysql/conf.d/ha-common.cnf:ro
       - ./init:/docker-entrypoint-initdb.d:ro
       - db3-data:/var/lib/mysql
+
+  shell:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: tools/Dockerfile
+    command: ["sleep", "infinity"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-ha-root}
+      MYSQL_CLUSTER_ADMIN: ${MYSQL_CLUSTER_ADMIN:-icadmin}
+      MYSQL_CLUSTER_ADMIN_PASSWORD: ${MYSQL_CLUSTER_ADMIN_PASSWORD:-ha-cluster}
+      MYSQL_APP_USER: ${MYSQL_APP_USER:-ha_app}
+      MYSQL_APP_PASSWORD: ${MYSQL_APP_PASSWORD:-ha-app}
+    volumes:
+      - ./bootstrap:/bootstrap:ro
+      - ./init:/init:ro
+      - ./evidence:/evidence
+    networks: [ha-net]
+
+  cluster-bootstrap:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: tools/Dockerfile
+    entrypoint: ["mysqlsh", "--js", "--file=/bootstrap/cluster.js"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-ha-root}
+      MYSQL_CLUSTER_ADMIN: ${MYSQL_CLUSTER_ADMIN:-icadmin}
+      MYSQL_CLUSTER_ADMIN_PASSWORD: ${MYSQL_CLUSTER_ADMIN_PASSWORD:-ha-cluster}
+    volumes:
+      - ./bootstrap:/bootstrap:ro
+    depends_on:
+      db1: {condition: service_healthy}
+      db2: {condition: service_healthy}
+      db3: {condition: service_healthy}
+    networks: [ha-net]
+
+  router-a:
+    platform: linux/amd64
+    image: container-registry.oracle.com/mysql/community-router:8.4.10
+    container_name: mysql-ha-router-a
+    environment:
+      MYSQL_HOST: db1
+      MYSQL_PORT: 3306
+      MYSQL_USER: ${MYSQL_CLUSTER_ADMIN:-icadmin}
+      MYSQL_PASSWORD: ${MYSQL_CLUSTER_ADMIN_PASSWORD:-ha-cluster}
+      MYSQL_INNODB_CLUSTER_MEMBERS: 3
+      MYSQL_CREATE_ROUTER_USER: 1
+      MYSQL_ROUTER_BOOTSTRAP_EXTRA_OPTIONS: --conf-use-gr-notifications
+    ports: ["16446:6446"]
+    networks: [ha-net]
+
+  router-b:
+    platform: linux/amd64
+    image: container-registry.oracle.com/mysql/community-router:8.4.10
+    container_name: mysql-ha-router-b
+    environment:
+      MYSQL_HOST: db2
+      MYSQL_PORT: 3306
+      MYSQL_USER: ${MYSQL_CLUSTER_ADMIN:-icadmin}
+      MYSQL_PASSWORD: ${MYSQL_CLUSTER_ADMIN_PASSWORD:-ha-cluster}
+      MYSQL_INNODB_CLUSTER_MEMBERS: 3
+      MYSQL_CREATE_ROUTER_USER: 1
+      MYSQL_ROUTER_BOOTSTRAP_EXTRA_OPTIONS: --conf-use-gr-notifications
+    ports: ["17446:6446"]
+    networks: [ha-net]
 
 networks:
   ha-net:
