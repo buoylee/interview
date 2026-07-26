@@ -427,7 +427,7 @@ for await (const message of query({
 
 ### Lens 5：partial error 也可能进入 completed mapping
 
-**[Source-confirmed]** `(712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf, src/tools/AgentTool/agentToolUtils.ts, finalizeAgentTool)` 与 `(712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf, src/tools/AgentTool/AgentTool.tsx, AgentTool.mapToolResultToToolResultBlockParam)`：
+**[Source-confirmed]** `(712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf, src/tools/AgentTool/AgentTool.tsx, AgentTool.call / AgentTool.mapToolResultToToolResultBlockParam)` 与 `(712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf, src/tools/AgentTool/agentToolUtils.ts, finalizeAgentTool)`：
 
 ```ts
 if (error instanceof AbortError) throw error

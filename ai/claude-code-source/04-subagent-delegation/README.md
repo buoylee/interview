@@ -205,4 +205,4 @@ Part 04 放大的只是parent A5–A7内部的一次`Agent` Tool specialization�
 
 [← 上一部分：Session Continuity](../03-session-continuity/README.md) · [下一篇：Child Loop 与 Context Isolation](01-child-loop-and-context-isolation.md)
 
-四篇读完后，先回到A1–A8主图复述完整feedback loop。未来`99-interview-playbook.md`会把这套机制压缩成30秒结论、白板路径与深入追问；在该文件创建前，这里只保留纯文字方向，不创建链接。
+四篇读完后，先回到A1–A8主图复述完整feedback loop，再用 [99 Interview Playbook](../99-interview-playbook.md) 把这套机制压缩成30秒结论、白板路径与深入追问。

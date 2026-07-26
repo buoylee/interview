@@ -452,16 +452,18 @@ global-disable sync path还跳过 `registerAgentForeground`，所以没有 `Loca
 
 ### Lens 6：prompt cache 是 request / response 可见 feature
 
-**[Source-confirmed]** `src/services/api/claude.ts`，`getCacheControl`、`addCacheBreakpoints`、`updateUsage`：
+**[Source-confirmed]** `src/services/api/claude.ts`，`getCacheControl`、`buildSystemPromptBlocks`、`addCacheBreakpoints`、`updateUsage`：
 
 ```ts
 cache_control: getCacheControl({ querySource })
+
+buildSystemPromptBlocks(systemPrompt, enablePromptCaching, options)
 
 cache_creation_input_tokens: partUsage.cache_creation_input_tokens
 cache_read_input_tokens: partUsage.cache_read_input_tokens
 ```
 
-API request construction conditional 地添加 ephemeral `cache_control`，usage 则记录 read / creation token counts。[查看 cache-control construction](https://github.com/buoylee/Claude-Code-true/blob/712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf/src/services/api/claude.ts#L588-L674) · [查看 request cache breakpoint](https://github.com/buoylee/Claude-Code-true/blob/712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf/src/services/api/claude.ts#L3063-L3110) · [查看 cache usage accounting](https://github.com/buoylee/Claude-Code-true/blob/712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf/src/services/api/claude.ts#L2919-L2987)。
+`getCacheControl` 构造 ephemeral marker；`buildSystemPromptBlocks` 只在 prompt caching 开启且 block 有 cache scope 时把 marker 放进 system blocks；`addCacheBreakpoints` 处理 message-level marker；usage 则记录 read / creation token counts。这些都是 request / response 可观测事实，不保证 provider cache hit。[查看 `getCacheControl`](https://github.com/buoylee/Claude-Code-true/blob/712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf/src/services/api/claude.ts#L358-L374) · [查看 `buildSystemPromptBlocks`](https://github.com/buoylee/Claude-Code-true/blob/712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf/src/services/api/claude.ts#L3213-L3237) · [查看 message cache breakpoint](https://github.com/buoylee/Claude-Code-true/blob/712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf/src/services/api/claude.ts#L3063-L3211) · [查看 cache usage accounting](https://github.com/buoylee/Claude-Code-true/blob/712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf/src/services/api/claude.ts#L2919-L2987)。
 
 ### Lens 7：worktree 先创建，notice 后注入
 

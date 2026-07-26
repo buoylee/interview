@@ -4,7 +4,7 @@
 
 > 面试题：请设计一个像 Claude Code 一样、能安全使用工具并可恢复会话的 coding agent runtime。
 
-这不是第二本源码教材，而是一条**可伸缩的回答路径**：先用 A1–A8 交付完整架构，再根据追问放大既有的 M/Q、E/P/B/X/F、S/C/R、D/G/K 节点。所有实现事实以固定快照 `712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf` 和 [Source Evidence Index](appendices/source-evidence-index.md) 为准；白板中的因果组合属于 **Architectural interpretation**，跨产品不变量属于 **General principle**。
+这不是第二本源码教材，而是一条**可伸缩的回答路径**：先用 A1–A8 交付完整架构，再根据追问放大既有的 M/Q、E/P/B/X/F、T/C/R/S、D/G/K 节点。所有实现事实以固定快照 `712b24f22a63eb6d1a2f86697bf6dbbaa39ae3cf` 和 [Source Evidence Index](appendices/source-evidence-index.md) 为准；白板中的因果组合属于 **Architectural interpretation**，跨产品不变量属于 **General principle**。
 
 ## 1. 怎样使用这份 Playbook
 
@@ -149,7 +149,7 @@ flowchart TD
 
 ### 5.1 30 秒 thesis
 
-> Session Continuity 分开 durable transcript、model-visible projection 与 runtime-only active state。S/C 节点让 Compaction 把当前 projection 有损变成 boundary + summary + optional tail；R 节点让 Interrupt 先闭合 active protocol，再让 Continue/Resume 从 durable material 创建 fresh runtime 和合法下一次 request。它不恢复旧 stack，也不自动回滚 effect。
+> Session Continuity 分开 durable transcript、model-visible projection 与 runtime-only active state。S/T 节点固定 projection、transcript 与 live-state owners，C 节点让 Compaction 把当前 projection 有损变成 boundary + summary + optional tail；R 节点让 Interrupt 先闭合 active protocol，再让 Continue/Resume 从 durable material 创建 fresh runtime 和合法下一次 request。它不恢复旧 stack，也不自动回滚 effect。
 
 ### 5.2 3 分钟 causal walkthrough
 
@@ -266,11 +266,11 @@ flowchart TD
 
 ### 8.1 Model emits malformed Tool input
 
-- **State before：** 完整 Tool Intent 已被采用并保留 ID，但目标 effect 未开始。
-- **Trigger：** local schema / Tool-specific validation拒绝 input，或完整 block 的 input 不能解析。
-- **Invariant：** malformed input 不得进入 Tool call；adopted ID 不能成为 orphan。
-- **Terminal state：** same-ID validation/error Observation；目标 effect 未开始。
-- **Recovery：** 把错误投影到下一轮，让模型修正参数；若 block 根本未达到可采用形态，则终止/舍弃整个 attempt，不泄漏半边 history。
+- **State before：** 分两支。A：wire/content block 仍 malformed，尚未成为可采用的 structured Tool Intent。B：完整 intent 已被 runtime 采用并保留 ID，但在 local schema / Tool-specific validation 失败，目标 effect 未开始。
+- **Trigger：** A：block 的 name/input/shape 无法形成合法 intent。B：已采用 structured intent 的 input 未通过本地 validation。
+- **Invariant：** A：未采用的 malformed block 不产生 same-ID closure 义务，也不得泄漏半边 history。B：malformed input 不得进入 Tool call，且 adopted ID 不能成为 orphan。
+- **Terminal state：** A：整个 attempt 在 adoption 前被拒绝/舍弃，没有伪造 Tool Observation。B：产生 same-ID validation/error Observation；目标 effect 未开始。
+- **Recovery：** A：从合法的 pre-adoption state 重试或终止该 attempt。B：把同 ID 错误投影到下一轮，让模型修正参数；两支都不能把 malformed wire data 当成已经执行的 effect。
 
 ### 8.2 Two Tool calls finish out of order
 
@@ -341,7 +341,7 @@ flowchart TD
 只有下面全部能做到，才算通过：
 
 - [ ] 不看文档，在两分钟内重画 A1–A8，并说清 A7 → A8 → A2 → A3 feedback edge。
-- [ ] 任选四部分，用原 ID 展开一张 local map：M/Q、E/P/B/X/F、S/C/R 或 D/G/K；不按 source order背文件。
+- [ ] 任选四部分，用原 ID 展开一张 local map：M/Q、E/P/B/X/F、T/C/R/S 或 D/G/K；其中 Transcript 必须能恢复 T1–T7，不按 source order背文件。
 - [ ] 面对一个追问，能指出唯一 owner chapter，而不是在 Playbook 中虚构细节 owner。
 - [ ] 能说出 same-ID pairing、pre-effect authorization、projection-not-transcript、no-stack-resume、no-effect-rollback 与 child result boundary。
 - [ ] 每个关键 claim 能标成 **Source-confirmed**、**Architectural interpretation** 或 **General principle**，不把综合图冒充单一 symbol事实。

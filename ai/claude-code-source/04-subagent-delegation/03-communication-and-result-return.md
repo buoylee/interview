@@ -46,7 +46,7 @@ sequenceDiagram
 | 节点 | 当前 owner | 移动 / 复制事件 | 已跨过的成功边界 | 仍未证明 |
 |---|---|---|---|---|
 | G1 Sender Emits `SendMessage` or Requests Task Output | sender Query Loop | 产生结构化 Tool Intent | sender 已请求通信或读取 | recipient 存在、结果 terminal |
-| G2 Resolve Recipient / Task Identity | `SendMessageTool` 或 `TaskOutputTool` | name registry 查找；否则 `toAgentId` 只接受 `a...` AgentId | 得到可寻址 identity；未解析的 plain string 才走 ambient-team route | delivery 已发生、task state 已验证 |
+| G2 Resolve Recipient / Direct Task Lookup | `SendMessageTool`；`TaskOutputTool` 是独立 retrieval path | `SendMessage` 先查 registered name，未命中才以 `toAgentId` 接受 `a...` AgentId；`TaskOutput` 则直接按 `task_id` 查 retained task/output state，不复用该 recipient resolver | SendMessage 得到可寻址 identity，或 TaskOutput 得到当前 task snapshot；未解析的 SendMessage plain string 才走 ambient-team route | delivery 已发生、task terminal、snapshot 已被模型消费 |
 | G3 Validate Delivery State | routing tool + task registry snapshot | identity 已解析后检查 task：仅 running non-main local task 进入 queue，其余 resolved cases 尝试 resume | 选定 queue 或 resume attempt；poll / remote 仍是独立实现 | resume 一定成功、后续状态不会 race |
 | G4 Queue Message or Read Output Snapshot | task registry / output store | append `pendingMessages`，或读取 retained task/output | send 被本地队列接受，或 poll 得到当下 snapshot | 模型消费、外部效果、notification 已送达 |
 | G5 Wake / Resume Recipient if Applicable | resume adapter | resolved non-queue case 尝试 transcript / metadata reconstruction，并在成功时注册 fresh async task | resume 成功时该 identity 已重新调度；失败则返回 source-specific error | 旧 stack 恢复、从精确 instruction point 延续 |
