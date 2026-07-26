@@ -18,6 +18,19 @@ x-db-common: &db-common
   networks: [ha-net]
 
 services:
+  verifier:
+    build:
+      context: .
+      dockerfile: workload/Dockerfile
+    command: ["python", "-m", "verifier.verify", "--expected-online", "3"]
+    environment:
+      MYSQL_CLUSTER_ADMIN: ${MYSQL_CLUSTER_ADMIN:-icadmin}
+      MYSQL_CLUSTER_ADMIN_PASSWORD: ${MYSQL_CLUSTER_ADMIN_PASSWORD:-ha-cluster}
+      MYSQL_APP_USER: ${MYSQL_APP_USER:-ha_app}
+      MYSQL_APP_PASSWORD: ${MYSQL_APP_PASSWORD:-ha-app}
+    volumes: ["./evidence:/evidence"]
+    networks: [ha-net]
+
   workload-a:
     build:
       context: .

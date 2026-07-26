@@ -1,6 +1,6 @@
 DC := docker compose --project-name mysql-ha --file compose.yml
 
-.PHONY: config up-db down reset ps logs up bootstrap routers init status switchover mysql-a mysql-b workload-start workload-stop workload-once workload-burst
+.PHONY: config up-db down reset ps logs up bootstrap routers init status switchover mysql-a mysql-b workload-start workload-stop workload-once workload-burst test verify
 
 config:
 	$(DC) config --quiet
@@ -71,3 +71,10 @@ workload-burst:
 	$(DC) run --rm workload-b python -m workload.runner --router-label burst-b --router-host router-b --max-requests $${N:-1000} --interval-ms 0 & pid_b=$$!; \
 	wait $$pid_a; status_a=$$?; wait $$pid_b; status_b=$$?; \
 	[ $$status_a -eq 0 ] && [ $$status_b -eq 0 ]
+
+test:
+	docker build -f workload/Dockerfile -t mysql-ha-workload:test .
+	docker run --rm mysql-ha-workload:test python -m unittest discover -s tests -v
+
+verify:
+	$(DC) run --rm verifier python -m verifier.verify --expected-online $${EXPECTED_ONLINE:-3}
