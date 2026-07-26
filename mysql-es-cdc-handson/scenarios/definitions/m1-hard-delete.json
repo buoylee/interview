@@ -1,0 +1,19 @@
+{
+  "scenario_id": "m1-hard-delete",
+  "product_id": 1301,
+  "fault": "delete revision, inventory, and product rows in one direct SQL transaction",
+  "direct_sql_fault_injection": true,
+  "normal_business_path": false,
+  "source_product": {
+    "id": 1301,
+    "sku": "M1-1301",
+    "name": "Delete Keyboard",
+    "description": "hard-delete observation",
+    "category_id": 10,
+    "price_cents": 100,
+    "status": "ACTIVE"
+  },
+  "target_deadline_seconds": 60,
+  "expected_observation": "Adapter DELETE behavior is measured, not assumed",
+  "final_consistency_claim": false
+}

@@ -1,0 +1,31 @@
+{
+  "scenario_id": "m1-restart",
+  "product_id": 1201,
+  "fault": "stop only canal-adapter while source revisions advance",
+  "recovery": "start the same container without deleting its state",
+  "source_product": {
+    "id": 1201,
+    "sku": "M1-1201",
+    "name": "Restart Keyboard",
+    "description": "restart observation",
+    "category_id": 10,
+    "price_cents": 100,
+    "status": "ACTIVE"
+  },
+  "mutations": [
+    {
+      "operation": "change_price",
+      "price_cents": 200,
+      "expected_revision": 2
+    },
+    {
+      "operation": "replace_inventory",
+      "available_quantity": 7,
+      "reserved_quantity": 2,
+      "expected_revision": 3
+    }
+  ],
+  "target_deadline_seconds": 60,
+  "expected_observation": "document reaches the latest source value or evidence records the gap",
+  "final_consistency_claim": false
+}
