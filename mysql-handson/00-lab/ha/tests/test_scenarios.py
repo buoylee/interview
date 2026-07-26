@@ -10,6 +10,13 @@ def result(router, at, outcome):
     )
 
 
+def interval_result(router, started_at, finished_at, outcome):
+    return LedgerRecord(
+        f"{router}-{started_at}-{finished_at}", "{}", router,
+        started_at, finished_at, outcome, 0, None,
+    )
+
+
 class ScenarioAssertionTest(unittest.TestCase):
     def test_every_scenario_requires_one_ordered_fault_lifecycle(self):
         """Catches evidence that omits, duplicates, or reverses fault events."""
@@ -42,6 +49,8 @@ class ScenarioAssertionTest(unittest.TestCase):
                     ],
                 )
                 self.assertIn("expected exactly one fault_active event", report["errors"])
+            if scenario == "quorum-loss":
+                continue
             with self.subTest(scenario=scenario, defect="out of order"):
                 report = assert_scenario(
                     scenario,
@@ -125,19 +134,123 @@ class ScenarioAssertionTest(unittest.TestCase):
                     "slow-member fault target is missing or invalid", report["errors"]
                 )
 
-    def test_quorum_loss_allows_no_success_in_active_window(self):
+    def test_quorum_loss_rejects_success_started_in_blocked_window(self):
         records = [
-            result("router-a", "2026-01-01T00:00:02+00:00", Outcome.SUCCESS),
+            result("router-a", "2026-01-01T00:00:02.500000+00:00", Outcome.SUCCESS),
             result("router-a", "2026-01-01T00:00:05+00:00", Outcome.SUCCESS),
         ]
         events = [
             {"phase": "fault_begin", "at": "2026-01-01T00:00:00+00:00"},
             {"phase": "fault_active", "at": "2026-01-01T00:00:01+00:00"},
+            {"phase": "quorum_blocked", "at": "2026-01-01T00:00:02+00:00"},
             {"phase": "quorum_restore_begin", "at": "2026-01-01T00:00:03+00:00"},
             {"phase": "fault_end", "at": "2026-01-01T00:00:04+00:00"},
         ]
         report = assert_scenario("quorum-loss", records, events)
         self.assertIn("write succeeded without quorum", report["errors"])
+        self.assertEqual(
+            report["quorum_loss_windows"]["blocked"]["outcomes"]["SUCCESS"], 1
+        )
+
+    def test_quorum_loss_allows_and_counts_success_wholly_in_grace_period(self):
+        records = [
+            interval_result(
+                "router-a",
+                "2026-01-01T00:00:01.250000+00:00",
+                "2026-01-01T00:00:01.750000+00:00",
+                Outcome.SUCCESS,
+            ),
+            result("router-a", "2026-01-01T00:00:05+00:00", Outcome.SUCCESS),
+        ]
+        events = [
+            {"phase": "fault_begin", "at": "2026-01-01T00:00:00+00:00"},
+            {"phase": "fault_active", "at": "2026-01-01T00:00:01+00:00"},
+            {"phase": "quorum_blocked", "at": "2026-01-01T00:00:02+00:00"},
+            {"phase": "quorum_restore_begin", "at": "2026-01-01T00:00:03+00:00"},
+            {"phase": "fault_end", "at": "2026-01-01T00:00:04+00:00"},
+        ]
+
+        report = assert_scenario("quorum-loss", records, events)
+
+        self.assertEqual(report["errors"], [])
+        self.assertEqual(
+            report["quorum_loss_windows"],
+            {
+                "grace": {
+                    "start_at": "2026-01-01T00:00:01+00:00",
+                    "end_at": "2026-01-01T00:00:02+00:00",
+                    "duration_ms": 1000,
+                    "attempts": 1,
+                    "outcomes": {"SUCCESS": 1, "FAILURE": 0, "UNKNOWN": 0},
+                },
+                "blocked": {
+                    "start_at": "2026-01-01T00:00:02+00:00",
+                    "end_at": "2026-01-01T00:00:03+00:00",
+                    "duration_ms": 1000,
+                    "attempts": 0,
+                    "outcomes": {"SUCCESS": 0, "FAILURE": 0, "UNKNOWN": 0},
+                },
+            },
+        )
+
+    def test_quorum_loss_requires_one_well_formed_blocked_event(self):
+        base = [
+            {"phase": "fault_begin", "at": "2026-01-01T00:00:00+00:00"},
+            {"phase": "fault_active", "at": "2026-01-01T00:00:01+00:00"},
+            {"phase": "quorum_restore_begin", "at": "2026-01-01T00:00:03+00:00"},
+            {"phase": "fault_end", "at": "2026-01-01T00:00:04+00:00"},
+        ]
+        variants = (
+            base,
+            [*base[:2],
+             {"phase": "quorum_blocked", "at": "2026-01-01T00:00:02+00:00"},
+             {"phase": "quorum_blocked", "at": "2026-01-01T00:00:02.500000+00:00"},
+             *base[2:]],
+            [*base[:2], {"phase": "quorum_blocked", "at": []}, *base[2:]],
+        )
+        records = [result("router-a", "2026-01-01T00:00:05+00:00", Outcome.SUCCESS)]
+
+        for events in variants:
+            with self.subTest(events=events):
+                report = assert_scenario("quorum-loss", records, events)
+                self.assertFalse(report["ok"])
+                self.assertIn(
+                    "expected exactly one quorum_blocked event", report["errors"]
+                )
+
+    def test_quorum_loss_requires_ordered_blocked_lifecycle(self):
+        records = [result("router-a", "2026-01-01T00:00:06+00:00", Outcome.SUCCESS)]
+        timestamps = (
+            ("2026-01-01T00:00:00+00:00", "2026-01-01T00:00:02+00:00", "2026-01-01T00:00:01+00:00", "2026-01-01T00:00:03+00:00", "2026-01-01T00:00:04+00:00"),
+            ("2026-01-01T00:00:00+00:00", "2026-01-01T00:00:01+00:00", "2026-01-01T00:00:04+00:00", "2026-01-01T00:00:03+00:00", "2026-01-01T00:00:05+00:00"),
+            ("2026-01-01T00:00:00+00:00", "2026-01-01T00:00:01+00:00", "2026-01-01T00:00:02+00:00", "2026-01-01T00:00:05+00:00", "2026-01-01T00:00:04+00:00"),
+        )
+        for begin, active, blocked, restore, ended in timestamps:
+            with self.subTest(blocked=blocked, restore=restore, ended=ended):
+                events = [
+                    {"phase": "fault_begin", "at": begin},
+                    {"phase": "fault_active", "at": active},
+                    {"phase": "quorum_blocked", "at": blocked},
+                    {"phase": "quorum_restore_begin", "at": restore},
+                    {"phase": "fault_end", "at": ended},
+                ]
+                report = assert_scenario("quorum-loss", records, events)
+                self.assertIn(
+                    "quorum-loss lifecycle events are out of order", report["errors"]
+                )
+
+    def test_quorum_loss_still_requires_success_after_fault_end(self):
+        events = [
+            {"phase": "fault_begin", "at": "2026-01-01T00:00:00+00:00"},
+            {"phase": "fault_active", "at": "2026-01-01T00:00:01+00:00"},
+            {"phase": "quorum_blocked", "at": "2026-01-01T00:00:02+00:00"},
+            {"phase": "quorum_restore_begin", "at": "2026-01-01T00:00:03+00:00"},
+            {"phase": "fault_end", "at": "2026-01-01T00:00:04+00:00"},
+        ]
+
+        report = assert_scenario("quorum-loss", [], events)
+
+        self.assertIn("writes did not resume after quorum restoration", report["errors"])
 
     def test_router_failure_requires_router_b_success(self):
         records = [result("router-b", "2026-01-01T00:00:02+00:00", Outcome.SUCCESS)]

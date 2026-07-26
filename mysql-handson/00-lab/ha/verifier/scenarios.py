@@ -125,20 +125,34 @@ def assert_scenario(
     end_phase = "quorum_restore_begin" if scenario == "quorum-loss" else "fault_end"
     window_end_at = _single_phase(parsed_events, end_phase, errors)
     fault_end_at = _single_phase(parsed_events, "fault_end", errors)
-    if (
+    blocked_at = (
+        _single_phase(parsed_events, "quorum_blocked", errors)
+        if scenario == "quorum-loss"
+        else None
+    )
+    if scenario == "quorum-loss":
+        if (
+            begin_at is not None
+            and active_at is not None
+            and blocked_at is not None
+            and window_end_at is not None
+            and fault_end_at is not None
+            and not (
+                begin_at
+                <= active_at
+                <= blocked_at
+                <= window_end_at
+                <= fault_end_at
+            )
+        ):
+            errors.append("quorum-loss lifecycle events are out of order")
+    elif (
         begin_at is not None
         and active_at is not None
         and window_end_at is not None
         and not (begin_at <= active_at <= window_end_at)
     ):
         errors.append("scenario lifecycle events are out of order")
-    if (
-        scenario == "quorum-loss"
-        and window_end_at is not None
-        and fault_end_at is not None
-        and fault_end_at < window_end_at
-    ):
-        errors.append("quorum restoration events are out of order")
 
     parsed_records = _successful_records(records, errors)
     during = [
@@ -160,8 +174,53 @@ def assert_scenario(
         record for record in attempts_started_during if record.outcome is Outcome.SUCCESS
     ]
 
+    quorum_loss_windows: dict[str, Any] = {}
+    blocked_attempts: list[LedgerRecord] = []
+    if (
+        scenario == "quorum-loss"
+        and active_at is not None
+        and blocked_at is not None
+        and window_end_at is not None
+        and active_at <= blocked_at <= window_end_at
+    ):
+        grace_attempts = [
+            record
+            for record, started_at, finished_at in parsed_records
+            if active_at <= started_at < blocked_at and finished_at <= blocked_at
+        ]
+        blocked_attempts = [
+            record
+            for record, started_at, finished_at in parsed_records
+            if blocked_at <= started_at and finished_at <= window_end_at
+        ]
+
+        def window_report(
+            start_at: datetime,
+            end_at: datetime,
+            window_records: list[LedgerRecord],
+        ) -> dict[str, Any]:
+            return {
+                "start_at": start_at.isoformat(),
+                "end_at": end_at.isoformat(),
+                "duration_ms": int((end_at - start_at).total_seconds() * 1000),
+                "attempts": len(window_records),
+                "outcomes": {
+                    outcome.value: sum(
+                        record.outcome is outcome for record in window_records
+                    )
+                    for outcome in Outcome
+                },
+            }
+
+        quorum_loss_windows = {
+            "grace": window_report(active_at, blocked_at, grace_attempts),
+            "blocked": window_report(
+                blocked_at, window_end_at, blocked_attempts
+            ),
+        }
+
     if scenario == "quorum-loss":
-        if any(record.outcome is Outcome.SUCCESS for record in attempts_started_during):
+        if any(record.outcome is Outcome.SUCCESS for record in blocked_attempts):
             errors.append("write succeeded without quorum")
         if fault_end_at is not None and not any(
             record.outcome is Outcome.SUCCESS and finished_at > fault_end_at
@@ -341,6 +400,7 @@ def assert_scenario(
         "metrics": metric_summary,
         "fencing": fencing if isinstance(fencing, dict) else {},
         "session": session if isinstance(session, dict) else {},
+        "quorum_loss_windows": quorum_loss_windows,
         "during": {
             outcome.value: sum(record.outcome is outcome for record in during)
             for outcome in Outcome
