@@ -1,0 +1,29 @@
+services:
+  canal-adapter-server:
+    image: canal/canal-server:v1.1.8
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - target: 11111
+        published: "11121"
+        host_ip: 127.0.0.1
+      - target: 11112
+        published: "11122"
+        host_ip: 127.0.0.1
+    volumes:
+      - ./canal-adapter-server/canal.properties:/home/admin/canal-server/conf/canal.properties:ro
+      - ./canal-adapter-server/instance.properties:/home/admin/canal-server/conf/products_adapter/instance.properties:ro
+
+  canal-adapter:
+    build:
+      context: ./canal-adapter
+    depends_on:
+      canal-adapter-server:
+        condition: service_started
+      elasticsearch:
+        condition: service_healthy
+    ports:
+      - target: 8081
+        published: "8084"
+        host_ip: 127.0.0.1

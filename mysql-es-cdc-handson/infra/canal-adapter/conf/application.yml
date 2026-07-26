@@ -1,0 +1,39 @@
+server:
+  port: 8081
+
+spring:
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: UTC
+    default-property-inclusion: non_null
+
+canal.conf:
+  mode: tcp
+  flatMessage: true
+  syncBatchSize: 1000
+  retries: 0
+  timeout:
+  accessKey:
+  secretKey:
+  consumerProperties:
+    canal.tcp.server.host: canal-adapter-server:11111
+    canal.tcp.zookeeper.hosts:
+    canal.tcp.batch.size: 500
+    canal.tcp.username:
+    canal.tcp.password:
+  srcDataSources:
+    defaultDS:
+      url: jdbc:mysql://mysql:3306/product_catalog?useUnicode=true&serverTimezone=UTC
+      username: product
+      password: productpass
+  canalAdapters:
+    - instance: products_adapter
+      groups:
+        - groupId: g1
+          outerAdapters:
+            - name: es8
+              hosts: elasticsearch:9200
+              properties:
+                mode: rest
+                security.auth:
+                cluster.name: docker-cluster
