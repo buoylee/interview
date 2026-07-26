@@ -1,6 +1,6 @@
 DC := docker compose --project-name mysql-ha --file compose.yml
 
-.PHONY: config up-db down reset ps logs up bootstrap routers init status switchover mysql-a mysql-b workload-start workload-stop workload-once workload-burst test verify fault restore scenario
+.PHONY: config up-db down reset ps logs up bootstrap routers init status switchover mysql-a mysql-b workload-start workload-stop workload-once workload-burst test verify fault restore scenario recovery-complete-outage
 
 config:
 	$(DC) config --quiet
@@ -88,3 +88,6 @@ restore:
 
 scenario:
 	./scenarios/run.sh $${SCENARIO:?set SCENARIO}
+
+recovery-complete-outage:
+	./scenarios/complete-outage.sh
