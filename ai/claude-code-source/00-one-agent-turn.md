@@ -56,6 +56,8 @@ flowchart TD
 
 A5–A7 的 canonical 名称和边仍以本图为准；它们怎样从 inert Tool Intent 经过 runtime control 变成 same-ID Tool Observation，由 [02：Controlled Effects 总览](02-controlled-effects/README.md) 沿 E1–E8 深入展开。
 
+当 A5 的具体意图是 `Agent` 时，它仍先进入 A6 的普通 Tool resolution、hooks 与 Permission；`AgentTool` 只是在这条 A5–A7 边内部打开 D1–D7：构造隔离 child Query Loop、管理显式 task lifecycle，再把 normalized child result 交回 parent A7。Parent 随后仍由 A8 经 A2 → A3 继续，不会接管 child mutable runtime。这个 delegated variant 由 [04：Subagent Delegation](04-subagent-delegation/README.md) 展开；本图仍是唯一权威 A1–A8 map。
+
 ### 1.2 每条箭头表达什么
 
 | 箭头 | 因果含义 |

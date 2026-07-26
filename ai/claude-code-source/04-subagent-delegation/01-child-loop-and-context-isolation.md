@@ -1,5 +1,7 @@
 # Child Loop 与 Context Isolation：一次 Tool 调用里的第二个 Query Loop
 
+[← 返回 Part 04 总览](README.md) · [下一篇：Foreground / Background Lifecycle](02-foreground-background-lifecycle.md)
+
 ## 1. 先看全景：为什么不是调用一个函数
 
 > 父 Agent 发出 Agent Tool Intent 后，Claude Code 为什么不是调用一个函数，而是构造并运行另一个受约束的 agent loop？
@@ -553,9 +555,9 @@ child loop 适合有明确输入、有限搜索空间和可压缩输出的任务
 
 ## 13. 阅读衔接与下一问
 
-如果对“消息为什么分为 model context、transcript 与 runtime state”还不牢，先返回 [Session Continuity 总览](../03-session-continuity/README.md)。本章是在那个区分之上，再增加 parent / child 两套所有权。
+如果对“消息为什么分为 model context、transcript 与 runtime state”还不牢，先返回 [Session Continuity 总览](../03-session-continuity/README.md)。本章是在那个区分之上，再增加 parent / child 两套所有权；完整 D1–D8 定位见 [Part 04 总览](README.md)。
 
-未来生命周期章节接手的问题可以先用纯文本固定：
+[下一篇：Foreground / Background Lifecycle](02-foreground-background-lifecycle.md) 接手同一个 child task 的等待与交付时序：
 
 ```text
 foreground child
@@ -574,3 +576,5 @@ background child
 ```
 
 由此留下下一问：**同一个语义上的 child task 改为 background 后，哪些只是交付时序改变，哪些 lifecycle owner、取消与结果回流路径必须随之改变？**
+
+[← 返回 Part 04 总览](README.md) · [下一篇：Foreground / Background Lifecycle](02-foreground-background-lifecycle.md)

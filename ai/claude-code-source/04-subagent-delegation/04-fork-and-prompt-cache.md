@@ -1,5 +1,7 @@
 # Fork / Prompt Cache：复用前缀，按 Mode 划分 Runtime Ownership
 
+[← 上一篇：Agent Communication / Result Return](03-communication-and-result-return.md) · [返回 Part 04 总览](README.md)
+
 ## 1. 先守住不变量：fork 是 D2 / D3 的优化分支
 
 上一篇 [Agent Communication / Result Return](./03-communication-and-result-return.md) 留下的问题是：父 Agent 已经拥有一段很长的 system prompt、Tool schemas 与 conversation prefix，启动 child 时能否复用这些输入，同时仍保持 child isolation？
@@ -542,8 +544,10 @@ then rejoin the same Query Loop and parent result contract.
 
 ## 12. 回到主学习路径
 
-本文从上一篇的 result boundary 接手：running communication、terminal registry、notification 与 `TaskOutput` 的完整时序见 [Agent Communication / Result Return](./03-communication-and-result-return.md)。
+本文从上一篇的 result boundary 接手：running communication、terminal registry、notification 与 `TaskOutput` 的完整时序见 [Agent Communication / Result Return](03-communication-and-result-return.md)；完整 D1–D8 定位见 [Part 04 总览](README.md)。
 
 K8 已经重新接回 D7 / D8：background 可用时，implicit fork 的 launch acknowledgement与later terminal data进入 parent Tool / later-turn contract；global background-disable 时，同一次 Agent Tool call 直接返回 terminal Observation。两条路最终都回到 A7 Tool Observation 与 A8 parent next action。至此四篇机制文章已经闭合 child construction、lifecycle、communication/result 与 fork/cache 四条边界。
 
-下一步由未来的 Subagent Delegation integration overview 汇总 D1-D8、统一导航并把这条支线接回完整 A1-A8 学习主轴；该 overview 当前尚未创建，因此这里保留纯文本交接，不放置 broken forward link。
+至此 Part 04 已接回完整 A1–A8 学习主轴。下一站是未来的 `99-interview-playbook.md`；该文件创建前这里只保留纯文字方向，不创建链接。
+
+[← 上一篇：Agent Communication / Result Return](03-communication-and-result-return.md) · [返回 Part 04 总览](README.md)

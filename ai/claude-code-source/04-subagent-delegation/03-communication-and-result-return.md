@@ -1,5 +1,7 @@
 # Agent Communication / Result Return：消息如何跨越独立 Query Loop
 
+[← 上一篇：Foreground / Background Lifecycle](02-foreground-background-lifecycle.md) · [返回 Part 04 总览](README.md) · [下一篇：Fork / Prompt Cache](04-fork-and-prompt-cache.md)
+
 Agent 之间交换的是**由明确 owner 持有、经队列或结果归一化复制的数据**，不是共享 conversational memory。发送成功、收件人模型可见、收件人行动、任务 terminal、父模型看到结果是五个不同边界；任何一个先发生，都不能替另外四个背书。
 
 ```mermaid
@@ -462,17 +464,19 @@ accepted into queue
 
 ## 13. 阅读衔接与 fork / cache 交接
 
-如果 foreground/background 的 registration、terminal ordering、restart 与 result timing 还不清楚，先回到 [上一篇：Foreground / Background Lifecycle](./02-foreground-background-lifecycle.md)。本文接手其中的 communication / delivery 边界：local pending queue、resume、`TaskOutput`、notification drain 与 parent re-entry。
+如果 foreground/background 的 registration、terminal ordering、restart 与 result timing 还不清楚，先回到 [上一篇：Foreground / Background Lifecycle](02-foreground-background-lifecycle.md)；完整 D1–D8 定位见 [Part 04 总览](README.md)。本文接手其中的 communication / delivery 边界：local pending queue、resume、`TaskOutput`、notification drain 与 parent re-entry。
 
-下一篇 fork/cache 文章尚未创建，先用纯文本交接它必须回答的问题：
+[下一篇：Fork / Prompt Cache](04-fork-and-prompt-cache.md) 接手以下问题：
 
 ```text
 fork mode wants to reuse parent context efficiently
   -> which parent messages / system-prompt prefix are copied or reconstructed?
-  -> which cache-safe prefix metadata can be reused without sharing mutable history?
+  -> which cache-safe prefix inputs can be reused without sharing mutable history?
   -> where does child identity and isolated ToolUseContext begin?
   -> how are placeholder tool results / filtered messages kept structurally valid?
   -> when child terminal data rejoins the same normalized result and delivery paths?
 ```
 
 由此留下下一问：**fork mode 如何高效复用 parent context 与 prompt-cache prefix，同时仍让 child 保持独立 identity、mutable state 与 Query Loop？**
+
+[← 上一篇：Foreground / Background Lifecycle](02-foreground-background-lifecycle.md) · [返回 Part 04 总览](README.md) · [下一篇：Fork / Prompt Cache](04-fork-and-prompt-cache.md)

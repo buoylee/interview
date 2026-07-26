@@ -1,5 +1,7 @@
 # Foreground / Background Lifecycle：Task Registry 如何接管 Agent 执行
 
+[← 上一篇：Child Loop 与 Context Isolation](01-child-loop-and-context-isolation.md) · [返回 Part 04 总览](README.md) · [下一篇：Agent Communication / Result Return](03-communication-and-result-return.md)
+
 ## 1. 先看全景：execution mode 改变交付时序，不改语义边界
 
 上一篇 [Child Loop 与 Context Isolation](./01-child-loop-and-context-isolation.md) 已经建立了基本契约：父 Query Loop 发出 `Agent` Tool Intent，`AgentTool` 在内部运行另一个 child Query Loop，最后跨回父侧的是归一化数据，不是 child 的 messages、controller 或 live stack。
@@ -656,9 +658,9 @@ mode flag:   isBackgrounded false -> true
 
 ## 13. 阅读衔接与未来通信交接
 
-如果 parent / child 两套 Query Loop 与 context ownership 还不清楚，先回到 [上一篇：Child Loop 与 Context Isolation](./01-child-loop-and-context-isolation.md)。本文只接手 lifecycle：registration、mode、controller、terminal result 与 delivery timing。
+如果 parent / child 两套 Query Loop 与 context ownership 还不清楚，先回到 [上一篇：Child Loop 与 Context Isolation](01-child-loop-and-context-isolation.md)；完整 D1–D8 定位见 [Part 04 总览](README.md)。本文只接手 lifecycle：registration、mode、controller、terminal result 与 delivery timing。
 
-下一篇通信文章尚未创建，先用纯文本交接它必须回答的问题：
+[下一篇：Agent Communication / Result Return](03-communication-and-result-return.md) 接手以下边界：
 
 ```text
 running child communication
@@ -681,3 +683,5 @@ stopped or evicted child
 ```
 
 由此留下下一问：**parent、child 与 sibling task 如何交换消息并回收结果，同时仍保持各自 Query Loop 的 mutable state 隔离？**
+
+[← 上一篇：Child Loop 与 Context Isolation](01-child-loop-and-context-isolation.md) · [返回 Part 04 总览](README.md) · [下一篇：Agent Communication / Result Return](03-communication-and-result-return.md)

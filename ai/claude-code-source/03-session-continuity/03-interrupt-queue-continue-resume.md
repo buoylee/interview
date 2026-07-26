@@ -646,6 +646,6 @@ Transcript只能恢复可序列化messages与部分metadata。旧controller、ex
 
 下一问是：同一个parent loop怎样把工作委派给隔离的child loop，child拥有怎样独立的messages/controller/Tool lifecycle，parent又怎样通过pending notification或result attachment把child结果纳入自己的下一次模型决策？
 
-这属于 Part 04：Subagent Delegation。本文不提前展开child创建、mailbox、cancellation或result lifecycle，也不创建尚未落地的future link。
+这属于 [Part 04：Subagent Delegation](../04-subagent-delegation/README.md)。本文不提前展开child创建、mailbox、cancellation或result lifecycle；下一部分从普通 parent Tool boundary 接手这些机制。
 
-[← 上一章：Compaction](02-compaction.md) · [返回：Session Continuity 总览](README.md)
+[← 上一章：Compaction](02-compaction.md) · [返回：Session Continuity 总览](README.md) · [下一部分：Subagent Delegation](../04-subagent-delegation/README.md)

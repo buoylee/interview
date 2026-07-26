@@ -221,7 +221,7 @@ Interrupt 只能 signal active work并闭合 protocol state。已经完成、部
 | general request assembly 与 Query Loop semantics | [Model Turn](../01-model-turn/README.md) | session durability policy |
 | running Tool cancellation 与 result normalization | [Controlled Effects](../02-controlled-effects/README.md) | transcript recovery |
 
-Child task storage、mailbox、communication、cancellation和result return属于 Part 04：Subagent Delegation；当前只保留文字交接，不创建尚未存在的链接。
+Child task storage、mailbox、communication、cancellation和result return属于 [Part 04：Subagent Delegation](../04-subagent-delegation/README.md)；当前部分只负责 parent-facing projection与recovery，不展开child lifecycle internals。
 
 ## 7. 决定性源码坐标
 
@@ -240,6 +240,6 @@ Child task storage、mailbox、communication、cancellation和result return属�
 2. [Compaction](02-compaction.md)：再看 context pressure 怎样把旧 projection 变成 boundary、summary、tail与 metadata；
 3. [Interrupt / Queue / Continue / Resume](03-interrupt-queue-continue-resume.md)：最后看 active cancellation、queued steering、session selection、repair与 fresh-runtime reconstruction。
 
-读完第三篇后，下一部分将进入 Part 04：Subagent Delegation，解释 parent loop 如何通过显式任务、通信与结果边界接回 child work。该部分尚未创建，因此这里不提供链接。
+读完第三篇后，进入 [Part 04：Subagent Delegation](../04-subagent-delegation/README.md)，解释 parent loop 如何通过显式任务、通信与结果边界接回 child work。
 
 [← 上一部分：Controlled Effects](../02-controlled-effects/README.md) · [下一篇：Transcript 与 Model Context](01-transcript-and-model-context.md)
