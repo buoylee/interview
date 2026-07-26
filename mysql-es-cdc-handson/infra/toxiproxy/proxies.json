@@ -1,0 +1,20 @@
+[
+  {
+    "name": "elasticsearch",
+    "listen": "0.0.0.0:8666",
+    "upstream": "elasticsearch:9200",
+    "enabled": true
+  },
+  {
+    "name": "kafka",
+    "listen": "0.0.0.0:8667",
+    "upstream": "kafka:9094",
+    "enabled": true
+  },
+  {
+    "name": "canal-mysql",
+    "listen": "0.0.0.0:8668",
+    "upstream": "mysql:3306",
+    "enabled": true
+  }
+]

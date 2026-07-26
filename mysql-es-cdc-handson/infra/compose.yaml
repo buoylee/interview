@@ -1,0 +1,112 @@
+name: mysql-es-cdc-handson
+
+services:
+  mysql:
+    image: mysql:8.4.8
+    command: ["mysqld", "--defaults-extra-file=/etc/mysql/conf.d/cdc.cnf"]
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: product_catalog
+      MYSQL_USER: product
+      MYSQL_PASSWORD: productpass
+    ports: ["3308:3306"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql/conf.d/cdc.cnf:/etc/mysql/conf.d/cdc.cnf:ro
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-prootpass"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  kafka:
+    image: apache/kafka:4.1.2
+    hostname: kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: BROKER://:9092,CLIENT://:9094,EXTERNAL://:29092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: BROKER://kafka:9092,CLIENT://toxiproxy:8667,EXTERNAL://localhost:29092
+      KAFKA_INTER_BROKER_LISTENER_NAME: BROKER
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,BROKER:PLAINTEXT,CLIENT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    ports: ["29092:29092"]
+    volumes:
+      - kafka-data:/tmp/kraft-combined-logs
+    healthcheck:
+      test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "kafka:9092", "--list"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  kafka-init:
+    image: apache/kafka:4.1.2
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./kafka/create-topics.sh:/create-topics.sh:ro
+    entrypoint: ["/bin/bash", "/create-topics.sh"]
+
+  canal:
+    image: canal/canal-server:v1.1.8
+    command:
+      - /bin/bash
+      - -c
+      - chown admin:admin /home/admin/canal-data && exec /home/admin/app.sh
+    environment:
+      CANAL_AUTO_RESET_LATEST_POS_MODE: ${CANAL_AUTO_RESET_LATEST_POS_MODE:-false}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      toxiproxy:
+        condition: service_started
+    ports: ["11111:11111", "11112:11112"]
+    volumes:
+      - ./canal/canal.properties:/home/admin/canal-server/conf/canal.properties:ro
+      - ./canal/instance.properties:/home/admin/canal-server/conf/products/instance.properties:ro
+      - canal-data:/home/admin/canal-data
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    ports: ["9200:9200"]
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.12.0
+    command: ["-host=0.0.0.0", "-config=/config/proxies.json"]
+    ports: ["8474:8474", "8666:8666", "8667:8667", "8668:8668"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - ./toxiproxy/proxies.json:/config/proxies.json:ro
+
+volumes:
+  mysql-data:
+  kafka-data:
+  canal-data:
+  elasticsearch-data:
