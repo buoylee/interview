@@ -30,6 +30,8 @@ If implementation evidence contradicts the design, stop at the current milestone
 - Reconciliation owns an independent query, expected model, projector, canonicalizer, tests, and target reader.
 - A confirmed MySQL or Kafka log gap cannot be repaired by bounded document repair or offset skipping.
 - A MySQL binlog gap is not closed by rebuilding Elasticsearch alone. Canal must persist a new valid normal-mode cursor and publish the three-partition recovery anchor before rebuild can restore HEALTHY.
+- Canal 1.1.8 uses release-native `file-instance.xml`: `FailbackLogPositionManager` falls back from memory to `MetaLogPositionManager`, which reads the acknowledged MQ client cursor persisted by `FileMixedMetaManager` as destination-scoped `meta.dat`. The unwired `FileMixedLogPositionManager`/`parse.dat` path is not enabled because its MQ ACK/restart boundary has not been proven.
+- Canal 1.1.8 static-destination stop can throw at `CanalMQRunnable.future.cancel(true)` because `start(destinations)` did not set that future. One observed restart preserved the ACK cursor and offsets, but no general shutdown-safety claim follows; every restart gate must prove persisted cursor identity, unchanged Kafka end offsets, exact resume, and one next event.
 - All scenario waits are condition based and bounded. Fixed sleep is never a success criterion.
 - Stage and commit only files belonging to the current task. Preserve unrelated repository changes.
 
@@ -60,7 +62,7 @@ If implementation evidence contradicts the design, stop at the current milestone
 | Rebuild index | products_v3_YYYYMMDDhhmmss_hash | explicit physical shadow target |
 | Write alias | products_write | unfiltered, one write index |
 | Search alias | products_search | exact term filter searchable=true |
-| Cursor volume | canal-data | /home/admin/canal-data/products/parse.dat |
+| Cursor volume | canal-data | /home/admin/canal-data/products/meta.dat (acknowledged MQ client cursor used for parser resume) |
 
 ## Locked Migration Order
 

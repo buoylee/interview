@@ -961,6 +961,13 @@ done
 grep -Fq "canal.serverMode = kafka" infra/canal/canal.properties
 grep -Fq "canal.file.data.dir = /home/admin/canal-data" infra/canal/canal.properties
 grep -Fq 'canal.auto.reset.latest.pos.mode = ${CANAL_AUTO_RESET_LATEST_POS_MODE:false}' infra/canal/canal.properties
+grep -Fq "canal.instance.global.mode = spring" infra/canal/canal.properties
+grep -Fq "canal.instance.global.lazy = false" infra/canal/canal.properties
+grep -Fq "canal.instance.global.spring.xml = classpath:spring/file-instance.xml" \
+  infra/canal/canal.properties
+grep -Fq "chown admin:admin /home/admin/canal-data && exec /home/admin/app.sh" \
+  infra/compose.yaml
+grep -Fq "canal-data:/home/admin/canal-data" infra/compose.yaml
 grep -Fq "canal.mq.topic=product-search-revisions" infra/canal/instance.properties
 grep -Fq "canal.mq.partitionsNum=3" infra/canal/instance.properties
 grep -Fq "product_catalog.product_search_revision:product_id" \
@@ -1022,6 +1029,9 @@ canal.instance.transaction.size = 1024
 canal.instance.binlog.format = ROW
 canal.instance.binlog.image = FULL
 canal.instance.tsdb.enable = true
+canal.instance.global.mode = spring
+canal.instance.global.lazy = false
+canal.instance.global.spring.xml = classpath:spring/file-instance.xml
 canal.mq.servers = toxiproxy:8667
 canal.mq.retries = 3
 canal.mq.acks = all
@@ -1118,6 +1128,10 @@ services:
 
   canal:
     image: canal/canal-server:v1.1.8
+    command:
+      - /bin/bash
+      - -c
+      - chown admin:admin /home/admin/canal-data && exec /home/admin/app.sh
     environment:
       CANAL_AUTO_RESET_LATEST_POS_MODE: ${CANAL_AUTO_RESET_LATEST_POS_MODE:-false}
     depends_on:
@@ -1261,7 +1275,8 @@ Expected:
 - Elasticsearch cluster status is yellow or green.
 - Toxiproxy lists three enabled proxies.
 - Canal logs show destination products, MySQL endpoint toxiproxy:8668, and Kafka endpoint toxiproxy:8667 without authentication or binlog-format errors.
-- Canal writes the products destination cursor to `/home/admin/canal-data/products/parse.dat`; restarting only the Canal container preserves that file and resumes after its recorded position.
+- Canal 1.1.8 release-native `file-instance.xml` writes the acknowledged products MQ client cursor to `/home/admin/canal-data/products/meta.dat`; `MetaLogPositionManager` uses that same cursor for parser resume. Restarting only Canal must preserve its SHA-256 and decoded file/position, leave Kafka end offsets unchanged, log exact resume from that cursor, and publish the first post-restart mutation exactly once at the next offset.
+- The pinned server may log the known static-destination `CanalMQRunnable.future == null` stop NPE. This is an observed upstream limitation, not proof of harmless shutdown; acceptance depends on the cursor, offset, exact-resume, and exactly-next-event evidence above.
 
 - [ ] **Step 8: Commit the dependency stack**
 
@@ -1546,7 +1561,7 @@ Expected:
 - all layout, Compose, and Maven tests pass;
 - product 1001 is committed with revision 1;
 - evidence/m0/revision-message.json contains the matching Canal flat message;
-- evidence/m0/canal-position.json records the persisted `parse.dat` SHA-256 and decoded binlog file/position before and after a normal Canal restart;
+- evidence/m0/canal-position.json records the persisted `meta.dat` SHA-256 and decoded binlog file/position before and after a normal Canal restart;
 - product-service dependency tree has no Kafka or Elasticsearch client;
 - evidence/m0/version-manifest.json contains every pinned dependency image and no latest tag.
 
@@ -1563,7 +1578,9 @@ Do not start M1 until all of these are true:
 
 - make reset followed by make smoke-m0 succeeds twice consecutively;
 - Canal startup logs confirm ROW/FULL compatibility and the products destination;
-- a normal Canal restart preserves `/home/admin/canal-data/products/parse.dat` and consumes the first post-restart mutation without a duplicate or gap;
+- before normal Canal restart, the acknowledged cursor is persisted in `/home/admin/canal-data/products/meta.dat` and its SHA-256 plus decoded file/position are recorded;
+- a normal Canal restart preserves that exact hash and position, startup logs read the same cursor, Kafka end offsets do not change merely because of restart, and the first post-restart mutation appears exactly once at the expected next offset;
+- the known Canal 1.1.8 static-destination stop NPE is recorded as an upstream limitation and never generalized into a shutdown-safety guarantee;
 - Kafka topic has exactly three partitions;
 - revision 1 is produced only after the MySQL transaction commits;
 - rolling back a failed product transaction leaves no product_search_revision row;

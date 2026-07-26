@@ -546,9 +546,9 @@ git commit -m "test(cdc-lab): make scenario evidence transactional"
 
 Exact assertions:
 
-1. Normal restart: Canal container restarts, its pre-restart binlog file/position is recorded, one post-restart mutation reaches ES, no gap condition appears.
+1. Normal restart: before stopping Canal, prove the acknowledged `/home/admin/canal-data/products/meta.dat` cursor is persisted and record its hash/decoded position plus Kafka end offsets. After restart require the same hash/position, startup from that exact cursor, unchanged offsets caused by restart itself, and exactly one post-restart mutation at the next offset before it reaches ES. Record the known 1.1.8 static-destination `future == null` stop NPE if observed, without treating one successful restart as a universal shutdown guarantee.
 2. Within retention: mutate while Canal is stopped, prove the recorded binlog file still exists, start Canal, prove all revisions catch up without repair/rebuild.
-3. Beyond retention: prove the required binlog file is absent and Canal reports the missing position, activate `LOG_GAP`, require `REBUILD_REQUIRED`, restore retention, run M5's write-gated cursor rebootstrap and full rebuild, then require HEALTHY. Evidence must contain the old parse.dat SHA-256, old missing file/position, gate-stable reset file/position, normal-mode restart result, and first post-reset event in all three partitions. Rebuild-only recovery is a failure.
+3. Beyond retention: prove the required binlog file is absent and Canal reports the missing position, activate `LOG_GAP`, require `REBUILD_REQUIRED`, restore retention, run M5's write-gated cursor rebootstrap and full rebuild, then require HEALTHY. Evidence must contain the old `meta.dat` SHA-256, old missing file/position, gate-stable reset file/position, normal-mode restart hash/position and offset result, and first post-reset event in all three partitions. Rebuild-only recovery is a failure.
 4. Kafka unavailable: apply Kafka timeout toxic, mutate, prove Canal/consumer cannot advance and state is CATCHING_UP, remove toxic, require automatic convergence.
 5. Consumer offset expired: prove committed offset is below beginning offset, require automatic `LOG_GAP` detection and REBUILD_REQUIRED, restore retention and run M5.
 

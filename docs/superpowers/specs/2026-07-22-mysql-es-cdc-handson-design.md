@@ -512,8 +512,12 @@ O_start 必须早于数据库快照建立。这样：
 
 全量重建只修复 Elasticsearch 当前投影，不会自动修复仍指向已清理 binlog 的 Canal 源位点。确认 MySQL binlog 缺口后，恢复流程必须：
 
+本项目固定使用 Canal 1.1.8 release-native `classpath:spring/file-instance.xml`。该 wiring 的 parser position manager 是 `FailbackLogPositionManager(MemoryLogPositionManager, MetaLogPositionManager)`；`MetaLogPositionManager` 从 `FileMixedMetaManager` 读取已 ACK 的 MQ client cursor，后者将 destination 状态持久化为 `/home/admin/canal-data/products/meta.dat`。因此本设计把该 `meta.dat` 视为正常重启和 source-position recovery 的唯一 cursor contract。Canal 1.1.8 源码虽包含会写 `parse.dat` 的 `FileMixedLogPositionManager`，release `file-instance.xml` 并未 wiring 它；本项目不得自行启用，因为在没有端到端证据前，这会改变 MQ ACK 与 parser resume 的共同边界。
+
+Canal 1.1.8 还有一个受限的正常停止行为：静态 destination 由 `CanalMQStarter.start(destinations)` 通过 `executorService.execute(...)` 启动，没有设置 `CanalMQRunnable.future`；停止时 `stop(true)` 在 `future.cancel(true)` 处会因 `future == null` 抛出 NPE。本项目一次实测中，NPE 未损坏已 ACK 的 cursor 或 Kafka offset，但这不能推广为所有 shutdown 都无害。每次 restart 证据必须同时证明：停止前 cursor 已 ACK 并落盘；`meta.dat` 的 SHA-256 与解码 file/position 跨 restart 不变；restart 日志读取该 exact cursor；Kafka end offsets 不因 restart 改变；首个 post-restart 事件只出现一次且位于预期下一 offset。
+
 1. 关闭并持有业务写闸门，排空进行中的事实变更；
-2. 保存旧 Canal destination cursor、哈希和缺失 file/position 证据；
+2. 保存旧 Canal destination `meta.dat`、哈希和缺失 file/position 证据；
 3. 记录当前有效 MySQL file/position/GTID；
 4. 以一次性显式恢复模式让 Canal 落到当前有效位点，再恢复普通模式重启；
 5. 通过每个 Kafka partition 的 barrier 证明新 cursor 后的首批事件可达；
