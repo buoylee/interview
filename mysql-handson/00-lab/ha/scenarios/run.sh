@@ -58,6 +58,7 @@ wait_for_observers_ready() {
 
 make -C "$ROOT" reset
 make -C "$ROOT" up
+"${DC[@]}" build verifier
 make -C "$ROOT" workload-start
 sleep "${WARMUP_SECONDS:-5}"
 
