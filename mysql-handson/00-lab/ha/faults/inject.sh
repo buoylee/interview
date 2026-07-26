@@ -30,6 +30,40 @@ member_threshold() {
   printf '%s\n' "$value"
 }
 
+wait_for_quorum_blocked() {
+  local member="$1"
+  local timeout="${MYSQL_HA_QUORUM_BLOCK_TIMEOUT_SECONDS:-30}"
+  local deadline values offline_mode super_read_only member_state
+
+  validate_db_name "$member"
+  [[ "$timeout" =~ ^[1-9][0-9]*$ ]] \
+    || die "MYSQL_HA_QUORUM_BLOCK_TIMEOUT_SECONDS must be a positive integer"
+
+  # The 30-second production default comfortably exceeds the Lab's configured
+  # detection plus 5-second unreachable-majority timeout. Tests may shorten it.
+  deadline=$((SECONDS + timeout))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    values="$(
+      "${DC[@]}" exec -T "$member" mysql -uroot -p"$ROOT_PASSWORD" -Nse \
+        "SELECT @@offline_mode, @@super_read_only, COALESCE((SELECT MEMBER_STATE FROM performance_schema.replication_group_members WHERE MEMBER_ID = @@server_uuid), 'MISSING')" \
+        2>/dev/null || true
+    )"
+    if [ -n "$values" ]; then
+      read -r offline_mode super_read_only member_state <<< "$values"
+      case "$offline_mode:$super_read_only" in
+        0:1|1:0|1:1)
+          record_event quorum_blocked "$scenario" "$member"
+          return 0
+          ;;
+        0:0) ;;
+      esac
+    fi
+    sleep 1
+  done
+
+  die "Primary was not fenced before quorum-loss deadline: $member"
+}
+
 # Read-only preparation and validation must finish before the first event or mutation.
 case "$scenario" in
   planned-switchover)
@@ -120,8 +154,6 @@ case "$scenario" in
   quorum-loss)
     write_state
     "${DC[@]}" stop "${quorum_targets[@]}"
-    # Do not wait past the Lab's 5-second unreachable-majority timeout here.
-    # The running workload proves commits cannot complete without quorum.
     ;;
   slow-member)
     write_state
@@ -143,3 +175,7 @@ case "$scenario" in
 esac
 
 record_event fault_active "$scenario" "${target:-$targets}"
+
+if [ "$scenario" = quorum-loss ]; then
+  wait_for_quorum_blocked "$target"
+fi

@@ -30,6 +30,18 @@ class FaultScriptTest(unittest.TestCase):
             "  *\"exec -T db1\"*\"MEMBER_ROLE='SECONDARY'\"*) [ \"${FAKE_EMPTY_DB1_SECONDARY:-0}\" = 1 ] || { [ -z \"${FAKE_SECONDARIES:-}\" ] || printf '%s\\n' \"$FAKE_SECONDARIES\"; } ;;\n"
             "  *\"exec -T db2\"*\"MEMBER_ROLE='SECONDARY'\"*) [ -z \"${FAKE_SECONDARIES_DB2:-}\" ] || printf '%s\\n' \"$FAKE_SECONDARIES_DB2\" ;;\n"
             "  *\"COUNT(*) FROM performance_schema.replication_group_members\"*) printf '3\\n' ;;\n"
+            "  *\"@@offline_mode\"*)\n"
+            "    grep -q '\"phase\":\"fault_active\"' \"$FAKE_EVENTS_PATH\" || exit 10\n"
+            "    count=0\n"
+            "    [ ! -f \"$FAKE_FENCE_COUNT_PATH\" ] || count=\"$(sed -n '1p' \"$FAKE_FENCE_COUNT_PATH\")\"\n"
+            "    count=$((count + 1))\n"
+            "    printf '%s\\n' \"$count\" > \"$FAKE_FENCE_COUNT_PATH\"\n"
+            "    if [ \"${FAKE_FENCING_MODE:-never}\" = eventually ] && [ \"$count\" -ge 2 ]; then\n"
+            "      printf '1\\t0\\tERROR\\n'\n"
+            "    else\n"
+            "      printf '0\\t0\\tONLINE\\n'\n"
+            "    fi\n"
+            "    ;;\n"
             "  *\"network connect\"*) [ \"${FAKE_FAIL_NETWORK_CONNECT:-0}\" = 0 ] || exit 1 ;;\n"
             "  *\" stop db2 db3\"*) [ -f \"$FAKE_STATE_PATH\" ] && grep -q '\"phase\":\"fault_begin\"' \"$FAKE_EVENTS_PATH\" || exit 9 ;;\n"
             "  *inspect*) printf 'mysql-ha\\n' ;;\n"
@@ -44,6 +56,7 @@ class FaultScriptTest(unittest.TestCase):
             "FAKE_SECONDARIES": secondaries,
             "FAKE_STATE_PATH": str(root / "evidence/fault-state.env"),
             "FAKE_EVENTS_PATH": str(root / "evidence/events.jsonl"),
+            "FAKE_FENCE_COUNT_PATH": str(root / "fence-count"),
         }
         return temporary, root, log, environment
 
@@ -121,9 +134,11 @@ class FaultScriptTest(unittest.TestCase):
                 calls = log.read_text(encoding="utf-8") if log.exists() else ""
                 self.assertNotIn(" stop ", calls)
 
-    def test_quorum_loss_two_secondaries_stops_explicit_services_after_state(self):
+    def test_quorum_loss_polls_original_primary_until_fenced_then_records_blocked(self):
         temporary, root, log, environment = self.controlled_root("db2\ndb3")
         self.addCleanup(temporary.cleanup)
+        environment["FAKE_FENCING_MODE"] = "eventually"
+        environment["MYSQL_HA_QUORUM_BLOCK_TIMEOUT_SECONDS"] = "3"
 
         result = subprocess.run(
             ["/bin/bash", "faults/inject.sh", "quorum-loss"], cwd=root,
@@ -131,12 +146,38 @@ class FaultScriptTest(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(" stop db2 db3", log.read_text(encoding="utf-8"))
+        calls = log.read_text(encoding="utf-8")
+        self.assertIn(" stop db2 db3", calls)
+        fencing_calls = [line for line in calls.splitlines() if "@@offline_mode" in line]
+        self.assertGreaterEqual(len(fencing_calls), 2)
+        self.assertTrue(all("exec -T db1" in line for line in fencing_calls), fencing_calls)
+        self.assertLess(calls.index(" stop db2 db3"), calls.index("@@offline_mode"))
         state = (root / "evidence/fault-state.env").read_text(encoding="utf-8")
         self.assertIn("TARGETS=db2,db3\n", state)
         phases = [line.split('"phase":"', 1)[1].split('"', 1)[0]
                   for line in (root / "evidence/events.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(phases, ["fault_begin", "fault_active", "quorum_blocked"])
+        self.assertEqual(phases.count("quorum_blocked"), 1)
+
+    def test_quorum_loss_timeout_retains_state_without_blocked_event(self):
+        temporary, root, log, environment = self.controlled_root("db2\ndb3")
+        self.addCleanup(temporary.cleanup)
+        environment["FAKE_FENCING_MODE"] = "never"
+        environment["MYSQL_HA_QUORUM_BLOCK_TIMEOUT_SECONDS"] = "1"
+
+        result = subprocess.run(
+            ["/bin/bash", "faults/inject.sh", "quorum-loss"], cwd=root,
+            env=environment, text=True, capture_output=True,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue((root / "evidence/fault-state.env").exists())
+        self.assertIn(" stop db2 db3", log.read_text(encoding="utf-8"))
+        phases = [line.split('"phase":"', 1)[1].split('"', 1)[0]
+                  for line in (root / "evidence/events.jsonl").read_text(encoding="utf-8").splitlines()]
         self.assertEqual(phases, ["fault_begin", "fault_active"])
+        self.assertNotIn("quorum_blocked", phases)
+        self.assertNotIn("fault_end", phases)
 
     def test_primary_member_skips_empty_success_and_uses_next_seed(self):
         temporary, root, _log, environment = self.controlled_root()
