@@ -12,6 +12,7 @@ COPY config /app/config
 COPY init /app/init
 COPY bootstrap /app/bootstrap
 COPY faults /app/faults
+COPY scenarios /app/scenarios
 COPY tools /app/tools
 ENV PYTHONPATH=/app
 CMD ["python", "-m", "workload.runner", "--help"]

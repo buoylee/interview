@@ -40,17 +40,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
-wait_for_session_ready() {
+wait_for_observers_ready() {
   local _
   for _ in $(seq 1 100); do
-    [ -f "$ROOT/evidence/session-ready" ] && return 0
-    if ! kill -0 "$session_pid" 2>/dev/null; then
-      wait "$session_pid"
-      return 1
+    if [ -f "$ROOT/evidence/session-ready" ] && [ -f "$ROOT/evidence/timeline-ready" ]; then
+      if ! kill -0 "$watcher_pid" 2>/dev/null; then wait "$watcher_pid"; return 1; fi
+      if ! kill -0 "$session_pid" 2>/dev/null; then wait "$session_pid"; return 1; fi
+      return 0
     fi
+    if ! kill -0 "$watcher_pid" 2>/dev/null; then wait "$watcher_pid"; return 1; fi
+    if ! kill -0 "$session_pid" 2>/dev/null; then wait "$session_pid"; return 1; fi
     sleep 0.05
   done
-  echo "session probe did not become ready" >&2
+  echo "scenario observers did not become ready" >&2
   return 1
 }
 
@@ -70,7 +72,7 @@ if [[ "$scenario" = planned-switchover || "$scenario" = primary-crash || "$scena
   watcher_pid=$!
   "${DC[@]}" run --rm verifier python -m verifier.session_probe --router router-a &
   session_pid=$!
-  wait_for_session_ready
+  wait_for_observers_ready
 fi
 
 if [ "$scenario" = slow-member ]; then

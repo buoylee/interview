@@ -120,13 +120,24 @@ def assert_scenario(
         errors.append(f"unsupported scenario: {scenario}")
 
     parsed_events = _timestamped_events(events, errors)
+    begin_at = _single_phase(parsed_events, "fault_begin", errors)
     active_at = _single_phase(parsed_events, "fault_active", errors)
     end_phase = "quorum_restore_begin" if scenario == "quorum-loss" else "fault_end"
     window_end_at = _single_phase(parsed_events, end_phase, errors)
     fault_end_at = _single_phase(parsed_events, "fault_end", errors)
-    if active_at is not None and window_end_at is not None and window_end_at < active_at:
-        errors.append("scenario event window is out of order")
-    if scenario == "quorum-loss" and window_end_at and fault_end_at and fault_end_at < window_end_at:
+    if (
+        begin_at is not None
+        and active_at is not None
+        and window_end_at is not None
+        and not (begin_at <= active_at <= window_end_at)
+    ):
+        errors.append("scenario lifecycle events are out of order")
+    if (
+        scenario == "quorum-loss"
+        and window_end_at is not None
+        and fault_end_at is not None
+        and fault_end_at < window_end_at
+    ):
         errors.append("quorum restoration events are out of order")
 
     parsed_records = _successful_records(records, errors)
@@ -191,31 +202,36 @@ def assert_scenario(
 
     metric_summary: dict[str, Any] = {}
     if scenario == "slow-member":
+        active_events = [
+            event for event, _ in parsed_events if event["phase"] == "fault_active"
+        ]
+        target = active_events[0].get("target") if len(active_events) == 1 else None
+        if target not in {"db1", "db2", "db3"}:
+            errors.append("slow-member fault target is missing or invalid")
         before_metrics = _metric_snapshot(metrics or [], "before", errors)
         active_metrics = _metric_snapshot(metrics or [], "active", errors)
-        if before_metrics is not None and active_metrics is not None:
+        if (
+            target is not None
+            and before_metrics is not None
+            and active_metrics is not None
+        ):
             try:
                 before_members = before_metrics["members"]
                 active_members = active_metrics["members"]
-                before_queue = max(
-                    int(member["applier_queue"])
-                    for member in before_members.values()
+                before_member = before_members[target]
+                active_member = active_members[target]
+                before_queue = int(before_member["applier_queue"])
+                active_queue = int(active_member["applier_queue"])
+                active_threshold = int(
+                    active_member["flow_control_applier_threshold"]
                 )
-                active_queue = max(
-                    int(member["applier_queue"])
-                    for member in active_members.values()
+                flow_control_triggered = (
+                    str(active_member["flow_control_mode"]) == "QUOTA"
+                    and active_queue >= active_threshold
                 )
-                active_threshold = min(
-                    int(member["flow_control_applier_threshold"])
-                    for member in active_members.values()
-                )
-                flow_control_triggered = any(
-                    str(member["flow_control_mode"]) == "QUOTA"
-                    and int(member["applier_queue"])
-                    >= int(member["flow_control_applier_threshold"])
-                    for member in active_members.values()
-                )
-            except (KeyError, TypeError, ValueError):
+            except KeyError:
+                errors.append("slow-member target metrics are missing")
+            except (TypeError, ValueError):
                 errors.append("slow-member metric snapshot is malformed")
             else:
                 before_latencies = [
@@ -234,6 +250,7 @@ def assert_scenario(
                     and active_at <= finished_at <= window_end_at
                 ]
                 metric_summary = {
+                    "target": target,
                     "applier_queue_delta": active_queue - before_queue,
                     "active_applier_queue": active_queue,
                     "active_threshold": active_threshold,
@@ -273,7 +290,6 @@ def assert_scenario(
                 "router_ready",
             )
         }
-        begin_at = _single_phase(parsed_events, "fault_begin", errors)
         router_ready_at = points["router_ready"]
         app_success = None
         if begin_at is not None and all(value is not None for value in points.values()):

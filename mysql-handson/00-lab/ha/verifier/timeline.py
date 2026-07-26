@@ -102,6 +102,10 @@ def main() -> None:
     events = args.evidence_dir / "events.jsonl"
     output = args.evidence_dir / "timeline.jsonl"
     deadline = time.monotonic() + args.timeout_seconds
+    args.evidence_dir.mkdir(parents=True, exist_ok=True)
+    (args.evidence_dir / "timeline-ready").write_text(
+        f"{args.old_primary}\n", encoding="utf-8"
+    )
     try:
         wait_for_phase(events, "fault_begin", deadline)
     except Exception as error:

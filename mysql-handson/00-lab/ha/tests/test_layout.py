@@ -89,6 +89,11 @@ class LayoutTest(unittest.TestCase):
         self.assertIn("mysql-shell-8.4.10-1.el9", text)
         self.assertIn("mysql-community-client-8.4.10-1.el9", text)
 
+    def test_workload_image_copies_the_scenario_runner(self):
+        """Catches an image that cannot execute the runner regression suite."""
+        text = (ROOT / "workload/Dockerfile").read_text(encoding="utf-8")
+        self.assertIn("COPY scenarios /app/scenarios", text)
+
 
 if __name__ == "__main__":
     unittest.main()
