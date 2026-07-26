@@ -3,6 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 source scenarios/scripts/lib-m1-log-window.sh
+source scenarios/scripts/lib-m1-mapping-proof.sh
 
 compose=(docker compose -f infra/compose.yaml -f infra/compose.adapter.yaml)
 max_attempts="${M1_VERIFY_MAX_ATTEMPTS:-30}"
@@ -11,10 +12,13 @@ top_output=$(mktemp "${TMPDIR:-/tmp}/m1-top.XXXXXX")
 server_log=$(mktemp "${TMPDIR:-/tmp}/m1-server.XXXXXX")
 adapter_log=$(mktemp "${TMPDIR:-/tmp}/m1-adapter.XXXXXX")
 http_body=$(mktemp "${TMPDIR:-/tmp}/m1-http.XXXXXX")
-trap 'rm -f "$top_output" "$server_log" "$adapter_log" "$http_body"' EXIT
+mapping_proof_capture=$(mktemp "${TMPDIR:-/tmp}/m1-mapping-proof.XXXXXX")
+trap 'rm -f "$top_output" "$server_log" "$adapter_log" "$http_body" "$mapping_proof_capture"' EXIT
 
 capture_runtime() {
-  adapter_snapshot=$(current_java_process_state canal-adapter canal-adapter snapshot) &&
+  rm -f "$mapping_proof_capture" &&
+    adapter_container_before=$(current_container_id canal-adapter) &&
+    adapter_snapshot=$(current_java_process_state canal-adapter canal-adapter snapshot) &&
     server_snapshot=$(current_java_process_state canal-adapter-server otter-canal snapshot) &&
     IFS='|' read -r adapter_pid adapter_start_ticks adapter_cutoff adapter_extra <<<"$adapter_snapshot" &&
     IFS='|' read -r server_pid server_start_ticks server_cutoff server_extra <<<"$server_snapshot" &&
@@ -33,10 +37,28 @@ capture_runtime() {
     "${compose[@]}" exec -T canal-adapter \
       cat /opt/canal-adapter/logs/adapter/adapter.log \
       >"$adapter_log" 2>/dev/null &&
+    adapter_mapping_load_is_current "$adapter_cutoff" "$adapter_log" &&
+    workspace_mapping_sha=$(sha256sum infra/canal-adapter/conf/es8/products.yml | awk '{ print $1 }') &&
+    container_mapping_sha=$("${compose[@]}" exec -T canal-adapter \
+      sha256sum /opt/canal-adapter/conf/es8/products.yml | awk '{ print $1 }') &&
+    test "$workspace_mapping_sha" = "$container_mapping_sha" &&
     adapter_identity_after=$(current_java_process_state canal-adapter canal-adapter identity) &&
     server_identity_after=$(current_java_process_state canal-adapter-server otter-canal identity) &&
+    adapter_container_after=$(current_container_id canal-adapter) &&
     process_identity_is_unchanged "$adapter_identity" "$adapter_identity_after" &&
-    process_identity_is_unchanged "$server_identity" "$server_identity_after"
+    process_identity_is_unchanged "$server_identity" "$server_identity_after" &&
+    write_pre_behavior_mapping_proof_atomically "$mapping_proof_capture" \
+      "$adapter_container_before" "$adapter_identity" "$adapter_cutoff" "$adapter_log" \
+      "$workspace_mapping_sha" "$container_mapping_sha" \
+      "$adapter_identity_after" "$adapter_container_after"
+}
+
+current_container_id() {
+  local service="$1"
+  local container_id
+  container_id=$("${compose[@]}" ps -q "$service" | tr -d '\r\n')
+  m1_is_container_id "$container_id"
+  printf '%s\n' "$container_id"
 }
 
 current_java_process_state() {
@@ -144,13 +166,50 @@ adapter_worker_is_started() {
 }
 
 formal_mapping_is_loaded() {
-  local host_mapping_sha container_mapping_sha
+  jq -e \
+    --arg container "$adapter_container_before" \
+    --arg identity "$adapter_identity" \
+    --arg cutoff "$adapter_cutoff" \
+    --arg sha "$workspace_mapping_sha" '
+    .contract == "m1-adapter-baseline-continuity-v1" and
+    .phase == "pre_behavior" and
+    .container_id == $container and
+    .java_identity == $identity and
+    .java_cutoff_utc == $cutoff and
+    .workspace_mapping_sha256 == $sha and
+    .container_mapping_sha256 == $sha and
+    .loader_assertions.start_loading_after_cutoff == true and
+    .loader_assertions.loaded_after_cutoff == true and
+    .identity_stable_during_precheck == true and
+    .baseline_continuity_verified == false
+  ' "$mapping_proof_capture" >/dev/null
+}
 
-  host_mapping_sha=$(sha256sum infra/canal-adapter/conf/es8/products.yml | awk '{ print $1 }') &&
-    container_mapping_sha=$("${compose[@]}" exec -T canal-adapter \
+publish_pre_behavior_mapping_proof() {
+  local output="${M1_MAPPING_PROOF_OUTPUT:-}"
+  test -n "$output" || return 0
+
+  write_pre_behavior_mapping_proof_atomically "$output" \
+    "$adapter_container_before" "$adapter_identity" "$adapter_cutoff" "$adapter_log" \
+    "$workspace_mapping_sha" "$container_mapping_sha" \
+    "$adapter_identity_after" "$adapter_container_after"
+}
+
+verify_mapping_continuity_live() {
+  local pre_proof="$1"
+  local output="$2"
+  local post_container_before post_identity_before post_mapping_sha
+  local post_identity_after post_container_after
+
+  post_container_before=$(current_container_id canal-adapter) &&
+    post_identity_before=$(current_java_process_state canal-adapter canal-adapter identity) &&
+    post_mapping_sha=$("${compose[@]}" exec -T canal-adapter \
       sha256sum /opt/canal-adapter/conf/es8/products.yml | awk '{ print $1 }') &&
-    test "$host_mapping_sha" = "$container_mapping_sha" &&
-    adapter_mapping_load_is_current "$adapter_cutoff" "$adapter_log"
+    post_identity_after=$(current_java_process_state canal-adapter canal-adapter identity) &&
+    post_container_after=$(current_container_id canal-adapter) &&
+    write_baseline_mapping_continuity_proof_atomically "$output" \
+      "$pre_proof" "$post_container_before" "$post_identity_before" \
+      "$post_mapping_sha" "$post_identity_after" "$post_container_after"
 }
 
 adapter_web_responds() {
@@ -178,8 +237,18 @@ runtime_evidence_is_ready() {
     adapter_web_responds
 }
 
+if test "${1:-}" = "--mapping-continuity"; then
+  test "$#" -eq 3 || {
+    echo "usage: $0 --mapping-continuity PRE_PROOF OUTPUT" >&2
+    exit 2
+  }
+  verify_mapping_continuity_live "$2" "$3"
+  exit
+fi
+
 for attempt in $(seq 1 "$max_attempts"); do
   if runtime_evidence_is_ready; then
+    publish_pre_behavior_mapping_proof
     printf '%s\n' \
       "M1 Adapter topology evidence passed:" \
       "- canal-adapter Java process: admin (UID 1000), non-root" \

@@ -7,12 +7,15 @@ source scenarios/scripts/lib-adapter.sh
 scenario="m1-basic"
 product_id=1101
 out="evidence/m1/$scenario"
+pre_mapping_proof="$out/pre-behavior-mapping-proof.json"
+final_mapping_proof="$out/current-run-mapping-proof.json"
 rm -rf "$out"
 mkdir -p "$out"
 cp "scenarios/definitions/$scenario.json" "$out/input-commands.json"
 
 poll_until 60 product_api_is_ready
-bash tests/contracts/m1-adapter.sh --live >"$out/current-run-mapping-proof.txt"
+M1_MAPPING_PROOF_OUTPUT="$pre_mapping_proof" \
+  bash tests/contracts/m1-adapter.sh --live >"$out/current-run-topology-proof.txt"
 
 fixture_exists=$(mysql_adapter -e \
   "SELECT COUNT(*) FROM products WHERE id = $product_id")
@@ -71,6 +74,8 @@ capture_product_gap_evidence "$product_id" 120 \
   "$out/mysql-snapshot.json" "$out/es-snapshot.json"
 compose_adapter exec -T canal-adapter \
   cat /opt/canal-adapter/logs/adapter/adapter.log >"$out/adapter.log"
+scenarios/scripts/verify-m1-topology.sh \
+  --mapping-continuity "$pre_mapping_proof" "$final_mapping_proof"
 
 bash scenarios/scripts/derive-m1-result.sh "$out" >"$out/result.json"
 

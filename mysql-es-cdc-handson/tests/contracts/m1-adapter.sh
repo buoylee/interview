@@ -96,6 +96,8 @@ test -x scenarios/scripts/lib-adapter.sh
 test -x scenarios/scripts/run-m1-basic.sh
 test -x scenarios/scripts/assert-m1-evidence.sh
 test -x scenarios/scripts/derive-m1-result.sh
+test -x scenarios/scripts/lib-m1-mapping-proof.sh
+test -x tests/contracts/m1-mapping-proof.sh
 test -f evidence/m1/.gitkeep
 if git check-ignore -q evidence/m1/.gitkeep; then
   echo "evidence/m1/.gitkeep must be tracked while runtime M1 evidence stays ignored" >&2
