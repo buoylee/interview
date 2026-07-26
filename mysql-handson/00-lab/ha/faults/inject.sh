@@ -165,7 +165,12 @@ case "$scenario" in
     ;;
   quorum-loss)
     write_state
-    "${DC[@]}" stop "${quorum_targets[@]}"
+    for member in "${quorum_targets[@]}"; do
+      docker update --restart=no "mysql-ha-$member" >/dev/null \
+        || die "could not disable restart policy for quorum-loss member: $member"
+    done
+    "${DC[@]}" kill "${quorum_targets[@]}" \
+      || die "could not kill both quorum-loss members"
     ;;
   slow-member)
     write_state

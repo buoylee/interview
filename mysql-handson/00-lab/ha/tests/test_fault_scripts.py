@@ -29,6 +29,7 @@ class FaultScriptTest(unittest.TestCase):
             "  *\"exec -T db2\"*\"MEMBER_ROLE='PRIMARY'\"*) [ -z \"${FAKE_PRIMARY_DB2:-}\" ] || printf '%s\\n' \"$FAKE_PRIMARY_DB2\" ;;\n"
             "  *\"exec -T db1\"*\"MEMBER_ROLE='SECONDARY'\"*) [ \"${FAKE_EMPTY_DB1_SECONDARY:-0}\" = 1 ] || { [ -z \"${FAKE_SECONDARIES:-}\" ] || printf '%s\\n' \"$FAKE_SECONDARIES\"; } ;;\n"
             "  *\"exec -T db2\"*\"MEMBER_ROLE='SECONDARY'\"*) [ -z \"${FAKE_SECONDARIES_DB2:-}\" ] || printf '%s\\n' \"$FAKE_SECONDARIES_DB2\" ;;\n"
+            "  *\"SELECT MEMBER_STATE FROM performance_schema.replication_group_members WHERE MEMBER_HOST=\"*) printf 'ONLINE\\n' ;;\n"
             "  *\"COUNT(*) FROM performance_schema.replication_group_members\"*) printf '3\\n' ;;\n"
             "  *\"@@offline_mode\"*)\n"
             "    grep -q '\"phase\":\"fault_active\"' \"$FAKE_EVENTS_PATH\" || exit 10\n"
@@ -46,6 +47,19 @@ class FaultScriptTest(unittest.TestCase):
             "      malformed-four) printf '1\\t0\\tERROR\\textra\\n' ;;\n"
             "      never) printf '0\\t0\\tONLINE\\n' ;;\n"
             "    esac\n"
+            "    ;;\n"
+            "  *\"update --restart=no mysql-ha-db2\"*)\n"
+            "    [ -f \"$FAKE_STATE_PATH\" ] && grep -q '\"phase\":\"fault_begin\"' \"$FAKE_EVENTS_PATH\" || exit 9\n"
+            "    [ \"${FAKE_FAIL_RESTART_NO_MEMBER:-}\" != db2 ] || exit 11\n"
+            "    ;;\n"
+            "  *\"update --restart=no mysql-ha-db3\"*)\n"
+            "    [ -f \"$FAKE_STATE_PATH\" ] && grep -q '\"phase\":\"fault_begin\"' \"$FAKE_EVENTS_PATH\" || exit 9\n"
+            "    [ \"${FAKE_FAIL_RESTART_NO_MEMBER:-}\" != db3 ] || exit 11\n"
+            "    ;;\n"
+            "  *\" kill db2 db3\"*)\n"
+            "    grep -q 'update --restart=no mysql-ha-db2' \"$FAKE_DOCKER_LOG\" || exit 12\n"
+            "    grep -q 'update --restart=no mysql-ha-db3' \"$FAKE_DOCKER_LOG\" || exit 12\n"
+            "    [ \"${FAKE_FAIL_QUORUM_KILL:-0}\" = 0 ] || exit 13\n"
             "    ;;\n"
             "  *\"network connect\"*) [ \"${FAKE_FAIL_NETWORK_CONNECT:-0}\" = 0 ] || exit 1 ;;\n"
             "  *\" stop db2 db3\"*) [ -f \"$FAKE_STATE_PATH\" ] && grep -q '\"phase\":\"fault_begin\"' \"$FAKE_EVENTS_PATH\" || exit 9 ;;\n"
@@ -139,7 +153,7 @@ class FaultScriptTest(unittest.TestCase):
                 calls = log.read_text(encoding="utf-8") if log.exists() else ""
                 self.assertNotIn(" stop ", calls)
 
-    def test_quorum_loss_polls_original_primary_until_fenced_then_records_blocked(self):
+    def test_quorum_loss_disables_restart_then_kills_explicit_secondaries_before_polling(self):
         temporary, root, log, environment = self.controlled_root("db2\ndb3")
         self.addCleanup(temporary.cleanup)
         environment["FAKE_FENCING_MODE"] = "eventually"
@@ -152,11 +166,18 @@ class FaultScriptTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = log.read_text(encoding="utf-8")
-        self.assertIn(" stop db2 db3", calls)
+        self.assertNotIn(" stop ", calls)
+        self.assertIn("update --restart=no mysql-ha-db2", calls)
+        self.assertIn("update --restart=no mysql-ha-db3", calls)
+        kill_calls = [line for line in calls.splitlines() if " kill " in line]
+        self.assertEqual(len(kill_calls), 1)
+        self.assertTrue(kill_calls[0].endswith(" kill db2 db3"), kill_calls)
         fencing_calls = [line for line in calls.splitlines() if "@@offline_mode" in line]
         self.assertGreaterEqual(len(fencing_calls), 2)
         self.assertTrue(all("exec -T db1" in line for line in fencing_calls), fencing_calls)
-        self.assertLess(calls.index(" stop db2 db3"), calls.index("@@offline_mode"))
+        self.assertLess(calls.index("update --restart=no mysql-ha-db2"), calls.index("update --restart=no mysql-ha-db3"))
+        self.assertLess(calls.index("update --restart=no mysql-ha-db3"), calls.index(" kill db2 db3"))
+        self.assertLess(calls.index(" kill db2 db3"), calls.index("@@offline_mode"))
         state = (root / "evidence/fault-state.env").read_text(encoding="utf-8")
         self.assertIn("TARGETS=db2,db3\n", state)
         phases = [line.split('"phase":"', 1)[1].split('"', 1)[0]
@@ -177,12 +198,85 @@ class FaultScriptTest(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertTrue((root / "evidence/fault-state.env").exists())
-        self.assertIn(" stop db2 db3", log.read_text(encoding="utf-8"))
+        self.assertIn(" kill db2 db3", log.read_text(encoding="utf-8"))
         phases = [line.split('"phase":"', 1)[1].split('"', 1)[0]
                   for line in (root / "evidence/events.jsonl").read_text(encoding="utf-8").splitlines()]
         self.assertEqual(phases, ["fault_begin", "fault_active"])
         self.assertNotIn("quorum_blocked", phases)
         self.assertNotIn("fault_end", phases)
+
+    def test_quorum_loss_restart_policy_failure_prevents_kill_and_fault_active(self):
+        temporary, root, log, environment = self.controlled_root("db2\ndb3")
+        self.addCleanup(temporary.cleanup)
+        environment["FAKE_FAIL_RESTART_NO_MEMBER"] = "db3"
+        environment["FAKE_FENCING_MODE"] = "eventually"
+        environment["MYSQL_HA_QUORUM_BLOCK_TIMEOUT_SECONDS"] = "3"
+
+        result = subprocess.run(
+            ["/bin/bash", "faults/inject.sh", "quorum-loss"], cwd=root,
+            env=environment, text=True, capture_output=True,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue((root / "evidence/fault-state.env").exists())
+        calls = log.read_text(encoding="utf-8")
+        self.assertIn("update --restart=no mysql-ha-db2", calls)
+        self.assertIn("update --restart=no mysql-ha-db3", calls)
+        self.assertNotIn(" kill ", calls)
+        self.assertNotIn(" stop ", calls)
+        phases = [line.split('"phase":"', 1)[1].split('"', 1)[0]
+                  for line in (root / "evidence/events.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(phases, ["fault_begin"])
+
+    def test_quorum_loss_kill_failure_prevents_fault_active(self):
+        temporary, root, log, environment = self.controlled_root("db2\ndb3")
+        self.addCleanup(temporary.cleanup)
+        environment["FAKE_FAIL_QUORUM_KILL"] = "1"
+        environment["FAKE_FENCING_MODE"] = "eventually"
+        environment["MYSQL_HA_QUORUM_BLOCK_TIMEOUT_SECONDS"] = "3"
+
+        result = subprocess.run(
+            ["/bin/bash", "faults/inject.sh", "quorum-loss"], cwd=root,
+            env=environment, text=True, capture_output=True,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue((root / "evidence/fault-state.env").exists())
+        calls = log.read_text(encoding="utf-8")
+        self.assertIn("update --restart=no mysql-ha-db2", calls)
+        self.assertIn("update --restart=no mysql-ha-db3", calls)
+        self.assertIn(" kill db2 db3", calls)
+        self.assertNotIn(" stop ", calls)
+        phases = [line.split('"phase":"', 1)[1].split('"', 1)[0]
+                  for line in (root / "evidence/events.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(phases, ["fault_begin"])
+
+    def test_quorum_restore_reenables_restarts_and_rejoins_both_secondaries(self):
+        temporary, root, log, environment = self.controlled_root()
+        self.addCleanup(temporary.cleanup)
+        (root / "evidence/fault-state.env").write_text(
+            "SCENARIO=quorum-loss\nTARGET=db1\nTARGETS=db2,db3\nOLD_FLOW_THRESHOLDS=\n",
+            encoding="utf-8",
+        )
+
+        result = subprocess.run(
+            ["/bin/bash", "faults/restore.sh"], cwd=root,
+            env=environment, text=True, capture_output=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = log.read_text(encoding="utf-8")
+        for member in ("db2", "db3"):
+            restart = f"update --restart=always mysql-ha-{member}"
+            up = f"up -d {member}"
+            self.assertIn(restart, calls)
+            self.assertIn(up, calls)
+            self.assertLess(calls.index(restart), calls.index(up))
+        events = (root / "evidence/events.jsonl").read_text(encoding="utf-8")
+        for member in ("db2", "db3"):
+            self.assertIn(f'"phase":"rejoin_begin","scenario":"quorum-loss","target":"{member}"', events)
+            self.assertIn(f'"phase":"rejoin_online","scenario":"quorum-loss","target":"{member}"', events)
+        self.assertFalse((root / "evidence/fault-state.env").exists())
 
     def test_quorum_loss_rejects_invalid_timeout_before_any_side_effect(self):
         for timeout in ("", "0", "-1", "abc"):
