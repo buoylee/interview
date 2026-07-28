@@ -142,9 +142,9 @@ grep -Fq "canal-data:/home/admin/canal-data" infra/compose.yaml
 grep -Fxq "canal.mq.topic=product-search-revisions" infra/canal/instance.properties
 grep -Fxq "canal.mq.partitionsNum=3" infra/canal/instance.properties
 grep -Fxq "canal.instance.master.address=toxiproxy:8668" infra/canal/instance.properties
-grep -Fxq 'canal.instance.filter.regex=product_catalog\\.product_search_revision' \
+grep -Fxq 'canal.instance.filter.regex=product_catalog\\.(product_search_revision|cdc_barrier)' \
   infra/canal/instance.properties
-grep -Fxq "canal.mq.partitionHash=product_catalog.product_search_revision:product_id" \
+grep -Fxq "canal.mq.partitionHash=product_catalog.product_search_revision:product_id,product_catalog.cdc_barrier:partition_token" \
   infra/canal/instance.properties
 
 jq -e '

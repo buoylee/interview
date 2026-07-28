@@ -9,13 +9,16 @@ import com.interview.mysqlescdc.product.api.ProductRequests.CreateProductRequest
 @Service
 public class ProductMutationService {
     private final JdbcClient jdbc;
+    private final ProductWriteGate writeGate;
 
-    public ProductMutationService(JdbcClient jdbc) {
+    public ProductMutationService(JdbcClient jdbc, ProductWriteGate writeGate) {
         this.jdbc = jdbc;
+        this.writeGate = writeGate;
     }
 
     @Transactional
     public long createProduct(CreateProductRequest request) {
+        writeGate.assertOpenForMutation();
         jdbc.sql("""
                 INSERT INTO products
                     (id, sku, name, description, category_id, price_cents, status)
@@ -44,6 +47,7 @@ public class ProductMutationService {
 
     @Transactional
     public long changePrice(long productId, long priceCents) {
+        writeGate.assertOpenForMutation();
         requireOne(jdbc.sql("""
                 UPDATE products SET price_cents = :price
                 WHERE id = :id AND status = 'ACTIVE'
@@ -55,6 +59,7 @@ public class ProductMutationService {
 
     @Transactional
     public long replaceInventory(long productId, int available, int reserved) {
+        writeGate.assertOpenForMutation();
         requireOne(jdbc.sql("""
                 UPDATE inventory i
                 JOIN products p ON p.id = i.product_id
@@ -69,6 +74,7 @@ public class ProductMutationService {
 
     @Transactional
     public int renameCategory(long categoryId, String name) {
+        writeGate.assertOpenForMutation();
         requireOne(jdbc.sql("UPDATE categories SET name = :name WHERE id = :id")
                 .param("name", name).param("id", categoryId).update(), categoryId);
         int affectedProducts = jdbc.sql("""
@@ -84,6 +90,7 @@ public class ProductMutationService {
 
     @Transactional
     public long deleteProduct(long productId) {
+        writeGate.assertOpenForMutation();
         requireOne(jdbc.sql("""
                 UPDATE products SET status = 'DELETED'
                 WHERE id = :id AND status = 'ACTIVE'
@@ -100,6 +107,7 @@ public class ProductMutationService {
 
     @Transactional
     long changePriceAndFailForTest(long productId, long priceCents) {
+        writeGate.assertOpenForMutation();
         requireOne(jdbc.sql("""
                 UPDATE products SET price_cents = :price
                 WHERE id = :id AND status = 'ACTIVE'
