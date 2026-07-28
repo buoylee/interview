@@ -3,7 +3,9 @@ package com.interview.mysqlescdc.verifier.status;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Map;
+import java.util.List;
 import java.util.Set;
+import java.time.Instant;
 import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
@@ -24,6 +26,11 @@ class ReconciliationMetricsTest {
         ReconciliationMetrics metrics = new ReconciliationMetrics(registry);
         metrics.recordRun(VerificationRunStatus.DIFF, Map.of(DifferenceType.MISSING, 2L));
         metrics.recordRepair(RepairActionType.WRITE_EXTERNAL_GTE, RepairOutcome.APPLIED);
+        Instant successfulPassAt = Instant.parse("2026-07-22T11:59:00Z");
+        metrics.observe(new PipelineStatusReport(
+                PipelineStatus.CATCHING_UP, 4, true, List.of(), 0, null,
+                VerificationRunStatus.INCONCLUSIVE, 0, Instant.parse("2026-07-22T12:00:00Z"),
+                successfulPassAt, Set.of(), Instant.parse("2026-07-22T12:00:01Z")));
 
         assertThat(registry.getMeters()).extracting(meter -> meter.getId().getName())
                 .contains("cdc_pipeline_state", "cdc_consumer_lag", "cdc_unresolved_dlq",
@@ -46,5 +53,13 @@ class ReconciliationMetricsTest {
         assertThat(registry.get("cdc_repair_actions_total")
                 .tags("action", "WRITE_EXTERNAL_GTE", "outcome", "APPLIED")
                 .counter().count()).isEqualTo(1);
+        assertThat(registry.get("cdc_reconciliation_last_success_epoch_seconds")
+                .gauge().value()).isEqualTo(successfulPassAt.getEpochSecond());
+        assertThat(registry.get("cdc_reconciliation_runs_total").meters())
+                .extracting(meter -> meter.getId().getTag("outcome"))
+                .containsExactlyInAnyOrder("PASS", "DIFF", "INCONCLUSIVE", "FAILED");
+        assertThat(registry.get("cdc_repair_actions_total").meters())
+                .extracting(meter -> meter.getId().getTag("outcome"))
+                .containsOnly("APPLIED", "STALE", "FAILED");
     }
 }

@@ -18,6 +18,7 @@ class JdbcPipelineConditionStoreIT {
     private static final String MYSQL = "jdbc:mysql://localhost:3308/product_catalog"
             + "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC";
     private static final UUID RUN = UUID.fromString("00000000-0000-0000-0000-000000000505");
+    private static final UUID NEWER = UUID.fromString("00000000-0000-0000-0000-000000000506");
     private JdbcClient fixture;
     private MutableRebuildEvidence rebuildEvidence;
     private JdbcPipelineConditionStore store;
@@ -65,13 +66,21 @@ class JdbcPipelineConditionStoreIT {
                 VALUES (UUID_TO_BIN(:runId), 'task5_status_it', 'PASS', 9, 9, 0,
                         '2030-01-01 00:00:00.000000', '2030-01-01 00:00:01.000000')
                 """).param("runId", RUN.toString()).update();
+        fixture.sql("""
+                INSERT INTO verification_run(
+                  run_id, target_name, status, source_watermark_start, source_watermark_end,
+                  difference_count, started_at, finished_at)
+                VALUES (UUID_TO_BIN(:runId), 'task5_status_it', 'INCONCLUSIVE', 10, 11, 0,
+                        '2030-01-01 00:00:02.000000', '2030-01-01 00:00:03.000000')
+                """).param("runId", NEWER.toString()).update();
 
         var latest = store.latestVerification().orElseThrow();
 
-        assertThat(latest.runId()).isEqualTo(RUN);
-        assertThat(latest.status()).isEqualTo(VerificationRunStatus.PASS);
+        assertThat(latest.runId()).isEqualTo(NEWER);
+        assertThat(latest.status()).isEqualTo(VerificationRunStatus.INCONCLUSIVE);
         assertThat(latest.differenceCount()).isZero();
-        assertThat(store.latestConclusiveVerification().orElseThrow()).isEqualTo(latest);
+        assertThat(store.latestConclusiveVerification().orElseThrow().runId()).isEqualTo(RUN);
+        assertThat(store.latestSuccessfulPass().orElseThrow().runId()).isEqualTo(RUN);
     }
 
     private void insertDlqFixtures() {
@@ -96,6 +105,8 @@ class JdbcPipelineConditionStoreIT {
         fixture.sql("DELETE FROM sync_record_dlq WHERE topic_name = 'task5'").update();
         fixture.sql("DELETE FROM verification_run WHERE run_id = UUID_TO_BIN(:runId)")
                 .param("runId", RUN.toString()).update();
+        fixture.sql("DELETE FROM verification_run WHERE run_id = UUID_TO_BIN(:runId)")
+                .param("runId", NEWER.toString()).update();
         fixture.sql("DELETE FROM pipeline_condition WHERE condition_key = 'LOG_GAP'").update();
     }
 

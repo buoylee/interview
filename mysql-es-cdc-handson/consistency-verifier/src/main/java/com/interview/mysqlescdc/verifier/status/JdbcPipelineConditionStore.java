@@ -85,6 +85,16 @@ public class JdbcPipelineConditionStore implements PipelineConditionStore {
                 """);
     }
 
+    @Override
+    public Optional<LatestVerification> latestSuccessfulPass() {
+        return latest("""
+                SELECT BIN_TO_UUID(run_id) AS run_id, status, difference_count, finished_at
+                FROM verification_run
+                WHERE status = 'PASS'
+                ORDER BY finished_at DESC, run_id DESC LIMIT 1
+                """);
+    }
+
     private Optional<LatestVerification> latest(String query) {
         return jdbc.sql(query).query((rs, row) -> {
                     Timestamp finished = rs.getTimestamp("finished_at");

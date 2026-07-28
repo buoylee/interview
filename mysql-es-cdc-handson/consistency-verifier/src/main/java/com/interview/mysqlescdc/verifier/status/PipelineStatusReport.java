@@ -17,5 +17,6 @@ public record PipelineStatusReport(
         VerificationRunStatus latestRunStatus,
         long latestDifferenceCount,
         Instant latestRunFinishedAt,
+        Instant latestSuccessfulPassFinishedAt,
         Set<String> activeConditions,
         Instant evaluatedAt) {}

@@ -38,6 +38,7 @@ public final class PipelineStatusService {
         Instant now = clock.instant();
         var latest = store.latestVerification();
         var conclusive = store.latestConclusiveVerification();
+        var successfulPass = store.latestSuccessfulPass();
         PipelineSignals signals = new PipelineSignals(
                 store.activeConditions(), store.unresolvedDlqCount(),
                 latest.map(PipelineConditionStore.LatestVerification::runId).orElse(null),
@@ -47,6 +48,7 @@ public final class PipelineStatusService {
                 conclusive.map(PipelineConditionStore.LatestVerification::status).orElse(null),
                 conclusive.map(PipelineConditionStore.LatestVerification::differenceCount).orElse(0L),
                 conclusive.map(PipelineConditionStore.LatestVerification::finishedAt).orElse(null),
+                successfulPass.map(PipelineConditionStore.LatestVerification::finishedAt).orElse(null),
                 lag, now);
         PipelineStatusReport report = evaluator.evaluate(signals);
         metrics.observe(report);

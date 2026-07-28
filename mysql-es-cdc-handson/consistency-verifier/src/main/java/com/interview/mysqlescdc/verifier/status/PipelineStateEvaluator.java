@@ -22,7 +22,8 @@ public final class PipelineStateEvaluator {
                 state, signals.lag().totalLag(), signals.lag().allPartitionsCommitted(),
                 signals.lag().partitions(), signals.unresolvedDlq(), signals.latestRunId(),
                 signals.latestRunStatus(), signals.latestDifferenceCount(),
-                signals.latestRunFinishedAt(), signals.activeConditions(), signals.evaluatedAt());
+                signals.latestRunFinishedAt(), signals.latestSuccessfulPassFinishedAt(),
+                signals.activeConditions(), signals.evaluatedAt());
     }
 
     private PipelineStatus state(PipelineSignals signals) {

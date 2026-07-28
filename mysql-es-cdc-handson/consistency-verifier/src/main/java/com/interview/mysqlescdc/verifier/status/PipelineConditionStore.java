@@ -20,6 +20,8 @@ public interface PipelineConditionStore {
 
     Optional<LatestVerification> latestConclusiveVerification();
 
+    Optional<LatestVerification> latestSuccessfulPass();
+
     record LatestVerification(
             UUID runId,
             VerificationRunStatus status,

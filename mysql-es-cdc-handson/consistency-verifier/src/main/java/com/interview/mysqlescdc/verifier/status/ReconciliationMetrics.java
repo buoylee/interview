@@ -2,6 +2,7 @@ package com.interview.mysqlescdc.verifier.status;
 
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.springframework.stereotype.Component;
@@ -17,6 +18,11 @@ import io.micrometer.core.instrument.MeterRegistry;
 
 @Component
 public final class ReconciliationMetrics {
+    private static final Set<VerificationRunStatus> RUN_OUTCOMES = Set.of(
+            VerificationRunStatus.PASS, VerificationRunStatus.DIFF,
+            VerificationRunStatus.INCONCLUSIVE, VerificationRunStatus.FAILED);
+    private static final Set<RepairOutcome> REPAIR_OUTCOMES = Set.of(
+            RepairOutcome.APPLIED, RepairOutcome.STALE, RepairOutcome.FAILED);
     private final Map<PipelineStatus, AtomicLong> states = new EnumMap<>(PipelineStatus.class);
     private final AtomicLong lag = new AtomicLong();
     private final AtomicLong unresolvedDlq = new AtomicLong();
@@ -39,7 +45,7 @@ public final class ReconciliationMetrics {
         Gauge.builder("cdc_unresolved_dlq", unresolvedDlq, AtomicLong::get).register(registry);
         Gauge.builder("cdc_reconciliation_last_success_epoch_seconds",
                 lastSuccessEpochSeconds, AtomicLong::get).register(registry);
-        for (VerificationRunStatus outcome : VerificationRunStatus.values()) {
+        for (VerificationRunStatus outcome : RUN_OUTCOMES) {
             runCounters.put(outcome, Counter.builder("cdc_reconciliation_runs_total")
                     .tag("outcome", outcome.name()).register(registry));
         }
@@ -51,7 +57,7 @@ public final class ReconciliationMetrics {
         }
         for (RepairActionType action : RepairActionType.values()) {
             Map<RepairOutcome, Counter> outcomes = new EnumMap<>(RepairOutcome.class);
-            for (RepairOutcome outcome : RepairOutcome.values()) {
+            for (RepairOutcome outcome : REPAIR_OUTCOMES) {
                 outcomes.put(outcome, Counter.builder("cdc_repair_actions_total")
                         .tags("action", action.name(), "outcome", outcome.name())
                         .register(registry));
@@ -64,9 +70,6 @@ public final class ReconciliationMetrics {
             VerificationRunStatus outcome, Map<DifferenceType, Long> observedDifferences) {
         runCounters.get(outcome).increment();
         differences.forEach((type, value) -> value.set(observedDifferences.getOrDefault(type, 0L)));
-        if (outcome == VerificationRunStatus.PASS) {
-            lastSuccessEpochSeconds.set(java.time.Instant.now().getEpochSecond());
-        }
     }
 
     public void recordRepair(RepairActionType action, RepairOutcome outcome) {
@@ -77,9 +80,9 @@ public final class ReconciliationMetrics {
         states.forEach((state, value) -> value.set(state == report.state() ? 1 : 0));
         lag.set(report.kafkaLag());
         unresolvedDlq.set(report.unresolvedDlq());
-        if (report.latestRunStatus() == VerificationRunStatus.PASS
-                && report.latestRunFinishedAt() != null) {
-            lastSuccessEpochSeconds.set(report.latestRunFinishedAt().getEpochSecond());
+        if (report.latestSuccessfulPassFinishedAt() != null) {
+            lastSuccessEpochSeconds.set(
+                    report.latestSuccessfulPassFinishedAt().getEpochSecond());
         }
     }
 }

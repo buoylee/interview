@@ -16,6 +16,7 @@ public record PipelineSignals(
         VerificationRunStatus latestConclusiveStatus,
         long latestConclusiveDifferenceCount,
         Instant latestConclusiveFinishedAt,
+        Instant latestSuccessfulPassFinishedAt,
         ConsumerLagSnapshot lag,
         Instant evaluatedAt) {
 

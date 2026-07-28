@@ -46,6 +46,7 @@ class PipelineStateEvaluatorTest {
         PipelineSignals signals = new PipelineSignals(Set.of(), 0, RUN,
                 VerificationRunStatus.PASS, 0, NOW.minusSeconds(30),
                 VerificationRunStatus.PASS, 0, NOW.minusSeconds(30),
+                NOW.minusSeconds(30),
                 new ConsumerLagSnapshot(0, false, List.of()), NOW);
 
         assertThat(evaluator.evaluate(signals).state()).isEqualTo(PipelineStatus.CATCHING_UP);
@@ -56,6 +57,7 @@ class PipelineStateEvaluatorTest {
         PipelineSignals stale = new PipelineSignals(Set.of(), 0, RUN,
                 VerificationRunStatus.PASS, 0, NOW.minus(Duration.ofMinutes(11)),
                 VerificationRunStatus.PASS, 0, NOW.minus(Duration.ofMinutes(11)),
+                NOW.minus(Duration.ofMinutes(11)),
                 new ConsumerLagSnapshot(0, true, List.of()), NOW);
 
         assertThat(evaluator.evaluate(stale).state()).isEqualTo(PipelineStatus.DEGRADED);
@@ -66,6 +68,7 @@ class PipelineStateEvaluatorTest {
         PipelineSignals signals = new PipelineSignals(Set.of(), 0, RUN,
                 VerificationRunStatus.INCONCLUSIVE, 0, NOW.minusSeconds(10),
                 VerificationRunStatus.DIFF, 3, NOW.minusSeconds(20),
+                null,
                 new ConsumerLagSnapshot(0, true, List.of()), NOW);
 
         assertThat(evaluator.evaluate(signals).state()).isEqualTo(PipelineStatus.DEGRADED);
@@ -82,6 +85,8 @@ class PipelineStateEvaluatorTest {
                 differences, status == null ? null : NOW.minusSeconds(30),
                 conclusive(status), differences,
                 conclusive(status) == null ? null : NOW.minusSeconds(30),
+                conclusive(status) == VerificationRunStatus.PASS
+                        ? NOW.minusSeconds(30) : null,
                 new ConsumerLagSnapshot(lag, complete, List.of()), NOW);
     }
 

@@ -46,7 +46,8 @@ class PipelineStatusControllerTest {
         Instant now = Instant.parse("2026-07-22T12:00:00Z");
         when(service.current()).thenReturn(new PipelineStatusReport(
                 PipelineStatus.HEALTHY, 0, true, List.of(), 0, runId,
-                VerificationRunStatus.PASS, 0, now.minusSeconds(2), Set.of(), now));
+                VerificationRunStatus.PASS, 0, now.minusSeconds(2),
+                now.minusSeconds(2), Set.of(), now));
 
         mvc.perform(get("/internal/pipeline/status"))
                 .andExpect(status().isOk())
