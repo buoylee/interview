@@ -48,6 +48,8 @@ make reset && make smoke-m0
 
 本地端口：product-service 8081、MySQL 3308、Kafka 29092、Canal 11111/11112、Elasticsearch 9200、Toxiproxy API 8474。consumer/verifier 仅在 `m0-tools` profile 下定义，预留 8082/8083，默认不启动。仓库中的账号密码只用于本地实验，不得用于共享或生产环境。
 
+Compose 将 Elasticsearch 的 `cluster.routing.allocation.disk.threshold_enabled` 设为 `false`，只为避免开发机磁盘水位导致 single-node lab 的唯一 primary shard 永久不分配，从而保证实验可重复。该设置关闭了生产环境重要的磁盘保护，绝不是生产配置建议；生产环境必须保留磁盘水位保护并通过容量、告警和扩容处理磁盘压力。
+
 `make bootstrap-products-v2` 的安全前提是 single-writer：执行期间不得有其他管理员并发修改同名 index template、physical index 或 aliases。脚本先只读检查完整兼容性，再执行创建，并用最终读取检测明显竞态；最终检查不能回滚已经发生的竞态，因此这里不声称面对任意并发管理操作仍可 fail closed。
 
 ## Canal 1.1.8 边界
