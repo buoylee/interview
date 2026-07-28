@@ -13,3 +13,36 @@
 ```bash
 make scenario SCENARIO=quorum-loss
 ```
+
+## 客户端证据
+
+- `fault_begin=2026-07-28T05:12:11.853741+00:00`，`fault_active=05:12:12.744917`，`quorum_blocked=05:12:23.575762`，`quorum_restore_begin=05:12:29.220116`，`fault_end=05:14:04.949834`。
+- grace window 为 `10830ms`：0 SUCCESS、2 FAILURE、4 UNKNOWN；明确 blocked window 为 `5644ms`：14 FAILURE、0 SUCCESS、0 UNKNOWN。
+- 整段故障窗为 0 SUCCESS、18 FAILURE、6 UNKNOWN；`rto_ms=109818`。
+
+## Cluster／成员证据
+
+- 两个 Secondary 被非自愿终止后，旧 Primary 确认进入 fencing；恢复路径先 quiesce Router、三成员服务端 fencing、GTID 复核，再停止 GR，并执行 dry-run／actual complete-outage reboot。
+- 恢复证据为 `3 ONLINE / 1 PRIMARY`，唯一可写 Primary 是 `db1`；Router rollback probe 留存行数为 0。
+
+## 数据一致性证据
+
+- base verifier 为 `ok:true`；189 个 acknowledged request 在三个成员上各有 189 行。
+- 6 个 UNKNOWN 全部对账为 absent，没有把失败或未知误报成已提交；`written_by` 为 `db1=189`。
+
+## 实机告诉我
+
+- 真正的硬阻塞边界是 `quorum_blocked`，不是 `fault_active`。失去多数派并等待 fencing 后，普通 rejoin 已不足够，恢复属于 complete-outage 管理流程。
+
+## 预期 vs 实机落差
+
+- 原预测保留了“3 秒窗口小于 5 秒 timeout”，但实机若只跑 3 秒仍处于 grace，不能证明无 quorum 后已停止写；最终批准的实测改为等待真实 fencing，grace 达 `10830ms`，blocked window 才满足零 SUCCESS。预测未被倒改，矛盾由实测明确纠正。
+
+## 生产边界
+
+- 不得用 `force:true` 跳过 GTID／fencing 检查；必须先停 Router／客户端流量、复核各成员 GTID 和写栅栏，再 dry-run、actual reboot、唯一可写 Primary、Router rollback 与全量 ID 对账。
+
+## 连到的面试卡
+
+- [MGR 多数派与三节点生产基线](../../README.md#34-mgrmysql-group-replication)
+- [MGR 节点离群（UNREACHABLE／ERROR）](../../README.md#case-dmgr-节点离群unreachable--error-状态)
