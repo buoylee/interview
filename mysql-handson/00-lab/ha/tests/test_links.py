@@ -26,24 +26,33 @@ def github_slug(heading):
     return re.sub(r"\s+", "-", heading)
 
 
+def unfenced_lines(text):
+    fence_char = None
+    fence_length = 0
+    for line in text.splitlines():
+        if fence_char is None:
+            opening = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+            if opening:
+                marker, info = opening.groups()
+                if marker[0] == "`" and "`" in info:
+                    yield line
+                    continue
+                fence_char = marker[0]
+                fence_length = len(marker)
+                continue
+            yield line
+            continue
+
+        closing = re.match(rf"^ {{0,3}}({re.escape(fence_char)}{{3,}})[ \t]*$", line)
+        if closing and len(closing.group(1)) >= fence_length:
+            fence_char = None
+            fence_length = 0
+
+
 def heading_anchors(text):
     anchors = set()
     next_suffix = {}
-    in_fence = False
-    fence_marker = None
-    for line in text.splitlines():
-        fence = re.match(r"^\s*(```|~~~)", line)
-        if fence:
-            marker = fence.group(1)
-            if not in_fence:
-                in_fence = True
-                fence_marker = marker
-            elif marker == fence_marker:
-                in_fence = False
-                fence_marker = None
-            continue
-        if in_fence:
-            continue
+    for line in unfenced_lines(text):
         match = re.match(r"^ {0,3}#{1,6}\s+(.+?)\s*#*\s*$", line)
         if not match:
             continue
@@ -64,7 +73,10 @@ def missing_relative_links(documents):
     documents_by_path = {source.resolve(): text for source, text in documents}
     missing = []
     for source, text in documents:
-        for raw_target in re.findall(r"(?<!!)\[[^]]+\]\(([^)\s]+)(?:\s+[^)]*)?\)", text):
+        visible_text = "\n".join(unfenced_lines(text))
+        for raw_target in re.findall(
+            r"(?<!!)\[[^]]+\]\(([^)\s]+)(?:\s+[^)]*)?\)", visible_text
+        ):
             target = unquote(raw_target)
             if "://" in target or target.startswith("mailto:"):
                 continue
@@ -120,6 +132,22 @@ class LinkTest(unittest.TestCase):
             missing_relative_links([(source, text)]),
             ["mysql-handson/09-replication-and-ha/fixture.md -> #not-real"],
         )
+
+    def test_fenced_links_are_not_validated(self):
+        source = TRACK / "fixture.md"
+        text = """# Real
+````markdown
+[missing file](missing.md)
+```
+[still fenced](#missing-fragment)
+````
+~~~~text
+[also missing](other-missing.md)
+~~~
+[still tilde fenced](#also-missing)
+~~~~
+"""
+        self.assertEqual(missing_relative_links([(source, text)]), [])
 
     def test_relative_markdown_links_resolve(self):
         self.assertEqual(
