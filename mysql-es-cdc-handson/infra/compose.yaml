@@ -166,6 +166,7 @@ services:
       SPRING_DATASOURCE_PASSWORD: productpass
       SPRING_KAFKA_BOOTSTRAP_SERVERS: toxiproxy:8667
       PIPELINE_ELASTICSEARCH_BASE_URL: http://toxiproxy:8666
+      LAB_FAILPOINTS_ENABLED: "true"
     ports:
       - target: 8082
         published: "8082"

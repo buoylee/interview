@@ -1,25 +1,31 @@
 package com.interview.mysqlescdc.consumer.failpoint;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
+
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
 
 class FailpointRegistryTest {
     @Test
     void counters_are_noop_until_armed_and_consume_exactly_the_armed_hits() {
-        CrashAction crash = mock(CrashAction.class);
+        AtomicInteger crashes = new AtomicInteger();
+        CrashAction crash = code -> {
+            assertThat(code).isEqualTo(86);
+            crashes.incrementAndGet();
+        };
         FailpointRegistry registry = new FailpointRegistry(crash);
         registry.hit(Failpoint.AFTER_ES_BULK_SUCCESS);
-        verify(crash, never()).crash(86);
+        assertThat(crashes).hasValue(0);
         registry.arm(Failpoint.AFTER_ES_BULK_SUCCESS, 2);
+        assertThat(registry.remaining()).containsEntry(Failpoint.AFTER_ES_BULK_SUCCESS, 2);
+        registry.hit(Failpoint.AFTER_ES_BULK_SUCCESS);
+        assertThat(registry.remaining()).containsEntry(Failpoint.AFTER_ES_BULK_SUCCESS, 1);
         registry.hit(Failpoint.AFTER_ES_BULK_SUCCESS);
         registry.hit(Failpoint.AFTER_ES_BULK_SUCCESS);
-        registry.hit(Failpoint.AFTER_ES_BULK_SUCCESS);
-        verify(crash, times(2)).crash(86);
+        assertThat(crashes).hasValue(2);
+        assertThat(registry.remaining()).containsEntry(Failpoint.AFTER_ES_BULK_SUCCESS, 0);
     }
 
     @Test

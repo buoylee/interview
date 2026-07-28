@@ -1,0 +1,12 @@
+{
+  "scenario": "m3-after-es-before-offset",
+  "failpoint": "AFTER_ES_BULK_SUCCESS",
+  "hits": 1,
+  "exit_code": 86,
+  "product_id": 2301,
+  "initial_revision": 1,
+  "mutation_revision": 2,
+  "terminal_lag": 0,
+  "allowed_replay_outcomes": ["APPLIED", "STALE"],
+  "final_consistency_claim": true
+}

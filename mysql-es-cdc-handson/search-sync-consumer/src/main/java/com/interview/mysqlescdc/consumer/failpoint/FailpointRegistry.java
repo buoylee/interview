@@ -2,6 +2,7 @@ package com.interview.mysqlescdc.consumer.failpoint;
 
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.Collections;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.springframework.stereotype.Component;
@@ -27,6 +28,12 @@ public final class FailpointRegistry {
 
     public void clear() {
         counters.values().forEach(counter -> counter.set(0));
+    }
+
+    public Map<Failpoint, Integer> remaining() {
+        Map<Failpoint, Integer> snapshot = new EnumMap<>(Failpoint.class);
+        counters.forEach((failpoint, counter) -> snapshot.put(failpoint, counter.get()));
+        return Collections.unmodifiableMap(snapshot);
     }
 
     public void hit(Failpoint failpoint) {

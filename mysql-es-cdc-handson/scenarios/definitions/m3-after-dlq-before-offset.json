@@ -1,0 +1,13 @@
+{
+  "scenario": "m3-after-dlq-before-offset",
+  "failpoint": "AFTER_DLQ_PUBLISH",
+  "hits": 1,
+  "exit_code": 86,
+  "product_id": 2302,
+  "initial_revision": 1,
+  "mutation_revision": 2,
+  "pending_rows_after_crash": 1,
+  "attempts_after_restart": 2,
+  "terminal_boundary": "RECOVERY_DEFERRED_TO_TASK7",
+  "final_consistency_claim": false
+}
