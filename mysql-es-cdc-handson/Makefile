@@ -2,7 +2,7 @@ SHELL := /bin/bash
 COMPOSE := docker compose -f infra/compose.yaml
 COMPOSE_ADAPTER := $(COMPOSE) -f infra/compose.adapter.yaml
 
-.PHONY: assert-java-21 package up up-adapter down reset verify smoke-m0 evidence scenario-m1 verify-m1 gate-m1
+.PHONY: assert-java-21 package up up-adapter down reset verify smoke-m0 evidence scenario-m1 verify-m1 gate-m1 bootstrap-products-v2 verify-products-v2
 
 assert-java-21:
 	@java -version 2>&1 | head -n 1 | grep -Eq 'version "21([.]|\")' || { \
@@ -81,3 +81,10 @@ gate-m1:
 		echo "$$tracked_status" >&2; \
 		exit 1; \
 	fi
+
+bootstrap-products-v2:
+	bash infra/elasticsearch/bootstrap-products-v2.sh
+
+verify-products-v2:
+	bash tests/contracts/m2-m3-elasticsearch-aliases.sh
+	bash scenarios/scripts/verify-products-v2-versioning.sh
