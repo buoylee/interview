@@ -29,7 +29,7 @@ printf '%s\n' 'package example; import com.interview.mysqlescdc.consumer.Sync;' 
 must_reject 'direct consumer import'
 
 new_fixture
-printf '%s\n' 'package example; class Dynamic { String n="com.interview.mysqlescdc." + "consumer.Sync"; }' \
+printf '%s\n' 'package example; class Dynamic { Class<?> load() throws Exception { String n="com.interview.mysqlescdc." + "consumer.Sync"; return Class.forName(n); } }' \
   >"$fixture/module/src/main/java/example/Dynamic.java"
 must_reject 'dynamic consumer class-name construction'
 
@@ -39,10 +39,15 @@ printf '%s\n' 'package example; class Reflective { Class<?> c() throws Exception
 must_reject 'reflection entrypoint'
 
 new_fixture
-printf '%s\n' 'package example; class TestLeak { String marker="consumer"; }' \
+mkdir -p "$fixture/compile/com/interview/mysqlescdc/consumer"
+printf '%s\n' 'package com.interview.mysqlescdc.consumer; public class Sync {}' \
+  >"$fixture/compile/com/interview/mysqlescdc/consumer/Sync.java"
+printf '%s\n' 'package example; class TestLeak { com.interview.mysqlescdc.consumer.Sync value; }' \
   >"$fixture/module/src/test/java/example/TestLeak.java"
-javac -d "$fixture/module/target/test-classes" "$fixture/module/src/test/java/example/TestLeak.java"
-rm "$fixture/module/src/test/java/example/TestLeak.java"
+javac -d "$fixture/module/target/test-classes" \
+  "$fixture/compile/com/interview/mysqlescdc/consumer/Sync.java" \
+  "$fixture/module/src/test/java/example/TestLeak.java"
+rm -rf "$fixture/module/src/test/java/example" "$fixture/compile"
 must_reject 'compiled test-class consumer reference'
 
 new_fixture
@@ -51,4 +56,15 @@ printf '%s\n' '<project><dependencies><dependency><artifactId>search-sync-consum
 must_reject 'consumer Maven dependency'
 
 new_fixture
+if VERIFIER_TEST_CLASSPATH="/tmp/search-sync-consumer/target/classes" \
+  bash "$checker" "$fixture/module" >/dev/null 2>&1; then
+  echo 'independence checker accepted consumer module on resolved classpath' >&2
+  exit 1
+fi
+
+new_fixture
+printf '%s\n' 'package example; class ConsumerLagReader { String consumerGroup="product-search-sync-v1"; String note="Kafka consumer lag terminology"; }' \
+  >"$fixture/module/src/main/java/example/ConsumerLagReader.java"
+javac -d "$fixture/module/target/classes" \
+  "$fixture/module/src/main/java/example/ConsumerLagReader.java"
 bash "$checker" "$fixture/module"
