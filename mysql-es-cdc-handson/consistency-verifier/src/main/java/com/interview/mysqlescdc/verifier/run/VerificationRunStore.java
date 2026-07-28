@@ -24,6 +24,8 @@ public interface VerificationRunStore {
 
     List<DocumentDifference> loadDifferences(UUID runId, int limitPlusOne);
 
+    boolean hasUnsafeDifferences(UUID runId);
+
     boolean conditionActive(String conditionKey);
 
     void activateCondition(String conditionKey, String detailsJson);

@@ -129,6 +129,16 @@ public final class JdbcVerificationRunStore implements VerificationRunStore {
     }
 
     @Override
+    public boolean hasUnsafeDifferences(UUID runId) {
+        return jdbc.sql("""
+                SELECT EXISTS(
+                  SELECT 1 FROM verification_difference
+                  WHERE run_id = UUID_TO_BIN(:runId)
+                    AND difference_type IN ('FUTURE_REVISION', 'VERSION_METADATA_MISMATCH'))
+                """).param("runId", runId.toString()).query(Boolean.class).single();
+    }
+
+    @Override
     public boolean conditionActive(String conditionKey) {
         return jdbc.sql("SELECT active FROM pipeline_condition WHERE condition_key = :key")
                 .param("key", conditionKey).query(Boolean.class).optional().orElse(false);

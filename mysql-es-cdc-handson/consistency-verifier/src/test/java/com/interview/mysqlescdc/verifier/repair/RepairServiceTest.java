@@ -3,6 +3,7 @@ package com.interview.mysqlescdc.verifier.repair;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -102,6 +103,65 @@ class RepairServiceTest {
 
         verify(store).activateCondition(eq("REBUILD_REQUIRED"), any());
         verify(gateway, never()).write(any(), any(), any());
+    }
+
+    @Test
+    void unsafe_difference_activates_rebuild_before_over_limit_or_log_gap_rejection() {
+        when(store.findRun(runId)).thenReturn(Optional.of(run(VerificationRunStatus.DIFF, 101)));
+        when(store.hasUnsafeDifferences(runId)).thenReturn(true);
+        when(store.conditionActive("LOG_GAP")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.repair(runId)).hasMessageContaining("requires rebuild");
+
+        verify(store).activateCondition(eq("REBUILD_REQUIRED"), any());
+        verify(store, never()).loadDifferences(any(), anyInt());
+        verify(store, never()).conditionActive("LOG_GAP");
+        verify(gateway, never()).write(any(), any(), any());
+    }
+
+    @Test
+    void extra_is_not_deleted_when_current_source_fact_now_exists() {
+        DocumentDifference extra = DocumentDifference.extra(indexed(active(5, 15), 15));
+        eligible(List.of(extra));
+        when(source.load(5)).thenReturn(Optional.of(active(5, 16)));
+
+        RepairReport report = service.repair(runId);
+
+        assertThat(report.repaired()).isFalse();
+        assertThat(report.applied()).isZero();
+        verify(source).load(5);
+        verify(gateway, never()).deleteExtra(any(), any());
+        verify(store, never()).markRunRepaired(runId);
+    }
+
+    @Test
+    void log_gap_activated_before_side_effect_stops_without_external_write() {
+        List<DocumentDifference> differences = List.of(DocumentDifference.missing(active(1, 10)));
+        eligible(differences);
+        when(source.load(1)).thenReturn(Optional.of(active(1, 10)));
+        when(store.conditionActive("LOG_GAP")).thenReturn(false, true);
+
+        RepairReport report = service.repair(runId);
+
+        assertThat(report.repaired()).isFalse();
+        verify(gateway, never()).write(any(), any(), any());
+        verify(store, never()).markRunRepaired(runId);
+    }
+
+    @Test
+    void log_gap_activated_after_actions_blocks_final_repaired_transition() {
+        List<DocumentDifference> differences = List.of(DocumentDifference.missing(active(1, 10)));
+        eligible(differences);
+        when(source.load(1)).thenReturn(Optional.of(active(1, 10)));
+        when(gateway.write(any(), any(), any())).thenReturn(RepairOutcome.APPLIED);
+        when(store.conditionActive("LOG_GAP")).thenReturn(false, false, true);
+
+        RepairReport report = service.repair(runId);
+
+        assertThat(report.applied()).isOne();
+        assertThat(report.repaired()).isFalse();
+        verify(store).finishAction(any(), eq(RepairOutcome.APPLIED), eq(null));
+        verify(store, never()).markRunRepaired(runId);
     }
 
     @Test

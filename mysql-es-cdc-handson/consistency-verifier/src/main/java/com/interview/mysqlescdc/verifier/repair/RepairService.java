@@ -46,6 +46,10 @@ public final class RepairService {
     public RepairReport repair(UUID runId) {
         StoredVerificationRun run = store.findRun(runId)
                 .orElseThrow(() -> new IllegalArgumentException("verification run not found"));
+        if (store.hasUnsafeDifferences(runId)) {
+            activateRebuildRequired();
+            throw new IllegalStateException("difference requires rebuild, not in-place repair");
+        }
         if (run.status() != VerificationRunStatus.DIFF) {
             throw new IllegalStateException("only a conclusive DIFF run can be repaired");
         }
@@ -64,8 +68,7 @@ public final class RepairService {
             throw new IllegalStateException("persisted difference set is incomplete or over limit");
         }
         if (differences.stream().anyMatch(this::requiresRebuild)) {
-            store.activateCondition(REBUILD_REQUIRED,
-                    "{\"reason\":\"unsafe_reconciliation_difference\"}");
+            activateRebuildRequired();
             throw new IllegalStateException("difference requires rebuild, not in-place repair");
         }
 
@@ -86,17 +89,20 @@ public final class RepairService {
             }
 
             RepairActionType type = actionType(difference.type());
+            Optional<ExpectedDocument> currentFact = source.load(difference.productId());
+            if (watermark.current() != start) break;
+            if (type == RepairActionType.DELETE_EXTRA && currentFact.isPresent()) break;
             ExpectedDocument current = null;
             Long sourceRevision = null;
             if (type != RepairActionType.DELETE_EXTRA) {
-                current = source.load(difference.productId()).orElseThrow(() ->
+                current = currentFact.orElseThrow(() ->
                         new IllegalStateException("current source row missing during repair"));
                 sourceRevision = current.sourceRevision();
-                if (watermark.current() != start) break;
             }
             UUID actionId = existing.map(RepairActionRecord::actionId).orElseGet(UUID::randomUUID);
             store.markActionStarted(
                     actionId, runId, difference.productId(), type, start, sourceRevision);
+            if (watermark.current() != start || store.conditionActive(LOG_GAP)) break;
             try {
                 RepairOutcome outcome = type == RepairActionType.DELETE_EXTRA
                         ? gateway.deleteExtra(run.target(), difference.actual())
@@ -115,7 +121,9 @@ public final class RepairService {
         }
         long end = watermark.current();
         boolean stable = end == start;
-        boolean repaired = stable && failed == 0 && applied + stale + skipped == differences.size();
+        boolean logGapActive = store.conditionActive(LOG_GAP);
+        boolean repaired = stable && !logGapActive && failed == 0
+                && applied + stale + skipped == differences.size();
         if (repaired) store.markRunRepaired(runId);
         return new RepairReport(
                 runId, start, end, applied, stale, skipped, failed, stable, repaired);
@@ -124,6 +132,11 @@ public final class RepairService {
     private boolean requiresRebuild(DocumentDifference difference) {
         return difference.type() == DifferenceType.FUTURE_REVISION
                 || difference.type() == DifferenceType.VERSION_METADATA_MISMATCH;
+    }
+
+    private void activateRebuildRequired() {
+        store.activateCondition(REBUILD_REQUIRED,
+                "{\"reason\":\"unsafe_reconciliation_difference\"}");
     }
 
     private RepairActionType actionType(DifferenceType type) {
