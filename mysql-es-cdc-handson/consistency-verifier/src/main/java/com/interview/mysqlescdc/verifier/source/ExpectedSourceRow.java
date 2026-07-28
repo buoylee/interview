@@ -1,7 +1,8 @@
 package com.interview.mysqlescdc.verifier.source;
 
 import java.time.Instant;
-import java.util.Objects;
+import java.util.ArrayList;
+import java.util.List;
 
 public record ExpectedSourceRow(
         long productId,
@@ -17,25 +18,23 @@ public record ExpectedSourceRow(
         Instant updatedAt) {
 
     public ExpectedSourceRow {
-        if (productId < 1 || revision < 1) {
-            throw new IllegalArgumentException("positive productId and revision required");
-        }
-        Objects.requireNonNull(updatedAt, "updatedAt");
+        List<String> violations = new ArrayList<>();
+        if (productId <= 0) violations.add("product identity");
+        if (revision <= 0) violations.add("revision identity");
+        if (updatedAt == null) violations.add("revision time");
+
         if (active) {
-            requireNonBlank(sku, "active sku");
-            requireNonBlank(name, "active name");
-            Objects.requireNonNull(description, "active description");
-            Objects.requireNonNull(categoryId, "active categoryId");
-            requireNonBlank(categoryName, "active categoryName");
-            Objects.requireNonNull(priceCents, "active priceCents");
-            Objects.requireNonNull(availableQuantity, "active availableQuantity");
-            if (categoryId < 1 || priceCents < 0 || availableQuantity < 0) {
-                throw new IllegalArgumentException(
-                        "active categoryId must be positive and numeric values non-negative");
-            }
-        } else if (sku != null || name != null || description != null || categoryId != null
-                || categoryName != null || priceCents != null || availableQuantity != null) {
-            throw new IllegalArgumentException("inactive source row must not contain business fields");
+            collectActiveViolations(
+                    violations, sku, name, description, categoryId, categoryName,
+                    priceCents, availableQuantity);
+        } else {
+            collectUnexpectedTombstoneValues(
+                    violations, sku, name, description, categoryId, categoryName,
+                    priceCents, availableQuantity);
+        }
+        if (!violations.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "verifier source row violates: " + String.join(", ", violations));
         }
     }
 
@@ -44,9 +43,34 @@ public record ExpectedSourceRow(
                 null, null, null, null, null, null, null, updatedAt);
     }
 
-    private static void requireNonBlank(String value, String field) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(field + " must not be blank");
+    private static void collectActiveViolations(
+            List<String> violations,
+            String sku,
+            String name,
+            String description,
+            Long categoryId,
+            String categoryName,
+            Long priceCents,
+            Integer availableQuantity) {
+        if (sku == null || sku.isBlank()) violations.add("active sku");
+        if (name == null || name.isBlank()) violations.add("active name");
+        if (description == null) violations.add("active description");
+        if (categoryId == null || categoryId <= 0) violations.add("active category id");
+        if (categoryName == null || categoryName.isBlank()) violations.add("active category name");
+        if (priceCents == null || priceCents < 0) violations.add("active price");
+        if (availableQuantity == null || availableQuantity < 0) {
+            violations.add("active inventory");
+        }
+    }
+
+    private static void collectUnexpectedTombstoneValues(
+            List<String> violations,
+            Object... businessValues) {
+        for (Object value : businessValues) {
+            if (value != null) {
+                violations.add("inactive business payload");
+                return;
+            }
         }
     }
 }

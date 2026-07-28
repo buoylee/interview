@@ -16,36 +16,89 @@ import org.springframework.stereotype.Repository;
 public final class JdbcExpectedDocumentReader implements ExpectedDocumentReader {
     static final int MAX_PAGE_SIZE = 1_000;
 
-    static final String SELECT_COLUMNS = """
+    static final String REVISION_STATE = """
             SELECT
-              r.product_id AS expected_product_id,
-              r.revision AS expected_revision,
-              r.active AS expected_active,
-              CASE WHEN r.active = 1 THEN p.sku END AS expected_sku,
-              CASE WHEN r.active = 1 THEN p.name END AS expected_name,
-              CASE WHEN r.active = 1 THEN p.description END AS expected_description,
-              CASE WHEN r.active = 1 THEN p.category_id END AS expected_category_id,
-              CASE WHEN r.active = 1 THEN c.name END AS expected_category_name,
-              CASE WHEN r.active = 1 THEN p.price_cents END AS expected_price_cents,
-              CASE WHEN r.active = 1 THEN i.available_quantity END AS expected_available_quantity,
-              CASE WHEN r.active = 1
-                THEN GREATEST(r.updated_at, p.updated_at, c.updated_at, i.updated_at)
-                ELSE r.updated_at
-              END AS expected_updated_at
+              r.product_id AS state_product_id,
+              r.revision AS state_revision,
+              TRUE AS state_active,
+              facts.sku AS state_sku,
+              facts.product_name AS state_name,
+              facts.description AS state_description,
+              facts.category_id AS state_category_id,
+              facts.category_name AS state_category_name,
+              facts.price_cents AS state_price_cents,
+              facts.available_quantity AS state_available_quantity,
+              CASE WHEN facts.fact_product_id IS NULL THEN 0 ELSE 1 END AS state_complete,
+              CASE WHEN facts.fact_product_id IS NULL THEN r.updated_at
+                   ELSE GREATEST(r.updated_at, facts.product_updated_at,
+                         facts.category_updated_at, facts.inventory_updated_at)
+              END AS state_updated_at
             FROM product_search_revision r
-            LEFT JOIN products p ON p.id = r.product_id
-            LEFT JOIN categories c ON c.id = p.category_id
-            LEFT JOIN inventory i ON i.product_id = r.product_id
+            LEFT JOIN (
+              SELECT
+                p.id AS fact_product_id,
+                p.sku,
+                p.name AS product_name,
+                p.description,
+                p.category_id,
+                c.name AS category_name,
+                p.price_cents,
+                i.available_quantity,
+                p.updated_at AS product_updated_at,
+                c.updated_at AS category_updated_at,
+                i.updated_at AS inventory_updated_at
+              FROM products p
+              INNER JOIN categories c ON c.id = p.category_id
+              INNER JOIN inventory i ON i.product_id = p.id
+            ) facts ON facts.fact_product_id = r.product_id
+            WHERE r.active = TRUE
+
+            UNION ALL
+
+            SELECT
+              r.product_id AS state_product_id,
+              r.revision AS state_revision,
+              FALSE AS state_active,
+              CAST(NULL AS CHAR) AS state_sku,
+              CAST(NULL AS CHAR) AS state_name,
+              CAST(NULL AS CHAR) AS state_description,
+              CAST(NULL AS SIGNED) AS state_category_id,
+              CAST(NULL AS CHAR) AS state_category_name,
+              CAST(NULL AS SIGNED) AS state_price_cents,
+              CAST(NULL AS SIGNED) AS state_available_quantity,
+              1 AS state_complete,
+              r.updated_at AS state_updated_at
+            FROM product_search_revision r
+            WHERE r.active = FALSE
             """;
 
-    static final String PAGE_STATEMENT = SELECT_COLUMNS + """
-            WHERE r.product_id > :exclusiveProductId
-            ORDER BY r.product_id ASC
+    static final String SELECT_FROM_REVISION_STATE = """
+            SELECT
+              state_product_id AS expected_product_id,
+              state_revision AS expected_revision,
+              state_active AS expected_active,
+              state_sku AS expected_sku,
+              state_name AS expected_name,
+              state_description AS expected_description,
+              state_category_id AS expected_category_id,
+              state_category_name AS expected_category_name,
+              state_price_cents AS expected_price_cents,
+              state_available_quantity AS expected_available_quantity,
+              state_complete AS expected_complete,
+              state_updated_at AS expected_updated_at
+            FROM (
+            """ + REVISION_STATE + """
+            ) revision_state
+            """;
+
+    static final String PAGE_STATEMENT = SELECT_FROM_REVISION_STATE + """
+            WHERE state_product_id > :exclusiveProductId
+            ORDER BY state_product_id ASC
             LIMIT :queryLimit
             """;
 
-    static final String LOAD_STATEMENT = SELECT_COLUMNS + """
-            WHERE r.product_id = :productId
+    static final String LOAD_STATEMENT = SELECT_FROM_REVISION_STATE + """
+            WHERE state_product_id = :productId
             """;
 
     private final JdbcClient jdbc;
@@ -96,6 +149,10 @@ public final class JdbcExpectedDocumentReader implements ExpectedDocumentReader 
         boolean active = resultSet.getBoolean("expected_active");
         if (resultSet.wasNull()) {
             throw incomplete(productId, "missing expected_active");
+        }
+        boolean complete = resultSet.getBoolean("expected_complete");
+        if (resultSet.wasNull() || !complete) {
+            throw incomplete(productId, "business aggregate is absent");
         }
         Instant updatedAt = requiredTimestamp(resultSet, "expected_updated_at", productId);
         if (!active) {

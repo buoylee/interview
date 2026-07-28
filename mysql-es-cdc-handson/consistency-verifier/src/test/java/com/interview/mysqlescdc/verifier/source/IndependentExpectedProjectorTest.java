@@ -23,6 +23,19 @@ class IndependentExpectedProjectorTest {
     }
 
     @Test
+    void category_name_is_projected_from_its_own_source_field_not_derived_from_category_id() {
+        ExpectedSourceRow row = new ExpectedSourceRow(
+                3102L, 3L, true, "SKU-3102", "Dock", "Thunderbolt",
+                404L, "Peripherals / Docks", 24999L, 12,
+                Instant.parse("2026-07-22T03:04:05Z"));
+
+        ExpectedDocument projected = projector.project(row);
+
+        assertThat(projected.categoryId()).isEqualTo(404L);
+        assertThat(projected.categoryName()).isEqualTo("Peripherals / Docks");
+    }
+
+    @Test
     void independently_projects_inactive_row_as_tombstone() {
         Instant changedAt = Instant.parse("2026-07-22T04:00:00.654321Z");
         ExpectedSourceRow row = ExpectedSourceRow.inactive(3101L, 8L, changedAt);

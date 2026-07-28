@@ -2,9 +2,13 @@ package com.interview.mysqlescdc.verifier.source;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.spy;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,14 +29,14 @@ class JdbcExpectedDocumentReaderIT {
     private static final long BASE_ID = 7_100_000L;
 
     private JdbcClient fixture;
-    private CountingReadOnlyDataSource observedSource;
+    private QueryCountingDataSource observedSource;
     private JdbcExpectedDocumentReader reader;
     private SourceWatermarkReader watermarkReader;
 
     @BeforeEach
     void setUp() {
         fixture = JdbcClient.create(dataSource("root", "rootpass"));
-        observedSource = new CountingReadOnlyDataSource(dataSource("verifier", "verifierpass"));
+        observedSource = new QueryCountingDataSource(dataSource("verifier", "verifierpass"));
         JdbcClient verifierJdbc = JdbcClient.create(observedSource);
         reader = new JdbcExpectedDocumentReader(verifierJdbc, new IndependentExpectedProjector());
         watermarkReader = new JdbcSourceWatermarkReader(verifierJdbc);
@@ -87,7 +91,8 @@ class JdbcExpectedDocumentReaderIT {
         assertThat(all.get(203)).isEqualTo(ExpectedDocument.tombstone(
                 BASE_ID + 203, 11, Instant.parse("2026-07-22T06:07:08.345678Z")));
         assertThat(watermarkReader.current()).isEqualTo(watermarkBefore);
-        assertThat(observedSource.connections()).isEqualTo(4); // three pages plus final watermark
+        assertThat(observedSource.queryExecutions()).isEqualTo(4); // three pages plus watermark
+        assertThat(observedSource.updateExecutions()).isZero();
     }
 
     @Test
@@ -105,7 +110,8 @@ class JdbcExpectedDocumentReaderIT {
         assertThat(second.complete()).isFalse();
         assertThat(third.documents()).hasSize(1);
         assertThat(third.complete()).isTrue();
-        assertThat(observedSource.connections()).isEqualTo(3);
+        assertThat(observedSource.queryExecutions()).isEqualTo(3);
+        assertThat(observedSource.updateExecutions()).isZero();
 
         fixture.sql("DELETE FROM product_search_revision WHERE product_id = :id")
                 .param("id", BASE_ID + 200).update();
@@ -131,7 +137,8 @@ class JdbcExpectedDocumentReaderIT {
         assertThat(reader.load(BASE_ID + 500)).isEmpty();
         assertThat(reader.load(BASE_ID + 1)).contains(ExpectedDocument.tombstone(
                 BASE_ID + 1, 17, Instant.parse("2026-07-22T07:08:09.456789Z")));
-        assertThat(observedSource.connections()).isEqualTo(2);
+        assertThat(observedSource.queryExecutions()).isEqualTo(2);
+        assertThat(observedSource.updateExecutions()).isZero();
 
         fixture.sql("DELETE FROM inventory WHERE product_id = :id")
                 .param("id", BASE_ID + 2).update();
@@ -156,7 +163,18 @@ class JdbcExpectedDocumentReaderIT {
         ExpectedDocument loaded = reader.load(BASE_ID).orElseThrow();
         assertThat(loaded.sourceUpdatedAt())
                 .isEqualTo(Instant.parse("2026-07-22T08:09:10.567891Z"));
-        assertThat(observedSource.connections()).isOne();
+        assertThat(observedSource.queryExecutions()).isOne();
+        assertThat(observedSource.updateExecutions()).isZero();
+
+        observedSource.reset();
+        assertThat(reader.readAfter(BASE_ID - 1, 10).documents()).hasSize(1);
+        assertThat(observedSource.queryExecutions()).isOne();
+        assertThat(observedSource.updateExecutions()).isZero();
+
+        observedSource.reset();
+        assertThat(watermarkReader.current()).isNotNegative();
+        assertThat(observedSource.queryExecutions()).isOne();
+        assertThat(observedSource.updateExecutions()).isZero();
 
         assertThatThrownBy(() -> reader.readAfter(-1, 100)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> reader.readAfter(0, 0)).isInstanceOf(IllegalArgumentException.class);
@@ -169,22 +187,20 @@ class JdbcExpectedDocumentReaderIT {
         insertRows(101);
         long before = watermarkReader.current();
         ExpectedPage first = reader.readAfter(BASE_ID - 1, 100);
-        fixture.sql("UPDATE source_change_watermark SET value = value + 1 WHERE singleton_id = 1").update();
-        fixture.sql("UPDATE products SET price_cents = price_cents + 1 WHERE id = :id")
-                .param("id", BASE_ID + 100).update();
+        commitBusinessMutation(BASE_ID + 100);
         ExpectedPage second = reader.readAfter(first.nextExclusiveProductId(), 100);
 
         assertThat(second.documents()).singleElement()
                 .extracting(ExpectedDocument::priceCents).isEqualTo(10_101L);
         assertThat(watermarkReader.current()).isEqualTo(before + 1);
-        fixture.sql("UPDATE source_change_watermark SET value = :value WHERE singleton_id = 1")
-                .param("value", before).update();
     }
 
     @Test
     void reader_statements_are_single_selects_and_verifier_credentials_are_read_only() {
         assertThat(JdbcExpectedDocumentReader.PAGE_STATEMENT.stripLeading()).startsWith("SELECT");
         assertThat(JdbcExpectedDocumentReader.LOAD_STATEMENT.stripLeading()).startsWith("SELECT");
+        assertThat(JdbcExpectedDocumentReader.PAGE_STATEMENT).contains("UNION ALL");
+        assertThat(JdbcExpectedDocumentReader.LOAD_STATEMENT).contains("UNION ALL");
         assertThat(JdbcExpectedDocumentReader.PAGE_STATEMENT).doesNotContain(";");
         assertThat(JdbcExpectedDocumentReader.LOAD_STATEMENT).doesNotContain(";");
 
@@ -193,6 +209,36 @@ class JdbcExpectedDocumentReaderIT {
                 "UPDATE source_change_watermark SET value = value WHERE singleton_id = 1").update())
                 .rootCause()
                 .hasMessageContaining("UPDATE command denied");
+    }
+
+    private void commitBusinessMutation(long productId) {
+        try (Connection connection = DriverManager.getConnection(URL, "root", "rootpass")) {
+            connection.setAutoCommit(false);
+            try (var price = connection.prepareStatement(
+                    "UPDATE products SET price_cents = price_cents + 1 WHERE id = ?");
+                    var revision = connection.prepareStatement("""
+                            UPDATE product_search_revision
+                            SET revision = revision + 1
+                            WHERE product_id = ?
+                            """);
+                    var watermark = connection.prepareStatement("""
+                            UPDATE source_change_watermark
+                            SET value = value + 1
+                            WHERE singleton_id = 1
+                            """)) {
+                price.setLong(1, productId);
+                revision.setLong(1, productId);
+                assertThat(price.executeUpdate()).isOne();
+                assertThat(revision.executeUpdate()).isOne();
+                assertThat(watermark.executeUpdate()).isOne();
+                connection.commit();
+            } catch (Throwable failure) {
+                connection.rollback();
+                throw failure;
+            }
+        } catch (Exception exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 
     private void insertRows(int count) {
@@ -250,21 +296,38 @@ class JdbcExpectedDocumentReaderIT {
         return new DriverManagerDataSource(URL, username, password);
     }
 
-    private static final class CountingReadOnlyDataSource extends AbstractDataSource {
+    private static final class QueryCountingDataSource extends AbstractDataSource {
         private final DataSource delegate;
-        private final AtomicInteger connections = new AtomicInteger();
+        private final AtomicInteger queryExecutions = new AtomicInteger();
+        private final AtomicInteger updateExecutions = new AtomicInteger();
 
-        private CountingReadOnlyDataSource(DataSource delegate) { this.delegate = delegate; }
-        int connections() { return connections.get(); }
-        void reset() { connections.set(0); }
+        private QueryCountingDataSource(DataSource delegate) { this.delegate = delegate; }
+        int queryExecutions() { return queryExecutions.get(); }
+        int updateExecutions() { return updateExecutions.get(); }
+        void reset() { queryExecutions.set(0); updateExecutions.set(0); }
 
         @Override public Connection getConnection() throws java.sql.SQLException {
-            connections.incrementAndGet();
-            return delegate.getConnection();
+            return instrument(delegate.getConnection());
         }
         @Override public Connection getConnection(String username, String password) throws java.sql.SQLException {
-            connections.incrementAndGet();
-            return delegate.getConnection(username, password);
+            return instrument(delegate.getConnection(username, password));
+        }
+
+        private Connection instrument(Connection connection) throws java.sql.SQLException {
+            Connection observed = spy(connection);
+            doAnswer(invocation -> {
+                PreparedStatement statement = spy(connection.prepareStatement(invocation.getArgument(0)));
+                doAnswer(query -> {
+                    queryExecutions.incrementAndGet();
+                    return query.callRealMethod();
+                }).when(statement).executeQuery();
+                doAnswer(update -> {
+                    updateExecutions.incrementAndGet();
+                    return update.callRealMethod();
+                }).when(statement).executeUpdate();
+                return statement;
+            }).when(observed).prepareStatement(anyString());
+            return observed;
         }
     }
 }

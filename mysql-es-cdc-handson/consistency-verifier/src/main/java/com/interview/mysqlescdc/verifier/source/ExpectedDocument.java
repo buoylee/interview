@@ -1,7 +1,8 @@
 package com.interview.mysqlescdc.verifier.source;
 
 import java.time.Instant;
-import java.util.Objects;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public record ExpectedDocument(
         long productId,
@@ -17,25 +18,15 @@ public record ExpectedDocument(
         Instant sourceUpdatedAt) {
 
     public ExpectedDocument {
-        if (productId < 1 || sourceRevision < 1) {
-            throw new IllegalArgumentException("positive productId and sourceRevision required");
+        if (productId <= 0 || sourceRevision <= 0 || sourceUpdatedAt == null) {
+            throw new IllegalArgumentException("expected document requires positive identity and UTC time");
         }
-        Objects.requireNonNull(sourceUpdatedAt, "sourceUpdatedAt");
+        Map<String, Object> managed = managedFields(
+                sku, name, description, categoryId, categoryName, priceCents, availableQuantity);
         if (searchable) {
-            requireNonBlank(sku, "searchable sku");
-            requireNonBlank(name, "searchable name");
-            Objects.requireNonNull(description, "searchable description");
-            Objects.requireNonNull(categoryId, "searchable categoryId");
-            requireNonBlank(categoryName, "searchable categoryName");
-            Objects.requireNonNull(priceCents, "searchable priceCents");
-            Objects.requireNonNull(availableQuantity, "searchable availableQuantity");
-            if (categoryId < 1 || priceCents < 0 || availableQuantity < 0) {
-                throw new IllegalArgumentException(
-                        "searchable categoryId must be positive and numeric values non-negative");
-            }
-        } else if (sku != null || name != null || description != null || categoryId != null
-                || categoryName != null || priceCents != null || availableQuantity != null) {
-            throw new IllegalArgumentException("tombstone must not contain business fields");
+            verifySearchable(managed);
+        } else if (managed.values().stream().anyMatch(value -> value != null)) {
+            throw new IllegalArgumentException("verifier tombstone carries managed business data");
         }
     }
 
@@ -44,9 +35,35 @@ public record ExpectedDocument(
                 false, revision, updatedAt);
     }
 
-    private static void requireNonBlank(String value, String field) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(field + " must not be blank");
+    private static Map<String, Object> managedFields(
+            String sku, String name, String description, Long categoryId,
+            String categoryName, Long priceCents, Integer availableQuantity) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("sku", sku);
+        fields.put("name", name);
+        fields.put("description", description);
+        fields.put("category_id", categoryId);
+        fields.put("category_name", categoryName);
+        fields.put("price_cents", priceCents);
+        fields.put("available_quantity", availableQuantity);
+        return fields;
+    }
+
+    private static void verifySearchable(Map<String, Object> managed) {
+        for (Map.Entry<String, Object> field : managed.entrySet()) {
+            if (field.getValue() == null) {
+                throw new IllegalArgumentException("missing expected field " + field.getKey());
+            }
+        }
+        if (((String) managed.get("sku")).isBlank()
+                || ((String) managed.get("name")).isBlank()
+                || ((String) managed.get("category_name")).isBlank()) {
+            throw new IllegalArgumentException("expected searchable names must be nonblank");
+        }
+        if ((Long) managed.get("category_id") <= 0
+                || (Long) managed.get("price_cents") < 0
+                || (Integer) managed.get("available_quantity") < 0) {
+            throw new IllegalArgumentException("expected searchable numeric range violation");
         }
     }
 }
