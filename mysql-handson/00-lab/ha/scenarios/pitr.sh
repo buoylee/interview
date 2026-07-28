@@ -72,7 +72,7 @@ case "$expected_count" in ''|*[!0-9]*) echo "invalid expected row count" >&2; ex
   echo "unexpected writes raced the backup/replay window" >&2; exit 1;
 }
 printf '%s\n' "$expected_count" > "$OUT/expected-count.txt"
-projection_sql="SELECT CONCAT_WS(CHAR(9), IFNULL(CONCAT('H',HEX(request_id)),'N'), IFNULL(CONCAT('H',HEX(CAST(payload AS CHAR CHARACTER SET utf8mb4))),'N'), IFNULL(CONCAT('H',HEX(via_router)),'N'), IFNULL(CONCAT('H',HEX(written_by)),'N')) FROM ha_lab.orders ORDER BY request_id"
+projection_sql="SET SESSION time_zone = '+00:00'; SELECT CONCAT_WS(CHAR(9), IFNULL(CONCAT('H',HEX(request_id)),'N'), IFNULL(CONCAT('H',HEX(CAST(payload AS CHAR CHARACTER SET utf8mb4))),'N'), IFNULL(CONCAT('H',HEX(via_router)),'N'), IFNULL(CONCAT('H',HEX(written_by)),'N'), IFNULL(CONCAT('H',HEX(DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s.%f'))),'N')) FROM ha_lab.orders ORDER BY request_id"
 "${DC[@]}" run --rm shell mysql -hrouter-a -P6446 -uroot -p"$PASSWORD" --batch --raw -Nse \
   "$projection_sql" > "$OUT/expected-projection.tsv"
 [ "$(wc -l < "$OUT/expected-projection.tsv" | tr -d ' ')" = "$expected_count" ] || {
@@ -100,7 +100,7 @@ readiness_started=$SECONDS
 recovery_ready=0
 for _ in $(seq 1 60); do
   readiness_attempt=$_
-  if readiness_output="$("${DC[@]}" exec -T recovery mysql -uroot -p"$PASSWORD" -Nse \
+  if readiness_output="$("${DC[@]}" exec -T recovery mysql -h127.0.0.1 -uroot -p"$PASSWORD" -Nse \
     'SELECT 1 /* recovery-readiness */' 2>> "$OUT/recovery-readiness-errors.txt")" && \
     [ "$readiness_output" = 1 ]; then
     recovery_ready=1
