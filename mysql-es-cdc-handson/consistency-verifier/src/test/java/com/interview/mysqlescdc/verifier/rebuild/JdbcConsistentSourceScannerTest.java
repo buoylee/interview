@@ -62,4 +62,23 @@ class JdbcConsistentSourceScannerTest {
                         .extracting(Throwable::getMessage)
                         .isEqualTo("snapshot connection close failed"));
     }
+
+    @Test
+    void opening_failure_closes_physical_connection_and_releases_permit() throws Exception {
+        DataSource source = mock(DataSource.class);
+        Connection broken = mock(Connection.class);
+        when(source.getConnection()).thenReturn(broken);
+        when(broken.createStatement()).thenThrow(new java.sql.SQLException("start failed"));
+        JdbcConsistentSourceScanner scanner = new JdbcConsistentSourceScanner(
+                source, new IndependentExpectedProjector());
+
+        for (int attempt = 0; attempt < 5; attempt++) {
+            assertThatThrownBy(scanner::open)
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("cannot open");
+        }
+
+        verify(source, times(5)).getConnection();
+        verify(broken, times(5)).close();
+    }
 }
