@@ -4,7 +4,7 @@
 
 这条 invariant 先于产品选择。一个方案若无法回答成功边界、fencing、故障域、RPO／RTO 和恢复入口，就还不是可验证的 HA 方案。
 
-本文不重复复制线程、半同步或 Group Replication 的实现细节。`receiver ACK`、`applier 执行`、`Secondary 可读`是三个不同边界，canonical 说明见 [Chapter 09 的半同步 ACK 边界与 MGR](README.md#35-半同步-lossless-模式)；读己之写策略见 [Chapter 09 §3.9](README.md#39-写后立即读问题-读自己的写read-your-writes)。
+本文不重复复制线程、半同步或 Group Replication 的实现细节。`receiver ACK`、`applier 执行`、`Secondary 可读`是三个不同边界，canonical 说明见 [Chapter 09 的半同步 ACK 边界与 MGR](README.md#35-半同步-lossless-模式)；读己之写策略见 [Chapter 09 §3.9](README.md#39-写后立即读问题读自己的写read-your-writes)。
 
 ## 1. 先问：客户端看到成功时，系统承诺了什么
 
