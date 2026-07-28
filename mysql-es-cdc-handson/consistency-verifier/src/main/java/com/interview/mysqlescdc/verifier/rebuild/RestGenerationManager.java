@@ -22,11 +22,15 @@ import tools.jackson.databind.node.ObjectNode;
 public final class RestGenerationManager implements GenerationManager {
     private static final DateTimeFormatter STAMP=DateTimeFormatter.ofPattern("yyyyMMddHHmmss").withZone(ZoneOffset.UTC);
     private final JdbcClient jdbc; private final HttpClient http; private final JsonMapper json; private final String base; private final Clock clock;
+    private final Runnable beforePersistSwapped;
     public RestGenerationManager(JdbcClient jdbc,@Value("${verification.elasticsearch-url:http://localhost:9200}") String base) {
-        this(jdbc,HttpClient.newHttpClient(),JsonMapper.builder().build(),base,Clock.systemUTC());
+        this(jdbc,HttpClient.newHttpClient(),JsonMapper.builder().build(),base,Clock.systemUTC(),()->{});
     }
     RestGenerationManager(JdbcClient jdbc,HttpClient http,JsonMapper json,String base,Clock clock) {
-        this.jdbc=jdbc;this.http=http;this.json=json;this.base=base;this.clock=clock;
+        this(jdbc,http,json,base,clock,()->{});
+    }
+    RestGenerationManager(JdbcClient jdbc,HttpClient http,JsonMapper json,String base,Clock clock,Runnable beforePersistSwapped) {
+        this.jdbc=jdbc;this.http=http;this.json=json;this.base=base;this.clock=clock;this.beforePersistSwapped=beforePersistSwapped;
     }
     @Override public IndexGeneration create(UUID runId) {
         Instant created=clock.instant(); String name="products_v3_"+STAMP.format(created)+"_"+runId.toString().substring(0,8);
@@ -42,9 +46,12 @@ public final class RestGenerationManager implements GenerationManager {
         catch (Exception exception) { throw new IllegalStateException(exception); }
     }
     @Override public AliasCutoverResult atomicCutover(IndexGeneration generation) {
+        Reservation reservation=reservation(generation.runId());
+        if (!reservation.name().equals(generation.name()) || !reservation.status().equals("CREATED"))
+            throw new IllegalStateException("generation does not match durable CREATED reservation");
         AliasState state=aliases();
         if (state.index().equals(generation.name())) {
-            if (!swapped(generation.runId())) throw new IllegalStateException("alias moved without durable swapped evidence");
+            if (!reservation.swapped()) throw new IllegalStateException("alias moved without durable swapped evidence");
             return new AliasCutoverResult(state.index(),generation.name(),true);
         }
         String old=state.index();
@@ -55,8 +62,10 @@ public final class RestGenerationManager implements GenerationManager {
         actions.addObject().putObject("add").put("index",generation.name()).put("alias","products_write").put("is_write_index",true);
         response("POST","/_aliases",json.writeValueAsString(body),200);
         AliasState after=aliases(); if (!after.index().equals(generation.name())) throw new IllegalStateException("cutover topology verification failed");
-        jdbc.sql("UPDATE rebuild_run SET alias_swapped=TRUE WHERE run_id=UUID_TO_BIN(:run) AND generation_name=:name")
+        beforePersistSwapped.run();
+        int changed=jdbc.sql("UPDATE rebuild_run SET alias_swapped=TRUE WHERE run_id=UUID_TO_BIN(:run) AND generation_name=:name AND status='CREATED' AND alias_swapped=FALSE")
                 .param("run",generation.runId().toString()).param("name",generation.name()).update();
+        if(changed!=1) throw new IllegalStateException("aliases moved but durable swapped evidence was not persisted");
         return new AliasCutoverResult(old,generation.name(),false);
     }
     private AliasState aliases() {
@@ -64,11 +73,12 @@ public final class RestGenerationManager implements GenerationManager {
         if (root.size()!=1) throw new IllegalStateException("aliases must share exactly one index");
         String index=root.propertyNames().iterator().next(); JsonNode aliases=root.path(index).path("aliases");
         JsonNode search=aliases.path("products_search"), write=aliases.path("products_write");
-        if (aliases.size()!=2 || search.size()!=1 || !search.path("filter").path("term").path("searchable").asBoolean(false)
-                || write.size()!=1 || !write.path("is_write_index").asBoolean(false)) throw new IllegalStateException("corrupt alias topology");
+        JsonNode exactSearch=json.readTree("{\"filter\":{\"term\":{\"searchable\":true}}}");
+        JsonNode exactWrite=json.readTree("{\"is_write_index\":true}");
+        if (aliases.size()!=2 || !search.equals(exactSearch) || !write.equals(exactWrite)) throw new IllegalStateException("corrupt alias topology");
         return new AliasState(index);
     }
-    private boolean swapped(UUID run) { return jdbc.sql("SELECT alias_swapped FROM rebuild_run WHERE run_id=UUID_TO_BIN(:run)").param("run",run.toString()).query(Boolean.class).single(); }
+    private Reservation reservation(UUID run) { return jdbc.sql("SELECT generation_name name,status,alias_swapped swapped FROM rebuild_run WHERE run_id=UUID_TO_BIN(:run)").param("run",run.toString()).query(Reservation.class).single(); }
     private String response(String method,String path,String body,int expected) {
         try { var b=HttpRequest.newBuilder(URI.create(base+path)).timeout(Duration.ofSeconds(10));
             b.method(method,body==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofString(body)).header("Content-Type","application/json");
@@ -76,4 +86,5 @@ public final class RestGenerationManager implements GenerationManager {
         } catch(Exception e){ if(e instanceof RuntimeException runtime) throw runtime; throw new IllegalStateException(e); }
     }
     private record AliasState(String index) {}
+    private record Reservation(String name,String status,boolean swapped) {}
 }

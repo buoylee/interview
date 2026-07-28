@@ -10,6 +10,8 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.UUID;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,18 +35,44 @@ class RestGenerationManagerIT {
     }
     @AfterEach void cleanup(){ detachServingAliases();deleteTestIndices();createAliases("products_v2"); }
     @Test void reserves_before_create_and_applies_exact_template_meta() throws Exception {
+        Path templatePath=Path.of("../infra/elasticsearch/products-v3-template.json").normalize();
+        byte[] templateBefore=Files.readAllBytes(templatePath);
         UUID run=UUID.fromString("aaaaaaaa-0000-0000-0000-000000000001");
         IndexGeneration generation=manager.create(run);
         assertThat(generation.name()).isEqualTo("products_v3_20260722120000_aaaaaaaa");
         var mapping=json.readTree(request("GET","/"+generation.name()+"/_mapping",null,200));
         var mappings=mapping.path(generation.name()).path("mappings");
         assertThat(mappings.path("dynamic").asText()).isEqualTo("strict");
-        assertThat(mappings.path("properties").size()).isEqualTo(11);
+        var template=json.readTree(templateBefore);
+        assertThat(mappings.path("properties")).isEqualTo(template.path("mappings").path("properties"));
         assertThat(mappings.path("_meta").path("schema_version").asInt()).isEqualTo(3);
         assertThat(mappings.path("_meta").path("deletion_mode").asText()).isEqualTo("tombstone");
         assertThat(mappings.path("_meta").path("rebuild_run_id").asText()).isEqualTo(run.toString());
+        assertThat(mappings.path("_meta").path("created_at").asText()).isEqualTo(now.toString());
+        assertThat(mappings.path("_meta").size()).isEqualTo(4);
+        var settings=json.readTree(request("GET","/"+generation.name()+"/_settings",null,200)).path(generation.name()).path("settings").path("index");
+        assertThat(settings.path("number_of_shards").asText()).isEqualTo("1");
+        assertThat(settings.path("number_of_replicas").asText()).isEqualTo("0");
+        assertThat(settings.path("refresh_interval").asText()).isEqualTo("1s");
+        assertThat(Files.readAllBytes(templatePath)).isEqualTo(templateBefore);
         assertThat(root.sql("SELECT generation_name FROM rebuild_run WHERE run_id=UUID_TO_BIN(:run)").param("run",run.toString()).query(String.class).single()).isEqualTo(generation.name());
         assertThatThrownBy(() -> manager.create(run)).isInstanceOf(RuntimeException.class);
+    }
+    @Test void missing_or_conflicting_durable_reservation_rejects_before_alias_side_effect() {
+        UUID missing=UUID.randomUUID();
+        assertThatThrownBy(() -> manager.atomicCutover(new IndexGeneration(missing,"products_v3_forged",now))).isInstanceOf(RuntimeException.class);
+        assertExactAliases("m5_old");
+        UUID conflict=UUID.randomUUID();
+        root.sql("INSERT INTO rebuild_run(run_id,generation_name,status) VALUES(UUID_TO_BIN(:run),'reserved_other','CREATED')").param("run",conflict.toString()).update();
+        assertThatThrownBy(() -> manager.atomicCutover(new IndexGeneration(conflict,"products_v3_forged",now))).isInstanceOf(RuntimeException.class);
+        assertExactAliases("m5_old");
+    }
+    @Test void zero_row_swapped_update_never_returns_success_after_es_side_effect() {
+        IndexGeneration generation=manager.create(UUID.randomUUID());
+        var failPersist=new RestGenerationManager(managerJdbc(),http,json,ES,Clock.fixed(now,ZoneOffset.UTC),
+                () -> root.sql("DELETE FROM rebuild_run WHERE run_id=UUID_TO_BIN(:run)").param("run",generation.runId().toString()).update());
+        assertThatThrownBy(() -> failPersist.atomicCutover(generation)).hasMessageContaining("durable swapped evidence");
+        assertExactAliases(generation.name());
     }
     @Test void deterministic_name_conflict_and_preexisting_index_fail_closed_without_reuse() {
         UUID first=UUID.fromString("bbbbbbbb-0000-0000-0000-000000000001"); manager.create(first);
@@ -76,6 +104,9 @@ class RestGenerationManagerIT {
         detachServingAliases(); createAliases("m5_old");
         request("POST","/_aliases","{\"actions\":[{\"add\":{\"index\":\"m5_old\",\"alias\":\"products_search\",\"filter\":{\"match_all\":{}}}}]}",200);
         assertThatThrownBy(() -> manager.atomicCutover(generation)).isInstanceOf(RuntimeException.class);
+        detachServingAliases();
+        request("POST","/_aliases","{\"actions\":[{\"add\":{\"index\":\"m5_old\",\"alias\":\"products_write\",\"is_write_index\":true}},{\"add\":{\"index\":\"m5_old\",\"alias\":\"products_search\",\"filter\":{\"bool\":{\"should\":[{\"term\":{\"searchable\":true}},{\"match_all\":{}}]}}}}]}",200);
+        assertThatThrownBy(() -> manager.atomicCutover(generation)).isInstanceOf(RuntimeException.class);
         detachServingAliases(); createAliases("m5_old"); request("PUT","/m5_old2","{}",200);
         request("POST","/_aliases","{\"actions\":[{\"add\":{\"index\":\"m5_old2\",\"alias\":\"products_search\",\"filter\":{\"term\":{\"searchable\":true}}}}]}",200);
         assertThatThrownBy(() -> manager.atomicCutover(generation)).isInstanceOf(RuntimeException.class);
@@ -87,6 +118,7 @@ class RestGenerationManagerIT {
         assertThatThrownBy(() -> manager.atomicCutover(generation)).isInstanceOf(RuntimeException.class);
     }
     void createOld(String index){request("PUT","/"+index,"{}",200);createAliases(index);}
+    JdbcClient managerJdbc(){return JdbcClient.create(new DriverManagerDataSource("jdbc:mysql://localhost:3308/product_catalog?useSSL=false&allowPublicKeyRetrieval=true","verifier","verifierpass"));}
     void createAliases(String index){request("POST","/_aliases","{\"actions\":[{\"add\":{\"index\":\""+index+"\",\"alias\":\"products_write\",\"is_write_index\":true}},{\"add\":{\"index\":\""+index+"\",\"alias\":\"products_search\",\"filter\":{\"term\":{\"searchable\":true}}}}]}",200);}
     void detachServingAliases(){try{var node=json.readTree(request("GET","/_alias/products_search,products_write",null,200,404));if(!node.isObject())return;var body=json.createObjectNode();var actions=body.putArray("actions");for(String index:node.propertyNames()){var aliases=node.path(index).path("aliases");for(String alias:aliases.propertyNames())actions.addObject().putObject("remove").put("index",index).put("alias",alias);}if(!actions.isEmpty())request("POST","/_aliases",json.writeValueAsString(body),200);}catch(Exception ignored){}}
     void deleteTestIndices(){try{var list=json.readTree(request("GET","/_cat/indices/products_v3_*,m5_old*?format=json&h=index",null,200));for(var item:list)request("DELETE","/"+item.path("index").asText(),null,200,404);}catch(RuntimeException ignored){}}
