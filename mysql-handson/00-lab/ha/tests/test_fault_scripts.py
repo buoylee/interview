@@ -440,6 +440,37 @@ class FaultScriptTest(unittest.TestCase):
         self.assertTrue((root / "evidence/quorum-recovery-gtid-final.jsonl").exists())
         self.assertFalse((root / "evidence/fault-state.env").exists())
 
+    def test_quorum_restore_attempt_replaces_legacy_top_level_evidence(self):
+        temporary, root, _log, environment = self.controlled_root()
+        self.addCleanup(temporary.cleanup)
+        self.quorum_state(root)
+        legacy_names = (
+            "quorum-recovery-gtid-before.jsonl",
+            "quorum-recovery-gtid-subset.jsonl",
+            "quorum-recovery-stop-db1.txt",
+            "quorum-recovery-stop-db2.txt",
+            "quorum-recovery-stop-db3.txt",
+        )
+        for name in legacy_names:
+            (root / "evidence" / name).write_text("legacy-attempt\n", encoding="utf-8")
+
+        result = subprocess.run(
+            ["/bin/bash", "faults/restore.sh"], cwd=root,
+            env=environment, text=True, capture_output=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for name in legacy_names:
+            self.assertFalse((root / "evidence" / name).exists(), name)
+        current_names = {
+            path.name for path in (root / "evidence").glob("quorum-recovery-*")
+        }
+        self.assertIn("quorum-recovery-gtid-initial.jsonl", current_names)
+        self.assertIn("quorum-recovery-gtid-final.jsonl", current_names)
+        for member in ("db1", "db2", "db3"):
+            self.assertIn(f"quorum-recovery-stop-{member}.stdout.txt", current_names)
+            self.assertIn(f"quorum-recovery-stop-{member}.stderr.txt", current_names)
+
     def test_quorum_restore_extra_member_gtid_aborts_before_reboot(self):
         temporary, root, log, environment = self.controlled_root()
         self.addCleanup(temporary.cleanup)

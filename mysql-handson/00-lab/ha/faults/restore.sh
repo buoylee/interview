@@ -250,11 +250,12 @@ restore_quorum_loss() {
   timeout="$(restore_timeout)"
   out="$HA_ROOT/evidence/quorum-recovery"
   record_event quorum_restore_begin "$SCENARIO" "$TARGETS"
-  for suffix in seed.txt gtid-initial-seed-hex.txt gtid-final-seed-hex.txt gtid-initial.jsonl gtid-final.jsonl fence-initial.jsonl fence-final.jsonl group-stopped.jsonl stop-status.jsonl reboot-dry-run.txt reboot-actual.txt topology.txt writable-primary.txt post-access.jsonl router-stopped.jsonl router-ready.jsonl router-rollback-probe.json router-stop.stdout.txt router-stop.stderr.txt router-start.stdout.txt router-start.stderr.txt; do
+  for suffix in seed.txt gtid-before.jsonl gtid-subset.jsonl gtid-initial-seed-hex.txt gtid-final-seed-hex.txt gtid-initial.jsonl gtid-final.jsonl fence-initial.jsonl fence-final.jsonl group-stopped.jsonl stop-status.jsonl reboot-dry-run.txt reboot-actual.txt topology.txt writable-primary.txt post-access.jsonl router-stopped.jsonl router-ready.jsonl router-rollback-probe.json router-stop.stdout.txt router-stop.stderr.txt router-start.stdout.txt router-start.stderr.txt; do
     rm -f "$out-$suffix"
   done
   for member in db1 db2 db3; do
-    rm -f "$out-stop-$member.stdout.txt" "$out-stop-$member.stderr.txt" \
+    rm -f "$out-stop-$member.txt" \
+      "$out-stop-$member.stdout.txt" "$out-stop-$member.stderr.txt" \
       "$out-fence-$member.stdout.txt" "$out-fence-$member.stderr.txt" \
       "$out-post-access-$member.stdout.txt" "$out-post-access-$member.stderr.txt"
   done
