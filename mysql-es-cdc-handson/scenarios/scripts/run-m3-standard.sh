@@ -69,20 +69,48 @@ case "$scenario" in
     poll "product DLQ" 120 "curl -fsS http://127.0.0.1:8082/internal/dlq/count | jq -e '.unresolved>=1' >/dev/null"
     if [[ "$scenario" == m3-bulk-partial ]]; then
       group_json >"$evidence/bulk-group.json"
-      second_raw="$(capture_payload 2413 2 "$evidence/second-record.json")"
+      capture_matching_batch_record 2403 2413 2 "$evidence/baseline-group.json" \
+        "$evidence/batch-record.json" "$evidence/topic-records.txt"
+      wait_es_revision 2413 2 "$evidence/es-valid-before-repair.json"
     fi
     curl -fsS 'http://127.0.0.1:8082/internal/dlq?status=PENDING' >"$evidence/dlq-before.json"
-    "${compose[@]}" stop search-sync-consumer >/dev/null; restore_mapping_without_resolution
+    if [[ "$scenario" == m3-bulk-partial ]]; then
+      jq -e --slurpfile record "$evidence/batch-record.json" '
+        length==1 and .[0].productId==2403 and .[0].sourceRevision==2 and .[0].status=="PENDING"
+        and .[0].topic=="product-search-revisions"
+        and .[0].partition==$record[0].partition and .[0].offset==$record[0].offset
+        and .[0].eventId==("product-search-revisions:"+($record[0].partition|tostring)+":"+($record[0].offset|tostring)+":2403")' \
+        "$evidence/dlq-before.json" >/dev/null
+      jq -e '(.raw_body|fromjson) | .found==true and ._id=="2413"
+        and ._source.product_id==2413 and ._source.source_revision==2 and ._source.price_cents==110
+        and ._source.sku=="LAB-2413" and ._source.name=="Crash 2413" and ._source.searchable==true' \
+        "$evidence/es-valid-before-repair.json" >/dev/null
+    fi
+    "${compose[@]}" stop search-sync-consumer >/dev/null
+    if [[ "$scenario" == m3-bulk-partial ]]; then
+      restore_mapping_preserving_documents
+    else
+      restore_mapping_without_resolution
+    fi
     "${compose[@]}" start search-sync-consumer >/dev/null; wait_consumer_degraded "$evidence/restored-ready.json"
     jq -r '.[].eventId' "$evidence/dlq-before.json" | while IFS= read -r event; do
       encoded="$(jq -rn --arg v "$event" '$v|@uri')"
       curl -fsS -X POST "http://127.0.0.1:8082/internal/dlq/$encoded/replay" >>"$evidence/replay-results.jsonl"
       printf '\n' >>"$evidence/replay-results.jsonl"
     done
-    if [[ "$scenario" == m3-bulk-partial ]]; then produce_raw "$second_raw"; wait_es_revision 2413 2 "$evidence/es-second-final.json"; fi
+    if [[ "$scenario" == m3-bulk-partial ]]; then wait_es_revision 2413 2 "$evidence/es-second-final.json"; fi
     wait_es_revision "$id" 2 "$evidence/es-final.json"; assert_clean
-    jq -n --arg scenario "$scenario" --slurpfile dlq "$evidence/dlq-before.json" --slurpfile es "$evidence/es-final.json" \
-      '{scenario:$scenario,terminal_state:"HEALTHY",raw_pending:$dlq[0],raw_es:$es[0],recovered_by_current_source_replay:true,final_consistency_claim:false}' >"$evidence/result.json" ;;
+    if [[ "$scenario" == m3-bulk-partial ]]; then
+      jq -n --arg scenario "$scenario" --slurpfile batch "$evidence/batch-record.json" \
+        --slurpfile dlq "$evidence/dlq-before.json" --slurpfile before "$evidence/es-valid-before-repair.json" \
+        --slurpfile bad "$evidence/es-final.json" --slurpfile valid "$evidence/es-second-final.json" \
+        '{scenario:$scenario,terminal_state:"HEALTHY",raw_batch_record:$batch[0],raw_pending:$dlq[0],
+          raw_valid_before_repair:$before[0],raw_bad_final:$bad[0],raw_valid_final:$valid[0],
+          valid_item_applied_before_repair:true,recovered_by_current_source_replay:true,final_consistency_claim:false}' >"$evidence/result.json"
+    else
+      jq -n --arg scenario "$scenario" --slurpfile dlq "$evidence/dlq-before.json" --slurpfile es "$evidence/es-final.json" \
+        '{scenario:$scenario,terminal_state:"HEALTHY",raw_pending:$dlq[0],raw_es:$es[0],recovered_by_current_source_replay:true,final_consistency_claim:false}' >"$evidence/result.json"
+    fi ;;
   m3-record-parse-dlq)
     produce_raw 'not-json'
     poll "record poison DLQ" 120 "curl -fsS http://127.0.0.1:8082/internal/record-dlq/count | jq -e '.unresolved==1' >/dev/null"

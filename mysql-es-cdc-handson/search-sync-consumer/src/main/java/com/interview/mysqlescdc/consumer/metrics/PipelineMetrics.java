@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Autowired;
 import io.micrometer.core.instrument.*;
 import com.interview.mysqlescdc.consumer.dlq.*;
+import com.interview.mysqlescdc.consumer.sink.BulkOutcome;
 
 @Component
 public class PipelineMetrics {
@@ -30,8 +31,14 @@ public class PipelineMetrics {
     }
     public void recordConsumerRecord(){registry.get("cdc_consumer_records_total").counter().increment();}
     public void recordSignal(){registry.get("cdc_consumer_signals_total").counter().increment();}
-    public void recordBulk(String outcome){Counter.builder("cdc_es_bulk_items_total").tag("outcome",outcome).register(registry).increment();}
-    public void recordRetry(String failureClass){Counter.builder("cdc_retry_total").tag("failure_class",failureClass).register(registry).increment();}
+    public void recordBulk(BulkOutcome outcome){
+        if(outcome==null) throw new IllegalArgumentException("outcome required");
+        Counter.builder("cdc_es_bulk_items_total").tag("outcome",outcome.name()).register(registry).increment();
+    }
+    public void recordRetry(RetryFailureClass failureClass){
+        if(failureClass==null) throw new IllegalArgumentException("failureClass required");
+        Counter.builder("cdc_retry_total").tag("failure_class",failureClass.name()).register(registry).increment();
+    }
     public void recordStale(){registry.get("cdc_stale_revision_total").counter().increment();}
     public void recordSuccess(){lastSuccess.set(Instant.now().getEpochSecond());}
 }

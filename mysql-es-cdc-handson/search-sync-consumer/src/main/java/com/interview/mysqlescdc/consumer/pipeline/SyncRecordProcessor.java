@@ -163,7 +163,9 @@ public class SyncRecordProcessor {
             try {
                 result = elasticsearch.write(targetAlias, pending);
             } catch (BulkTransportException | BulkProtocolException exception) {
-                if (metrics != null) metrics.recordRetry(exception instanceof BulkTransportException ? "transport" : "protocol");
+                if (metrics != null) metrics.recordRetry(exception instanceof BulkTransportException
+                        ? com.interview.mysqlescdc.consumer.metrics.RetryFailureClass.TRANSPORT
+                        : com.interview.mysqlescdc.consumer.metrics.RetryFailureClass.PROTOCOL);
                 if (attempt == retryAttempts) {
                     throw new RetryablePipelineException("Elasticsearch Bulk attempts exhausted", exception);
                 }
@@ -191,9 +193,9 @@ public class SyncRecordProcessor {
                     permanent.add(item);
                 } else {
                     retry.add(document);
-                    if (metrics != null) metrics.recordRetry("bulk_item");
+                    if (metrics != null) metrics.recordRetry(com.interview.mysqlescdc.consumer.metrics.RetryFailureClass.BULK_ITEM);
                 }
-                if (metrics != null) metrics.recordBulk(item.outcome().name().toLowerCase(java.util.Locale.ROOT));
+                if (metrics != null) metrics.recordBulk(item.outcome());
             }
             pending = List.copyOf(retry);
         }

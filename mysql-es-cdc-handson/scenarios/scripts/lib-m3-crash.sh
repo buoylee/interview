@@ -214,6 +214,31 @@ capture_matching_record() {
     --argjson payload "$payload" '{partition:$partition,offset:$offset,baseline_end:$baseline_end,payload:$payload}' >"$output"
 }
 
+capture_matching_batch_record() {
+  local first="$1" second="$2" revision="$3" baseline="$4" output="$5" records="$6"
+  local line prefix payload partition offset baseline_end
+  "${compose[@]}" exec -T kafka /opt/kafka/bin/kafka-console-consumer.sh \
+    --bootstrap-server kafka:9092 --topic "$topic" --from-beginning --timeout-ms 10000 \
+    --property print.partition=true --property print.offset=true --property print.value=true \
+    >"$records" 2>/dev/null || true
+  line="$(awk -v first="\"product_id\":\"${first}\"" -v second="\"product_id\":\"${second}\"" \
+    'index($0,first)&&index($0,second){print}' "$records" | tail -1)"
+  test -n "$line" || die "matching two-product batch record absent"
+  prefix="${line%%\{*}"; payload="{${line#*\{}"
+  partition="$(printf '%s' "$prefix" | sed -E 's/^Partition:([0-9]+).*/\1/')"
+  offset="$(printf '%s' "$prefix" | sed -E 's/^.*Offset:([0-9]+).*/\1/')"
+  jq -e --argjson first "$first" --argjson second "$second" --argjson revision "$revision" '
+    .database=="product_catalog" and .table=="product_search_revision" and .isDdl==false and .type=="UPDATE"
+    and (.data|length)==2
+    and ([.data[]|{product_id:(.product_id|tonumber),revision:(.revision|tonumber),active}]|sort_by(.product_id))
+      == ([{product_id:$first,revision:$revision,active:"1"},{product_id:$second,revision:$revision,active:"1"}]|sort_by(.product_id))' \
+    <<<"$payload" >/dev/null
+  baseline_end="$(jq -r --argjson partition "$partition" '.[]|select(.partition==$partition)|.end' "$baseline")"
+  test -n "$baseline_end" && (( offset >= baseline_end )) || die "batch record predates baseline"
+  jq -n --argjson partition "$partition" --argjson offset "$offset" --argjson baseline_end "$baseline_end" \
+    --argjson payload "$payload" '{partition:$partition,offset:$offset,baseline_end:$baseline_end,payload:$payload}' >"$output"
+}
+
 container_state() {
   local id
   id="$("${compose[@]}" ps -a -q search-sync-consumer)"
@@ -266,4 +291,22 @@ install_bad_mapping() {
 restore_mapping_without_resolution() {
   curl -fsS -X DELETE http://127.0.0.1:9200/products_v2 >/dev/null
   bash infra/elasticsearch/bootstrap-products-v2.sh
+}
+
+restore_mapping_preserving_documents() {
+  local mapping
+  mapping="$(mktemp)"
+  jq '{mappings:(.template.mappings + {"_meta":{"schema_version":1,"deletion_mode":"tombstone","generation":"products_v3"}})}' \
+    infra/elasticsearch/index-template.json >"$mapping"
+  curl -fsS -X DELETE http://127.0.0.1:9200/products_v3 >/dev/null 2>&1 || true
+  curl -fsS -X PUT http://127.0.0.1:9200/products_v3 -H 'Content-Type: application/json' --data-binary @"$mapping" >/dev/null
+  rm -f "$mapping"
+  curl -fsS -X POST http://127.0.0.1:9200/_reindex?wait_for_completion=true \
+    -H 'Content-Type: application/json' -d '{"source":{"index":"products_v2"},"dest":{"index":"products_v3"}}' \
+    | jq -e '.failures==[] and .timed_out==false' >/dev/null
+  curl -fsS -X POST http://127.0.0.1:9200/_aliases -H 'Content-Type: application/json' -d \
+    '{"actions":[{"remove":{"index":"products_v2","alias":"products_write"}},
+      {"remove":{"index":"products_v2","alias":"products_search"}},
+      {"add":{"index":"products_v3","alias":"products_write","is_write_index":true}},
+      {"add":{"index":"products_v3","alias":"products_search","filter":{"term":{"searchable":true}}}}]}' >/dev/null
 }

@@ -32,7 +32,7 @@ public class RecordDlqReplayService {
             for(long id: ids) { var snapshot=source.load(id); if(snapshot.isEmpty()) return remain(pending); docs.add(projector.project(snapshot.get())); }
         } catch(RuntimeException failure) { return remain(pending); }
         BulkWriteResult result;
-        try { result=elasticsearch.write(targetAlias, docs); } catch(BulkTransportException|BulkProtocolException failure) { return remain(pending); }
+        try { result=elasticsearch.write(targetAlias, docs); } catch(RuntimeException failure) { return remain(pending); }
         if(result.items().size()!=docs.size()) return remain(pending);
         List<BulkOutcome> outcomes=new ArrayList<>();
         for(int i=0;i<docs.size();i++) {
@@ -41,12 +41,26 @@ public class RecordDlqReplayService {
             outcomes.add(item.outcome());
             if(item.outcome()!=BulkOutcome.APPLIED && item.outcome()!=BulkOutcome.STALE) return remain(pending);
         }
-        store.resolve(recordId);
+        resolveOrRemain(pending);
         return new RecordReplayResult(recordId,outcomes,true,ReplayStatus.RESOLVED);
     }
     private RecordReplayResult remain(RecordDlqRecord r) {
         store.publish(RecordDlqRecord.newPending(r.recordId(),r.topic(),r.partition(),r.offset(),
                 r.rawKey(),r.rawPayload(),r.failureClass(),r.lastError()));
         return new RecordReplayResult(r.recordId(),List.of(),false,ReplayStatus.PENDING);
+    }
+    private void resolveOrRemain(RecordDlqRecord pending) {
+        try {
+            store.resolve(pending.recordId());
+        } catch (RuntimeException resolveFailure) {
+            try {
+                store.publish(RecordDlqRecord.newPending(pending.recordId(),pending.topic(),pending.partition(),pending.offset(),
+                        pending.rawKey(),pending.rawPayload(),pending.failureClass(),pending.lastError()));
+            } catch (RuntimeException republishFailure) {
+                republishFailure.addSuppressed(resolveFailure);
+                throw republishFailure;
+            }
+            throw resolveFailure;
+        }
     }
 }

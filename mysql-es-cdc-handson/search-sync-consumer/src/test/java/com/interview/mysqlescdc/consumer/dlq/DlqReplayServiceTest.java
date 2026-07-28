@@ -1,6 +1,6 @@
 package com.interview.mysqlescdc.consumer.dlq;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.util.List;
@@ -87,12 +87,57 @@ class DlqReplayServiceTest {
         verify(store, never()).resolve(anyString());
     }
 
+    @Test void resolve_failure_republishes_evidence_and_never_reports_resolved() {
+        DlqRecord pending = pending("t:0:1:7", 7, 1);
+        when(store.findPending(pending.eventId())).thenReturn(Optional.of(pending));
+        when(source.load(7)).thenReturn(Optional.of(active(7, 4)));
+        when(gateway.write(anyString(), anyList())).thenReturn(result(BulkOutcome.APPLIED));
+        doThrow(new IllegalStateException("resolve failed")).when(store).resolve(pending.eventId());
+
+        assertThatThrownBy(() -> service.replay(pending.eventId()))
+                .isInstanceOf(IllegalStateException.class).hasMessage("resolve failed");
+        verify(store).publish(argThat(republished -> sameEvidence(pending, republished)));
+    }
+
+    @Test void republish_failure_propagates_without_claiming_an_attempt_or_resolution() {
+        DlqRecord pending = pending("t:0:1:7", 7, 1);
+        when(store.findPending(pending.eventId())).thenReturn(Optional.of(pending));
+        when(source.load(7)).thenReturn(Optional.empty());
+        doThrow(new IllegalStateException("publish failed")).when(store).publish(any());
+
+        assertThatThrownBy(() -> service.replay(pending.eventId()))
+                .isInstanceOf(IllegalStateException.class).hasMessage("publish failed");
+        verify(store, never()).resolve(anyString());
+    }
+
+    @Test void republish_failure_after_resolve_failure_is_primary_and_retains_resolve_as_suppressed() {
+        DlqRecord pending = pending("t:0:1:7", 7, 1);
+        when(store.findPending(pending.eventId())).thenReturn(Optional.of(pending));
+        when(source.load(7)).thenReturn(Optional.of(active(7, 4)));
+        when(gateway.write(anyString(), anyList())).thenReturn(result(BulkOutcome.STALE));
+        doThrow(new IllegalStateException("resolve failed")).when(store).resolve(pending.eventId());
+        doThrow(new IllegalArgumentException("publish failed")).when(store).publish(any());
+
+        assertThatThrownBy(() -> service.replay(pending.eventId()))
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("publish failed")
+                .satisfies(failure -> assertThat(failure.getSuppressed()).singleElement()
+                        .isInstanceOfSatisfying(IllegalStateException.class,
+                                suppressed -> assertThat(suppressed).hasMessage("resolve failed")));
+    }
+
     private BulkWriteResult result(BulkOutcome outcome) {
         return new BulkWriteResult(List.of(new BulkItemResult(7, 4, outcome, 400, "x", "reason")));
     }
     private DlqRecord pending(String id, long product, long revision) {
         return DlqRecord.newPending(id, "t", 0, 1, product, revision,
                 "{\"product_id\":" + product + ",\"source_revision\":" + revision + "}", "X", "old");
+    }
+    private boolean sameEvidence(DlqRecord expected, DlqRecord actual) {
+        return actual.isNewPending() && actual.eventId().equals(expected.eventId())
+                && actual.topic().equals(expected.topic()) && actual.partition()==expected.partition()
+                && actual.offset()==expected.offset() && actual.productId()==expected.productId()
+                && actual.sourceRevision()==expected.sourceRevision() && actual.payload().equals(expected.payload())
+                && actual.failureClass().equals(expected.failureClass()) && actual.lastError().equals(expected.lastError());
     }
     private SourceProductSnapshot active(long id, long revision) {
         return new SourceProductSnapshot(id, "sku", "name", "description", 2L, "cat", 100L, 3,

@@ -61,7 +61,7 @@ class SyncRecordProcessorTest {
         processor.process(record(message(row(7, 4, true))));
         assertThat(registry.get("cdc_consumer_records_total").counter().count()).isEqualTo(1);
         assertThat(registry.get("cdc_consumer_signals_total").counter().count()).isEqualTo(1);
-        assertThat(registry.get("cdc_es_bulk_items_total").tag("outcome", "stale").counter().count()).isEqualTo(1);
+        assertThat(registry.get("cdc_es_bulk_items_total").tag("outcome", "STALE").counter().count()).isEqualTo(1);
         assertThat(registry.get("cdc_stale_revision_total").counter().count()).isEqualTo(1);
         assertThat(registry.get("cdc_last_success_epoch_seconds").gauge().value()).isPositive();
     }

@@ -1,1 +1,1 @@
-{"scenario":"m3-bulk-partial","declared_terminal_state":"HEALTHY","raw_first":true}
+{"scenario":"m3-bulk-partial","declared_terminal_state":"HEALTHY","raw_first":true,"batch":{"bad_product_id":2403,"valid_product_id":2413,"revision":2,"bad_price_cents":1000,"valid_price_cents":110}}

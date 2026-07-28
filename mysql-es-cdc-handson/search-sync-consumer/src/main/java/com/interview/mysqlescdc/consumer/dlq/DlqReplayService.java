@@ -42,7 +42,7 @@ public class DlqReplayService {
             return remain(pending, document.sourceRevision(), null);
         }
         boolean settled = item.outcome() == BulkOutcome.APPLIED || item.outcome() == BulkOutcome.STALE;
-        if (settled) store.resolve(eventId); else republish(pending);
+        if (settled) resolveOrRemain(pending); else republish(pending);
         return new ReplayResult(eventId, pending.sourceRevision(), document.sourceRevision(),
                 item.outcome(), settled, settled ? ReplayStatus.RESOLVED : ReplayStatus.PENDING);
     }
@@ -54,5 +54,18 @@ public class DlqReplayService {
     private void republish(DlqRecord r) {
         store.publish(DlqRecord.newPending(r.eventId(), r.topic(), r.partition(), r.offset(),
                 r.productId(), r.sourceRevision(), r.payload(), r.failureClass(), r.lastError()));
+    }
+    private void resolveOrRemain(DlqRecord pending) {
+        try {
+            store.resolve(pending.eventId());
+        } catch (RuntimeException resolveFailure) {
+            try {
+                republish(pending);
+            } catch (RuntimeException republishFailure) {
+                republishFailure.addSuppressed(resolveFailure);
+                throw republishFailure;
+            }
+            throw resolveFailure;
+        }
     }
 }
