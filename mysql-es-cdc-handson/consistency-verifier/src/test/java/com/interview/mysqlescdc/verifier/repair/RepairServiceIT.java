@@ -129,6 +129,35 @@ class RepairServiceIT {
                 .contains("\"found\":false");
     }
 
+    @Test
+    void resumes_after_terminal_action_was_committed_before_difference_backfill() {
+        VerificationRunReport drift = runs.run(new VerificationRequest(INDEX, 2));
+        long extraId = BASE + 99;
+        request("DELETE", "/" + INDEX + "/_doc/" + extraId, null, 200);
+        fixture.sql("""
+                INSERT INTO repair_action(
+                  action_id, run_id, product_id, action_type, source_watermark,
+                  source_revision, outcome, finished_at)
+                VALUES (UUID_TO_BIN(UUID()), UUID_TO_BIN(:runId), :productId,
+                        'DELETE_EXTRA', :watermark, NULL, 'APPLIED', CURRENT_TIMESTAMP(6))
+                """).param("runId", drift.runId().toString()).param("productId", extraId)
+                .param("watermark", drift.sourceWatermarkStart()).update();
+
+        RepairReport resumed = repairs.repair(drift.runId());
+
+        assertThat(resumed.repaired()).isTrue();
+        assertThat(resumed.skipped()).isOne();
+        assertThat(fixture.sql("""
+                SELECT status FROM verification_run WHERE run_id = UUID_TO_BIN(:runId)
+                """).param("runId", drift.runId().toString()).query(String.class).single())
+                .isEqualTo("REPAIRED");
+        assertThat(fixture.sql("""
+                SELECT COUNT(*) FROM verification_difference
+                WHERE run_id = UUID_TO_BIN(:runId) AND repaired_at IS NULL
+                """).param("runId", drift.runId().toString()).query(Long.class).single())
+                .isZero();
+    }
+
     private void insertSource(long id, long revision, boolean active) {
         fixture.sql("""
                 INSERT INTO products(id, sku, name, description, category_id, price_cents, status, updated_at)

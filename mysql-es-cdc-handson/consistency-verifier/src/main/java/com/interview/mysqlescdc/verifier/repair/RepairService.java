@@ -87,6 +87,11 @@ public final class RepairService {
             if (existing.isPresent()
                     && (existing.get().outcome() == RepairOutcome.APPLIED
                     || existing.get().outcome() == RepairOutcome.STALE)) {
+                if (!store.markDifferenceRepaired(runId, difference.productId(),
+                        existing.get().outcome().name())) {
+                    throw new IllegalStateException(
+                            "terminal repair action has no matching persisted difference");
+                }
                 skipped++;
                 continue;
             }
@@ -106,8 +111,9 @@ public final class RepairService {
             store.markActionStarted(
                     actionId, runId, difference.productId(), type, start, sourceRevision);
             if (watermark.current() != start || store.conditionActive(LOG_GAP)) break;
+            RepairOutcome outcome;
             try {
-                RepairOutcome outcome = type == RepairActionType.DELETE_EXTRA
+                outcome = type == RepairActionType.DELETE_EXTRA
                         ? gateway.deleteExtra(run.target(), difference.actual())
                         : gateway.write(run.target(), type, current);
                 if (outcome != RepairOutcome.APPLIED && outcome != RepairOutcome.STALE) {
@@ -115,14 +121,18 @@ public final class RepairService {
                 }
                 store.finishAction(actionId, outcome, null);
                 if (metrics != null) metrics.recordRepair(type, outcome);
-                store.markDifferenceRepaired(runId, difference.productId(), outcome.name());
-                if (outcome == RepairOutcome.APPLIED) applied++; else stale++;
             } catch (RuntimeException exception) {
                 failed++;
                 store.finishAction(actionId, RepairOutcome.FAILED, bounded(exception.getMessage()));
                 if (metrics != null) metrics.recordRepair(type, RepairOutcome.FAILED);
                 break;
             }
+            if (!store.markDifferenceRepaired(
+                    runId, difference.productId(), outcome.name())) {
+                throw new IllegalStateException(
+                        "repair action has no matching persisted difference");
+            }
+            if (outcome == RepairOutcome.APPLIED) applied++; else stale++;
         }
         long end = watermark.current();
         boolean stable = end == start;

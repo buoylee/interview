@@ -39,7 +39,7 @@ public interface VerificationRunStore {
 
     void finishAction(UUID actionId, RepairOutcome outcome, String errorMessage);
 
-    void markDifferenceRepaired(UUID runId, long productId, String outcome);
+    boolean markDifferenceRepaired(UUID runId, long productId, String outcome);
 
     void markRunRepaired(UUID runId);
 }

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -90,6 +91,24 @@ class RepairServiceTest {
                 eq(RepairActionType.WRITE_EXTERNAL_GTE), eq(70L), eq(11L));
         durableOrder.verify(gateway).write(
                 "products_write", RepairActionType.WRITE_EXTERNAL_GTE, currentMissing);
+    }
+
+    @Test
+    void terminal_action_is_backfilled_before_it_is_counted_as_skipped() {
+        DocumentDifference missing = DocumentDifference.missing(active(1, 10));
+        eligible(List.of(missing));
+        when(store.findRepairAction(runId, 1L)).thenReturn(Optional.of(
+                new RepairActionRecord(UUID.randomUUID(), 1L,
+                        RepairActionType.WRITE_EXTERNAL_GTE, RepairOutcome.APPLIED)));
+        when(store.markDifferenceRepaired(runId, 1L, "APPLIED")).thenReturn(true);
+
+        RepairReport report = service.repair(runId);
+
+        assertThat(report.repaired()).isTrue();
+        assertThat(report.skipped()).isOne();
+        verify(store).markDifferenceRepaired(runId, 1L, "APPLIED");
+        verify(store).markRunRepaired(runId);
+        verify(gateway, never()).write(any(), any(), any());
     }
 
     @Test
@@ -212,6 +231,8 @@ class RepairServiceTest {
                 new StoredVerificationRun(runId, "products_write", VerificationRunStatus.DIFF,
                         60, 60L, differences.size())));
         when(store.loadDifferences(runId, 101)).thenReturn(differences);
+        when(store.markDifferenceRepaired(eq(runId), anyLong(), any(String.class)))
+                .thenReturn(true);
         when(watermark.current()).thenReturn(70L);
     }
 

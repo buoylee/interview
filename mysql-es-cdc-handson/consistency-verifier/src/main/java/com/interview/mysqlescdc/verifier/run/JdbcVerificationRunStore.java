@@ -237,13 +237,21 @@ public class JdbcVerificationRunStore implements VerificationRunStore {
     }
 
     @Override
-    public void markDifferenceRepaired(UUID runId, long productId, String outcome) {
+    public boolean markDifferenceRepaired(UUID runId, long productId, String outcome) {
         jdbc.sql("""
                 UPDATE verification_difference
                 SET repaired_at = CURRENT_TIMESTAMP(6), repair_outcome = :outcome
                 WHERE run_id = UUID_TO_BIN(:runId) AND product_id = :productId
+                  AND repaired_at IS NULL
                 """).param("outcome", outcome).param("runId", runId.toString())
                 .param("productId", productId).update();
+        return jdbc.sql("""
+                SELECT EXISTS(
+                  SELECT 1 FROM verification_difference
+                  WHERE run_id = UUID_TO_BIN(:runId) AND product_id = :productId
+                    AND repaired_at IS NOT NULL AND repair_outcome = :outcome)
+                """).param("outcome", outcome).param("runId", runId.toString())
+                .param("productId", productId).query(Boolean.class).single();
     }
 
     @Override
