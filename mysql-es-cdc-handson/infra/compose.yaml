@@ -181,10 +181,17 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
-      elasticsearch:
-        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      toxiproxy:
+        condition: service_started
     environment:
       SERVER_PORT: 8083
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/product_catalog?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: verifier
+      SPRING_DATASOURCE_PASSWORD: verifierpass
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: toxiproxy:8667
+      VERIFICATION_ELASTICSEARCH_URL: http://toxiproxy:8666
     ports:
       - target: 8083
         published: "8083"

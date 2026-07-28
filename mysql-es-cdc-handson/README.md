@@ -73,3 +73,14 @@ make gate-m2-m3        # 模块测试、matrix、health/metrics、DLQ=0、tracke
 接口，不是开放、无鉴权生产接口的建议。M3 证明 at-least-once、external
 revision fencing 和已知失败可恢复；它不检测 binlog/Kafka gap 或独立 projection
 drift，也不宣称 MySQL 与 Elasticsearch 已获得全局最终一致性证明。
+
+## M4 control-plane baseline
+
+`source_change_watermark` 是从 reconciliation control-plane 安装时开始计数的
+change epoch，不是既有业务数据的历史 mutation 总数。fresh 环境从 0 开始；在已有
+数据的环境首次安装也从 0 开始，但只用于判断安装后扫描期间是否又发生业务事务。
+重复执行 `bash infra/mysql/apply-reconciliation-control.sh` 会保留非零 epoch，不会
+把既有 facts 冒充已计数历史，也不会重置已经推进的 watermark。
+
+Task 1 只建立事务 watermark、持久化 reconciliation metadata 与 verifier 的独立
+模块/拓扑边界；尚未实现 expected-document projection、diff、repair 或一致性判定。

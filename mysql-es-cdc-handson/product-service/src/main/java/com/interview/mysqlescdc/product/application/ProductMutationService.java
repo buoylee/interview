@@ -38,6 +38,7 @@ public class ProductMutationService {
                 INSERT INTO product_search_revision (product_id, revision, active)
                 VALUES (:id, 1, TRUE)
                 """).param("id", request.id()).update();
+        advanceSourceWatermark();
         return 1L;
     }
 
@@ -47,7 +48,9 @@ public class ProductMutationService {
                 UPDATE products SET price_cents = :price
                 WHERE id = :id AND status = 'ACTIVE'
                 """).param("price", priceCents).param("id", productId).update(), productId);
-        return bump(productId);
+        long revision = bump(productId);
+        advanceSourceWatermark();
+        return revision;
     }
 
     @Transactional
@@ -59,20 +62,24 @@ public class ProductMutationService {
                 WHERE i.product_id = :id AND p.status = 'ACTIVE'
                 """).param("available", available).param("reserved", reserved)
                 .param("id", productId).update(), productId);
-        return bump(productId);
+        long revision = bump(productId);
+        advanceSourceWatermark();
+        return revision;
     }
 
     @Transactional
     public int renameCategory(long categoryId, String name) {
         requireOne(jdbc.sql("UPDATE categories SET name = :name WHERE id = :id")
                 .param("name", name).param("id", categoryId).update(), categoryId);
-        return jdbc.sql("""
+        int affectedProducts = jdbc.sql("""
                 UPDATE product_search_revision r
                 JOIN products p ON p.id = r.product_id
                 SET r.revision = r.revision + 1,
                     r.updated_at = CURRENT_TIMESTAMP(6)
                 WHERE p.category_id = :categoryId AND r.active = TRUE
                 """).param("categoryId", categoryId).update();
+        advanceSourceWatermark();
+        return affectedProducts;
     }
 
     @Transactional
@@ -86,7 +93,20 @@ public class ProductMutationService {
                 SET revision = revision + 1, active = FALSE
                 WHERE product_id = :id
                 """).param("id", productId).update();
-        return currentRevision(productId);
+        long revision = currentRevision(productId);
+        advanceSourceWatermark();
+        return revision;
+    }
+
+    @Transactional
+    long changePriceAndFailForTest(long productId, long priceCents) {
+        requireOne(jdbc.sql("""
+                UPDATE products SET price_cents = :price
+                WHERE id = :id AND status = 'ACTIVE'
+                """).param("price", priceCents).param("id", productId).update(), productId);
+        bump(productId);
+        advanceSourceWatermark();
+        throw new IllegalStateException("test-only rollback after watermark advance");
     }
 
     private long bump(long productId) {
@@ -102,6 +122,17 @@ public class ProductMutationService {
         return jdbc.sql("""
                 SELECT revision FROM product_search_revision WHERE product_id = :id
                 """).param("id", productId).query(Long.class).single();
+    }
+
+    private void advanceSourceWatermark() {
+        int changed = jdbc.sql("""
+                UPDATE source_change_watermark
+                SET value = value + 1
+                WHERE singleton_id = 1
+                """).update();
+        if (changed != 1) {
+            throw new IllegalStateException("source_change_watermark singleton is missing");
+        }
     }
 
     private static void requireOne(int count, long id) {

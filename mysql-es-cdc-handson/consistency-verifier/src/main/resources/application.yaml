@@ -1,0 +1,26 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: consistency-verifier
+  datasource:
+    url: ${MYSQL_URL:jdbc:mysql://localhost:3308/product_catalog?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${MYSQL_USER:verifier}
+    password: ${MYSQL_PASSWORD:verifierpass}
+
+verification:
+  elasticsearch-url: ${ELASTICSEARCH_URL:http://localhost:9200}
+  target: ${VERIFICATION_TARGET:products_write}
+  page-size: 200
+  repair-limit: 100
+  recent-pass-max-age: 10m
+  consumer-group: product-search-sync-v1
+  topic: product-search-revisions
+  kafka-bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

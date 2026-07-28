@@ -34,6 +34,7 @@ verify: assert-java-21
 	bash tests/contracts/m2-m3-pipeline-control-schema.sh
 	bash tests/contracts/m3-crash-evidence-tamper.sh
 	bash tests/contracts/m3-standard-evidence-tamper.sh
+	bash tests/contracts/m4-reconciliation-control.sh
 	./mvnw -q test
 	bash scenarios/scripts/verify-product-transactions.sh
 

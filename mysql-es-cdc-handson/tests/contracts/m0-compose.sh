@@ -57,9 +57,13 @@ jq -e '
   .services["search-sync-consumer"].depends_on.toxiproxy.condition == "service_started" and
   .services["search-sync-consumer"].environment.SPRING_KAFKA_BOOTSTRAP_SERVERS == "toxiproxy:8667" and
   .services["search-sync-consumer"].environment.PIPELINE_ELASTICSEARCH_BASE_URL == "http://toxiproxy:8666" and
-  (.services["consistency-verifier"].depends_on | keys) == ["elasticsearch","mysql"] and
-  .services["consistency-verifier"].depends_on.elasticsearch.condition == "service_healthy" and
+  (.services["consistency-verifier"].depends_on | keys) == ["kafka-init","mysql","toxiproxy"] and
+  .services["consistency-verifier"].depends_on["kafka-init"].condition == "service_completed_successfully" and
   .services["consistency-verifier"].depends_on.mysql.condition == "service_healthy" and
+  .services["consistency-verifier"].depends_on.toxiproxy.condition == "service_started" and
+  .services["consistency-verifier"].environment.SPRING_DATASOURCE_USERNAME == "verifier" and
+  .services["consistency-verifier"].environment.SPRING_KAFKA_BOOTSTRAP_SERVERS == "toxiproxy:8667" and
+  .services["consistency-verifier"].environment.VERIFICATION_ELASTICSEARCH_URL == "http://toxiproxy:8666" and
   (.services["kafka-init"].depends_on | keys) == ["kafka"] and
   .services["kafka-init"].depends_on.kafka.condition == "service_healthy" and
   (.services.canal.depends_on | keys) == ["kafka-init","mysql","toxiproxy"] and
