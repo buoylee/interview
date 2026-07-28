@@ -24,7 +24,7 @@ down:
 	$(COMPOSE) down
 
 reset:
-	$(COMPOSE) down --volumes --remove-orphans
+	$(COMPOSE) --profile m0-tools down --volumes --remove-orphans
 
 verify: assert-java-21
 	bash tests/contracts/m0-layout.sh

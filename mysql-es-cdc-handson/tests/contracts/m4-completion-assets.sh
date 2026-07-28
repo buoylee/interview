@@ -38,6 +38,7 @@ jq -e '
 grep -Eq '^reconcile:' Makefile
 grep -Eq '^scenario-m4:' Makefile
 grep -Eq '^verify-m4:' Makefile
+grep -Fq '$(COMPOSE) --profile m0-tools down --volumes --remove-orphans' Makefile
 grep -Fq 'MySQL is the fact source' "$doc"
 grep -Fq 'consumer-only mapping defect remains visible' "$doc"
 grep -Fq 'external_gte' "$doc"
