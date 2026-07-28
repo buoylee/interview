@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.*;
 public final class ShadowReplayController {
     private final ShadowReplayService service;
     public ShadowReplayController(ShadowReplayService service) { this.service = service; }
-    @PostMapping("/start") public ShadowReplayStatus start(@RequestBody ShadowReplayRequest request) { return service.start(request); }
-    @GetMapping("/status") public ShadowReplayStatus status() { return service.status(); }
-    @PostMapping("/stop") public ShadowReplayStatus stop() { return service.stop(); }
+    @PostMapping public ShadowReplayStatus start(@RequestBody ShadowReplayRequest request) { return service.start(request); }
+    @GetMapping("/{runId}") public ShadowReplayStatus status(@PathVariable java.util.UUID runId) { return service.status(runId); }
+    @DeleteMapping("/{runId}") public ShadowReplayStatus stop(@PathVariable java.util.UUID runId) { return service.stop(runId); }
 }

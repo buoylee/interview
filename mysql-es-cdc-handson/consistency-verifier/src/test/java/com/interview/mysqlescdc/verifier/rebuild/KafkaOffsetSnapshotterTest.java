@@ -14,6 +14,10 @@ class KafkaOffsetSnapshotterTest {
         assertThatThrownBy(()->AdminKafkaOffsetSnapshotter.validateRequired(beginnings,ends,offsets(-1,8,9))).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(()->AdminKafkaOffsetSnapshotter.validateRequired(beginnings,ends,offsets(5,12,9))).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(()->AdminKafkaOffsetSnapshotter.validateRequired(beginnings,ends,offsets(4,8,9))).isInstanceOf(RequiredOffsetExpiredException.class);
+        var wrong=Map.of(new TopicPartition(TOPIC,1),5L,new TopicPartition(TOPIC,2),8L,new TopicPartition(TOPIC,3),9L);
+        assertThatThrownBy(()->AdminKafkaOffsetSnapshotter.validateRequired(wrong,wrong,wrong)).isInstanceOf(IllegalArgumentException.class);
+        var mismatched=Map.of(new TopicPartition("other",0),5L,new TopicPartition("other",1),8L,new TopicPartition("other",2),9L);
+        assertThatThrownBy(()->AdminKafkaOffsetSnapshotter.validateRequired(beginnings,ends,mismatched)).isInstanceOf(IllegalArgumentException.class);
     }
     private static Map<TopicPartition,Long> offsets(long a,long b,long c){return Map.of(new TopicPartition(TOPIC,0),a,new TopicPartition(TOPIC,1),b,new TopicPartition(TOPIC,2),c);}
 }

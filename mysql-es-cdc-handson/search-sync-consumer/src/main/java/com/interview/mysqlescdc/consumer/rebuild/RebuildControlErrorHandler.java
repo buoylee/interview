@@ -11,4 +11,7 @@ public final class RebuildControlErrorHandler {
     public Map<String,String> bounded(RuntimeException failure) {
         return Map.of("failureClass", failure.getClass().getSimpleName());
     }
+    @ExceptionHandler(ShadowRunNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public Map<String,String> missing(ShadowRunNotFoundException failure) { return Map.of("failureClass", failure.getClass().getSimpleName()); }
 }
