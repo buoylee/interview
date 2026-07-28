@@ -213,3 +213,40 @@ Task 9 complete-outage drill 是 Runbook supporting evidence，**不是第九个
 | 隔离 recovery container 的单文件 position PITR | 生产备份保留、跨文件／跨域恢复、回迁与审计 |
 
 amd64 emulation、Lab 的 5 秒 timing knobs 与单机资源争用都会改变时间。这里的 measured run 只支撑所声明的行为；上线条件、owner、证据与失败后果见 [Production Runbook](production-runbook.md)。
+
+## 14. 完成标准审计
+
+以下结果来自 2026-07-28 的独立 clean-reset 重跑。证据 archive 被 Git ignore，只是当前工作站上的可复核索引；其中失败尝试也被保留，不会冒充成功证据。
+
+| Criterion | Evidence command／file | Result |
+|---|---|---|
+| clean build | `mysql-handson/00-lab/ha/verify-static.sh`（Compose config、全部 Bash syntax、全部 unit／link tests、unfinished-marker scan、`git diff --check`） | PASS |
+| independent reset | 逐一执行 `make -C mysql-handson/00-lab/ha scenario SCENARIO=<01..08>`；每个正常入口先执行 recovery-aware `reset` | PASS；八个命令均以独立空 volume 开始并退出 `0` |
+| segmented RTO | `evidence/runs/planned-switchover/20260728T071817Z/scenario-verification.json` | PASS；detection／election／backlog-fence／Router refresh／application reconnect 均有分段，客户端 RTO `499 ms` |
+| acknowledged writes | 八个成功 archive 的 `verification.json`；例如 `evidence/runs/quorum-loss/20260728T073723Z/verification.json` | PASS；该 run 的 `211` 个 ACK 在三成员各 `211` 行，所有成功 run 均为 `errors=[]` |
+| unknown reconciliation | `evidence/runs/primary-partition/20260728T072358Z/verification.json` 与 `evidence/runs/member-rejoin/20260728T075804Z/verification.json` | PASS；前者 `1` 个、后者 `2` 个 UNKNOWN 均按原 `request_id` 对账为 committed |
+| minority fencing | `evidence/runs/primary-partition/20260728T072358Z/fencing.json`、`scenario-verification.json` | PASS；原 Primary `super_read_only=1` 且 direct write 被拒绝 |
+| quorum loss | `evidence/runs/quorum-loss/20260728T073723Z/events.jsonl`、`scenario-verification.json` | PASS；五阶段严格有序；grace 窗 `0 SUCCESS／12 FAILURE／2 UNKNOWN`，硬门槛 `quorum_blocked→quorum_restore_begin` 为 `0 SUCCESS／8 FAILURE／0 UNKNOWN` |
+| Router failover | `evidence/runs/router-failure/20260728T075444Z/ledger-router-{a,b}.jsonl` | PASS；Router A 为 `87 SUCCESS／12 FAILURE` 时 Router B 仍有 `184 SUCCESS／0 FAILURE` |
+| rejoin | `evidence/runs/member-rejoin/20260728T075804Z/events.jsonl`、`verification.json` | PASS；`rejoin_begin < rejoin_online`，最终三成员 ONLINE、一个 Primary、业务行收敛 |
+| complete outage | `make -C mysql-handson/00-lab/ha recovery-complete-outage`；`evidence/complete-outage/{events.jsonl,before-ids.txt,after-ids.txt,final-status.json}` | PASS；dry-run 后 actual，`cmp -s before-ids.txt after-ids.txt` 退出 `0`（各 `40` 行），最终三成员 ONLINE、一个可写 Primary |
+| PITR | `evidence/runs/ha-cannot-replace-pitr/20260728T075958Z/` | PASS；三在线成员保持误删后的 `0／0／0`，隔离 recovery 从 base `10` 恢复到 `11` 行，五栏 projection 逐字节相等，边界为 `binlog.000004:238→591` |
+| documented Runbook | [production-runbook.md](production-runbook.md)；`rg -n '^## ' mysql-handson/09-replication-and-ha/innodb-cluster/production-runbook.md` | PASS；部署、切换、故障、恢复、定期演练共 15 个明确章节 |
+| learner explanation exercise | [基础章 §11 自测题](../ha-foundations.md#11-自测题)；`rg -n '^## 11\. 自测题|<details><summary>答案</summary>' mysql-handson/09-replication-and-ha/ha-foundations.md` | PASS；实际提供 5 道逐层解释题及 5 个可展开答案，不以聊天中的口头回答代替证据 |
+| physical-failure boundary | [§13 Compose Lab 与生产故障域的边界](#13-compose-lab-与生产故障域的边界) | PASS（scope documented）；只声明容器／network namespace 的实测结果，独立主机、机架／AZ、真实磁盘与共享设备故障明确为未实证 |
+
+失败证据同样保留：Scenario 04 的 `evidence/runs/quorum-loss/20260728T072538Z-failed-router-readiness/` 是 Router bootstrap/readiness race；Scenario 05 的 `evidence/runs/slow-member/20260728T073920Z-failed-recovering-timeout/` 是受限成员仍处于 RECOVERING 时 bounded wait 到期。两者之后都从独立 clean reset 取得了上表所列 matching PASS；失败 run 不用于支持完成标准。
+
+## 15. 第二方案评估 gate
+
+这里评估的是「现有证据是否出现必须用 PXC 回答的选型缺口」，不是比较功能数量。`Result` 必须是当前证据下的确定值；本节不部署 PXC。
+
+| Candidate gap／condition | Evidence required | Rule for `Yes` | Result | Observed evidence |
+|---|---|---|---|---|
+| Galera commit／certification semantics | 指出主方案的提交证据无法回答的具体选型问题 | 缺口关联已完成 Scenario，且会改变真实选型 | No | 八个 Scenario 已回答当前 Single-Primary 目标的成功边界、quorum、fencing、ACK／UNKNOWN 与恢复；尚无业务约束要求用 Galera 语义作不同决策 |
+| Multi-primary conflict semantics | 指出单 Primary 主线无法回答的具体写入约束 | 缺口可用同一业务 invariant 验证，且不是追求功能数量 | No | 当前 invariant 是唯一写方向与稳定 `request_id`；没有多站点主动写、写入分片或必须接受认证冲突的需求证据 |
+| SST／IST recovery semantics | 指出 Clone／incremental 恢复证据无法回答的具体恢复约束 | 缺口关联 RTO、运维风险或容量决策 | No | 已验证 rejoin、Clone／incremental 决策边界、complete-outage 与 PITR；当前没有恢复窗口、donor 压力或容量约束显示 SST／IST 会改变选型 |
+| 同一 workload、故障模型与 verifier 能否公平复用？ | 列出无需改语义即可复用的接口 | 请求三态、故障窗口与最终数据断言都无需降级 | Yes | `request_id` 三态 ledger、fault lifecycle、成员最终 ID equality、Router 双入口与 verifier 数据断言可保持原语义复用；产品专属注入／拓扑查询需替换 |
+| 新方案的学习收益是否大于部署、恢复、维护成本？ | 给出新增任务数量和预期决策收益 | 新增实验能回答当前证据无法回答的选型问题 | No | 至少需要镜像／拓扑、bootstrap、故障注入、SST／IST 恢复、验证器适配、文档与审计等 6 类新增任务，但前三个机制缺口全为 `No`，没有新增决策收益可抵消成本 |
+
+**Overall gate result: No.** 三个机制缺口没有至少两个 concrete／important／independently verifiable `Yes`；虽然接口可复用，学习收益也没有超过新增部署与恢复维护成本。因此本专题停在架构比较，不开启 PXC brainstorming／design，也不增加任何 PXC Compose 或命令。
