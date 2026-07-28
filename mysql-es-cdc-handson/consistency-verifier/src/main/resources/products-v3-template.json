@@ -1,0 +1,8 @@
+{
+  "settings":{"number_of_shards":1,"number_of_replicas":0,"refresh_interval":"1s"},
+  "mappings":{"dynamic":"strict","_meta":{"schema_version":3,"deletion_mode":"tombstone"},"properties":{
+    "product_id":{"type":"long"},"sku":{"type":"keyword"},"name":{"type":"text"},"description":{"type":"text"},
+    "category_id":{"type":"long"},"category_name":{"type":"keyword"},"price_cents":{"type":"long"},
+    "available_quantity":{"type":"integer"},"searchable":{"type":"boolean"},"source_revision":{"type":"long"},"source_updated_at":{"type":"date"}
+  }}
+}

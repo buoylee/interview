@@ -41,6 +41,7 @@ verify: assert-java-21
 	bash tests/contracts/m5-write-gate-routing.sh
 	bash tests/contracts/m5-rebuild-schema-drift.sh
 	bash tests/contracts/m5-rebuild-repeat-apply.sh
+	bash tests/contracts/m5-generation-assets.sh
 	./mvnw -q test
 	bash scenarios/scripts/verify-product-transactions.sh
 
