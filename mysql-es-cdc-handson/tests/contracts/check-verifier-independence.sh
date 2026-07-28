@@ -26,7 +26,13 @@ source_roots=(
 for root in "${source_roots[@]}"; do
   [[ -d "$root" ]] || continue
   while IFS= read -r -d '' source; do
-    if grep -Eiq 'com[.]interview[.]mysqlescdc[.]consumer([^[:alnum:]_]|$)|com/interview/mysqlescdc/consumer([^[:alnum:]_]|$)|search-sync-consumer|Class[[:space:]]*\.[[:space:]]*forName|\.loadClass[[:space:]]*\(|java[.]lang[.]reflect|MethodHandles|MethodType' "$source"; then
+    compact_source="$(LC_ALL=C tr -d '[:space:]' <"$source")"
+    if grep -Eiq 'com[.]interview[.]mysqlescdc[.]consumer([^[:alnum:]_]|$)|com/interview/mysqlescdc/consumer([^[:alnum:]_]|$)|search-sync-consumer' "$source" ||
+      [[ "$compact_source" == *'.forName('* ||
+         "$compact_source" == *'.loadClass('* ||
+         "$compact_source" == *'java.lang.reflect'* ||
+         "$compact_source" == *'MethodHandles'* ||
+         "$compact_source" == *'MethodType'* ]]; then
       fail "forbidden implementation/reflection reference in $source"
     fi
   done < <(find "$root" -type f -name '*.java' -print0)

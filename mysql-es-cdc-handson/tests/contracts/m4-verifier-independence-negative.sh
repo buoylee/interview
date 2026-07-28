@@ -34,6 +34,20 @@ printf '%s\n' 'package example; class Dynamic { Class<?> load() throws Exception
 must_reject 'dynamic consumer class-name construction'
 
 new_fixture
+cat >"$fixture/module/src/main/java/example/SpringDynamic.java" <<'JAVA'
+package example;
+class SpringDynamic {
+    Class<?> load(ClassLoader loader) throws Exception {
+        String name = "com.interview." + "mysqlescdc." + "consumer.Sync";
+        return org.springframework.util.ClassUtils
+                . forName (
+                        name, loader);
+    }
+}
+JAVA
+must_reject 'split package through a wrapper forName call'
+
+new_fixture
 printf '%s\n' 'package example; class Reflective { Class<?> c() throws Exception { return Class.forName("example.Safe"); } }' \
   >"$fixture/module/src/main/java/example/Reflective.java"
 must_reject 'reflection entrypoint'
