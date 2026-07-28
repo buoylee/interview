@@ -23,27 +23,27 @@ public class JdbcRecordDlqStore implements RecordDlqStore {
             )
             ON DUPLICATE KEY UPDATE
               attempts = IF(
-                raw_key <=> VALUES(raw_key)
+                BINARY raw_key <=> BINARY VALUES(raw_key)
                   AND BINARY raw_payload = BINARY VALUES(raw_payload),
                 attempts + 1, attempts),
               failure_class = IF(
-                raw_key <=> VALUES(raw_key)
+                BINARY raw_key <=> BINARY VALUES(raw_key)
                   AND BINARY raw_payload = BINARY VALUES(raw_payload),
                 VALUES(failure_class), failure_class),
               last_error = IF(
-                raw_key <=> VALUES(raw_key)
+                BINARY raw_key <=> BINARY VALUES(raw_key)
                   AND BINARY raw_payload = BINARY VALUES(raw_payload),
                 VALUES(last_error), last_error),
               status = IF(
-                raw_key <=> VALUES(raw_key)
+                BINARY raw_key <=> BINARY VALUES(raw_key)
                   AND BINARY raw_payload = BINARY VALUES(raw_payload),
                 'PENDING', status),
               resolved_at = IF(
-                raw_key <=> VALUES(raw_key)
+                BINARY raw_key <=> BINARY VALUES(raw_key)
                   AND BINARY raw_payload = BINARY VALUES(raw_payload),
                 NULL, resolved_at),
               updated_at = IF(
-                raw_key <=> VALUES(raw_key)
+                BINARY raw_key <=> BINARY VALUES(raw_key)
                   AND BINARY raw_payload = BINARY VALUES(raw_payload),
                 CURRENT_TIMESTAMP(6), updated_at)
             """;
@@ -70,7 +70,7 @@ public class JdbcRecordDlqStore implements RecordDlqStore {
                     .param("lastError", record.lastError())
                     .update();
             boolean compatible = jdbc.sql("""
-                    SELECT raw_key <=> :rawKey
+                    SELECT BINARY raw_key <=> BINARY :rawKey
                       AND BINARY raw_payload = BINARY :rawPayload
                     FROM sync_record_dlq
                     WHERE record_id = :recordId

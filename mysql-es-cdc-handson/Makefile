@@ -31,6 +31,7 @@ verify: assert-java-21
 	bash tests/contracts/m0-compose.sh
 	bash tests/contracts/m0-evidence.sh
 	bash tests/contracts/m2-m3-wire-contract.sh
+	bash tests/contracts/m2-m3-pipeline-control-schema.sh
 	./mvnw -q test
 	bash scenarios/scripts/verify-product-transactions.sh
 

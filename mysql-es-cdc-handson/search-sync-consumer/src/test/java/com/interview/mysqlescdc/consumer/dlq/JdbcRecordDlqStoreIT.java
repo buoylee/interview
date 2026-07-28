@@ -112,6 +112,44 @@ class JdbcRecordDlqStoreIT {
     }
 
     @Test
+    void raw_key_identity_is_null_safe_binary_exact_under_case_accent_and_space_variants() {
+        for (String[] variant : new String[][] {
+                {"A", "a"},
+                {"e", "é"},
+                {"key", "key "}
+        }) {
+            store.publish(record(variant[0], "same-payload", "first", "first"));
+            store.resolve(RECORD_ID);
+
+            assertThatThrownBy(() -> store.publish(record(
+                    variant[1], "same-payload", "conflict", "conflict")))
+                    .as("raw keys must differ by binary value: <%s> vs <%s>", variant[0], variant[1])
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("immutable");
+            assertThat(jdbc.sql("""
+                    SELECT attempts, raw_key, raw_payload, failure_class, last_error, status,
+                           resolved_at IS NOT NULL AS has_resolved_at
+                    FROM sync_record_dlq WHERE record_id=:id
+                    """).param("id", RECORD_ID).query().singleRow())
+                    .containsEntry("attempts", 1)
+                    .containsEntry("raw_key", variant[0])
+                    .containsEntry("raw_payload", "same-payload")
+                    .containsEntry("failure_class", "first")
+                    .containsEntry("last_error", "first")
+                    .containsEntry("status", "RESOLVED")
+                    .containsEntry("has_resolved_at", 1L);
+            clean();
+        }
+
+        store.publish(record(null, "same-payload", "first", "first"));
+        store.publish(record(null, "same-payload", "second", "second"));
+        assertThat(store.findPending(RECORD_ID)).get().satisfies(row -> {
+            assertThat(row.rawKey()).isNull();
+            assertThat(row.attempts()).isEqualTo(2);
+        });
+    }
+
+    @Test
     void concurrent_compatible_and_conflicting_raw_publications_are_atomic() {
         store.publish(record(null, "original\u0000raw", "baseline", "baseline"));
         AtomicInteger conflicts = new AtomicInteger();
