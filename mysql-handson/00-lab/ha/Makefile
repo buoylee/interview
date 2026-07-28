@@ -1,0 +1,93 @@
+DC := docker compose --project-name mysql-ha --file compose.yml
+
+.PHONY: config up-db down reset ps logs up bootstrap routers init status switchover mysql-a mysql-b workload-start workload-stop workload-once workload-burst test verify fault restore scenario recovery-complete-outage
+
+config:
+	$(DC) config --quiet
+
+up-db:
+	$(DC) up -d db1 db2 db3
+	@for service in db1 db2 db3; do \
+		until [ "$$(docker inspect --format '{{.State.Health.Status}}' mysql-ha-$$service 2>/dev/null)" = healthy ]; do sleep 2; done; \
+	done
+
+down:
+	$(DC) down
+
+reset:
+	$(DC) --profile recovery down --volumes --remove-orphans
+	@mkdir -p evidence
+	@find evidence -mindepth 1 -maxdepth 1 -type f -delete
+
+ps:
+	$(DC) ps
+
+logs:
+	$(DC) logs -f $${S:-db1}
+
+bootstrap: up-db
+	$(DC) run --rm cluster-bootstrap
+	@bash -c 'source ./faults/lib.sh; wait_for_online 3'
+
+routers: bootstrap
+	$(DC) up -d router-a router-b
+	@for router in router-a router-b; do \
+		$(DC) run --rm shell sh -c "until mysqladmin ping -h$$router -P6446 -uroot -p$${MYSQL_ROOT_PASSWORD:-ha-root} --silent; do sleep 2; done"; \
+	done
+
+init: routers
+	$(DC) run --rm shell mysql -hrouter-a -P6446 -uroot -p$${MYSQL_ROOT_PASSWORD:-ha-root} < init/01-orders.sql
+
+up: init
+	@$(DC) run --rm shell sh -c 'until mysqladmin ping -hrouter-a -P6446 -uha_app -pha-app --silent; do sleep 2; done'
+	@$(MAKE) status
+
+status:
+	$(DC) run --rm shell mysqlsh --js --file=/bootstrap/status.js
+
+switchover:
+	$(DC) run --rm -e MYSQL_TARGET_MEMBER=$${TARGET:-db2} shell mysqlsh --js --file=/bootstrap/set-primary.js
+
+mysql-a:
+	$(DC) run --rm shell mysql -hrouter-a -P6446 -uha_app -pha-app ha_lab
+
+mysql-b:
+	$(DC) run --rm shell mysql -hrouter-b -P6446 -uha_app -pha-app ha_lab
+
+workload-start:
+	@mkdir -p evidence
+	$(DC) up -d --build workload-a workload-b
+
+workload-stop:
+	-$(DC) stop workload-a workload-b
+
+workload-once:
+	@mkdir -p evidence
+	$(DC) run --rm workload-a python -m workload.runner --router-label router-a --router-host router-a --max-requests $${N:-10} --interval-ms 0
+	$(DC) run --rm workload-b python -m workload.runner --router-label router-b --router-host router-b --max-requests $${N:-10} --interval-ms 0
+
+workload-burst:
+	@mkdir -p evidence
+	$(DC) run --rm workload-a python -m workload.runner --router-label burst-a --router-host router-a --max-requests $${N:-1000} --interval-ms 0 & pid_a=$$!; \
+	$(DC) run --rm workload-b python -m workload.runner --router-label burst-b --router-host router-b --max-requests $${N:-1000} --interval-ms 0 & pid_b=$$!; \
+	wait $$pid_a; status_a=$$?; wait $$pid_b; status_b=$$?; \
+	[ $$status_a -eq 0 ] && [ $$status_b -eq 0 ]
+
+test:
+	docker build -f workload/Dockerfile -t mysql-ha-workload:test .
+	docker run --rm mysql-ha-workload:test python -m unittest discover -s tests -v
+
+verify:
+	$(DC) run --rm verifier python -m verifier.verify --expected-online $${EXPECTED_ONLINE:-3}
+
+fault:
+	./faults/inject.sh $${SCENARIO:?set SCENARIO}
+
+restore:
+	./faults/restore.sh
+
+scenario:
+	./scenarios/run.sh $${SCENARIO:?set SCENARIO}
+
+recovery-complete-outage:
+	./scenarios/complete-outage.sh

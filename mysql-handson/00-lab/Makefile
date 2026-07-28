@@ -1,4 +1,5 @@
 .PHONY: help up down reset ps logs mysql
+.PHONY: ha-config ha-up ha-down ha-reset ha-status ha-test ha-verify ha-scenario
 
 help:
 	@echo "Targets:"
@@ -8,6 +9,14 @@ help:
 	@echo "  ps         - show container status"
 	@echo "  logs S=name - tail logs of service S (default: mysql-primary)"
 	@echo "  mysql      - open mysql cli on primary as root, db sbtest"
+	@echo "  ha-config  - validate the isolated mysql-ha Compose config"
+	@echo "  ha-up      - start the isolated three-member InnoDB Cluster lab"
+	@echo "  ha-down    - stop the mysql-ha lab and keep its volumes"
+	@echo "  ha-reset   - remove only the mysql-ha project containers and volumes"
+	@echo "  ha-status  - show the InnoDB Cluster topology"
+	@echo "  ha-test    - run the mysql-ha workload tests"
+	@echo "  ha-verify  - verify topology and member data convergence"
+	@echo "  ha-scenario SCENARIO=name - reset and run one mysql-ha scenario"
 
 up:
 	docker compose up -d
@@ -29,6 +38,30 @@ logs:
 
 mysql:
 	docker compose exec -it mysql-primary mysql -uroot -proot sbtest
+
+ha-config:
+	$(MAKE) -C ha config
+
+ha-up:
+	$(MAKE) -C ha up
+
+ha-down:
+	$(MAKE) -C ha down
+
+ha-reset:
+	$(MAKE) -C ha reset
+
+ha-status:
+	$(MAKE) -C ha status
+
+ha-test:
+	$(MAKE) -C ha test
+
+ha-verify:
+	$(MAKE) -C ha verify
+
+ha-scenario:
+	$(MAKE) -C ha scenario SCENARIO=$${SCENARIO:?set SCENARIO}
 
 .PHONY: load load-clean
 
