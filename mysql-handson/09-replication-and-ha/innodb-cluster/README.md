@@ -37,15 +37,16 @@ Shell/AdminAPI ─────────────────────�
 ```text
 Client
   → Router
-  → Primary 执行事务
-  → 产生 write set
-  → Group Replication 排序与认证
-  → Primary 本地提交
-  → Client 收到成功
-  → Secondary 继续 apply
+  → Primary 执行事务                                      [1 Primary execution]
+  → 产生并传播 write set                                  [2 write-set generation／propagation]
+  → Group Replication 排序与认证                           [3 ordering／certification]
+  → Primary 本地提交                                      [4 local commit]
+  → Client 收到 SUCCESS                                   [5 client success]
+  → Secondary 继续 apply                                  [6 Secondary apply]
+  → Secondary 对该事务可读                                [7 Secondary read visibility]
 ```
 
-Router 不参与 commit。多数派完成组内决策不代表所有 Secondary 已 apply，Secondary 可能存在 applier backlog。`innodb_flush_log_at_trx_commit=1` 与 `sync_binlog=1` 约束本地 durability；quorum、日志落盘、Primary commit、Secondary 可读与页刷盘仍是不同边界。Client 断线时应用先记 UNKNOWN，再按原 `request_id` 查明。完整七边界见[基础章 §6](../ha-foundations.md)。
+上图第 4 步是 `Primary 本地提交`。Router 不参与 commit。多数派完成组内决策不代表所有 Secondary 已 apply，更不代表已达到 Secondary read visibility；Secondary 可能存在 applier backlog。`innodb_flush_log_at_trx_commit=1` 与 `sync_binlog=1` 约束本地 durability；quorum、日志落盘、Primary commit、Secondary 可读与页刷盘仍是不同边界。本文把 ACK 保留给 replica receive／confirmation boundary；应用层结果写作 SUCCESS。Client 断线时应用先记 UNKNOWN，再按原 `request_id` 查明。完整七边界见[基础章 §6](../ha-foundations.md)。
 
 ## 5. Primary failover 时序
 
@@ -60,6 +61,13 @@ Router 不参与 commit。多数派完成组内决策不代表所有 Secondary �
   → 旧连接断开
   → 应用重新连接
   → 新连接到达新 Primary
+  → 新 Primary 执行事务                                  [1 Primary execution]
+  → 产生并传播 write set                                 [2 write-set generation／propagation]
+  → Group Replication 排序与认证                          [3 ordering／certification]
+  → 新 Primary 本地提交                                  [4 local commit]
+  → Client 收到 SUCCESS                                  [5 client success]
+  → Secondary apply                                      [6 Secondary apply]
+  → Secondary 对该事务可读                               [7 Secondary read visibility]
 ```
 
 `BEFORE_ON_PRIMARY_FAILOVER` 把“处理必要 backlog”放在“开放写入”之前，避免新 Primary 向应用呈现数据倒退，但会增加恢复等待。Router 只更新新连接目标；应用须丢弃旧连接、bounded reconnect，并按原 `request_id` 查询断线请求。检测、选举、backlog fence、Router refresh、应用重连要分别量；不能把最终 `3 ONLINE` 倒推出客户端 RTO。
@@ -82,7 +90,7 @@ Router 不参与 commit。多数派完成组内决策不代表所有 Secondary �
 | `innodb_flush_log_at_trx_commit=1` | 每次 commit 刷 redo，明确本地 durability baseline |
 | `sync_binlog=1` | 每次事务同步 binlog，降低 OS crash 后 binlog 丢失窗口 |
 
-权威实现是 [`00-lab/ha/compose.yml`](../../00-lab/ha/compose.yml)、[`config/common.cnf`](../../00-lab/ha/config/common.cnf) 与 [`bootstrap/cluster.js`](../../00-lab/ha/bootstrap/cluster.js)，本表不是第二份配置源。`expelTimeout=5` 和 `group_replication_unreachable_majority_timeout=5` 是 Lab timing knobs；生产要用 RTT／loss baseline、误驱逐风险与 RTO 预算重新决策，不能照抄。
+权威实现是 [`00-lab/ha/compose.yml`](../../00-lab/ha/compose.yml)、[`config/common.cnf`](../../00-lab/ha/config/common.cnf)、[`tools/Dockerfile`](../../00-lab/ha/tools/Dockerfile)、[`bootstrap/cluster.js`](../../00-lab/ha/bootstrap/cluster.js) 与 [`init/01-persist-super-read-only.sql`](../../00-lab/ha/init/01-persist-super-read-only.sql)，本表不是第二份配置源。`expelTimeout=5` 和 `group_replication_unreachable_majority_timeout=5` 是 Lab timing knobs；生产要用 RTT／loss baseline、误驱逐风险与 RTO 预算重新决策，不能照抄。
 
 Router 与 Shell tooling 固定运行于 `linux/amd64`。Apple Silicon 上包含 amd64 emulation overhead，因此本地时间只可作为 behavioral evidence，不可当作生产容量或 RTO 证明。
 
@@ -97,7 +105,9 @@ make -C mysql-handson/00-lab/ha init
 make -C mysql-handson/00-lab/ha status
 ```
 
-实际顺序是 `dba.configureInstance()` → `dba.createCluster()` → `cluster.addInstance(..., recoveryMethod:'clone')` → 等待三成员 ONLINE → 两个 Router bootstrap → 建表。日常可直接运行 `make -C mysql-handson/00-lab/ha up`；`make -C mysql-handson/00-lab/ha reset` 只删除 `mysql-ha` project 的容器和 volumes。
+`make -C mysql-handson/00-lab/ha up-db` 首次建立空 volume 时，Docker entrypoint 先在每个独立成员执行挂载的 `init/01-persist-super-read-only.sql` 与 `init/01-orders.sql`；这发生在建群之前。随后 `make -C mysql-handson/00-lab/ha bootstrap` 执行 `dba.configureInstance()`、在 `db1` create／get Cluster、以 Clone 加入 `db2/db3` 并等待三成员 ONLINE；`make -C mysql-handson/00-lab/ha routers` 再启动并等待两个 Router。最后 `make -C mysql-handson/00-lab/ha init` 经 Router A 在当前 Primary 重跑 idempotent `init/01-orders.sql`，确保应用 schema／account 存在；它不是 Docker entrypoint 的首次初始化时点。日常可直接运行 `make -C mysql-handson/00-lab/ha up`。
+
+`make -C mysql-handson/00-lab/ha reset` 执行 Compose `down --volumes --remove-orphans`：删除 `mysql-ha` containers、named volumes、Compose network 与 orphans；随后只删除 `evidence/` 顶层的普通文件，既有 archive 子目录不在这一步递归删除。
 
 ## 8. Router bootstrap 与应用重连
 
@@ -121,7 +131,7 @@ FROM performance_schema.replication_group_members
 ORDER BY MEMBER_HOST;
 ```
 
-`MEMBER_HOST` 是成员身份，`MEMBER_ROLE` 应仅一个 `PRIMARY`，`MEMBER_STATE` 显示组内状态。`ONLINE` 是必要但不充分条件；还要独立证明业务 ledger 与三成员 data／ID equality。
+这些字段的 owner 都是 Group Replication membership view：`MEMBER_HOST` 标识该 view 中的成员地址；`MEMBER_ROLE` 表示 `PRIMARY`／`SECONDARY`，Single-Primary 应仅一个 `PRIMARY`；`MEMBER_STATE` 是该成员在组内的生命周期状态。`ONLINE` 是必要但不充分条件；还要独立证明业务 ledger 与三成员 data／ID equality。
 
 ```sql
 SELECT MEMBER_ID,
@@ -133,7 +143,7 @@ SELECT MEMBER_ID,
 FROM performance_schema.replication_group_member_stats;
 ```
 
-这些字段由 Group Replication／Performance Schema owner 维护：认证 queue、checked 与 conflicts 描述 certifier 工作；`COUNT_TRANSACTIONS_REMOTE_IN_APPLIER_QUEUE` 是远端待 apply backlog，`REMOTE_APPLIED` 是累计 apply 量。值需结合采样速率和 workload 解读。
+这些字段由 Group Replication 写入、Performance Schema 暴露：`MEMBER_ID` 是统计行所属成员的 server UUID，用于把本表关联到 membership view；`COUNT_TRANSACTIONS_IN_QUEUE` 是本地 certifier queue；`COUNT_TRANSACTIONS_CHECKED` 是已检查的事务累计量；`COUNT_CONFLICTS_DETECTED` 是检测到认证冲突的累计量；`COUNT_TRANSACTIONS_REMOTE_IN_APPLIER_QUEUE` 是已接收但尚待 apply 的远端事务 backlog；`COUNT_TRANSACTIONS_REMOTE_APPLIED` 是已 apply 的远端事务累计量。累计量看增量，queue 看采样时点，均需结合采样速率和 workload 解读。
 
 ```sql
 SELECT @@global.group_replication_flow_control_mode,
@@ -141,7 +151,7 @@ SELECT @@global.group_replication_flow_control_mode,
        @@global.group_replication_flow_control_certifier_threshold;
 ```
 
-配置 owner 是 DBA／数据库平台。固定 8.4 Community baseline 的硬证据是 mode 为 `QUOTA` 时，核心 `COUNT_TRANSACTIONS_REMOTE_IN_APPLIER_QUEUE` 跨过当前 `flow_control_applier_threshold`；不依赖 optional component-specific throttle counters。
+配置 owner 是 DBA／数据库平台：`group_replication_flow_control_mode` 选择 flow-control 算法，固定基线期望 `QUOTA`；`group_replication_flow_control_applier_threshold` 是 remote applier queue 的触发阈值；`group_replication_flow_control_certifier_threshold` 是 certifier queue 的触发阈值，不能拿它解释 applier backlog。固定 8.4 Community baseline 的硬证据是 mode 为 `QUOTA` 时，核心 `COUNT_TRANSACTIONS_REMOTE_IN_APPLIER_QUEUE` 跨过当前 `flow_control_applier_threshold`；不依赖 optional component-specific throttle counters。
 
 ```sql
 SELECT @@global.group_replication_consistency,
@@ -151,7 +161,7 @@ SELECT @@global.group_replication_consistency,
        @@global.group_replication_unreachable_majority_timeout;
 ```
 
-这组查询由配置 owner 核对运行值是否漂移：分别解释 failover backlog gate、异常退出 fencing、有限 rejoin、驱逐等待与失去多数派后的停写等待。Router 另由入口 owner 监控两个 `6446` endpoint、metadata refresh 与连接错误率。
+这组变量由 DBA／数据库平台 owner 核对运行值是否漂移：`group_replication_consistency` 是读写／failover consistency gate；`group_replication_exit_state_action` 决定成员异常离组后的 fencing action；`group_replication_autorejoin_tries` 是自动 rejoin 尝试次数；`group_replication_member_expel_timeout` 是怀疑成员到驱逐的等待；`group_replication_unreachable_majority_timeout` 是成员失去多数派后进入错误／停写动作前的等待。Router 另由入口 owner 监控两个 `6446` endpoint、metadata refresh 与连接错误率。
 
 最终验证用实现提供的命令，而非只看状态：
 
@@ -183,7 +193,7 @@ make -C mysql-handson/00-lab/ha recovery-complete-outage
 | 顺序 | 学习重点 | 指定成功 run ID／本地证据索引 | 状态 |
 |---|---|---|---|
 | [01 planned switchover](scenarios/01-planned-switchover.md) | 计划切主仍断旧 session；分段 RTO | `mysql-handson/00-lab/ha/evidence/runs/planned-switchover/20260726T094213Z/` | measured Lab PASS |
-| [02 Primary crash](scenarios/02-primary-crash.md) | 多数派选主、Router 新连接、ACK 对账 | `mysql-handson/00-lab/ha/evidence/runs/primary-crash/20260726T095829Z/` | measured Lab PASS |
+| [02 Primary crash](scenarios/02-primary-crash.md) | 多数派选主、Router 新连接、acknowledged business IDs 对账 | `mysql-handson/00-lab/ha/evidence/runs/primary-crash/20260726T095829Z/` | measured Lab PASS |
 | [03 Primary partition](scenarios/03-primary-partition.md) | 少数派 fencing、多数派续写 | `mysql-handson/00-lab/ha/evidence/runs/primary-partition/20260726T100107Z/` | measured Lab PASS |
 | [04 quorum loss](scenarios/04-quorum-loss.md) | `quorum_blocked` 后零 SUCCESS、安全恢复 | `mysql-handson/00-lab/ha/evidence/runs/quorum-loss/20260728T051412Z/` | measured Lab PASS |
 | [05 slow member](scenarios/05-slow-member.md) | QUOTA queue 跨 threshold，不拿 p95 当硬断言 | `mysql-handson/00-lab/ha/evidence/runs/slow-member/20260728T052238Z/` | measured Lab PASS |

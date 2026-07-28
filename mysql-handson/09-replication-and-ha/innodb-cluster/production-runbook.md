@@ -20,7 +20,7 @@
 | TLS／certificate rotation | Security／DBA | Server、GR、Router 信任链与无中断轮换 | 组通信或客户端认证中断 | 到期告警、rotation drill |
 | Secrets | Security／SRE | admin／Router／app 分权、轮换、无明文仓库 | 横向移动或全组失控 | vault policy、access audit |
 | Time sync | Infra | NTP／chrony offset 受控并告警 | timeline、证书、审计失真 | offset dashboard |
-| Disk durability | Storage／DBA | write cache／flush 语义、`innodb_flush_log_at_trx_commit=1`、`sync_binlog=1` 经验证 | ACK 在 power loss 后丢失 | vendor config、power-cut test |
+| Disk durability | Storage／DBA | write cache／flush 语义、`innodb_flush_log_at_trx_commit=1`、`sync_binlog=1` 经验证 | client-confirmed SUCCESS／business result 在 power loss 后丢失；这不同于 replica receive／confirmation ACK | vendor config、power-cut test |
 | Backup retention | Backup owner | 全备／增量／binlog 留存覆盖业务窗口 | 无法恢复目标时间 | catalog、retention audit |
 | Restore drills | Backup owner／业务 | 隔离恢复、精确边界、数据核对与回迁演练 | 备份存在但不可用 | drill report、RTO/RPO |
 | Capacity headroom | Capacity／DBA | 单成员故障时 CPU、IOPS、disk、connections 可承载 | failover 后过载、队列失控 | capacity model、load test |
@@ -83,7 +83,7 @@ Lab：`make -C mysql-handson/00-lab/ha switchover TARGET=db2`；完整演练：`
 
 ### Success evidence
 
-唯一新 Primary、旧 Primary SECONDARY／不可写、Router 新连接到新 Primary、UNKNOWN 全部对账、ACK IDs 收敛；Lab measured run `planned-switchover/20260726T094213Z/`。
+唯一新 Primary、旧 Primary SECONDARY／不可写、Router 新连接到新 Primary、UNKNOWN 全部对账、acknowledged business IDs 收敛；Lab measured run `planned-switchover/20260726T094213Z/`。
 
 ### Return to normal topology
 
@@ -125,7 +125,7 @@ Lab：`make -C mysql-handson/00-lab/ha switchover TARGET=db2`；完整演练：`
 
 ### Success evidence
 
-每步 `3 ONLINE / 1 PRIMARY`、版本符合矩阵、queue 恢复、Router 与业务 probe green、无 missing ACK。
+每步 `3 ONLINE / 1 PRIMARY`、版本符合矩阵、queue 恢复、Router 与业务 probe green、无 missing acknowledged business IDs。
 
 ### Return to normal topology
 
@@ -151,7 +151,7 @@ GR 选主，`BEFORE_ON_PRIMARY_FAILOVER` 等 backlog，Router 更新新连接；
 
 ### Human intervention boundary
 
-若无唯一 Primary、backlog 不降、旧 Primary 仍可写、或 acknowledged ID 缺失，立即升级 incident 并阻止导流。
+若无唯一 Primary、backlog 不降、旧 Primary 仍可写、或 acknowledged business ID 缺失，立即升级 incident 并阻止导流。
 
 ### Safe operations
 
@@ -377,7 +377,7 @@ Lab：`make -C mysql-handson/00-lab/ha scenario SCENARIO=member-rejoin`。生产
 
 ### Success evidence
 
-`rejoin_begin < rejoin_online`、最终 ONLINE、queue 清零、业务 request ID 三成员相同；Lab measured run `member-rejoin/20260728T052648Z/`。
+`rejoin_begin < rejoin_online`、最终 `3 ONLINE / 1 PRIMARY`、两个 UNKNOWN 均对账为 committed、三成员业务 request ID 集相同；Lab measured run `member-rejoin/20260728T052648Z/`。
 
 ### Return to normal topology
 
