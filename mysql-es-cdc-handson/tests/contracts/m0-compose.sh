@@ -51,9 +51,12 @@ jq -e '
   .services["product-service"].depends_on.mysql.condition == "service_healthy" and
   .services["search-sync-consumer"].profiles == ["m0-tools"] and
   .services["consistency-verifier"].profiles == ["m0-tools"] and
-  (.services["search-sync-consumer"].depends_on | keys) == ["elasticsearch","kafka-init"] and
-  .services["search-sync-consumer"].depends_on.elasticsearch.condition == "service_healthy" and
+  (.services["search-sync-consumer"].depends_on | keys) == ["kafka-init","mysql","toxiproxy"] and
+  .services["search-sync-consumer"].depends_on.mysql.condition == "service_healthy" and
   .services["search-sync-consumer"].depends_on["kafka-init"].condition == "service_completed_successfully" and
+  .services["search-sync-consumer"].depends_on.toxiproxy.condition == "service_started" and
+  .services["search-sync-consumer"].environment.SPRING_KAFKA_BOOTSTRAP_SERVERS == "toxiproxy:8667" and
+  .services["search-sync-consumer"].environment.PIPELINE_ELASTICSEARCH_BASE_URL == "http://toxiproxy:8666" and
   (.services["consistency-verifier"].depends_on | keys) == ["elasticsearch","mysql"] and
   .services["consistency-verifier"].depends_on.elasticsearch.condition == "service_healthy" and
   .services["consistency-verifier"].depends_on.mysql.condition == "service_healthy" and

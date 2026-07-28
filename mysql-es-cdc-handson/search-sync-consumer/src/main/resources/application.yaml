@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: search-sync-consumer
+  datasource:
+    url: jdbc:mysql://mysql:3306/product_catalog?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    username: product
+    password: productpass
+  kafka:
+    bootstrap-servers: toxiproxy:8667
+    consumer:
+      group-id: product-search-sync-v1
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        isolation.level: read_committed
+    listener:
+      ack-mode: manual_immediate
+      immediate-stop: true
+
+server:
+  port: 8082
+
+pipeline:
+  source-topic: product-search-revisions
+  target-alias: products_write
+  elasticsearch-base-url: http://toxiproxy:8666
+  retry-attempts: 3
+  retry-backoff: 250ms
+
+lab:
+  failpoints:
+    enabled: ${LAB_FAILPOINTS_ENABLED:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

@@ -154,12 +154,18 @@ services:
     build:
       context: ../search-sync-consumer
     depends_on:
+      mysql:
+        condition: service_healthy
       kafka-init:
         condition: service_completed_successfully
-      elasticsearch:
-        condition: service_healthy
+      toxiproxy:
+        condition: service_started
     environment:
-      SERVER_PORT: 8082
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/product_catalog?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: product
+      SPRING_DATASOURCE_PASSWORD: productpass
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: toxiproxy:8667
+      PIPELINE_ELASTICSEARCH_BASE_URL: http://toxiproxy:8666
     ports:
       - target: 8082
         published: "8082"
