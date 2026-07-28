@@ -23,8 +23,10 @@ public class JdbcSourceSnapshotRepository implements SourceSnapshotRepository {
               c.name AS category_name,
               p.price_cents,
               i.available_quantity,
-              GREATEST(r.updated_at, p.updated_at, c.updated_at, i.updated_at)
-                AS source_updated_at
+              CASE WHEN r.active = TRUE
+                THEN GREATEST(r.updated_at, p.updated_at, c.updated_at, i.updated_at)
+                ELSE r.updated_at
+              END AS source_updated_at
             FROM product_search_revision r
             LEFT JOIN products p ON p.id = r.product_id
             LEFT JOIN categories c ON c.id = p.category_id

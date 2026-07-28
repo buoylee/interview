@@ -23,6 +23,30 @@ public record SearchDocument(
             throw new IllegalArgumentException("positive productId and sourceRevision required");
         }
         Objects.requireNonNull(sourceUpdatedAt, "sourceUpdatedAt");
+        if (searchable) {
+            requireNonBlank(sku, "searchable sku");
+            requireNonBlank(name, "searchable name");
+            Objects.requireNonNull(description, "searchable description");
+            Objects.requireNonNull(categoryId, "searchable categoryId");
+            requireNonBlank(categoryName, "searchable categoryName");
+            Objects.requireNonNull(priceCents, "searchable priceCents");
+            Objects.requireNonNull(availableQuantity, "searchable availableQuantity");
+            if (categoryId < 1 || priceCents < 0 || availableQuantity < 0) {
+                throw new IllegalArgumentException(
+                        "searchable categoryId must be positive and numeric values non-negative");
+            }
+        } else if (sku != null || name != null || description != null
+                || categoryId != null || categoryName != null || priceCents != null
+                || availableQuantity != null) {
+            throw new IllegalArgumentException(
+                    "non-searchable document must not contain business fields");
+        }
+    }
+
+    private static void requireNonBlank(String value, String field) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(field + " must not be blank");
+        }
     }
 
     public static SearchDocument tombstone(

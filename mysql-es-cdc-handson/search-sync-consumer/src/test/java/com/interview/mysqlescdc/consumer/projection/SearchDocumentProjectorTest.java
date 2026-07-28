@@ -1,6 +1,7 @@
 package com.interview.mysqlescdc.consumer.projection;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
 
@@ -50,5 +51,63 @@ class SearchDocumentProjectorTest {
                 "\"category_name\":\"Accessories\"", "\"price_cents\":12999",
                 "\"available_quantity\":8", "\"searchable\":true",
                 "\"source_revision\":4", "\"source_updated_at\":");
+    }
+
+    @Test
+    void rejects_partial_blank_or_invalid_active_source_values() {
+        Instant timestamp = Instant.parse("2026-07-22T01:02:03Z");
+
+        assertThatThrownBy(() -> new SourceProductSnapshot(
+                1L, "SKU", "Name", "", 10L, null, 1L, 0,
+                true, 1L, timestamp)).isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> SourceProductSnapshot.active(
+                1L, " ", "Name", "", 10L, "Category", 1L, 0, 1L, timestamp))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> SourceProductSnapshot.active(
+                1L, "SKU", "Name", "", 0L, "Category", 1L, 0, 1L, timestamp))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> SourceProductSnapshot.active(
+                1L, "SKU", "Name", "", 10L, "Category", -1L, 0, 1L, timestamp))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> SourceProductSnapshot.active(
+                1L, "SKU", "Name", "", 10L, "Category", 1L, -1, 1L, timestamp))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void rejects_business_fields_on_inactive_source() {
+        assertThatThrownBy(() -> new SourceProductSnapshot(
+                1L, "SKU", null, null, null, null, null, null,
+                false, 1L, Instant.parse("2026-07-22T01:02:03Z")))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void rejects_partial_blank_or_invalid_searchable_document_values() {
+        Instant timestamp = Instant.parse("2026-07-22T01:02:03Z");
+
+        assertThatThrownBy(() -> new SearchDocument(
+                1L, "SKU", "Name", "", 10L, null, 1L, 0,
+                true, 1L, timestamp)).isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> new SearchDocument(
+                1L, "SKU", " ", "", 10L, "Category", 1L, 0,
+                true, 1L, timestamp)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new SearchDocument(
+                1L, "SKU", "Name", "", 0L, "Category", 1L, 0,
+                true, 1L, timestamp)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new SearchDocument(
+                1L, "SKU", "Name", "", 10L, "Category", -1L, 0,
+                true, 1L, timestamp)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new SearchDocument(
+                1L, "SKU", "Name", "", 10L, "Category", 1L, -1,
+                true, 1L, timestamp)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void rejects_business_fields_on_non_searchable_document() {
+        assertThatThrownBy(() -> new SearchDocument(
+                1L, "SKU", null, null, null, null, null, null,
+                false, 1L, Instant.parse("2026-07-22T01:02:03Z")))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }

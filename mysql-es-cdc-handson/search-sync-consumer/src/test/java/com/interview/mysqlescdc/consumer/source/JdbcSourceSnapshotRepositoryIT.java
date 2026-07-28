@@ -89,6 +89,32 @@ class JdbcSourceSnapshotRepositoryIT {
     }
 
     @Test
+    void inactive_snapshot_uses_revision_timestamp_when_a_business_join_is_missing() {
+        insertActiveProduct();
+        jdbc.sql("UPDATE product_search_revision SET active = FALSE, revision = 3, "
+                + "updated_at = '2026-07-22 02:03:04.123456' WHERE product_id = :id")
+                .param("id", PRODUCT_ID).update();
+        jdbc.sql("DELETE FROM inventory WHERE product_id = :id")
+                .param("id", PRODUCT_ID).update();
+
+        assertThat(repository.load(PRODUCT_ID)).contains(SourceProductSnapshot.inactive(
+                PRODUCT_ID, 3L, Instant.parse("2026-07-22T02:03:04.123456Z")));
+    }
+
+    @Test
+    void inactive_snapshot_ignores_later_business_timestamps() {
+        insertActiveProduct();
+        jdbc.sql("UPDATE product_search_revision SET active = FALSE, revision = 3, "
+                + "updated_at = '2026-07-22 02:03:04.123456' WHERE product_id = :id")
+                .param("id", PRODUCT_ID).update();
+        jdbc.sql("UPDATE products SET updated_at = '2026-07-22 03:04:05.654321' WHERE id = :id")
+                .param("id", PRODUCT_ID).update();
+
+        assertThat(repository.load(PRODUCT_ID)).contains(SourceProductSnapshot.inactive(
+                PRODUCT_ID, 3L, Instant.parse("2026-07-22T02:03:04.123456Z")));
+    }
+
+    @Test
     void returns_empty_when_the_revision_row_is_truly_missing() {
         assertThat(repository.load(PRODUCT_ID)).isEmpty();
     }

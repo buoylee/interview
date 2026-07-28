@@ -22,13 +22,27 @@ public record SourceProductSnapshot(
         }
         Objects.requireNonNull(updatedAt, "updatedAt");
         if (active) {
-            Objects.requireNonNull(sku, "active sku");
-            Objects.requireNonNull(name, "active name");
+            requireNonBlank(sku, "active sku");
+            requireNonBlank(name, "active name");
             Objects.requireNonNull(description, "active description");
             Objects.requireNonNull(categoryId, "active categoryId");
-            Objects.requireNonNull(categoryName, "active categoryName");
+            requireNonBlank(categoryName, "active categoryName");
             Objects.requireNonNull(priceCents, "active priceCents");
             Objects.requireNonNull(availableQuantity, "active availableQuantity");
+            if (categoryId < 1 || priceCents < 0 || availableQuantity < 0) {
+                throw new IllegalArgumentException(
+                        "active categoryId must be positive and numeric values non-negative");
+            }
+        } else if (sku != null || name != null || description != null
+                || categoryId != null || categoryName != null || priceCents != null
+                || availableQuantity != null) {
+            throw new IllegalArgumentException("inactive source must not contain business fields");
+        }
+    }
+
+    private static void requireNonBlank(String value, String field) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(field + " must not be blank");
         }
     }
 
