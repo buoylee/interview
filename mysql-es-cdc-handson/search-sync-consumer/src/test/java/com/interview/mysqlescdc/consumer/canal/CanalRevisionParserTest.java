@@ -53,6 +53,49 @@ class CanalRevisionParserTest {
         assertInvalid(message("{\"product_id\":\"1\",\"revision\":\"1\",\"active\":\"maybe\"}"));
     }
 
+    @Test
+    void rejects_missing_or_invalid_target_message_identity() {
+        assertInvalid("""
+                {"database":"product_catalog","table":"product_search_revision",
+                 "isDdl":false,"data":[]}
+                """);
+        assertInvalid("""
+                {"id":null,"database":"product_catalog","table":"product_search_revision",
+                 "isDdl":false,"data":[]}
+                """);
+        assertInvalid("""
+                {"id":0,"database":"product_catalog","table":"product_search_revision",
+                 "isDdl":false,"data":[]}
+                """);
+        assertInvalid("""
+                {"id":95,"database":"product_catalog","table":"product_search_revision",
+                 "data":[]}
+                """);
+        assertInvalid("""
+                {"id":96,"database":"product_catalog","table":"product_search_revision",
+                 "isDdl":null,"data":[]}
+                """);
+    }
+
+    @Test
+    void rejects_missing_or_null_data_for_target_non_ddl_messages() {
+        assertInvalid("""
+                {"id":97,"database":"product_catalog","table":"product_search_revision",
+                 "isDdl":false}
+                """);
+        assertInvalid("""
+                {"id":98,"database":"product_catalog","table":"product_search_revision",
+                 "isDdl":false,"data":null}
+                """);
+    }
+
+    @Test
+    void ignores_unrelated_messages_before_validating_target_identity() {
+        assertThat(parser.parse("""
+                {"database":"product_catalog","table":"products","data":null}
+                """)).isEmpty();
+    }
+
     private void assertInvalid(String payload) {
         assertThatThrownBy(() -> parser.parse(payload))
                 .isInstanceOf(IllegalArgumentException.class);

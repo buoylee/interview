@@ -19,11 +19,24 @@ public class CanalRevisionParser {
     public List<RevisionSignal> parse(String payload) {
         try {
             CanalFlatMessage message = json.readValue(payload, CanalFlatMessage.class);
-            if (Boolean.TRUE.equals(message.isDdl())
-                    || !"product_catalog".equals(message.database())
-                    || !"product_search_revision".equals(message.table())
-                    || message.data() == null) {
+            if (message == null) {
+                throw new IllegalArgumentException("missing Canal flat message");
+            }
+            if (!"product_catalog".equals(message.database())
+                    || !"product_search_revision".equals(message.table())) {
                 return List.of();
+            }
+            if (message.isDdl() == null) {
+                throw new IllegalArgumentException("missing Canal isDdl");
+            }
+            if (message.isDdl()) {
+                return List.of();
+            }
+            if (message.id() == null || message.id() <= 0) {
+                throw new IllegalArgumentException("invalid Canal message id");
+            }
+            if (message.data() == null) {
+                throw new IllegalArgumentException("missing Canal data");
             }
 
             List<RevisionSignal> signals = new ArrayList<>();

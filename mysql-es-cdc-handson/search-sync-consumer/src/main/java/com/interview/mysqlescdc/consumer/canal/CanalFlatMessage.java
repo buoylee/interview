@@ -7,7 +7,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record CanalFlatMessage(
-        long id,
+        Long id,
         String database,
         String table,
         Boolean isDdl,

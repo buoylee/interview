@@ -2,13 +2,13 @@ package com.interview.mysqlescdc.consumer.canal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.Statement;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.Statement;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -23,6 +23,7 @@ import java.util.UUID;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -30,28 +31,41 @@ import tools.jackson.databind.json.JsonMapper;
 class CanalPartitionContractIT {
     private static final String TOPIC = "product-search-revisions";
     private static final Set<Long> PRODUCT_IDS = Set.of(2101L, 2102L, 2103L);
+    private static final Set<ExpectedSignal> CLEANUP_BARRIER = Set.of(
+            new ExpectedSignal(2101L, 92101L, "DELETE"),
+            new ExpectedSignal(2102L, 92102L, "DELETE"),
+            new ExpectedSignal(2103L, 92103L, "DELETE"));
+    private static final Set<ExpectedSignal> EXPECTED_CURRENT_SIGNALS = Set.of(
+            new ExpectedSignal(2101L, 1L, "INSERT"),
+            new ExpectedSignal(2101L, 2L, "UPDATE"),
+            new ExpectedSignal(2101L, 3L, "UPDATE"),
+            new ExpectedSignal(2102L, 1L, "INSERT"),
+            new ExpectedSignal(2103L, 1L, "INSERT"));
 
-    private final CanalRevisionParser parser =
-            new CanalRevisionParser(JsonMapper.builder().build());
+    private final JsonMapper json = JsonMapper.builder().build();
+    private final CanalRevisionParser parser = new CanalRevisionParser(json);
 
     @Test
     void canal_uses_null_keys_and_partition_hash_preserves_product_ordering() throws Exception {
-        deleteContractProducts();
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(consumerProperties())) {
             consumer.subscribe(List.of(TOPIC));
             awaitAssignment(consumer);
             consumer.seekToEnd(consumer.assignment());
             consumer.assignment().forEach(consumer::position);
-            createAndUpdateProductsThroughService();
 
-            List<LocatedSignal> observed = awaitExpectedSignals(consumer);
+            writeAndDeleteCleanupBarrier();
+            awaitCleanupBarrier(consumer);
+            Map<Integer, Long> baselineOffsets = captureBaselineOffsets(consumer);
+
+            createAndUpdateProductsThroughService();
+            List<LocatedSignal> observed = awaitExpectedSignals(consumer, baselineOffsets);
+            assertThat(observed)
+                    .extracting(LocatedSignal::expected)
+                    .containsExactlyInAnyOrderElementsOf(EXPECTED_CURRENT_SIGNALS);
+
             List<LocatedSignal> recordsFor2101 = observed.stream()
                     .filter(item -> item.signal().productId() == 2101L)
                     .toList();
-
-            assertThat(recordsFor2101)
-                    .extracting(item -> item.signal().eventRevision())
-                    .contains(1L, 2L, 3L);
             assertThat(recordsFor2101)
                     .allSatisfy(item -> assertThat(item.record().key()).isNull());
             assertThat(recordsFor2101)
@@ -63,40 +77,78 @@ class CanalPartitionContractIT {
                     item.signal().productId(), item.record().partition()));
             assertThat(productPartitions).containsKeys(2101L, 2102L, 2103L);
             assertThat(new HashSet<>(productPartitions.values())).hasSizeGreaterThanOrEqualTo(2);
-            assertThat(observed)
-                    .allSatisfy(item -> assertThat(item.record().key()).isNull());
+            assertThat(observed).allSatisfy(item -> {
+                assertThat(item.record().key()).isNull();
+                assertThat(item.record().offset())
+                        .isGreaterThanOrEqualTo(baselineOffsets.get(item.record().partition()));
+            });
         }
     }
 
-    private List<LocatedSignal> awaitExpectedSignals(KafkaConsumer<String, String> consumer) {
+    private void awaitCleanupBarrier(KafkaConsumer<String, String> consumer) {
         Instant deadline = Instant.now().plusSeconds(45);
-        List<LocatedSignal> observed = new ArrayList<>();
+        Set<ExpectedSignal> observed = new HashSet<>();
         while (Instant.now().isBefore(deadline)) {
             for (ConsumerRecord<String, String> record : consumer.poll(Duration.ofMillis(500))) {
-                for (RevisionSignal signal : parser.parse(record.value())) {
-                    if (PRODUCT_IDS.contains(signal.productId())) {
-                        observed.add(new LocatedSignal(record, signal));
+                observed.addAll(locatedSignals(record).stream()
+                        .map(LocatedSignal::expected)
+                        .filter(CLEANUP_BARRIER::contains)
+                        .toList());
+            }
+            if (observed.equals(CLEANUP_BARRIER)) {
+                return;
+            }
+        }
+        throw new AssertionError("timed out waiting for observable Canal cleanup barrier: " + observed);
+    }
+
+    private static Map<Integer, Long> captureBaselineOffsets(KafkaConsumer<String, String> consumer) {
+        Map<Integer, Long> baselineOffsets = new HashMap<>();
+        for (TopicPartition partition : consumer.assignment()) {
+            baselineOffsets.put(partition.partition(), consumer.position(partition));
+        }
+        return Map.copyOf(baselineOffsets);
+    }
+
+    private List<LocatedSignal> awaitExpectedSignals(
+            KafkaConsumer<String, String> consumer, Map<Integer, Long> baselineOffsets) {
+        Instant deadline = Instant.now().plusSeconds(45);
+        List<LocatedSignal> observed = new ArrayList<>();
+        Set<ExpectedSignal> settled = new HashSet<>();
+        while (Instant.now().isBefore(deadline)) {
+            for (ConsumerRecord<String, String> record : consumer.poll(Duration.ofMillis(500))) {
+                if (record.offset() < baselineOffsets.get(record.partition())) {
+                    continue;
+                }
+                for (LocatedSignal item : locatedSignals(record)) {
+                    if (!PRODUCT_IDS.contains(item.signal().productId())) {
+                        continue;
                     }
+                    assertThat(item.expected())
+                            .as("only exact current-run product signals are accepted")
+                            .isIn(EXPECTED_CURRENT_SIGNALS);
+                    observed.add(item);
+                    settled.add(item.expected());
                 }
             }
-            if (hasExpectedSignals(observed)) {
+            if (settled.equals(EXPECTED_CURRENT_SIGNALS)) {
                 return observed;
             }
         }
-        throw new AssertionError("timed out waiting for deterministic Canal partition signals: " + observed);
+        throw new AssertionError("timed out waiting for exact baseline-bound Canal signals: " + observed);
     }
 
-    private static boolean hasExpectedSignals(List<LocatedSignal> observed) {
-        Set<Long> revisions2101 = new HashSet<>();
-        Set<Long> products = new HashSet<>();
-        for (LocatedSignal item : observed) {
-            products.add(item.signal().productId());
-            if (item.signal().productId() == 2101L) {
-                revisions2101.add(item.signal().eventRevision());
-            }
+    private List<LocatedSignal> locatedSignals(ConsumerRecord<String, String> record) {
+        try {
+            CanalFlatMessage message = json.readValue(record.value(), CanalFlatMessage.class);
+            return parser.parse(record.value()).stream()
+                    .map(signal -> new LocatedSignal(
+                            record, signal,
+                            new ExpectedSignal(signal.productId(), signal.eventRevision(), message.type())))
+                    .toList();
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("invalid live Canal record", exception);
         }
-        return products.containsAll(PRODUCT_IDS)
-                && revisions2101.containsAll(Set.of(1L, 2L, 3L));
     }
 
     private static void awaitAssignment(KafkaConsumer<String, String> consumer) {
@@ -119,11 +171,30 @@ class CanalPartitionContractIT {
         return properties;
     }
 
-    private static void deleteContractProducts() throws Exception {
+    private static void writeAndDeleteCleanupBarrier() throws Exception {
         try (Connection connection = DriverManager.getConnection(
                 "jdbc:mysql://127.0.0.1:3308/product_catalog?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC",
                 "product", "productpass");
                 Statement statement = connection.createStatement()) {
+            statement.executeUpdate("DELETE FROM product_search_revision WHERE product_id IN (2101,2102,2103)");
+            statement.executeUpdate("DELETE FROM inventory WHERE product_id IN (2101,2102,2103)");
+            statement.executeUpdate("DELETE FROM products WHERE id IN (2101,2102,2103)");
+            statement.executeUpdate("""
+                    INSERT INTO products
+                      (id, sku, name, description, category_id, price_cents, status)
+                    VALUES
+                      (2101, 'BARRIER-2101', 'Barrier 2101', 'cleanup barrier', 10, 1, 'ACTIVE'),
+                      (2102, 'BARRIER-2102', 'Barrier 2102', 'cleanup barrier', 10, 1, 'ACTIVE'),
+                      (2103, 'BARRIER-2103', 'Barrier 2103', 'cleanup barrier', 10, 1, 'ACTIVE')
+                    """);
+            statement.executeUpdate("""
+                    INSERT INTO inventory (product_id, available_quantity, reserved_quantity)
+                    VALUES (2101,0,0),(2102,0,0),(2103,0,0)
+                    """);
+            statement.executeUpdate("""
+                    INSERT INTO product_search_revision (product_id, revision, active)
+                    VALUES (2101,92101,1),(2102,92102,1),(2103,92103,1)
+                    """);
             statement.executeUpdate("DELETE FROM product_search_revision WHERE product_id IN (2101,2102,2103)");
             statement.executeUpdate("DELETE FROM inventory WHERE product_id IN (2101,2102,2103)");
             statement.executeUpdate("DELETE FROM products WHERE id IN (2101,2102,2103)");
@@ -169,6 +240,10 @@ class CanalPartitionContractIT {
         assertThat(response.body()).contains(expectedBodyFragment);
     }
 
-    private record LocatedSignal(ConsumerRecord<String, String> record, RevisionSignal signal) {
+    private record ExpectedSignal(long productId, long revision, String type) {
+    }
+
+    private record LocatedSignal(
+            ConsumerRecord<String, String> record, RevisionSignal signal, ExpectedSignal expected) {
     }
 }
