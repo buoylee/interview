@@ -37,6 +37,7 @@ verify: assert-java-21
 	bash tests/contracts/m4-reconciliation-control.sh
 	bash tests/contracts/m4-verifier-independence-negative.sh
 	bash tests/contracts/m4-reconciliation-control-negative.sh
+	bash tests/contracts/m4-dlq-evidence-tamper.sh
 	./mvnw -q test
 	bash scenarios/scripts/verify-product-transactions.sh
 
@@ -136,3 +137,6 @@ verify-m4: assert-java-21
 	./mvnw -q -pl consistency-verifier,search-sync-consumer test
 	bash tests/contracts/m4-completion-assets.sh
 	bash tests/end-to-end/m4-reconciliation.sh
+	git diff --check
+	@tracked_status="$$(git status --porcelain --untracked-files=no)"; \
+	if test -n "$$tracked_status"; then echo "Tracked worktree is not clean after M4 gate:" >&2; echo "$$tracked_status" >&2; exit 1; fi

@@ -218,6 +218,7 @@ case_consumer_bug() {
   wait_lag_zero
   cleanup_faults
   run_verification "$case_dir/diff-run.json"; assert_one_difference "$case_dir/diff-run.json" MODIFIED category_name
+  curl -fsS 'http://127.0.0.1:8083/actuator/metrics/cdc_reconciliation_differences?tag=type:MODIFIED' >"$case_dir/metric-differences-modified.json"
   curl -fsS http://127.0.0.1:8083/internal/pipeline/status >"$case_dir/status-before-repair.json"
   jq -e '.state=="DEGRADED" and .latestRunStatus=="DIFF" and .latestDifferenceCount==1' "$case_dir/status-before-repair.json" >/dev/null || die "pre-repair state was not DEGRADED"
   repair_and_pass "$case_dir/diff-run.json"

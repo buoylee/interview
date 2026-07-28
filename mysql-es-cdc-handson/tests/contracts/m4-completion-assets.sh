@@ -38,6 +38,13 @@ jq -e '
 grep -Eq '^reconcile:' Makefile
 grep -Eq '^scenario-m4:' Makefile
 grep -Eq '^verify-m4:' Makefile
+grep -Fq 'git diff --check' Makefile
+grep -Fq 'git status --porcelain --untracked-files=no' Makefile
+grep -Fq 'assert-m4-dlq.sh' "$e2e"
+grep -Fq 'assert-m4-metrics.sh' "$e2e"
+grep -Fq 'cdc_reconciliation_runs_total?tag=outcome:PASS' "$e2e"
+grep -Fq 'cdc_reconciliation_runs_total?tag=outcome:DIFF' "$e2e"
+grep -Fq 'cdc_repair_actions_total?tag=action:WRITE_EXTERNAL_GTE' "$e2e"
 grep -Fq '$(COMPOSE) --profile m0-tools down --volumes --remove-orphans' Makefile
 grep -Fq 'MySQL is the fact source' "$doc"
 grep -Fq 'consumer-only mapping defect remains visible' "$doc"
