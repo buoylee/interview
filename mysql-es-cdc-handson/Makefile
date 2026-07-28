@@ -2,7 +2,7 @@ SHELL := /bin/bash
 COMPOSE := docker compose -f infra/compose.yaml
 COMPOSE_ADAPTER := $(COMPOSE) -f infra/compose.adapter.yaml
 
-.PHONY: assert-java-21 package up up-adapter down reset verify smoke-m0 evidence scenario-m1 verify-m1
+.PHONY: assert-java-21 package up up-adapter down reset verify smoke-m0 evidence scenario-m1 verify-m1 gate-m1
 
 assert-java-21:
 	@java -version 2>&1 | head -n 1 | grep -Eq 'version "21([.]|\")' || { \
@@ -61,3 +61,15 @@ verify-m1:
 	bash scenarios/scripts/assert-m1-bulk-partial-evidence.sh evidence/m1/m1-bulk-partial
 	bash scenarios/scripts/assert-m1-boundary-doc.sh docs/01-canal-boundary.md
 	bash tests/contracts/m1-boundary-doc.sh
+
+gate-m1:
+	$(MAKE) verify-m1
+	$(COMPOSE_ADAPTER) stop canal-adapter canal-adapter-server
+	$(COMPOSE_ADAPTER) rm -f canal-adapter canal-adapter-server
+	@adapter_ids="$$($(COMPOSE_ADAPTER) ps -a -q canal-adapter canal-adapter-server)"; \
+	if test -n "$$adapter_ids"; then \
+		echo "Adapter comparison containers still exist: $$adapter_ids" >&2; \
+		exit 1; \
+	fi
+	$(MAKE) reset
+	$(MAKE) smoke-m0

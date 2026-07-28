@@ -17,7 +17,16 @@ M0 尚未提供 Elasticsearch consumer/write、逐 Bulk item 判定、revision �
 
 ## M1: official Adapter comparison
 
-The [Canal and Adapter evidence boundary](docs/01-canal-boundary.md) records black-box behavior for the official 1.1.8 Adapter. `products_adapter_v1` is a disposable comparison index; it is never the serving index and is not evidence of the final consistency contract. The pinned byte/1000 experiment observed target coercion to `-24`, not the intended Bulk partial failure; run `make scenario-m1` and `make verify-m1` to regenerate and verify the ignored runtime evidence and rendered boundary.
+The [Canal and Adapter evidence boundary](docs/01-canal-boundary.md) records black-box behavior for the official 1.1.8 Adapter. `products_adapter_v1` is a disposable comparison index; it is never the serving index and is not evidence of the final consistency contract. The pinned byte/1000 experiment observed target coercion to `-24`, not the intended Bulk partial failure.
+
+The standard complete M1 command sequence is:
+
+```bash
+make scenario-m1
+make gate-m1
+```
+
+`gate-m1` assumes `scenario-m1` has already generated the ignored runtime evidence and rendered boundary. It first verifies all four M1 scenarios and the documentation, then removes only the two Adapter comparison services and proves their containers are absent before resetting named project volumes and running the fresh M0 smoke gate. It does not rerun the dynamic M1 scenarios.
 
 ## 运行
 
