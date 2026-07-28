@@ -10,6 +10,7 @@ import java.util.Optional;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import com.interview.mysqlescdc.consumer.canal.CanalRevisionParser;
 import com.interview.mysqlescdc.consumer.canal.RevisionSignal;
@@ -31,6 +32,7 @@ import com.interview.mysqlescdc.consumer.source.SourceProductSnapshot;
 import com.interview.mysqlescdc.consumer.source.SourceSnapshotRepository;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
+import com.interview.mysqlescdc.consumer.metrics.PipelineMetrics;
 
 @Component
 public class SyncRecordProcessor {
@@ -46,6 +48,7 @@ public class SyncRecordProcessor {
     private final String targetAlias;
     private final int retryAttempts;
     private final JsonMapper json = JsonMapper.builder().build();
+    private PipelineMetrics metrics;
 
     public SyncRecordProcessor(
             CanalRevisionParser parser,
@@ -71,12 +74,19 @@ public class SyncRecordProcessor {
         this.retryAttempts = retryAttempts;
     }
 
+    @Autowired
+    public void configureMetrics(PipelineMetrics metrics) {
+        this.metrics = metrics;
+    }
+
     public ProcessingResult process(ConsumerRecord<String, String> record) {
+        if (metrics != null) metrics.recordConsumerRecord();
         List<RevisionSignal> parsed = parseOrDlq(record);
         if (parsed == null) {
             return new ProcessingResult(0, 0, 0, 0, 1, 0);
         }
         List<RevisionSignal> signals = deduplicate(parsed);
+        if (metrics != null) signals.forEach(ignored -> metrics.recordSignal());
         if (signals.isEmpty()) {
             return new ProcessingResult(0, 0, 0, 0, 0, 0);
         }
@@ -111,6 +121,7 @@ public class SyncRecordProcessor {
                     item.reason() == null ? "permanent Elasticsearch item failure" : item.reason());
             productDlqCount++;
         }
+        if (metrics != null) metrics.recordSuccess();
         return new ProcessingResult(signals.size(), settlement.applied(), settlement.stale(),
                 productDlqCount, 0, highestRevision);
     }
@@ -152,6 +163,7 @@ public class SyncRecordProcessor {
             try {
                 result = elasticsearch.write(targetAlias, pending);
             } catch (BulkTransportException | BulkProtocolException exception) {
+                if (metrics != null) metrics.recordRetry(exception instanceof BulkTransportException ? "transport" : "protocol");
                 if (attempt == retryAttempts) {
                     throw new RetryablePipelineException("Elasticsearch Bulk attempts exhausted", exception);
                 }
@@ -174,11 +186,14 @@ public class SyncRecordProcessor {
                     applied++;
                 } else if (item.outcome() == BulkOutcome.STALE) {
                     stale++;
+                    if (metrics != null) metrics.recordStale();
                 } else if (item.outcome() == BulkOutcome.PERMANENT_FAILURE) {
                     permanent.add(item);
                 } else {
                     retry.add(document);
+                    if (metrics != null) metrics.recordRetry("bulk_item");
                 }
+                if (metrics != null) metrics.recordBulk(item.outcome().name().toLowerCase(java.util.Locale.ROOT));
             }
             pending = List.copyOf(retry);
         }

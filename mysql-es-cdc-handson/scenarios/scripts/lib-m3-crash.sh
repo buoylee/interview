@@ -64,6 +64,30 @@ wait_consumer_ready() {
   done
 }
 
+wait_consumer_degraded() {
+  local final="$1" attempts start=$SECONDS observation
+  attempts="${final%.json}-attempts.jsonl"; : >"$attempts"
+  while true; do
+    observation="$(mktemp)"; observe_http_json http://127.0.0.1:8082/actuator/health "$observation"
+    jq -c . "$observation" >>"$attempts"
+    if jq -e '.transport_exit==0 and .http_status==503 and .json_valid==true
+      and (.raw_body|fromjson)=={"groups":["liveness","readiness"],"status":"DOWN"}' "$observation" >/dev/null; then
+      local container_id container_started_at observed_at enriched
+      container_id="$("${compose[@]}" ps -a -q search-sync-consumer)"
+      container_started_at="$(docker inspect "$container_id" | jq -r '.[0].State.StartedAt')"
+      observed_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"; enriched="$(mktemp)"
+      jq --arg container_id "$container_id" --arg container_started_at "$container_started_at" --arg observed_at "$observed_at" \
+        '. + {consumer_container_id:$container_id,container_started_at:$container_started_at,observed_at:$observed_at}' "$observation" >"$enriched"
+      mv "$enriched" "$final"; rm -f "$observation"; return
+    fi
+    if ! jq -e '(.transport_exit!=0 and .http_status==0) or
+      (.transport_exit==0 and (.http_status==503 or .http_status==200) and .json_valid==true)' "$observation" >/dev/null; then
+      cat "$observation" >&2; rm -f "$observation"; die "terminal consumer degraded-health response"
+    fi
+    rm -f "$observation"; (( SECONDS-start < 120 )) || die "timeout waiting for degraded consumer HTTP"; sleep 1
+  done
+}
+
 is_es_revision_ready_observation() {
   local id="$1" revision="$2" observation="$3"
   jq -e --argjson id "$id" --argjson revision "$revision" \
@@ -73,11 +97,14 @@ is_es_revision_ready_observation() {
 }
 
 is_es_revision_pending_observation() {
-  local id="$1" observation="$2"
-  jq -e --arg id "$id" '.transport_exit==0 and .json_valid==true and
+  local id="$1" revision="$2" observation="$3"
+  jq -e --arg id "$id" --argjson revision "$revision" '.transport_exit==0 and .json_valid==true and
     ((.http_status==404 and ((.raw_body|fromjson) |
        .found==false and ._id==$id and ._index=="products_v2" and
        (keys|sort)==["_id","_index","found"]))
+     or (.http_status==200 and ((.raw_body|fromjson) |
+       .found==true and ._id==$id and ._index=="products_v2"
+       and (._source.source_revision|type)=="number" and ._source.source_revision<$revision))
      or (.http_status==503 and ((.raw_body|fromjson).error.root_cause|length)>0 and
        all((.raw_body|fromjson).error.root_cause[];.type=="no_shard_available_action_exception")))' \
     "$observation" >/dev/null
@@ -133,7 +160,7 @@ wait_es_revision() {
     if is_es_revision_ready_observation "$id" "$revision" "$observation"; then
       mv "$observation" "$final"; return
     fi
-    if ! is_es_revision_pending_observation "$id" "$observation"; then
+    if ! is_es_revision_pending_observation "$id" "$revision" "$observation"; then
       cat "$observation" >&2; rm -f "$observation"; die "terminal Elasticsearch observation"
     fi
     rm -f "$observation"

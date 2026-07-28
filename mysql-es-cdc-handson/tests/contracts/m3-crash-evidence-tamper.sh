@@ -124,7 +124,7 @@ fi
   trap 'rm -f "$observation"' EXIT
   jq -n '{transport_exit:0,http_status:404,json_valid:true,raw_body:(
     {error:{type:"index_not_found_exception"},status:404}|tojson)}' >"$observation"
-  if is_es_revision_pending_observation 2301 "$observation"; then
+  if is_es_revision_pending_observation 2301 2 "$observation"; then
     echo "validator accepted index-not-found as retryable" >&2
     exit 1
   fi
@@ -136,7 +136,7 @@ fi
   trap 'rm -f "$observation"' EXIT
   jq -n '{transport_exit:0,http_status:404,json_valid:true,raw_body:(
     {"_index":"other_index","_id":"2301","found":false}|tojson)}' >"$observation"
-  if is_es_revision_pending_observation 2301 "$observation"; then
+  if is_es_revision_pending_observation 2301 2 "$observation"; then
     echo "validator accepted wrong-index document 404 as retryable" >&2
     exit 1
   fi

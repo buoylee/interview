@@ -3,6 +3,7 @@ package com.interview.mysqlescdc.consumer.dlq;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Optional;
+import java.util.List;
 
 import javax.sql.DataSource;
 
@@ -95,6 +96,16 @@ public class JdbcRecordDlqStore implements RecordDlqStore {
                 FROM sync_record_dlq
                 WHERE record_id = :recordId AND status = 'PENDING'
                 """).param("recordId", recordId).query(this::map).optional();
+    }
+
+    @Override
+    public List<RecordDlqRecord> listPending() {
+        return jdbc.sql("""
+                SELECT record_id, topic_name, partition_no, offset_no, raw_key,
+                       raw_payload, failure_class, last_error, status, attempts,
+                       created_at, updated_at, resolved_at
+                FROM sync_record_dlq WHERE status = 'PENDING' ORDER BY record_id
+                """).query(this::map).list();
     }
 
     @Override

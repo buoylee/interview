@@ -8,8 +8,8 @@
   "mutation_revision": 2,
   "pending_rows_after_crash": 1,
   "attempts_after_restart": 2,
-  "terminal_boundary": "RECOVERY_DEFERRED_TO_TASK7",
-  "final_consistency_claim": false,
+  "terminal_boundary": "RECOVERED_BY_CURRENT_SOURCE_REPLAY",
+  "final_consistency_claim": true,
   "required_text_files": ["topic-records.txt", "consumer-ready-attempts.jsonl", "consumer-bad-mapping-ready-attempts.jsonl", "consumer-restarted-ready-attempts.jsonl"],
-  "required_files": ["consumer-ready.json", "consumer-bad-mapping-ready.json", "consumer-restarted-ready.json", "source-create-response.json", "source-create-response-http.json", "source-mutation-response.json", "source-mutation-response-http.json", "source-after-mutation.json", "baseline-group.json", "mapping-bad.json", "armed.json", "record.json", "process-before.json", "process-crashed.json", "group-after-crash.json", "dlq-after-crash.json", "process-restarted.json", "group-after-restart.json", "dlq-after-restart.json", "mapping-restored.json", "dlq-after-mapping-restore.json", "result.json"]
+  "required_files": ["consumer-ready.json", "consumer-bad-mapping-ready.json", "consumer-restarted-ready.json", "source-create-response.json", "source-create-response-http.json", "source-mutation-response.json", "source-mutation-response-http.json", "source-after-mutation.json", "baseline-group.json", "mapping-bad.json", "armed.json", "record.json", "process-before.json", "process-crashed.json", "group-after-crash.json", "dlq-after-crash.json", "process-restarted.json", "group-after-restart.json", "dlq-after-restart.json", "mapping-restored.json", "dlq-after-mapping-restore.json", "replay-result.json", "es-final.json", "dlq-final.json", "dlq-count-final.json", "record-dlq-count-final.json", "result.json"]
 }

@@ -4,6 +4,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.Optional;
+import java.util.List;
 
 import javax.sql.DataSource;
 
@@ -135,6 +136,16 @@ public class JdbcDlqStore implements DlqStore {
                 .param("eventId", eventId)
                 .query(this::map)
                 .optional();
+    }
+
+    @Override
+    public List<DlqRecord> listPending() {
+        return jdbc.sql("""
+                SELECT event_id, topic_name, partition_no, offset_no, product_id,
+                       source_revision, payload, failure_class, last_error, status,
+                       attempts, created_at, updated_at, resolved_at
+                FROM sync_dlq_record WHERE status = 'PENDING' ORDER BY event_id
+                """).query(this::map).list();
     }
 
     @Override

@@ -37,6 +37,8 @@ import com.interview.mysqlescdc.consumer.sink.ElasticsearchGateway;
 import com.interview.mysqlescdc.consumer.source.SourceProductSnapshot;
 import com.interview.mysqlescdc.consumer.source.SourceSnapshotRepository;
 import tools.jackson.databind.json.JsonMapper;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import com.interview.mysqlescdc.consumer.metrics.PipelineMetrics;
 
 class SyncRecordProcessorTest {
     private final SourceSnapshotRepository source = mock(SourceSnapshotRepository.class);
@@ -48,6 +50,21 @@ class SyncRecordProcessorTest {
             new CanalRevisionParser(JsonMapper.builder().build()), source,
             new SearchDocumentProjector(), elasticsearch, productDlq, recordDlq,
             failpoints, "products_write", 3);
+
+    @Test
+    void records_low_cardinality_runtime_metrics_from_real_processing_outcomes() {
+        var registry = new SimpleMeterRegistry();
+        processor.configureMetrics(new PipelineMetrics(registry, () -> 0L, () -> 0L));
+        when(source.load(7)).thenReturn(Optional.of(snapshot(7, 4)));
+        when(elasticsearch.write(eq("products_write"), any())).thenReturn(new BulkWriteResult(List.of(
+                item(7, 4, BulkOutcome.STALE, 409, "version_conflict_engine_exception"))));
+        processor.process(record(message(row(7, 4, true))));
+        assertThat(registry.get("cdc_consumer_records_total").counter().count()).isEqualTo(1);
+        assertThat(registry.get("cdc_consumer_signals_total").counter().count()).isEqualTo(1);
+        assertThat(registry.get("cdc_es_bulk_items_total").tag("outcome", "stale").counter().count()).isEqualTo(1);
+        assertThat(registry.get("cdc_stale_revision_total").counter().count()).isEqualTo(1);
+        assertThat(registry.get("cdc_last_success_epoch_seconds").gauge().value()).isPositive();
+    }
 
     @Test
     void deduplicates_by_highest_revision_and_settles_applied_and_stale_items() {

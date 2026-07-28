@@ -57,3 +57,19 @@ Compose 将 Elasticsearch 的 `cluster.routing.allocation.disk.threshold_enabled
 本实验固定的 release-native ACK cursor 是 `/home/admin/canal-data/products/meta.dat`，不是 parser 的 `parse.dat`。正式 smoke 在 normal stop 前先证明 ACK、cursor persist 和 Kafka end offsets，再验证 exact resume。Canal 1.1.8 static-destination normal stop 可能记录已知 upstream `future=null` `NullPointerException`；evidence 只按本次 stop 观察 `present/absent`，它既不是成功条件，也不能推广成“无害”或 clean/safe shutdown。
 
 完整目标与不变量见 [docs/00-goals-and-invariants.md](docs/00-goals-and-invariants.md)。
+
+## M2–M3：自定义可靠消费链路
+
+机制与边界见 [可靠消费链路](docs/02-reliable-pipeline.md) 和
+[失败模型](docs/03-failure-model.md)。标准工作流使用 Java 21：
+
+```bash
+make bootstrap-index
+make scenario-m3       # 九个 raw-first 场景；验收时从 reset 环境完整运行两轮
+make gate-m2-m3        # 模块测试、matrix、health/metrics、DLQ=0、tracked clean
+```
+
+`/internal/dlq/**` 与 `/internal/record-dlq/**` 仅是绑定本机端口的实验/admin
+接口，不是开放、无鉴权生产接口的建议。M3 证明 at-least-once、external
+revision fencing 和已知失败可恢复；它不检测 binlog/Kafka gap 或独立 projection
+drift，也不宣称 MySQL 与 Elasticsearch 已获得全局最终一致性证明。

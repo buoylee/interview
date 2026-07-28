@@ -67,6 +67,12 @@ assert_ready() {
   observed="$(rfc3339_epoch "$(jq -r .observed_at "$file")")"
   (( observed >= started ))
 }
+assert_degraded() {
+  local file="$1"
+  jq -e '.transport_exit==0 and .http_status==503 and .json_valid==true
+    and (.raw_body|fromjson)=={"groups":["liveness","readiness"],"status":"DOWN"}
+    and (.consumer_container_id|test("^[0-9a-f]{64}$"))' "$file" >/dev/null
+}
 assert_ready "$dir/consumer-ready.json"
 
 product_id="$(jq -r .product_id "$definition")"
@@ -107,7 +113,11 @@ jq -e --slurpfile r "$dir/record.json" '($r[0]) as $record
 
 jq -e --slurpfile d "$definition" '.scenario==$d[0].scenario and .failpoint==$d[0].failpoint and .hits==$d[0].hits and .exit_code==$d[0].exit_code' "$dir/result.json" >/dev/null
 
-assert_ready "$dir/consumer-restarted-ready.json"
+if [[ "$scenario" == m3-after-dlq-before-offset ]]; then
+  assert_degraded "$dir/consumer-restarted-ready.json"
+else
+  assert_ready "$dir/consumer-restarted-ready.json"
+fi
 test "$(jq -r .consumer_container_id "$dir/consumer-ready.json")" = "$before_id"
 test "$(jq -r .consumer_container_id "$dir/consumer-restarted-ready.json")" = "$restart_id"
 restart_ready_epoch="$(rfc3339_epoch "$(jq -r .observed_at "$dir/consumer-restarted-ready.json")")"
@@ -163,12 +173,23 @@ case "$scenario" in
          and .[0].partition==$r[0].partition and .[0].offset==$r[0].offset and .[0].product_id==$id
          and .[0].revision==$revision and .[0].status=="PENDING" and .[0].attempts==$attempts' "$dir/$file" >/dev/null
     done
+    jq -e --arg event "$expected_id" --argjson revision "$mutation_revision" \
+      '.eventId==$event and .priorRevision==$revision and .currentRevision==$revision
+       and (.outcome=="APPLIED" or .outcome=="STALE") and .resolved==true and .status=="RESOLVED"' \
+      "$dir/replay-result.json" >/dev/null
+    jq -e --argjson id "$product_id" --argjson revision "$mutation_revision" \
+      '.transport_exit==0 and .http_status==200 and .json_valid==true and
+       ((.raw_body|fromjson)|.found==true and (._id|tonumber)==$id and ._source.product_id==$id and ._source.source_revision==$revision and ._source.price_cents==1000)' \
+      "$dir/es-final.json" >/dev/null
+    jq -e --arg event "$expected_id" 'type=="array" and length==1 and .[0].event_id==$event and .[0].status=="RESOLVED"' "$dir/dlq-final.json" >/dev/null
+    jq -e '.unresolved==0' "$dir/dlq-count-final.json" "$dir/record-dlq-count-final.json" >/dev/null
     jq -e --slurpfile r "$dir/record.json" '($r[0]) as $record | map(select(.partition==$record.partition)) | length==1 and .[0].committed>$record.offset and .[0].end==.[0].committed and .[0].lag==0' "$dir/group-after-restart.json" >/dev/null
     jq -n --slurpfile d "$definition" --slurpfile record "$dir/record.json" \
       --slurpfile before_process "$dir/process-before.json" --slurpfile crash "$dir/process-crashed.json" \
       --slurpfile restarted "$dir/process-restarted.json" --slurpfile crash_group "$dir/group-after-crash.json" \
       --slurpfile restart_group "$dir/group-after-restart.json" --slurpfile first "$dir/dlq-after-crash.json" \
       --slurpfile second "$dir/dlq-after-restart.json" --slurpfile restored "$dir/dlq-after-mapping-restore.json" \
+      --slurpfile replay "$dir/replay-result.json" --slurpfile es "$dir/es-final.json" --slurpfile final_dlq "$dir/dlq-final.json" \
       '($record[0]) as $r | ($crash_group[0][]|select(.partition==$r.partition)) as $cg |
        ($restart_group[0][]|select(.partition==$r.partition)) as $rg |
        {scenario:$d[0].scenario,failpoint:$d[0].failpoint,hits:$d[0].hits,exit_code:$crash[0].exit_code,
@@ -183,7 +204,9 @@ case "$scenario" in
         restart_pending_rows:($second[0]|length),attempts_after_restart:$second[0][0].attempts,status_after_restart:$second[0][0].status,
         mapping_restore_pending_rows:($restored[0]|length),attempts_after_mapping_restore:$restored[0][0].attempts,
         status_after_mapping_restore:$restored[0][0].status,
-        terminal_boundary:"RECOVERY_DEFERRED_TO_TASK7",final_consistency_claim:false}' >"$expected_result"
+        replay_status:$replay[0].status,replay_outcome:$replay[0].outcome,replay_current_revision:$replay[0].currentRevision,
+        final_dlq_status:$final_dlq[0][0].status,final_es_revision:($es[0].raw_body|fromjson|._source.source_revision),
+        terminal_boundary:"RECOVERED_BY_CURRENT_SOURCE_REPLAY",final_consistency_claim:true}' >"$expected_result"
     jq -e --slurpfile expected "$expected_result" '.==$expected[0]' "$dir/result.json" >/dev/null
     rm "$expected_result"
     ;;

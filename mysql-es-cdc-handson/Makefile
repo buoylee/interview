@@ -2,7 +2,7 @@ SHELL := /bin/bash
 COMPOSE := docker compose -f infra/compose.yaml
 COMPOSE_ADAPTER := $(COMPOSE) -f infra/compose.adapter.yaml
 
-.PHONY: assert-java-21 package up up-adapter down reset verify smoke-m0 evidence scenario-m1 verify-m1 gate-m1 bootstrap-products-v2 verify-products-v2 scenario-m3-after-es scenario-m3-after-dlq
+.PHONY: assert-java-21 package up up-adapter down reset verify smoke-m0 evidence scenario-m1 verify-m1 gate-m1 bootstrap-products-v2 bootstrap-index verify-products-v2 scenario-m3-after-es scenario-m3-after-dlq scenario-m3 verify-m3 gate-m2-m3
 
 assert-java-21:
 	@java -version 2>&1 | head -n 1 | grep -Eq 'version "21([.]|\")' || { \
@@ -87,6 +87,8 @@ gate-m1:
 bootstrap-products-v2:
 	bash infra/elasticsearch/bootstrap-products-v2.sh
 
+bootstrap-index: bootstrap-products-v2
+
 verify-products-v2:
 	bash tests/contracts/m2-m3-elasticsearch-aliases.sh
 	bash tests/contracts/m2-m3-bootstrap-fail-closed.sh
@@ -97,3 +99,23 @@ scenario-m3-after-es:
 
 scenario-m3-after-dlq:
 	bash scenarios/scripts/run-m3-after-dlq-before-offset.sh
+
+scenario-m3:
+	bash scenarios/scripts/run-m3-matrix.sh
+
+verify-m3: assert-java-21
+	./mvnw -q -pl search-sync-consumer test
+	M3_MATRIX_ROUND=1 bash scenarios/scripts/run-m3-matrix.sh
+	M3_MATRIX_ROUND=2 bash scenarios/scripts/run-m3-matrix.sh
+	bash tests/contracts/m3-completion-gate.sh
+
+gate-m2-m3: verify-m3
+	curl -fsS http://127.0.0.1:8082/actuator/health | jq -e '.status == "UP"'
+	curl -fsS http://127.0.0.1:8082/actuator/metrics/cdc_es_bulk_items_total | jq -e '.name == "cdc_es_bulk_items_total"'
+	curl -fsS http://127.0.0.1:8082/actuator/metrics/cdc_product_dlq_unresolved | jq -e '.measurements[0].value == 0'
+	curl -fsS http://127.0.0.1:8082/actuator/metrics/cdc_record_dlq_unresolved | jq -e '.measurements[0].value == 0'
+	curl -fsS http://127.0.0.1:8082/internal/dlq/count | jq -e '.unresolved == 0'
+	curl -fsS http://127.0.0.1:8082/internal/record-dlq/count | jq -e '.unresolved == 0'
+	git diff --check
+	@tracked_status="$$(git status --porcelain --untracked-files=no)"; \
+	if test -n "$$tracked_status"; then echo "Tracked worktree is not clean:" >&2; echo "$$tracked_status" >&2; exit 1; fi
