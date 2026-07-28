@@ -6,6 +6,7 @@ evidence="${M3_EVIDENCE_DIR:-evidence/m3/m3-after-es-before-offset}"
 mkdir -p "$evidence"
 cp scenarios/definitions/m3-after-es-before-offset.json "$evidence/definition.json"
 reset_stack
+wait_consumer_ready "$evidence/consumer-ready.json"
 create_product 2301 "$evidence/source-create-response.json"
 group_json >"$evidence/baseline-group.json"
 group_raw >"$evidence/baseline-group.txt"
@@ -17,12 +18,12 @@ source_state 2301 >"$evidence/source-after-mutation.json"
 wait_exit_86
 container_state >"$evidence/process-crashed.json"
 curl -fsS http://127.0.0.1:9200/products_write/_doc/2301 >"$evidence/es-before-restart.json"
-line="$(find_record 2301 "$evidence/topic-records.txt")"
-record_coordinates "$line" >"$evidence/record.json"
+capture_matching_record 2301 2 "$evidence/baseline-group.json" "$evidence/record.json" "$evidence/topic-records.txt"
 group_json >"$evidence/group-after-crash.json"
 group_raw >"$evidence/group-after-crash.txt"
 assert_offset_uncommitted "$evidence/group-after-crash.json" "$evidence/record.json"
 start_consumer
+wait_consumer_ready "$evidence/consumer-restarted-ready.json"
 container_state >"$evidence/process-restarted.json"
 wait_group_zero
 group_json >"$evidence/final-group.json"
@@ -35,6 +36,6 @@ jq -n --slurpfile d "$evidence/definition.json" --slurpfile crash "$evidence/pro
   '{scenario:$d[0].scenario,failpoint:$d[0].failpoint,exit_code:$crash[0].exit_code,
     durable_revision_before_restart:$before[0]._source.source_revision,
     before_restart_seq_no:$before[0]._seq_no,final_seq_no:$after[0]._seq_no,
-    final_revision:$after[0]._source.source_revision,dlq_rows:($dlq|length),
+    final_revision:$after[0]._source.source_revision,dlq_rows:($dlq[0]|length),
     replay_outcome:"STALE",final_consistency_claim:true}' >"$evidence/result.json"
 bash scenarios/scripts/assert-m3-crash-evidence.sh "$evidence"

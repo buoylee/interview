@@ -21,24 +21,71 @@ reset_stack() {
   make up
   bash infra/elasticsearch/bootstrap-products-v2.sh
   "${compose[@]}" --profile m0-tools up -d --build search-sync-consumer
-  poll "consumer HTTP" 120 "curl -fsS http://127.0.0.1:8082/actuator/health >/dev/null"
+}
+
+observe_http_json() {
+  local url="$1" output="$2" body status rc valid=false
+  body="$(mktemp)"
+  set +e
+  status="$(curl -sS -o "$body" -w '%{http_code}' "$url")"; rc=$?
+  set -e
+  if jq -e . "$body" >/dev/null 2>&1; then valid=true; fi
+  jq -n --argjson transport_exit "$rc" --argjson http_status "${status:-0}" \
+    --argjson json_valid "$valid" --rawfile raw_body "$body" \
+    '{transport_exit:$transport_exit,http_status:$http_status,json_valid:$json_valid,raw_body:$raw_body}' >"$output"
+  rm -f "$body"
+}
+
+wait_consumer_ready() {
+  local final="$1" attempts start=$SECONDS observation
+  attempts="${final%.json}-attempts.jsonl"
+  : >"$attempts"
+  while true; do
+    observation="$(mktemp)"
+    observe_http_json http://127.0.0.1:8082/actuator/health "$observation"
+    jq -c . "$observation" >>"$attempts"
+    if jq -e '.transport_exit==0 and .http_status==200 and .json_valid==true and (.raw_body|fromjson|.status)=="UP"' "$observation" >/dev/null; then
+      mv "$observation" "$final"; return
+    fi
+    if ! jq -e '(.transport_exit!=0 and .http_status==0) or (.transport_exit==0 and .http_status==503 and .json_valid==true)' "$observation" >/dev/null; then
+      cat "$observation" >&2; rm -f "$observation"; die "terminal consumer health response"
+    fi
+    rm -f "$observation"
+    (( SECONDS - start < 120 )) || die "timeout waiting for consumer HTTP"
+    sleep 1
+  done
 }
 
 create_product() {
-  local id="$1" output="${2:-/dev/null}"
-  curl -fsS -X POST http://127.0.0.1:8081/api/products \
+  local id="$1" output="${2:-/dev/null}" observation body status rc valid=false
+  observation="${output%.json}-http.json"
+  body="$(mktemp)"
+  set +e
+  status="$(curl -sS -o "$body" -w '%{http_code}' -X POST http://127.0.0.1:8081/api/products \
     -H 'Content-Type: application/json' \
-    -d "{\"id\":${id},\"sku\":\"LAB-${id}\",\"name\":\"Crash ${id}\",\"description\":\"fixture\",\"categoryId\":10,\"priceCents\":100}" \
-    | tee "$output" | jq -e --argjson id "$id" '.productId == $id and .revision == 1' >/dev/null
+    -d "{\"id\":${id},\"sku\":\"LAB-${id}\",\"name\":\"Crash ${id}\",\"description\":\"fixture\",\"categoryId\":10,\"priceCents\":100}")"; rc=$?
+  set -e
+  jq -e . "$body" >/dev/null 2>&1 && valid=true
+  jq -n --argjson transport_exit "$rc" --argjson http_status "${status:-0}" --argjson json_valid "$valid" --rawfile raw_body "$body" '{transport_exit:$transport_exit,http_status:$http_status,json_valid:$json_valid,raw_body:$raw_body}' >"$observation"
+  (( rc==0 && status==201 )) && [[ "$valid" == true ]] || die "create product HTTP failure"
+  cp "$body" "$output"; rm -f "$body"
+  jq -e --argjson id "$id" '.productId == $id and .revision == 1' "$output" >/dev/null
   wait_es_revision "$id" 1
   wait_group_zero
 }
 
 change_price() {
-  local id="$1" price="$2" output="${3:-/dev/null}"
-  curl -fsS -X PUT "http://127.0.0.1:8081/api/products/${id}/price" \
-    -H 'Content-Type: application/json' -d "{\"priceCents\":${price}}" \
-    | tee "$output" | jq -e --argjson id "$id" '.productId == $id and .revision == 2' >/dev/null
+  local id="$1" price="$2" output="${3:-/dev/null}" observation body status rc valid=false
+  observation="${output%.json}-http.json"
+  body="$(mktemp)"
+  set +e
+  status="$(curl -sS -o "$body" -w '%{http_code}' -X PUT "http://127.0.0.1:8081/api/products/${id}/price" -H 'Content-Type: application/json' -d "{\"priceCents\":${price}}")"; rc=$?
+  set -e
+  jq -e . "$body" >/dev/null 2>&1 && valid=true
+  jq -n --argjson transport_exit "$rc" --argjson http_status "${status:-0}" --argjson json_valid "$valid" --rawfile raw_body "$body" '{transport_exit:$transport_exit,http_status:$http_status,json_valid:$json_valid,raw_body:$raw_body}' >"$observation"
+  (( rc==0 && status==200 )) && [[ "$valid" == true ]] || die "change price HTTP failure"
+  cp "$body" "$output"; rm -f "$body"
+  jq -e --argjson id "$id" '.productId == $id and .revision == 2' "$output" >/dev/null
 }
 
 source_state() {
@@ -49,9 +96,26 @@ source_state() {
 }
 
 wait_es_revision() {
-  local id="$1" revision="$2"
-  poll "ES product ${id} revision ${revision}" 120 \
-    "curl -fsS http://127.0.0.1:9200/products_write/_doc/${id} | jq -e '.found == true and ._source.source_revision == ${revision}' >/dev/null"
+  local id="$1" revision="$2" final="${3:-/tmp/m3-es-observation.json}" attempts start=$SECONDS observation
+  attempts="${final%.json}-attempts.jsonl"
+  : >"$attempts"
+  while true; do
+    observation="$(mktemp)"
+    observe_http_json "http://127.0.0.1:9200/products_write/_doc/${id}" "$observation"
+    jq -c . "$observation" >>"$attempts"
+    if jq -e --argjson id "$id" --argjson revision "$revision" \
+      '.transport_exit==0 and .http_status==200 and .json_valid==true and ((.raw_body|fromjson) | .found==true and (._id|tonumber)==$id and ._source.source_revision==$revision)' "$observation" >/dev/null; then
+      mv "$observation" "$final"; return
+    fi
+    if ! jq -e '.transport_exit==0 and .json_valid==true and
+      (.http_status==404 or (.http_status==503 and ((.raw_body|fromjson).error.root_cause|length)>0
+        and all((.raw_body|fromjson).error.root_cause[];.type=="no_shard_available_action_exception")))' "$observation" >/dev/null; then
+      cat "$observation" >&2; rm -f "$observation"; die "terminal Elasticsearch observation"
+    fi
+    rm -f "$observation"
+    (( SECONDS - start < 120 )) || die "timeout waiting for ES revision"
+    sleep 1
+  done
 }
 
 group_json() {
@@ -77,18 +141,26 @@ wait_group_zero() {
     "group_json | jq -e 'length == 3 and all(.[]; .lag == 0)' >/dev/null"
 }
 
-find_record() {
-  local id="$1" output="$2"
+capture_matching_record() {
+  local id="$1" revision="$2" baseline="$3" output="$4" records="$5" line prefix payload partition offset baseline_end
   "${compose[@]}" exec -T kafka /opt/kafka/bin/kafka-console-consumer.sh \
     --bootstrap-server kafka:9092 --topic "$topic" --from-beginning --timeout-ms 10000 \
     --property print.partition=true --property print.offset=true --property print.value=true \
-    >"$output" 2>/dev/null || true
-  awk -v needle="\"product_id\":\"${id}\"" 'index($0, needle) { line=$0 } END { if (line) print line; else exit 1 }' "$output"
-}
-
-record_coordinates() {
-  local line="$1"
-  printf '%s\n' "$line" | sed -E 's/^Partition:([0-9]+)[[:space:]]+Offset:([0-9]+).*/{"partition":\1,"offset":\2}/'
+    >"$records" 2>/dev/null || true
+  line="$(awk -v id="\"product_id\":\"${id}\"" -v rev="\"revision\":\"${revision}\"" 'index($0,id)&&index($0,rev){print}' "$records" | tail -1)"
+  test -n "$line" || die "matching revision record absent"
+  prefix="${line%%\{*}"; payload="{${line#*\{}"
+  partition="$(printf '%s' "$prefix" | sed -E 's/^Partition:([0-9]+).*/\1/')"
+  offset="$(printf '%s' "$prefix" | sed -E 's/^.*Offset:([0-9]+).*/\1/')"
+  jq -e --argjson id "$id" --argjson revision "$revision" \
+    '.database=="product_catalog" and .table=="product_search_revision" and .isDdl==false
+     and (.id|type)=="number" and .id>0 and (.type=="UPDATE" or .type=="INSERT")
+     and (.data|length)==1 and (.data[0].product_id|tonumber)==$id
+     and (.data[0].revision|tonumber)==$revision and (.data[0].active=="1")' <<<"$payload" >/dev/null
+  baseline_end="$(jq -r --argjson partition "$partition" '.[]|select(.partition==$partition)|.end' "$baseline")"
+  test -n "$baseline_end" && (( offset >= baseline_end )) || die "record predates baseline"
+  jq -n --argjson partition "$partition" --argjson offset "$offset" --argjson baseline_end "$baseline_end" \
+    --argjson payload "$payload" '{partition:$partition,offset:$offset,baseline_end:$baseline_end,payload:$payload}' >"$output"
 }
 
 container_state() {
@@ -112,7 +184,6 @@ assert_offset_uncommitted() {
 
 start_consumer() {
   "${compose[@]}" start search-sync-consumer >/dev/null
-  poll "restarted consumer HTTP" 120 "curl -fsS http://127.0.0.1:8082/actuator/health >/dev/null"
 }
 
 arm_failpoint() {
@@ -125,8 +196,8 @@ arm_failpoint() {
 dlq_row() {
   local id="$1"
   "${compose[@]}" exec -T mysql mysql -N -B -uproduct -pproductpass product_catalog \
-    -e "SELECT JSON_OBJECT('event_id',event_id,'partition',partition_no,'offset',offset_no,'product_id',product_id,'revision',source_revision,'status',status,'attempts',attempts) FROM sync_dlq_record WHERE product_id=${id};" \
-    | jq -c .
+    -e "SELECT JSON_OBJECT('event_id',event_id,'topic',topic_name,'partition',partition_no,'offset',offset_no,'product_id',product_id,'revision',source_revision,'status',status,'attempts',attempts) FROM sync_dlq_record WHERE product_id=${id};" \
+    | jq -s .
 }
 
 install_bad_mapping() {

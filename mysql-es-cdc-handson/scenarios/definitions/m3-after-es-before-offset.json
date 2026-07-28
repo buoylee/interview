@@ -8,5 +8,7 @@
   "mutation_revision": 2,
   "terminal_lag": 0,
   "allowed_replay_outcomes": ["APPLIED", "STALE"],
-  "final_consistency_claim": true
+  "final_consistency_claim": true,
+  "required_text_files": ["topic-records.txt"],
+  "required_files": ["consumer-ready.json", "source-create-response.json", "source-create-response-http.json", "source-mutation-response.json", "source-mutation-response-http.json", "source-after-mutation.json", "baseline-group.json", "armed.json", "record.json", "process-before.json", "process-crashed.json", "group-after-crash.json", "es-before-restart.json", "process-restarted.json", "final-group.json", "es-final.json", "dlq-final.json", "result.json"]
 }
