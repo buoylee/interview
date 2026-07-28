@@ -17,7 +17,9 @@ public record ConsistencyReport(
 
     public ConsistencyReport {
         Objects.requireNonNull(runId, "runId");
-        counts = Map.copyOf(new EnumMap<>(counts));
+        EnumMap<DifferenceType, Long> copiedCounts = new EnumMap<>(DifferenceType.class);
+        copiedCounts.putAll(counts);
+        counts = Map.copyOf(copiedCounts);
         if (expectedCount < 0 || actualCount < 0 || differenceCount < 0) {
             throw new IllegalArgumentException("counts must be non-negative");
         }

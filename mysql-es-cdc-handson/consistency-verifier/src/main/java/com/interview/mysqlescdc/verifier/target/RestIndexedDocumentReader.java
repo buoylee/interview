@@ -40,7 +40,7 @@ public final class RestIndexedDocumentReader implements IndexedDocumentReader {
                 JsonMapper.builder().findAndAddModules().build(), baseUrl);
     }
 
-    RestIndexedDocumentReader(HttpClient http, JsonMapper json, String baseUrl) {
+    public RestIndexedDocumentReader(HttpClient http, JsonMapper json, String baseUrl) {
         this.http = Objects.requireNonNull(http, "http");
         this.json = Objects.requireNonNull(json, "json");
         this.baseUrl = Objects.requireNonNull(baseUrl, "baseUrl").replaceAll("/+$", "");
