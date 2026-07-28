@@ -6,6 +6,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import javax.sql.DataSource;
 
 import java.util.Set;
+import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.AfterEach;
@@ -41,14 +44,18 @@ class JdbcDlqStoreIT {
     @Test
     void duplicate_publish_is_atomic_and_resolved_failure_reopens_without_losing_history() {
         store.publish(record("permanent-one", "first"));
-        store.publish(record("permanent-two", "second"));
+        store.publish(DlqRecord.newPending(
+                EVENT_ID, "products.revision", 1, 42, 92101, 7,
+                "{ \"reason\": \"bad\", \"source_revision\": 7, \"product_id\": 92101 }",
+                "permanent-two", "second"));
 
         assertThat(store.unresolvedCount()).isEqualTo(1);
         assertThat(store.findPending(EVENT_ID)).get().satisfies(row -> {
             assertThat(row.attempts()).isEqualTo(2);
             assertThat(row.failureClass()).isEqualTo("permanent-two");
             assertThat(row.lastError()).isEqualTo("second");
-            assertThat(row.payload()).contains("\"productId\": 92101", "\"reason\": \"bad\"");
+            assertThat(row.payload()).contains(
+                    "\"product_id\": 92101", "\"source_revision\": 7", "\"reason\": \"bad\"");
         });
 
         store.resolve(EVENT_ID);
@@ -74,16 +81,81 @@ class JdbcDlqStoreIT {
 
     @Test
     void rejects_invalid_json_and_identity_mismatches_before_writing() {
-        assertThatThrownBy(() -> store.publish(new DlqRecord(
+        assertThatThrownBy(() -> store.publish(DlqRecord.newPending(
                 EVENT_ID, "products.revision", 1, 42, 92101, 7,
                 "not-json", "permanent", "bad")))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> store.publish(new DlqRecord(
+        assertThatThrownBy(() -> store.publish(DlqRecord.newPending(
                 EVENT_ID, "products.revision", 1, 42, 92102, 7,
-                "{}", "permanent", "bad")))
+                payload(92102, 7), "permanent", "bad")))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(jdbc.sql("SELECT COUNT(*) FROM sync_dlq_record WHERE product_id BETWEEN 92100 AND 92199")
                 .query(Long.class).single()).isZero();
+    }
+
+    @Test
+    void rejects_non_object_empty_or_mismatched_product_payload_contracts() {
+        for (String invalid : new String[] {
+                "null", "[]", "42", "\"scalar\"", "{}",
+                "{\"product_id\":92101}",
+                "{\"source_revision\":7}",
+                "{\"product_id\":\"92101\",\"source_revision\":7}",
+                "{\"product_id\":92101,\"source_revision\":7.0}",
+                "{\"product_id\":92102,\"source_revision\":7}",
+                "{\"product_id\":92101,\"source_revision\":8}"
+        }) {
+            assertThatThrownBy(() -> store.publish(DlqRecord.newPending(
+                    EVENT_ID, "products.revision", 1, 42, 92101, 7,
+                    invalid, "permanent", "bad")))
+                    .as("payload must be a matching product failure object: %s", invalid)
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThat(store.unresolvedCount()).isZero();
+    }
+
+    @Test
+    void immutable_product_evidence_conflict_fails_without_mutating_or_reopening() {
+        store.publish(record("first-class", "first-error"));
+        store.resolve(EVENT_ID);
+
+        assertThatThrownBy(() -> store.publish(DlqRecord.newPending(
+                EVENT_ID, "products.revision", 1, 42, 92101, 8,
+                payload(92101, 8), "conflict-class", "conflict-error")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("immutable");
+        assertThat(jdbc.sql("""
+                SELECT attempts, source_revision, failure_class, last_error, status,
+                       resolved_at IS NOT NULL AS has_resolved_at
+                FROM sync_dlq_record WHERE event_id=:id
+                """).param("id", EVENT_ID).query().singleRow())
+                .containsEntry("attempts", 1)
+                .containsEntry("source_revision", 7L)
+                .containsEntry("failure_class", "first-class")
+                .containsEntry("last_error", "first-error")
+                .containsEntry("status", "RESOLVED")
+                .containsEntry("has_resolved_at", 1L);
+    }
+
+    @Test
+    void concurrent_compatible_and_conflicting_product_publications_are_atomic() {
+        store.publish(record("baseline", "baseline"));
+        AtomicInteger conflicts = new AtomicInteger();
+        IntStream.range(0, 12).parallel().forEach(attempt -> {
+            try {
+                long revision = attempt % 2 == 0 ? 7 : 8;
+                store.publish(DlqRecord.newPending(
+                        EVENT_ID, "products.revision", 1, 42, 92101, revision,
+                        payload(92101, revision), "attempt", "attempt-" + attempt));
+            } catch (IllegalStateException expected) {
+                conflicts.incrementAndGet();
+            }
+        });
+        assertThat(conflicts).hasValue(6);
+        assertThat(store.findPending(EVENT_ID)).get().satisfies(row -> {
+            assertThat(row.attempts()).isEqualTo(7);
+            assertThat(row.sourceRevision()).isEqualTo(7);
+            assertThat(row.payload()).contains("\"product_id\": 92101", "\"source_revision\": 7");
+        });
     }
 
     @Test
@@ -99,6 +171,19 @@ class JdbcDlqStoreIT {
                 WHERE TABLE_SCHEMA='product_catalog' AND TABLE_NAME='sync_dlq_record'
                 """).query(String.class).list())).contains(
                         "PRIMARY", "uk_dlq_source_product", "ix_dlq_status_created");
+        assertThat(indexShape("sync_dlq_record")).containsExactlyInAnyOrder(
+                "PRIMARY:0:1:event_id",
+                "uk_dlq_source_product:0:1:topic_name",
+                "uk_dlq_source_product:0:2:partition_no",
+                "uk_dlq_source_product:0:3:offset_no",
+                "uk_dlq_source_product:0:4:product_id",
+                "ix_dlq_status_created:1:1:status",
+                "ix_dlq_status_created:1:2:created_at");
+        assertThat(checkClauses("sync_dlq_record")).containsExactlyInAnyOrderEntriesOf(Map.of(
+                "ck_dlq_attempts", "(attempts>0)",
+                "ck_dlq_coordinates", "((partition_no>=0)and(offset_no>=0)and(product_id>0)and(source_revision>0))",
+                "ck_dlq_identity", "(event_id=concat(topic_name,':',partition_no,':',offset_no,':',product_id))",
+                "ck_dlq_lifecycle", "(((status='pending')and(resolved_atisnull))or((status='resolved')and(resolved_atisnotnull)))"));
         assertThatThrownBy(() -> jdbc.sql("""
                 INSERT INTO sync_dlq_record
                   (event_id, topic_name, partition_no, offset_no, product_id,
@@ -126,8 +211,39 @@ class JdbcDlqStoreIT {
         }
     }
 
+    private java.util.List<String> indexShape(String table) {
+        return jdbc.sql("""
+                SELECT CONCAT(INDEX_NAME, ':', NON_UNIQUE, ':', SEQ_IN_INDEX, ':', COLUMN_NAME)
+                FROM information_schema.STATISTICS
+                WHERE TABLE_SCHEMA='product_catalog' AND TABLE_NAME=:table
+                """).param("table", table).query(String.class).list();
+    }
+
+    private Map<String, String> checkClauses(String table) {
+        return jdbc.sql("""
+                SELECT tc.CONSTRAINT_NAME, cc.CHECK_CLAUSE
+                FROM information_schema.TABLE_CONSTRAINTS tc
+                JOIN information_schema.CHECK_CONSTRAINTS cc
+                  ON cc.CONSTRAINT_SCHEMA=tc.CONSTRAINT_SCHEMA
+                 AND cc.CONSTRAINT_NAME=tc.CONSTRAINT_NAME
+                WHERE tc.CONSTRAINT_SCHEMA='product_catalog' AND tc.TABLE_NAME=:table
+                """).param("table", table).query().listOfRows().stream().collect(Collectors.toMap(
+                        row -> row.get("CONSTRAINT_NAME").toString(),
+                        row -> normalizeClause(row.get("CHECK_CLAUSE").toString())));
+    }
+
+    private static String normalizeClause(String clause) {
+        return clause.toLowerCase().replace("`", "").replace("_latin1", "")
+                .replace("\\", "").replaceAll("\\s+", "");
+    }
+
     private static DlqRecord record(String failureClass, String error) {
-        return new DlqRecord(EVENT_ID, "products.revision", 1, 42, 92101, 7,
-                "{\"productId\":92101,\"reason\":\"bad\"}", failureClass, error);
+        return DlqRecord.newPending(EVENT_ID, "products.revision", 1, 42, 92101, 7,
+                payload(92101, 7), failureClass, error);
+    }
+
+    private static String payload(long productId, long revision) {
+        return "{\"product_id\":" + productId + ",\"source_revision\":" + revision
+                + ",\"reason\":\"bad\"}";
     }
 }

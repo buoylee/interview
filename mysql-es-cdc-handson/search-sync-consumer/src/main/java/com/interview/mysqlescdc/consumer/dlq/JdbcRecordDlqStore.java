@@ -22,12 +22,30 @@ public class JdbcRecordDlqStore implements RecordDlqStore {
               :failureClass, :lastError, 'PENDING', 1
             )
             ON DUPLICATE KEY UPDATE
-              attempts = attempts + 1,
-              failure_class = VALUES(failure_class),
-              last_error = VALUES(last_error),
-              status = 'PENDING',
-              resolved_at = NULL,
-              updated_at = CURRENT_TIMESTAMP(6)
+              attempts = IF(
+                raw_key <=> VALUES(raw_key)
+                  AND BINARY raw_payload = BINARY VALUES(raw_payload),
+                attempts + 1, attempts),
+              failure_class = IF(
+                raw_key <=> VALUES(raw_key)
+                  AND BINARY raw_payload = BINARY VALUES(raw_payload),
+                VALUES(failure_class), failure_class),
+              last_error = IF(
+                raw_key <=> VALUES(raw_key)
+                  AND BINARY raw_payload = BINARY VALUES(raw_payload),
+                VALUES(last_error), last_error),
+              status = IF(
+                raw_key <=> VALUES(raw_key)
+                  AND BINARY raw_payload = BINARY VALUES(raw_payload),
+                'PENDING', status),
+              resolved_at = IF(
+                raw_key <=> VALUES(raw_key)
+                  AND BINARY raw_payload = BINARY VALUES(raw_payload),
+                NULL, resolved_at),
+              updated_at = IF(
+                raw_key <=> VALUES(raw_key)
+                  AND BINARY raw_payload = BINARY VALUES(raw_payload),
+                CURRENT_TIMESTAMP(6), updated_at)
             """;
     private final JdbcClient jdbc;
     private final TransactionTemplate transactions;
@@ -40,16 +58,31 @@ public class JdbcRecordDlqStore implements RecordDlqStore {
     @Override
     public void publish(RecordDlqRecord record) {
         validate(record);
-        transactions.executeWithoutResult(ignored -> jdbc.sql(INSERT)
-                .param("recordId", record.recordId())
-                .param("topic", record.topic())
-                .param("partition", record.partition())
-                .param("offset", record.offset())
-                .param("rawKey", record.rawKey())
-                .param("rawPayload", record.rawPayload())
-                .param("failureClass", record.failureClass())
-                .param("lastError", record.lastError())
-                .update());
+        transactions.executeWithoutResult(ignored -> {
+            jdbc.sql(INSERT)
+                    .param("recordId", record.recordId())
+                    .param("topic", record.topic())
+                    .param("partition", record.partition())
+                    .param("offset", record.offset())
+                    .param("rawKey", record.rawKey())
+                    .param("rawPayload", record.rawPayload())
+                    .param("failureClass", record.failureClass())
+                    .param("lastError", record.lastError())
+                    .update();
+            boolean compatible = jdbc.sql("""
+                    SELECT raw_key <=> :rawKey
+                      AND BINARY raw_payload = BINARY :rawPayload
+                    FROM sync_record_dlq
+                    WHERE record_id = :recordId
+                    """).param("rawKey", record.rawKey())
+                    .param("rawPayload", record.rawPayload())
+                    .param("recordId", record.recordId())
+                    .query(Boolean.class).single();
+            if (!compatible) {
+                throw new IllegalStateException(
+                        "immutable raw-record DLQ evidence conflicts with existing recordId");
+            }
+        });
     }
 
     @Override
@@ -85,19 +118,8 @@ public class JdbcRecordDlqStore implements RecordDlqStore {
         if (record == null) {
             throw new IllegalArgumentException("record required");
         }
-        JdbcDlqStore.requireText(record.recordId(), "recordId");
-        JdbcDlqStore.requireText(record.topic(), "topic");
-        if (record.rawPayload() == null) {
-            throw new IllegalArgumentException("rawPayload required");
-        }
-        JdbcDlqStore.requireText(record.failureClass(), "failureClass");
-        JdbcDlqStore.requireText(record.lastError(), "lastError");
-        if (record.partition() < 0 || record.offset() < 0) {
-            throw new IllegalArgumentException("non-negative source coordinates required");
-        }
-        String expected = record.topic() + ':' + record.partition() + ':' + record.offset();
-        if (!expected.equals(record.recordId())) {
-            throw new IllegalArgumentException("recordId does not agree with source identity");
+        if (!record.isNewPending()) {
+            throw new IllegalArgumentException("new-pending publish command required");
         }
     }
 

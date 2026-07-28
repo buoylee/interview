@@ -6,6 +6,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import javax.sql.DataSource;
 
 import java.util.Set;
+import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.AfterEach;
@@ -76,11 +79,55 @@ class JdbcRecordDlqStoreIT {
         assertThat(store.findPending(RECORD_ID)).get().extracting(RecordDlqRecord::rawKey)
                 .isEqualTo(key);
 
-        assertThatThrownBy(() -> store.publish(new RecordDlqRecord(
+        assertThatThrownBy(() -> store.publish(RecordDlqRecord.newPending(
                 RECORD_ID, "products.revision", 7, 94202, key, "raw", "parse", "bad")))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(jdbc.sql("SELECT COUNT(*) FROM sync_record_dlq WHERE partition_no=7")
                 .query(Long.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void immutable_raw_evidence_conflicts_do_not_increment_overwrite_or_reopen() {
+        store.publish(record(null, "first\u0000payload", "first-class", "first-error"));
+        store.resolve(RECORD_ID);
+
+        assertThatThrownBy(() -> store.publish(record(
+                "new-key", "first\u0000payload", "conflict", "key-conflict")))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("immutable");
+        assertThatThrownBy(() -> store.publish(record(
+                null, "changed", "conflict", "payload-conflict")))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("immutable");
+        assertThat(jdbc.sql("""
+                SELECT attempts, raw_key, raw_payload, failure_class, last_error, status,
+                       resolved_at IS NOT NULL AS has_resolved_at
+                FROM sync_record_dlq WHERE record_id=:id
+                """).param("id", RECORD_ID).query().singleRow())
+                .containsEntry("attempts", 1)
+                .containsEntry("raw_key", null)
+                .containsEntry("raw_payload", "first\u0000payload")
+                .containsEntry("failure_class", "first-class")
+                .containsEntry("last_error", "first-error")
+                .containsEntry("status", "RESOLVED")
+                .containsEntry("has_resolved_at", 1L);
+    }
+
+    @Test
+    void concurrent_compatible_and_conflicting_raw_publications_are_atomic() {
+        store.publish(record(null, "original\u0000raw", "baseline", "baseline"));
+        AtomicInteger conflicts = new AtomicInteger();
+        IntStream.range(0, 12).parallel().forEach(attempt -> {
+            try {
+                String raw = attempt % 2 == 0 ? "original\u0000raw" : "changed";
+                store.publish(record(null, raw, "attempt", "attempt-" + attempt));
+            } catch (IllegalStateException expected) {
+                conflicts.incrementAndGet();
+            }
+        });
+        assertThat(conflicts).hasValue(6);
+        assertThat(store.findPending(RECORD_ID)).get().satisfies(row -> {
+            assertThat(row.attempts()).isEqualTo(7);
+            assertThat(row.rawPayload()).isEqualTo("original\u0000raw");
+        });
     }
 
     @Test
@@ -100,6 +147,18 @@ class JdbcRecordDlqStoreIT {
                 WHERE TABLE_SCHEMA='product_catalog' AND TABLE_NAME='sync_record_dlq'
                 """).query(String.class).list())).contains(
                         "PRIMARY", "uk_record_dlq_source", "ix_record_dlq_status_created");
+        assertThat(indexShape()).containsExactlyInAnyOrder(
+                "PRIMARY:0:1:record_id",
+                "uk_record_dlq_source:0:1:topic_name",
+                "uk_record_dlq_source:0:2:partition_no",
+                "uk_record_dlq_source:0:3:offset_no",
+                "ix_record_dlq_status_created:1:1:status",
+                "ix_record_dlq_status_created:1:2:created_at");
+        assertThat(checkClauses()).containsExactlyInAnyOrderEntriesOf(Map.of(
+                "ck_record_dlq_attempts", "(attempts>0)",
+                "ck_record_dlq_coordinates", "((partition_no>=0)and(offset_no>=0))",
+                "ck_record_dlq_identity", "(record_id=concat(topic_name,':',partition_no,':',offset_no))",
+                "ck_record_dlq_lifecycle", "(((status='pending')and(resolved_atisnull))or((status='resolved')and(resolved_atisnotnull)))"));
     }
 
     @Test
@@ -122,9 +181,36 @@ class JdbcRecordDlqStoreIT {
         }
     }
 
+    private java.util.List<String> indexShape() {
+        return jdbc.sql("""
+                SELECT CONCAT(INDEX_NAME, ':', NON_UNIQUE, ':', SEQ_IN_INDEX, ':', COLUMN_NAME)
+                FROM information_schema.STATISTICS
+                WHERE TABLE_SCHEMA='product_catalog' AND TABLE_NAME='sync_record_dlq'
+                """).query(String.class).list();
+    }
+
+    private Map<String, String> checkClauses() {
+        return jdbc.sql("""
+                SELECT tc.CONSTRAINT_NAME, cc.CHECK_CLAUSE
+                FROM information_schema.TABLE_CONSTRAINTS tc
+                JOIN information_schema.CHECK_CONSTRAINTS cc
+                  ON cc.CONSTRAINT_SCHEMA=tc.CONSTRAINT_SCHEMA
+                 AND cc.CONSTRAINT_NAME=tc.CONSTRAINT_NAME
+                WHERE tc.CONSTRAINT_SCHEMA='product_catalog'
+                  AND tc.TABLE_NAME='sync_record_dlq'
+                """).query().listOfRows().stream().collect(Collectors.toMap(
+                        row -> row.get("CONSTRAINT_NAME").toString(),
+                        row -> normalizeClause(row.get("CHECK_CLAUSE").toString())));
+    }
+
+    private static String normalizeClause(String clause) {
+        return clause.toLowerCase().replace("`", "").replace("_latin1", "")
+                .replace("\\", "").replaceAll("\\s+", "");
+    }
+
     private static RecordDlqRecord record(
             String key, String raw, String failureClass, String error) {
-        return new RecordDlqRecord(RECORD_ID, "products.revision", 7, 94201,
+        return RecordDlqRecord.newPending(RECORD_ID, "products.revision", 7, 94201,
                 key, raw, failureClass, error);
     }
 }

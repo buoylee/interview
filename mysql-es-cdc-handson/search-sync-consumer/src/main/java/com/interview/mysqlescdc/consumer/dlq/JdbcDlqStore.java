@@ -23,12 +23,36 @@ public class JdbcDlqStore implements DlqStore {
               :revision, CAST(:payload AS JSON), :failureClass, :lastError, 'PENDING', 1
             )
             ON DUPLICATE KEY UPDATE
-              attempts = attempts + 1,
-              failure_class = VALUES(failure_class),
-              last_error = VALUES(last_error),
-              status = 'PENDING',
-              resolved_at = NULL,
-              updated_at = CURRENT_TIMESTAMP(6)
+              attempts = IF(
+                source_revision = VALUES(source_revision)
+                  AND JSON_CONTAINS(payload, VALUES(payload))
+                  AND JSON_CONTAINS(VALUES(payload), payload),
+                attempts + 1, attempts),
+              failure_class = IF(
+                source_revision = VALUES(source_revision)
+                  AND JSON_CONTAINS(payload, VALUES(payload))
+                  AND JSON_CONTAINS(VALUES(payload), payload),
+                VALUES(failure_class), failure_class),
+              last_error = IF(
+                source_revision = VALUES(source_revision)
+                  AND JSON_CONTAINS(payload, VALUES(payload))
+                  AND JSON_CONTAINS(VALUES(payload), payload),
+                VALUES(last_error), last_error),
+              status = IF(
+                source_revision = VALUES(source_revision)
+                  AND JSON_CONTAINS(payload, VALUES(payload))
+                  AND JSON_CONTAINS(VALUES(payload), payload),
+                'PENDING', status),
+              resolved_at = IF(
+                source_revision = VALUES(source_revision)
+                  AND JSON_CONTAINS(payload, VALUES(payload))
+                  AND JSON_CONTAINS(VALUES(payload), payload),
+                NULL, resolved_at),
+              updated_at = IF(
+                source_revision = VALUES(source_revision)
+                  AND JSON_CONTAINS(payload, VALUES(payload))
+                  AND JSON_CONTAINS(VALUES(payload), payload),
+                CURRENT_TIMESTAMP(6), updated_at)
             """;
     private static final String SELECT_PENDING = """
             SELECT event_id, topic_name, partition_no, offset_no, product_id,
@@ -57,6 +81,25 @@ public class JdbcDlqStore implements DlqStore {
             if (!validJson) {
                 throw new IllegalArgumentException("valid product JSON payload required");
             }
+            boolean validContract = jdbc.sql("""
+                    SELECT COALESCE(
+                      JSON_TYPE(CAST(:payload AS JSON)) = 'OBJECT'
+                      AND JSON_LENGTH(CAST(:payload AS JSON)) > 0
+                      AND JSON_TYPE(JSON_EXTRACT(CAST(:payload AS JSON), '$.product_id')) = 'INTEGER'
+                      AND JSON_TYPE(JSON_EXTRACT(CAST(:payload AS JSON), '$.source_revision')) = 'INTEGER'
+                      AND CAST(JSON_UNQUOTE(JSON_EXTRACT(
+                            CAST(:payload AS JSON), '$.product_id')) AS UNSIGNED) = :productId
+                      AND CAST(JSON_UNQUOTE(JSON_EXTRACT(
+                            CAST(:payload AS JSON), '$.source_revision')) AS UNSIGNED) = :revision,
+                      FALSE)
+                    """).param("payload", record.payload())
+                    .param("productId", record.productId())
+                    .param("revision", record.sourceRevision())
+                    .query(Boolean.class).single();
+            if (!validContract) {
+                throw new IllegalArgumentException(
+                        "product JSON object must contain matching integer product_id and source_revision");
+            }
             jdbc.sql(INSERT)
                     .param("eventId", record.eventId())
                     .param("topic", record.topic())
@@ -68,6 +111,20 @@ public class JdbcDlqStore implements DlqStore {
                     .param("failureClass", record.failureClass())
                     .param("lastError", record.lastError())
                     .update();
+            boolean compatible = jdbc.sql("""
+                    SELECT source_revision = :revision
+                      AND JSON_CONTAINS(payload, CAST(:payload AS JSON))
+                      AND JSON_CONTAINS(CAST(:payload AS JSON), payload)
+                    FROM sync_dlq_record
+                    WHERE event_id = :eventId
+                    """).param("revision", record.sourceRevision())
+                    .param("payload", record.payload())
+                    .param("eventId", record.eventId())
+                    .query(Boolean.class).single();
+            if (!compatible) {
+                throw new IllegalStateException(
+                        "immutable product DLQ evidence conflicts with existing eventId");
+            }
         });
     }
 
@@ -101,20 +158,9 @@ public class JdbcDlqStore implements DlqStore {
         if (record == null) {
             throw new IllegalArgumentException("record required");
         }
-        requireText(record.eventId(), "eventId");
-        requireText(record.topic(), "topic");
-        requireText(record.failureClass(), "failureClass");
-        requireText(record.lastError(), "lastError");
-        if (record.partition() < 0 || record.offset() < 0
-                || record.productId() < 1 || record.sourceRevision() < 1) {
-            throw new IllegalArgumentException("non-negative source coordinates and positive business IDs required");
+        if (!record.isNewPending()) {
+            throw new IllegalArgumentException("new-pending publish command required");
         }
-        String expected = record.topic() + ':' + record.partition() + ':'
-                + record.offset() + ':' + record.productId();
-        if (!expected.equals(record.eventId())) {
-            throw new IllegalArgumentException("eventId does not agree with source identity");
-        }
-        requireText(record.payload(), "payload");
     }
 
     private DlqRecord map(ResultSet rs, int rowNumber) throws SQLException {
