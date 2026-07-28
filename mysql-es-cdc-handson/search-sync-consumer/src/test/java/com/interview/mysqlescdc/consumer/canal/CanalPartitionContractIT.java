@@ -32,15 +32,15 @@ class CanalPartitionContractIT {
     private static final String TOPIC = "product-search-revisions";
     private static final Set<Long> PRODUCT_IDS = Set.of(2101L, 2102L, 2103L);
     private static final Set<ExpectedSignal> CLEANUP_BARRIER = Set.of(
-            new ExpectedSignal(2101L, 92101L, "DELETE"),
-            new ExpectedSignal(2102L, 92102L, "DELETE"),
-            new ExpectedSignal(2103L, 92103L, "DELETE"));
+            new ExpectedSignal(2101L, 92101L, "DELETE", true),
+            new ExpectedSignal(2102L, 92102L, "DELETE", true),
+            new ExpectedSignal(2103L, 92103L, "DELETE", true));
     private static final Set<ExpectedSignal> EXPECTED_CURRENT_SIGNALS = Set.of(
-            new ExpectedSignal(2101L, 1L, "INSERT"),
-            new ExpectedSignal(2101L, 2L, "UPDATE"),
-            new ExpectedSignal(2101L, 3L, "UPDATE"),
-            new ExpectedSignal(2102L, 1L, "INSERT"),
-            new ExpectedSignal(2103L, 1L, "INSERT"));
+            new ExpectedSignal(2101L, 1L, "INSERT", true),
+            new ExpectedSignal(2101L, 2L, "UPDATE", true),
+            new ExpectedSignal(2101L, 3L, "UPDATE", true),
+            new ExpectedSignal(2102L, 1L, "INSERT", true),
+            new ExpectedSignal(2103L, 1L, "INSERT", true));
 
     private final JsonMapper json = JsonMapper.builder().build();
     private final CanalRevisionParser parser = new CanalRevisionParser(json);
@@ -103,10 +103,18 @@ class CanalPartitionContractIT {
     }
 
     private static Map<Integer, Long> captureBaselineOffsets(KafkaConsumer<String, String> consumer) {
+        assertThat(consumer.assignment()).as("all configured source partitions").hasSize(3);
+        Map<TopicPartition, Long> endOffsets = consumer.endOffsets(consumer.assignment());
+        assertThat(endOffsets.keySet()).containsExactlyInAnyOrderElementsOf(consumer.assignment());
         Map<Integer, Long> baselineOffsets = new HashMap<>();
-        for (TopicPartition partition : consumer.assignment()) {
-            baselineOffsets.put(partition.partition(), consumer.position(partition));
+        for (Map.Entry<TopicPartition, Long> entry : endOffsets.entrySet()) {
+            TopicPartition partition = entry.getKey();
+            long endOffset = entry.getValue();
+            consumer.seek(partition, endOffset);
+            assertThat(consumer.position(partition)).isEqualTo(endOffset);
+            baselineOffsets.put(partition.partition(), endOffset);
         }
+        assertThat(baselineOffsets).hasSize(3);
         return Map.copyOf(baselineOffsets);
     }
 
@@ -144,7 +152,8 @@ class CanalPartitionContractIT {
             return parser.parse(record.value()).stream()
                     .map(signal -> new LocatedSignal(
                             record, signal,
-                            new ExpectedSignal(signal.productId(), signal.eventRevision(), message.type())))
+                            new ExpectedSignal(
+                                    signal.productId(), signal.eventRevision(), message.type(), signal.active())))
                     .toList();
         } catch (Exception exception) {
             throw new IllegalArgumentException("invalid live Canal record", exception);
@@ -240,7 +249,7 @@ class CanalPartitionContractIT {
         assertThat(response.body()).contains(expectedBodyFragment);
     }
 
-    private record ExpectedSignal(long productId, long revision, String type) {
+    private record ExpectedSignal(long productId, long revision, String type, boolean active) {
     }
 
     private record LocatedSignal(
