@@ -7,7 +7,7 @@ M4_EVIDENCE_DIR="$evidence" bash scenarios/scripts/run-m4-reconciliation.sh
 
 jq -e '
   length==7
-  and map(.scenario)|unique|length==7
+  and ((map(.scenario)|unique|length)==7)
   and any(.[];.scenario=="m4-source-moves-during-scan" and .classification=="INCONCLUSIVE" and .repair=="REJECTED")
   and any(.[];.scenario=="m4-consumer-projection-bug" and .difference=="MODIFIED/category_name" and .fresh_pass=="PASS" and .state_after=="HEALTHY")
   and ([.[]|select(.scenario!="m4-source-moves-during-scan")|.fresh_pass]|all(.=="PASS"))
