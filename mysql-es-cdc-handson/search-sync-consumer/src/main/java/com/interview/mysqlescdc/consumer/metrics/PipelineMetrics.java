@@ -11,17 +11,21 @@ import com.interview.mysqlescdc.consumer.dlq.*;
 @Component
 public class PipelineMetrics {
     private final MeterRegistry registry; private final AtomicLong lastSuccess=new AtomicLong();
+    private final LongSupplier productDlqCount;
+    private final LongSupplier recordDlqCount;
     @Autowired
     public PipelineMetrics(MeterRegistry registry, DlqStore products, RecordDlqStore records) {
         this(registry,products::unresolvedCount,records::unresolvedCount);
     }
     public PipelineMetrics(MeterRegistry registry, LongSupplier products, LongSupplier records) {
         this.registry=registry;
+        this.productDlqCount=products;
+        this.recordDlqCount=records;
         Counter.builder("cdc_consumer_records_total").register(registry);
         Counter.builder("cdc_consumer_signals_total").register(registry);
         Counter.builder("cdc_stale_revision_total").register(registry);
-        Gauge.builder("cdc_product_dlq_unresolved",products,LongSupplier::getAsLong).register(registry);
-        Gauge.builder("cdc_record_dlq_unresolved",records,LongSupplier::getAsLong).register(registry);
+        Gauge.builder("cdc_product_dlq_unresolved",productDlqCount,LongSupplier::getAsLong).register(registry);
+        Gauge.builder("cdc_record_dlq_unresolved",recordDlqCount,LongSupplier::getAsLong).register(registry);
         Gauge.builder("cdc_last_success_epoch_seconds",lastSuccess,AtomicLong::get).register(registry);
     }
     public void recordConsumerRecord(){registry.get("cdc_consumer_records_total").counter().increment();}
