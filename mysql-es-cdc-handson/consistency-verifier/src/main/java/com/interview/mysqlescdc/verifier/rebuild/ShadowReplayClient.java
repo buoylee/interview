@@ -10,5 +10,5 @@ public interface ShadowReplayClient {
     ControlStatus pausePrimary();
     ControlStatus resumePrimary();
     record ControlStatus(UUID runId, String target, java.util.Set<Integer> assigned,
-            Map<Integer,Long> nextOffsets, Boolean running, String failureClass, Boolean paused) {}
+            Map<Integer,Long> nextOffsets, Boolean running, String state, String failureClass, Boolean paused) {}
 }

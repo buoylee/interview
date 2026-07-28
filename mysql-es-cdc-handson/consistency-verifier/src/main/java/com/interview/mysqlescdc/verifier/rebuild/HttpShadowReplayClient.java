@@ -11,7 +11,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 @Component
 public final class HttpShadowReplayClient implements ShadowReplayClient {
-    private static final Duration TIMEOUT=Duration.ofSeconds(5); private final HttpClient http; private final JsonMapper json; private final String base;
+    private static final Duration TIMEOUT=Duration.ofSeconds(20); private final HttpClient http; private final JsonMapper json; private final String base;
     @Autowired public HttpShadowReplayClient(@Value("${verification.consumer-url:http://localhost:8082}") String base){this(HttpClient.newBuilder().connectTimeout(TIMEOUT).build(),JsonMapper.builder().build(),base);}
     HttpShadowReplayClient(HttpClient http,JsonMapper json,String base){this.http=http;this.json=json;this.base=base.replaceAll("/+$","");}
     public ControlStatus start(UUID runId,String topic,String target,Map<Integer,Long> offsets){return send("/internal/rebuild/shadow","POST",Map.of("runId",runId,"topic",topic,"target",target,"offsets",offsets));}
