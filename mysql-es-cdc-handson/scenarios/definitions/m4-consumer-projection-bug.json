@@ -1,0 +1,9 @@
+{
+  "scenario_id": "m4-consumer-projection-bug",
+  "seed": "baseline-v1",
+  "fault": "CATEGORY_NAME_FROM_ID",
+  "mutation": {"method": "PUT", "path": "/api/categories/10", "body": {"name": "Computer Accessories"}},
+  "expected_difference": {"productId": 1001, "type": "MODIFIED", "field": "category_name"},
+  "expected_state_before_repair": "DEGRADED",
+  "expected_state_after_repair": "HEALTHY"
+}

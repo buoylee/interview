@@ -8,10 +8,12 @@ import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
+import com.interview.mysqlescdc.consumer.lab.ProjectionFaultRegistry;
 import com.interview.mysqlescdc.consumer.source.SourceProductSnapshot;
 
 class SearchDocumentProjectorTest {
-    private final SearchDocumentProjector projector = new SearchDocumentProjector();
+    private final SearchDocumentProjector projector =
+            new SearchDocumentProjector(new ProjectionFaultRegistry());
 
     @Test
     void projects_a_complete_active_document() {

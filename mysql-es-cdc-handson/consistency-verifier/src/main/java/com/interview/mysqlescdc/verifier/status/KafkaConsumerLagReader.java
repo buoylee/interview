@@ -43,7 +43,9 @@ public final class KafkaConsumerLagReader implements ConsumerLagReader, Disposab
         boolean allCommitted = !evidenceRows.isEmpty();
         for (KafkaOffsetEvidence evidence : evidenceRows) {
             Long committed = evidence.committedOffset();
-            allCommitted &= committed != null;
+            boolean virginEmpty = committed == null
+                    && evidence.beginningOffset() == 0 && evidence.endOffset() == 0;
+            allCommitted &= committed != null || virginEmpty;
             long effectiveCommitted = committed == null
                     ? evidence.beginningOffset() : committed;
             long lag = Math.max(0, evidence.endOffset() - effectiveCommitted);

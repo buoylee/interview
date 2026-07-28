@@ -84,3 +84,18 @@ change epoch，不是既有业务数据的历史 mutation 总数。fresh 环境�
 
 Task 1 只建立事务 watermark、持久化 reconciliation metadata 与 verifier 的独立
 模块/拓扑边界；尚未实现 expected-document projection、diff、repair 或一致性判定。
+
+## M4：独立对账与受控修复
+
+[独立对账契约](docs/04-reconciliation.md)定义 PASS 的精确证明边界、consumer 与
+verifier 的实现独立性、三类受控修复方式及其限制。标准命令为：
+
+```bash
+make reconcile    # 发起一次独立扫描
+make scenario-m4  # 运行七类隔离故障矩阵
+make verify-m4    # consumer/verifier 测试与完整 M4 场景门禁
+```
+
+M4 的最终一致性声明只针对 MySQL 事实仍然存在、日志无确认缺口且 source watermark
+稳定的范围；修复后必须重新得到 zero-difference PASS，并同时满足 lag=0、DLQ=0、
+无 active gap，状态才是 HEALTHY。确认的日志缺口仍交给 M5 rebuild，不属于 M4。

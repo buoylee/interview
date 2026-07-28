@@ -57,4 +57,19 @@ class KafkaConsumerLagReaderTest {
         assertThat(snapshot.totalLag()).isZero();
         assertThat(snapshot.allPartitionsCommitted()).isFalse();
     }
+
+    @Test
+    void virgin_empty_partitions_are_complete_without_fabricating_a_commit() {
+        when(offsets.read("events", "projection-v1")).thenReturn(List.of(
+                new KafkaOffsetEvidence("events", 0, null, 0, 0),
+                new KafkaOffsetEvidence("events", 1, 1L, 0, 1),
+                new KafkaOffsetEvidence("events", 2, null, 0, 0)));
+
+        ConsumerLagSnapshot snapshot = reader.read();
+
+        assertThat(snapshot.totalLag()).isZero();
+        assertThat(snapshot.allPartitionsCommitted()).isTrue();
+        assertThat(snapshot.partitions()).extracting(PartitionLag::committedOffset)
+                .containsExactly(null, 1L, null);
+    }
 }
