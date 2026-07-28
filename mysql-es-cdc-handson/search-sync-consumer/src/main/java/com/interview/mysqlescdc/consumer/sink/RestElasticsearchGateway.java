@@ -41,14 +41,12 @@ public class RestElasticsearchGateway implements ElasticsearchGateway {
         this.json = Objects.requireNonNull(json, "json");
         this.requestTimeout = requirePositive(requestTimeout);
         String normalizedBaseUrl = Objects.requireNonNull(baseUrl, "baseUrl").replaceAll("/+$", "");
-        this.bulkUri = URI.create(normalizedBaseUrl + "/_bulk?require_alias=true");
+        this.bulkUri = URI.create(normalizedBaseUrl + "/_bulk");
     }
 
     @Override
     public BulkWriteResult write(String targetAlias, List<SearchDocument> documents) {
-        if (targetAlias == null || targetAlias.isBlank()) {
-            throw new IllegalArgumentException("target alias must not be blank");
-        }
+        ElasticsearchTargets.requireSafe(targetAlias);
         List<SearchDocument> orderedDocuments = List.copyOf(documents);
         String ndjson = buildNdjson(targetAlias, orderedDocuments);
         HttpRequest request = HttpRequest.newBuilder(bulkUri)

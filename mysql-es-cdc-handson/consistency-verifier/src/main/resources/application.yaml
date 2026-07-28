@@ -10,6 +10,7 @@ spring:
     password: ${MYSQL_PASSWORD:verifierpass}
 
 verification:
+  consumer-url: ${VERIFICATION_CONSUMER_URL:http://localhost:8082}
   elasticsearch-url: ${ELASTICSEARCH_URL:http://localhost:9200}
   target: ${VERIFICATION_TARGET:products_write}
   page-size: 200

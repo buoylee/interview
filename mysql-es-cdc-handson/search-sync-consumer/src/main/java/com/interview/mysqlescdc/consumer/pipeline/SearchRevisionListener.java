@@ -19,6 +19,7 @@ public class SearchRevisionListener {
     }
 
     @KafkaListener(
+            id = "product-search-main",
             topics = "${pipeline.source-topic:product-search-revisions}",
             groupId = "${spring.kafka.consumer.group-id:product-search-sync-v1}",
             ackMode = "MANUAL_IMMEDIATE")

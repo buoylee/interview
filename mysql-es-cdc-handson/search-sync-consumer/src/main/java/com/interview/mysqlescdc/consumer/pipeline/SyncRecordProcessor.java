@@ -70,6 +70,9 @@ public class SyncRecordProcessor {
         this.productDlq = productDlq;
         this.recordDlq = recordDlq;
         this.failpoints = failpoints;
+        if (!"products_write".equals(targetAlias)) {
+            throw new IllegalArgumentException("primary target must be products_write");
+        }
         this.targetAlias = targetAlias;
         this.retryAttempts = retryAttempts;
     }

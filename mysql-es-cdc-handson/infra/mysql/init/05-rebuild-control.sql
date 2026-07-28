@@ -62,5 +62,6 @@ GRANT SELECT, UPDATE ON product_catalog.product_write_gate TO 'verifier'@'%';
 GRANT SELECT, INSERT ON product_catalog.cdc_barrier TO 'verifier'@'%';
 GRANT SELECT, INSERT, UPDATE ON product_catalog.rebuild_run TO 'verifier'@'%';
 GRANT SELECT, INSERT, UPDATE ON product_catalog.rebuild_partition_offset TO 'verifier'@'%';
+GRANT SELECT, INSERT, UPDATE ON product_catalog.rebuild_partition_offset TO 'product'@'%';
 GRANT SELECT, INSERT, UPDATE ON product_catalog.canal_position_recovery TO 'verifier'@'%';
 FLUSH PRIVILEGES;

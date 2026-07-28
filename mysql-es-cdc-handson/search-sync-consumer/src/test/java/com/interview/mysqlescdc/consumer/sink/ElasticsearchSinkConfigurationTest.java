@@ -20,7 +20,7 @@ class ElasticsearchSinkConfigurationTest {
                     assertThat(context).hasSingleBean(ElasticsearchGateway.class);
                     RestElasticsearchGateway gateway = context.getBean(RestElasticsearchGateway.class);
                     assertThat(gateway.bulkUri().toString())
-                            .isEqualTo("http://example.test:19200/_bulk?require_alias=true");
+                            .isEqualTo("http://example.test:19200/_bulk");
                     assertThat(gateway.requestTimeout()).isEqualTo(Duration.ofSeconds(7));
                     assertThat(context.getBean(PipelineElasticsearchProperties.class).connectTimeout())
                             .isEqualTo(Duration.ofSeconds(3));

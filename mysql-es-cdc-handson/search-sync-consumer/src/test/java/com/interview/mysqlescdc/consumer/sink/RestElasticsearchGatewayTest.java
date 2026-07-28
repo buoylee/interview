@@ -18,9 +18,20 @@ import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.json.JsonMapper;
 
 class RestElasticsearchGatewayTest {
+    @ParameterizedTest
+    @ValueSource(strings = {"products_search", "PRODUCTS_WRITE", "products_write/path", "products_write?x=1", "products_v3_20260728123456_DEADBEEF", "products_v3_20260728123456_deadbeef/_doc"})
+    void rejects_unsafe_explicit_targets(String target) {
+        var gateway = new RestElasticsearchGateway(request -> new BulkHttpResponse(200, "{\"items\":[]}"),
+                JsonMapper.builder().build(), "http://localhost:9200", Duration.ofSeconds(1));
+        assertThatThrownBy(() -> gateway.write(target, List.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("unsafe Elasticsearch target");
+    }
     private HttpServer server;
     private final AtomicReference<Response> response = new AtomicReference<>();
     private final AtomicReference<String> requestBody = new AtomicReference<>();
@@ -72,7 +83,7 @@ class RestElasticsearchGatewayTest {
                 BulkOutcome.RETRYABLE_FAILURE, BulkOutcome.PERMANENT_FAILURE);
         assertThat(result.items()).extracting(BulkItemResult::productId).containsExactly(1L, 2L, 3L, 4L, 5L);
         assertThat(result.items()).extracting(BulkItemResult::revision).containsExactly(4L, 8L, 3L, 6L, 7L);
-        assertThat(requestQuery.get()).isEqualTo("require_alias=true");
+        assertThat(requestQuery.get()).isNull();
         assertThat(requestContentType.get()).isEqualTo("application/x-ndjson");
         String[] lines = requestBody.get().split("\n", -1);
         assertThat(lines).hasSize(11);
@@ -177,7 +188,7 @@ class RestElasticsearchGatewayTest {
         gateway.write("products_write", List.of(document(1, 1)));
 
         assertThat(captured.get().uri().toString())
-                .isEqualTo("http://localhost:9200/_bulk?require_alias=true");
+                .isEqualTo("http://localhost:9200/_bulk");
     }
 
     private void assertProtocol(String payload) {
