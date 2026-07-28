@@ -26,6 +26,8 @@ pipeline:
   source-topic: product-search-revisions
   target-alias: products_write
   elasticsearch-base-url: http://toxiproxy:8666
+  elasticsearch-connect-timeout: 2s
+  elasticsearch-request-timeout: 5s
   retry-attempts: 3
   retry-backoff: 250ms
 

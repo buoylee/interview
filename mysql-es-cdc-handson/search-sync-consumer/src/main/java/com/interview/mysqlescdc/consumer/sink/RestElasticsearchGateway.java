@@ -5,6 +5,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -16,14 +17,31 @@ import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.databind.json.JsonMapper;
 
 public class RestElasticsearchGateway implements ElasticsearchGateway {
-    private final HttpClient client;
+    private final BulkHttpSender sender;
     private final JsonMapper json;
     private final URI bulkUri;
+    private final Duration requestTimeout;
 
     public RestElasticsearchGateway(HttpClient client, JsonMapper json, String baseUrl) {
-        this.client = Objects.requireNonNull(client, "client");
+        this(client, json, baseUrl, Duration.ofSeconds(5));
+    }
+
+    public RestElasticsearchGateway(
+            HttpClient client, JsonMapper json, String baseUrl, Duration requestTimeout) {
+        this(request -> {
+            HttpResponse<String> response = Objects.requireNonNull(client, "client")
+                    .send(request, HttpResponse.BodyHandlers.ofString());
+            return new BulkHttpResponse(response.statusCode(), response.body());
+        }, json, baseUrl, requestTimeout);
+    }
+
+    RestElasticsearchGateway(
+            BulkHttpSender sender, JsonMapper json, String baseUrl, Duration requestTimeout) {
+        this.sender = Objects.requireNonNull(sender, "sender");
         this.json = Objects.requireNonNull(json, "json");
-        this.bulkUri = URI.create(Objects.requireNonNull(baseUrl, "baseUrl") + "/_bulk?require_alias=true");
+        this.requestTimeout = requirePositive(requestTimeout);
+        String normalizedBaseUrl = Objects.requireNonNull(baseUrl, "baseUrl").replaceAll("/+$", "");
+        this.bulkUri = URI.create(normalizedBaseUrl + "/_bulk?require_alias=true");
     }
 
     @Override
@@ -35,21 +53,38 @@ public class RestElasticsearchGateway implements ElasticsearchGateway {
         String ndjson = buildNdjson(targetAlias, orderedDocuments);
         HttpRequest request = HttpRequest.newBuilder(bulkUri)
                 .header("Content-Type", "application/x-ndjson")
+                .timeout(requestTimeout)
                 .POST(HttpRequest.BodyPublishers.ofString(ndjson))
                 .build();
-        final HttpResponse<String> response;
+        final BulkHttpResponse response;
         try {
-            response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            response = sender.send(request);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new BulkTransportException("Elasticsearch Bulk request interrupted", exception);
         } catch (IOException | RuntimeException exception) {
             throw new BulkTransportException("Elasticsearch Bulk request failed", exception);
         }
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new BulkTransportException("Elasticsearch Bulk HTTP status " + response.statusCode());
+        if (response.status() < 200 || response.status() >= 300) {
+            throw new BulkTransportException("Elasticsearch Bulk HTTP status " + response.status());
         }
         return parseResponse(response.body(), orderedDocuments);
+    }
+
+    URI bulkUri() {
+        return bulkUri;
+    }
+
+    Duration requestTimeout() {
+        return requestTimeout;
+    }
+
+    private static Duration requirePositive(Duration timeout) {
+        Objects.requireNonNull(timeout, "requestTimeout");
+        if (timeout.isZero() || timeout.isNegative()) {
+            throw new IllegalArgumentException("requestTimeout must be positive");
+        }
+        return timeout;
     }
 
     private String buildNdjson(String targetAlias, List<SearchDocument> documents) {

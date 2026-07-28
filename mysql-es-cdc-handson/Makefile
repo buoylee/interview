@@ -87,4 +87,5 @@ bootstrap-products-v2:
 
 verify-products-v2:
 	bash tests/contracts/m2-m3-elasticsearch-aliases.sh
+	bash tests/contracts/m2-m3-bootstrap-fail-closed.sh
 	bash scenarios/scripts/verify-products-v2-versioning.sh

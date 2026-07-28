@@ -6,7 +6,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -45,7 +47,9 @@ class RestElasticsearchGatewayTest {
 
     @AfterEach
     void stopServer() {
-        server.stop(0);
+        if (server != null) {
+            server.stop(0);
+        }
     }
 
     @Test
@@ -125,6 +129,55 @@ class RestElasticsearchGatewayTest {
         server.stop(0);
         assertThatThrownBy(() -> gateway(baseUrl).write("products_write", List.of(document(1, 1))))
                 .isInstanceOf(BulkTransportException.class);
+    }
+
+    @Test
+    void request_timeout_fails_as_transport_error_within_a_bound() {
+        server.removeContext("/_bulk");
+        server.createContext("/_bulk", exchange -> {
+            try {
+                Thread.sleep(2_000);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            }
+            exchange.close();
+        });
+        RestElasticsearchGateway gateway = new RestElasticsearchGateway(
+                HttpClient.newBuilder().connectTimeout(Duration.ofMillis(200)).build(),
+                JsonMapper.builder().build(), baseUrl + "/", Duration.ofMillis(150));
+
+        long started = System.nanoTime();
+        assertThatThrownBy(() -> gateway.write("products_write", List.of(document(1, 1))))
+                .isInstanceOf(BulkTransportException.class);
+        assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(1));
+    }
+
+    @Test
+    void interrupted_send_restores_interrupt_flag_and_is_transport_failure() {
+        RestElasticsearchGateway gateway = new RestElasticsearchGateway(
+                request -> { throw new InterruptedException("stop"); },
+                JsonMapper.builder().build(), baseUrl, Duration.ofSeconds(1));
+        try {
+            assertThatThrownBy(() -> gateway.write("products_write", List.of(document(1, 1))))
+                    .isInstanceOf(BulkTransportException.class);
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
+    void trailing_slash_is_normalized_before_building_bulk_uri() {
+        AtomicReference<HttpRequest> captured = new AtomicReference<>();
+        RestElasticsearchGateway gateway = new RestElasticsearchGateway(request -> {
+            captured.set(request);
+            return new BulkHttpResponse(200, "{\"items\":[{\"index\":{\"status\":201}}]}");
+        }, JsonMapper.builder().build(), "http://localhost:9200/", Duration.ofSeconds(1));
+
+        gateway.write("products_write", List.of(document(1, 1)));
+
+        assertThat(captured.get().uri().toString())
+                .isEqualTo("http://localhost:9200/_bulk?require_alias=true");
     }
 
     private void assertProtocol(String payload) {
