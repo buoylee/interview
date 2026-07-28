@@ -712,3 +712,14 @@ FROM performance_schema.replication_group_members;
 - [01 - 注入主从延迟，看 `Seconds_Behind_Source` 为什么不准](scenarios/01-replica-lag-and-seconds-behind.md) — toxiproxy 注延迟，对比该指标与 GTID 差集
 - [02 - 主从断裂 + 靠 GTID 自动续传恢复](scenarios/02-replication-break-and-gtid-resume.md) — `chaos-replica-cut` 切网，恢复后 `Auto_Position=1` 无人工干预追平
 - [03 - 制造并检测 GTID errant 事务](scenarios/03-errant-transaction-detect.md) — 直连从库写，`GTID_SUBTRACT` 揪幽灵事务（§3.11 实证）
+
+## InnoDB Cluster 高可用专题
+
+这条专题不再重复异步／半同步复制，而是从「客户端收到成功究竟承诺什么」进入完整 HA：
+
+1. [产品无关的 HA 基础](ha-foundations.md)
+2. [MySQL 8.4 InnoDB Cluster 主线](innodb-cluster/README.md)
+3. [Production Runbook](innodb-cluster/production-runbook.md)
+4. [8 个核心 Scenario](innodb-cluster/scenarios/01-planned-switchover.md)
+
+主线固定为 3 成员 Single-Primary＋双 Router。MHA／旧 Orchestrator 只保留历史机制与失败反例；PXC 只有在主线完成后的机制缺口评估通过时，才进入独立设计。
