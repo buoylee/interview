@@ -47,13 +47,17 @@ public final class RestGenerationManager implements GenerationManager {
     }
     @Override public AliasCutoverResult atomicCutover(IndexGeneration generation) {
         Reservation reservation=reservation(generation.runId());
-        if (!reservation.name().equals(generation.name()) || !reservation.status().equals("CREATED"))
-            throw new IllegalStateException("generation does not match durable CREATED reservation");
+        if (!reservation.name().equals(generation.name()))
+            throw new IllegalStateException("generation does not match durable reservation");
         AliasState state=aliases();
         if (state.index().equals(generation.name())) {
-            if (!reservation.swapped()) throw new IllegalStateException("alias moved without durable swapped evidence");
+            if (!reservation.swapped() || !(reservation.status().equals("CUTTING_OVER")
+                    || reservation.status().equals("CUTOVER_COMMITTED") || reservation.status().equals("COMPLETED")))
+                throw new IllegalStateException("target aliases do not match durable cutover state");
             return new AliasCutoverResult(state.index(),generation.name(),true);
         }
+        if (!reservation.status().equals("CUTTING_OVER") || reservation.swapped())
+            throw new IllegalStateException("cutover requires unswapped CUTTING_OVER reservation");
         String old=state.index();
         ObjectNode body=json.createObjectNode(); var actions=body.putArray("actions");
         actions.addObject().putObject("remove").put("index",old).put("alias","products_search");
@@ -63,7 +67,7 @@ public final class RestGenerationManager implements GenerationManager {
         response("POST","/_aliases",json.writeValueAsString(body),200);
         AliasState after=aliases(); if (!after.index().equals(generation.name())) throw new IllegalStateException("cutover topology verification failed");
         beforePersistSwapped.run();
-        int changed=jdbc.sql("UPDATE rebuild_run SET alias_swapped=TRUE WHERE run_id=UUID_TO_BIN(:run) AND generation_name=:name AND status='CREATED' AND alias_swapped=FALSE")
+        int changed=jdbc.sql("UPDATE rebuild_run SET alias_swapped=TRUE WHERE run_id=UUID_TO_BIN(:run) AND generation_name=:name AND status='CUTTING_OVER' AND alias_swapped=FALSE")
                 .param("run",generation.runId().toString()).param("name",generation.name()).update();
         if(changed!=1) throw new IllegalStateException("aliases moved but durable swapped evidence was not persisted");
         return new AliasCutoverResult(old,generation.name(),false);
