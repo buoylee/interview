@@ -7,6 +7,7 @@ import java.util.NoSuchElementException;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import com.interview.mysqlescdc.verifier.diff.ConsistencyReport;
 import com.interview.mysqlescdc.verifier.diff.ReconciliationEngine;
@@ -20,6 +21,7 @@ import com.interview.mysqlescdc.verifier.target.IndexedDocumentReader;
 import com.interview.mysqlescdc.verifier.target.IndexedPage;
 import com.interview.mysqlescdc.verifier.target.SearchAfterToken;
 import com.interview.mysqlescdc.verifier.target.TargetCursor;
+import com.interview.mysqlescdc.verifier.status.ReconciliationMetrics;
 
 @Service
 public final class VerificationRunService {
@@ -28,6 +30,7 @@ public final class VerificationRunService {
     private final IndexedDocumentReader target;
     private final ReconciliationEngine engine;
     private final VerificationRunStore store;
+    private ReconciliationMetrics metrics;
 
     public VerificationRunService(
             SourceWatermarkReader watermark,
@@ -65,15 +68,24 @@ public final class VerificationRunService {
                     runId, start, end, observed.expectedCount(), observed.actualCount(),
                     observed.differenceCount(), observed.counts(), start == end);
             store.complete(runId, status, end, finalReport);
+            if (metrics != null) metrics.recordRun(status, finalReport.counts());
             return report(request.target(), status, finalReport, null, null);
         } catch (RuntimeException exception) {
             String failureClass = bounded(exception.getClass().getSimpleName(), 64);
             String failureMessage = bounded(exception.getMessage(), 512);
             store.fail(runId, failureClass, failureMessage);
+            if (metrics != null) {
+                metrics.recordRun(VerificationRunStatus.FAILED, Collections.emptyMap());
+            }
             return new VerificationRunReport(
                     runId, request.target(), VerificationRunStatus.FAILED, start, null,
                     0, 0, 0, Collections.emptyMap(), failureClass, failureMessage);
         }
+    }
+
+    @Autowired
+    void setMetrics(ReconciliationMetrics metrics) {
+        this.metrics = metrics;
     }
 
     private VerificationRunReport report(

@@ -13,7 +13,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public final class JdbcExpectedDocumentReader implements ExpectedDocumentReader {
+public class JdbcExpectedDocumentReader implements ExpectedDocumentReader {
     static final int MAX_PAGE_SIZE = 1_000;
 
     static final String REVISION_STATE = """

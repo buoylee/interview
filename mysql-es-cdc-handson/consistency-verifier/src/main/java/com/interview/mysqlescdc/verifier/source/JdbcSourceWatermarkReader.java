@@ -4,7 +4,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public final class JdbcSourceWatermarkReader implements SourceWatermarkReader {
+public class JdbcSourceWatermarkReader implements SourceWatermarkReader {
     private final JdbcClient jdbc;
 
     public JdbcSourceWatermarkReader(JdbcClient jdbc) {

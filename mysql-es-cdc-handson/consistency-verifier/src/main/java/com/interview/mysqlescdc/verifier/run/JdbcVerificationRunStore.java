@@ -4,6 +4,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -26,7 +28,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 @Repository
-public final class JdbcVerificationRunStore implements VerificationRunStore {
+public class JdbcVerificationRunStore implements VerificationRunStore {
     private final JdbcClient jdbc;
     private final JsonMapper json = JsonMapper.builder().findAndAddModules().build();
 
@@ -114,6 +116,43 @@ public final class JdbcVerificationRunStore implements VerificationRunStore {
                         VerificationRunStatus.valueOf(rs.getString("status")),
                         rs.getLong("source_watermark_start"), nullableLong(rs, "source_watermark_end"),
                         rs.getLong("difference_count"))).optional();
+    }
+
+    @Override
+    public Optional<VerificationRunReport> findReport(UUID runId) {
+        Optional<VerificationRunReport> report = jdbc.sql("""
+                SELECT BIN_TO_UUID(run_id) AS run_id, target_name, status,
+                       source_watermark_start, source_watermark_end,
+                       expected_count, actual_count, difference_count,
+                       failure_class, failure_message
+                FROM verification_run WHERE run_id = UUID_TO_BIN(:runId)
+                """).param("runId", runId.toString()).query((rs, row) ->
+                        new VerificationRunReport(
+                                UUID.fromString(rs.getString("run_id")),
+                                rs.getString("target_name"),
+                                VerificationRunStatus.valueOf(rs.getString("status")),
+                                rs.getLong("source_watermark_start"),
+                                nullableLong(rs, "source_watermark_end"),
+                                rs.getLong("expected_count"), rs.getLong("actual_count"),
+                                rs.getLong("difference_count"), Map.of(),
+                                rs.getString("failure_class"), rs.getString("failure_message")))
+                .optional();
+        if (report.isEmpty()) return report;
+        Map<DifferenceType, Long> counts = new EnumMap<>(DifferenceType.class);
+        jdbc.sql("""
+                SELECT difference_type, COUNT(*) AS count
+                FROM verification_difference
+                WHERE run_id = UUID_TO_BIN(:runId) GROUP BY difference_type
+                """).param("runId", runId.toString()).query((rs, row) -> {
+                    counts.put(DifferenceType.valueOf(rs.getString("difference_type")),
+                            rs.getLong("count"));
+                    return 0;
+                }).list();
+        VerificationRunReport value = report.get();
+        return Optional.of(new VerificationRunReport(
+                value.runId(), value.target(), value.status(), value.sourceWatermarkStart(),
+                value.sourceWatermarkEnd(), value.expectedCount(), value.actualCount(),
+                value.differenceCount(), counts, value.failureClass(), value.failureMessage()));
     }
 
     @Override

@@ -24,7 +24,7 @@ import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.databind.json.JsonMapper;
 
 @Repository
-public final class RestIndexedDocumentReader implements IndexedDocumentReader {
+public class RestIndexedDocumentReader implements IndexedDocumentReader {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
     private static final String KEEP_ALIVE = "1m";
     private static final int MAX_PAGE_SIZE = 1_000;

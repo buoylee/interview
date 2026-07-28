@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import com.interview.mysqlescdc.verifier.diff.DifferenceType;
 import com.interview.mysqlescdc.verifier.diff.DocumentDifference;
@@ -15,6 +16,7 @@ import com.interview.mysqlescdc.verifier.run.VerificationRunStore;
 import com.interview.mysqlescdc.verifier.source.ExpectedDocument;
 import com.interview.mysqlescdc.verifier.source.ExpectedDocumentReader;
 import com.interview.mysqlescdc.verifier.source.SourceWatermarkReader;
+import com.interview.mysqlescdc.verifier.status.ReconciliationMetrics;
 
 @Service
 public final class RepairService {
@@ -26,6 +28,7 @@ public final class RepairService {
     private final ExpectedDocumentReader source;
     private final RepairGateway gateway;
     private final int repairLimit;
+    private ReconciliationMetrics metrics;
 
     public RepairService(
             VerificationRunStore store,
@@ -111,11 +114,13 @@ public final class RepairService {
                     throw new IllegalStateException("repair gateway returned non-terminal outcome");
                 }
                 store.finishAction(actionId, outcome, null);
+                if (metrics != null) metrics.recordRepair(type, outcome);
                 store.markDifferenceRepaired(runId, difference.productId(), outcome.name());
                 if (outcome == RepairOutcome.APPLIED) applied++; else stale++;
             } catch (RuntimeException exception) {
                 failed++;
                 store.finishAction(actionId, RepairOutcome.FAILED, bounded(exception.getMessage()));
+                if (metrics != null) metrics.recordRepair(type, RepairOutcome.FAILED);
                 break;
             }
         }
@@ -127,6 +132,11 @@ public final class RepairService {
         if (repaired) store.markRunRepaired(runId);
         return new RepairReport(
                 runId, start, end, applied, stale, skipped, failed, stable, repaired);
+    }
+
+    @Autowired
+    void setMetrics(ReconciliationMetrics metrics) {
+        this.metrics = metrics;
     }
 
     private boolean requiresRebuild(DocumentDifference difference) {

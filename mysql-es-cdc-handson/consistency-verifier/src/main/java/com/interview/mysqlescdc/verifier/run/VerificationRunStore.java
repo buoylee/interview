@@ -22,6 +22,8 @@ public interface VerificationRunStore {
 
     Optional<StoredVerificationRun> findRun(UUID runId);
 
+    Optional<VerificationRunReport> findReport(UUID runId);
+
     List<DocumentDifference> loadDifferences(UUID runId, int limitPlusOne);
 
     boolean hasUnsafeDifferences(UUID runId);

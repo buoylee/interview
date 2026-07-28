@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -16,20 +17,23 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import com.interview.mysqlescdc.verifier.api.ReconciliationController;
 import com.interview.mysqlescdc.verifier.repair.RepairReport;
 import com.interview.mysqlescdc.verifier.repair.RepairService;
 
 class ReconciliationControllerTest {
     private VerificationRunService runs;
     private RepairService repairs;
+    private VerificationRunStore store;
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
         runs = mock(VerificationRunService.class);
         repairs = mock(RepairService.class);
+        store = mock(VerificationRunStore.class);
         mvc = MockMvcBuilders.standaloneSetup(
-                new ReconciliationController(runs, repairs, "products_write", 200)).build();
+                new ReconciliationController(runs, store, repairs, "products_write", 200)).build();
     }
 
     @Test
@@ -62,6 +66,20 @@ class ReconciliationControllerTest {
                 .andExpect(jsonPath("$.repaired").value(true));
 
         verify(repairs).repair(runId);
+    }
+
+    @Test
+    void get_run_returns_persisted_report() throws Exception {
+        UUID runId = UUID.randomUUID();
+        when(store.findReport(runId)).thenReturn(Optional.of(new VerificationRunReport(
+                runId, "products_write", VerificationRunStatus.DIFF,
+                12, 12L, 4, 4, 1, Map.of(), null, null)));
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/internal/reconciliation/runs/{runId}", runId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.runId").value(runId.toString()))
+                .andExpect(jsonPath("$.status").value("DIFF"));
     }
 
     @Test
