@@ -46,16 +46,16 @@ public final class RepairService {
     public RepairReport repair(UUID runId) {
         StoredVerificationRun run = store.findRun(runId)
                 .orElseThrow(() -> new IllegalArgumentException("verification run not found"));
-        if (store.hasUnsafeDifferences(runId)) {
-            activateRebuildRequired();
-            throw new IllegalStateException("difference requires rebuild, not in-place repair");
-        }
         if (run.status() != VerificationRunStatus.DIFF) {
             throw new IllegalStateException("only a conclusive DIFF run can be repaired");
         }
         if (run.sourceWatermarkEnd() == null
                 || run.sourceWatermarkEnd() != run.sourceWatermarkStart()) {
             throw new IllegalStateException("repair requires an unchanged verification watermark");
+        }
+        if (store.hasUnsafeDifferences(runId)) {
+            activateRebuildRequired();
+            throw new IllegalStateException("difference requires rebuild, not in-place repair");
         }
         if (run.differenceCount() > repairLimit) {
             throw new IllegalStateException("difference count exceeds bounded repair limit");

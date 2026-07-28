@@ -120,6 +120,34 @@ class RepairServiceTest {
     }
 
     @Test
+    void unsafe_evidence_does_not_activate_rebuild_for_non_conclusive_runs() {
+        for (VerificationRunStatus status : List.of(
+                VerificationRunStatus.RUNNING, VerificationRunStatus.INCONCLUSIVE)) {
+            when(store.findRun(runId)).thenReturn(Optional.of(run(status, 1)));
+            when(store.hasUnsafeDifferences(runId)).thenReturn(true);
+
+            assertThatThrownBy(() -> service.repair(runId))
+                    .hasMessageContaining("conclusive DIFF");
+        }
+
+        verify(store, never()).hasUnsafeDifferences(runId);
+        verify(store, never()).activateCondition(eq("REBUILD_REQUIRED"), any());
+    }
+
+    @Test
+    void unsafe_evidence_does_not_activate_rebuild_for_moving_diff_run() {
+        when(store.findRun(runId)).thenReturn(Optional.of(new StoredVerificationRun(
+                runId, "products_write", VerificationRunStatus.DIFF, 50, 51L, 1)));
+        when(store.hasUnsafeDifferences(runId)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.repair(runId))
+                .hasMessageContaining("unchanged verification watermark");
+
+        verify(store, never()).hasUnsafeDifferences(runId);
+        verify(store, never()).activateCondition(eq("REBUILD_REQUIRED"), any());
+    }
+
+    @Test
     void extra_is_not_deleted_when_current_source_fact_now_exists() {
         DocumentDifference extra = DocumentDifference.extra(indexed(active(5, 15), 15));
         eligible(List.of(extra));
