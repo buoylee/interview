@@ -16,7 +16,9 @@ actual="$({
     FROM information_schema.COLUMNS
     WHERE TABLE_SCHEMA='$control_schema' AND TABLE_NAME IN ($tables)
     UNION ALL
-    SELECT CONCAT('index:', TABLE_NAME, ':', INDEX_NAME, ':', NON_UNIQUE, ':', SEQ_IN_INDEX, ':', COLUMN_NAME)
+    SELECT CONCAT('index:', TABLE_NAME, ':', INDEX_NAME, ':', NON_UNIQUE, ':', SEQ_IN_INDEX, ':', COLUMN_NAME,
+      ':', INDEX_TYPE, ':', IS_VISIBLE, ':', COLLATION, ':', IFNULL(EXPRESSION, '<NULL>'),
+      ':', IFNULL(SUB_PART, '<NULL>'), ':', IF(NULLABLE = '', '<EMPTY>', NULLABLE))
     FROM information_schema.STATISTICS
     WHERE TABLE_SCHEMA='$control_schema' AND TABLE_NAME IN ($tables)
     UNION ALL
@@ -38,6 +40,11 @@ actual="$({
     FROM information_schema.KEY_COLUMN_USAGE
     WHERE TABLE_SCHEMA='$control_schema' AND TABLE_NAME IN ($tables)
       AND REFERENCED_TABLE_NAME IS NOT NULL
+    UNION ALL
+    SELECT CONCAT('fk_rule:', TABLE_NAME, ':', CONSTRAINT_NAME, ':', UNIQUE_CONSTRAINT_NAME,
+      ':', MATCH_OPTION, ':', UPDATE_RULE, ':', DELETE_RULE)
+    FROM information_schema.REFERENTIAL_CONSTRAINTS
+    WHERE CONSTRAINT_SCHEMA='$control_schema' AND TABLE_NAME IN ($tables)
     UNION ALL
     SELECT CONCAT('table:', TABLE_NAME, ':', ENGINE, ':', TABLE_COLLATION, ':', TABLE_COMMENT)
     FROM information_schema.TABLES
@@ -98,16 +105,18 @@ expected="$(printf '%s\n' \
   'constraint:verification_run:PRIMARY:PRIMARY KEY' \
   'fk:repair_action:fk_repair_action_run:run_id:verification_run:run_id' \
   'fk:verification_difference:fk_verification_difference_run:run_id:verification_run:run_id' \
-  'index:pipeline_condition:PRIMARY:0:1:condition_key' \
-  'index:repair_action:PRIMARY:0:1:action_id' \
-  'index:repair_action:uk_repair_action_run_product:0:1:run_id' \
-  'index:repair_action:uk_repair_action_run_product:0:2:product_id' \
-  'index:source_change_watermark:PRIMARY:0:1:singleton_id' \
-  'index:verification_difference:PRIMARY:0:1:run_id' \
-  'index:verification_difference:PRIMARY:0:2:product_id' \
-  'index:verification_difference:PRIMARY:0:3:difference_type' \
-  'index:verification_run:idx_verification_run_finished:1:1:finished_at' \
-  'index:verification_run:PRIMARY:0:1:run_id' \
+  'fk_rule:repair_action:fk_repair_action_run:PRIMARY:NONE:NO ACTION:NO ACTION' \
+  'fk_rule:verification_difference:fk_verification_difference_run:PRIMARY:NONE:NO ACTION:NO ACTION' \
+  'index:pipeline_condition:PRIMARY:0:1:condition_key:BTREE:YES:A:<NULL>:<NULL>:<EMPTY>' \
+  'index:repair_action:PRIMARY:0:1:action_id:BTREE:YES:A:<NULL>:<NULL>:<EMPTY>' \
+  'index:repair_action:uk_repair_action_run_product:0:1:run_id:BTREE:YES:A:<NULL>:<NULL>:<EMPTY>' \
+  'index:repair_action:uk_repair_action_run_product:0:2:product_id:BTREE:YES:A:<NULL>:<NULL>:<EMPTY>' \
+  'index:source_change_watermark:PRIMARY:0:1:singleton_id:BTREE:YES:A:<NULL>:<NULL>:<EMPTY>' \
+  'index:verification_difference:PRIMARY:0:1:run_id:BTREE:YES:A:<NULL>:<NULL>:<EMPTY>' \
+  'index:verification_difference:PRIMARY:0:2:product_id:BTREE:YES:A:<NULL>:<NULL>:<EMPTY>' \
+  'index:verification_difference:PRIMARY:0:3:difference_type:BTREE:YES:A:<NULL>:<NULL>:<EMPTY>' \
+  'index:verification_run:idx_verification_run_finished:1:1:finished_at:BTREE:YES:A:<NULL>:<NULL>:YES' \
+  'index:verification_run:PRIMARY:0:1:run_id:BTREE:YES:A:<NULL>:<NULL>:<EMPTY>' \
   'table:pipeline_condition:InnoDB:utf8mb4_0900_ai_ci:' \
   'table:repair_action:InnoDB:utf8mb4_0900_ai_ci:' \
   'table:source_change_watermark:InnoDB:utf8mb4_0900_ai_ci:Change epoch counted from reconciliation control-plane installation' \
@@ -139,7 +148,7 @@ table_grants="$(docker compose -f infra/compose.yaml exec -T mysql mysql -uroot 
   SELECT CONCAT(TABLE_NAME, ':', PRIVILEGE_TYPE, ':', IS_GRANTABLE)
   FROM information_schema.TABLE_PRIVILEGES
   WHERE GRANTEE=\"'verifier'@'%'\" AND TABLE_SCHEMA='$control_schema'
-    AND TABLE_NAME IN ('verification_run','verification_difference','pipeline_condition','repair_action');
+  ;
 " 2>/dev/null | LC_ALL=C sort)"
 expected_grants="$(for table in pipeline_condition repair_action verification_difference verification_run; do
   for privilege in DELETE INSERT SELECT UPDATE; do printf '%s:%s:NO\n' "$table" "$privilege"; done

@@ -16,6 +16,7 @@ jq -e '
   .services["consistency-verifier"].ports == [{"mode":"ingress","target":8083,"published":"8083","protocol":"tcp","host_ip":"127.0.0.1"}] and
   .services["consistency-verifier"].environment.SPRING_DATASOURCE_URL == "jdbc:mysql://mysql:3306/product_catalog?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC" and
   .services["consistency-verifier"].environment.SPRING_DATASOURCE_USERNAME == "verifier" and
+  .services["consistency-verifier"].environment.KAFKA_BOOTSTRAP_SERVERS == "toxiproxy:8667" and
   .services["consistency-verifier"].environment.SPRING_KAFKA_BOOTSTRAP_SERVERS == "toxiproxy:8667" and
   .services["consistency-verifier"].environment.VERIFICATION_ELASTICSEARCH_URL == "http://toxiproxy:8666" and
   (.services["consistency-verifier"].depends_on | keys) == ["kafka-init","mysql","toxiproxy"]

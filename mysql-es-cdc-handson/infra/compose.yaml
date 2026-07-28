@@ -190,6 +190,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/product_catalog?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
       SPRING_DATASOURCE_USERNAME: verifier
       SPRING_DATASOURCE_PASSWORD: verifierpass
+      KAFKA_BOOTSTRAP_SERVERS: toxiproxy:8667
+      # Reserved for Spring Kafka auto-config; Task 1 verification config reads the variable above.
       SPRING_KAFKA_BOOTSTRAP_SERVERS: toxiproxy:8667
       VERIFICATION_ELASTICSEARCH_URL: http://toxiproxy:8666
     ports:

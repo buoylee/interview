@@ -137,6 +137,35 @@ cursor_changed_from() {
     test "$(sha256_file "$work_dir/candidate-meta.dat")" != "$baseline_sha"
 }
 
+capture_stable_ack_cursor() {
+  local baseline_sha="$1"
+  local deadline=$((SECONDS + 60))
+  local previous_sha=""
+  local current_sha
+  local stable_observations=0
+
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if cursor_changed_from "$baseline_sha"; then
+      current_sha="$(sha256_file "$work_dir/candidate-meta.dat")"
+      if [ "$current_sha" = "$previous_sha" ]; then
+        stable_observations=$((stable_observations + 1))
+      else
+        previous_sha="$current_sha"
+        stable_observations=1
+      fi
+      if [ "$stable_observations" -ge 3 ]; then
+        return 0
+      fi
+    else
+      previous_sha=""
+      stable_observations=0
+    fi
+    sleep 1
+  done
+  echo "timeout waiting for stable revision-1 ACK-derived meta.dat cursor" >&2
+  return 1
+}
+
 cursor_advanced_from() {
   local before_decoded_cursor="$1"
   copy_meta "$work_dir/candidate-meta.dat" &&
@@ -226,8 +255,7 @@ jq -e '
 ' "$work_dir/revision1.json" >/dev/null
 cp "$work_dir/revision1.json" "$evidence_dir/revision-message.json"
 
-wait_until "revision-1 ACK-derived meta.dat persistence" 60 \
-  cursor_changed_from "$baseline_sha"
+capture_stable_ack_cursor "$baseline_sha"
 cp "$work_dir/candidate-meta.dat" "$work_dir/pre-restart-meta.dat"
 cp "$work_dir/candidate-meta.json" "$work_dir/pre-restart-meta.json"
 pre_sha="$(sha256_file "$work_dir/pre-restart-meta.dat")"
