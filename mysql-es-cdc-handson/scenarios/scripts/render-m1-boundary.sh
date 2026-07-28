@@ -103,8 +103,13 @@ trap 'rm -f "$temporary"' EXIT
   printf -- '- `invalid_item_retried_after_mapping_fix`: `%s`.\n' "$retried"
   printf -- '- `etl_required`: `%s`; `etl_invoked`: `%s`; `etl_repair_succeeded`: `%s`.\n' \
     "$etl_required" "$etl_invoked" "$etl_succeeded"
-  printf '%s\n' \
-    'The runner verified the official launcher annotation before invoking `POST /etl/es8/products.yml?params=1401`; it did not write directly to Elasticsearch or move the Canal cursor.'
+  if test "$etl_invoked" = true; then
+    printf '%s\n' \
+      'The runner verified the official launcher annotation before invoking `POST /etl/es8/products.yml?params=1401`; it did not write directly to Elasticsearch or move the Canal cursor.'
+  else
+    printf '%s\n' \
+      'The runner verified the official launcher annotation. The ETL endpoint was verified but not invoked because the invalid item automatically reappeared with `price_cents=1000` after the same-container restart; no direct Elasticsearch write or Canal cursor move was used.'
+  fi
 
   printf '%s\n' '' '## Missing end-to-end capabilities'
   printf '%s\n' \
