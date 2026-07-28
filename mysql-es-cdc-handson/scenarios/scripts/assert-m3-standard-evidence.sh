@@ -24,8 +24,26 @@ case "$scenario" in
       and .raw_pending[0].eventId==("product-search-revisions:"+(.raw_batch_record.partition|tostring)+":"+(.raw_batch_record.offset|tostring)+":"+($definition[0].batch.bad_product_id|tostring))
       and ((.raw_valid_before_repair.raw_body|fromjson)._source | .product_id==$definition[0].batch.valid_product_id
         and .source_revision==$definition[0].batch.revision and .price_cents==$definition[0].batch.valid_price_cents)
-      and ((.raw_bad_final.raw_body|fromjson)._source.source_revision==$definition[0].batch.revision)
-      and ((.raw_valid_final.raw_body|fromjson)._source.source_revision==$definition[0].batch.revision)' "$dir/result.json" >/dev/null
+      and ((.raw_valid_before_repair.raw_body|fromjson) | ._version==2
+        and (._seq_no|type)=="number" and ._seq_no>=0 and ._source.source_revision==._version)
+      and ((.raw_valid_after_migration.raw_body|fromjson) | ._version==2
+        and (._seq_no|type)=="number" and ._seq_no>=0
+        and ._source.product_id==2413 and ._source.source_revision==._version and ._source.price_cents==110)
+      and ((.raw_bad_final.raw_body|fromjson) | ._version==2
+        and (._seq_no|type)=="number" and ._seq_no>=0
+        and ._source.product_id==2403 and ._source.source_revision==._version and ._source.price_cents==1000)
+      and ((.raw_valid_final.raw_body|fromjson) | ._version==2
+        and (._seq_no|type)=="number" and ._seq_no>=0
+        and ._source.product_id==2413 and ._source.source_revision==._version and ._source.price_cents==110)
+      and .pre_repair_valid_external_version==((.raw_valid_before_repair.raw_body|fromjson)._version)
+      and .migrated_valid_external_version==((.raw_valid_after_migration.raw_body|fromjson)._version)
+      and .final_valid_external_version==((.raw_valid_final.raw_body|fromjson)._version)
+      and .final_bad_external_version==((.raw_bad_final.raw_body|fromjson)._version)
+      and .pre_repair_valid_seq_no==((.raw_valid_before_repair.raw_body|fromjson)._seq_no)
+      and .migrated_valid_seq_no==((.raw_valid_after_migration.raw_body|fromjson)._seq_no)
+      and .final_valid_seq_no==((.raw_valid_final.raw_body|fromjson)._seq_no)
+      and .final_bad_seq_no==((.raw_bad_final.raw_body|fromjson)._seq_no)
+      and .final_valid_seq_no==.migrated_valid_seq_no' "$dir/result.json" >/dev/null
     jq -e '.unresolved==0' "$dir/product-dlq-count.json" "$dir/record-dlq-count.json" >/dev/null ;;
   m3-mapping-conflict)
     jq -e '.terminal_state=="HEALTHY" and .recovered_by_current_source_replay==true

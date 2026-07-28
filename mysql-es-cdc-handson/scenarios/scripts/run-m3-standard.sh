@@ -82,7 +82,8 @@ case "$scenario" in
         and .[0].eventId==("product-search-revisions:"+($record[0].partition|tostring)+":"+($record[0].offset|tostring)+":2403")' \
         "$evidence/dlq-before.json" >/dev/null
       jq -e '(.raw_body|fromjson) | .found==true and ._id=="2413"
-        and ._source.product_id==2413 and ._source.source_revision==2 and ._source.price_cents==110
+        and ._version==2 and (._seq_no|type)=="number" and ._seq_no>=0 and ._source.product_id==2413
+        and ._source.source_revision==._version and ._source.price_cents==110
         and ._source.sku=="LAB-2413" and ._source.name=="Crash 2413" and ._source.searchable==true' \
         "$evidence/es-valid-before-repair.json" >/dev/null
     fi
@@ -93,6 +94,14 @@ case "$scenario" in
       restore_mapping_without_resolution
     fi
     "${compose[@]}" start search-sync-consumer >/dev/null; wait_consumer_degraded "$evidence/restored-ready.json"
+    if [[ "$scenario" == m3-bulk-partial ]]; then
+      wait_es_revision 2413 2 "$evidence/es-valid-after-migration.json"
+      jq -e '(.raw_body|fromjson) | .found==true and ._id=="2413" and ._version==2
+        and (._seq_no|type)=="number" and ._seq_no>=0
+        and ._source.product_id==2413 and ._source.source_revision==._version and ._source.price_cents==110
+        and ._source.sku=="LAB-2413" and ._source.name=="Crash 2413" and ._source.searchable==true' \
+        "$evidence/es-valid-after-migration.json" >/dev/null
+    fi
     jq -r '.[].eventId' "$evidence/dlq-before.json" | while IFS= read -r event; do
       encoded="$(jq -rn --arg v "$event" '$v|@uri')"
       curl -fsS -X POST "http://127.0.0.1:8082/internal/dlq/$encoded/replay" >>"$evidence/replay-results.jsonl"
@@ -103,9 +112,18 @@ case "$scenario" in
     if [[ "$scenario" == m3-bulk-partial ]]; then
       jq -n --arg scenario "$scenario" --slurpfile batch "$evidence/batch-record.json" \
         --slurpfile dlq "$evidence/dlq-before.json" --slurpfile before "$evidence/es-valid-before-repair.json" \
+        --slurpfile migrated "$evidence/es-valid-after-migration.json" \
         --slurpfile bad "$evidence/es-final.json" --slurpfile valid "$evidence/es-second-final.json" \
         '{scenario:$scenario,terminal_state:"HEALTHY",raw_batch_record:$batch[0],raw_pending:$dlq[0],
-          raw_valid_before_repair:$before[0],raw_bad_final:$bad[0],raw_valid_final:$valid[0],
+          raw_valid_before_repair:$before[0],raw_valid_after_migration:$migrated[0],raw_bad_final:$bad[0],raw_valid_final:$valid[0],
+          pre_repair_valid_external_version:(($before[0].raw_body|fromjson)._version),
+          migrated_valid_external_version:(($migrated[0].raw_body|fromjson)._version),
+          final_valid_external_version:(($valid[0].raw_body|fromjson)._version),
+          final_bad_external_version:(($bad[0].raw_body|fromjson)._version),
+          pre_repair_valid_seq_no:(($before[0].raw_body|fromjson)._seq_no),
+          migrated_valid_seq_no:(($migrated[0].raw_body|fromjson)._seq_no),
+          final_valid_seq_no:(($valid[0].raw_body|fromjson)._seq_no),
+          final_bad_seq_no:(($bad[0].raw_body|fromjson)._seq_no),
           valid_item_applied_before_repair:true,recovered_by_current_source_replay:true,final_consistency_claim:false}' >"$evidence/result.json"
     else
       jq -n --arg scenario "$scenario" --slurpfile dlq "$evidence/dlq-before.json" --slurpfile es "$evidence/es-final.json" \

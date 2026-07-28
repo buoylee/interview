@@ -302,7 +302,8 @@ restore_mapping_preserving_documents() {
   curl -fsS -X PUT http://127.0.0.1:9200/products_v3 -H 'Content-Type: application/json' --data-binary @"$mapping" >/dev/null
   rm -f "$mapping"
   curl -fsS -X POST http://127.0.0.1:9200/_reindex?wait_for_completion=true \
-    -H 'Content-Type: application/json' -d '{"source":{"index":"products_v2"},"dest":{"index":"products_v3"}}' \
+    -H 'Content-Type: application/json' \
+    -d '{"source":{"index":"products_v2"},"dest":{"index":"products_v3","version_type":"external"}}' \
     | jq -e '.failures==[] and .timed_out==false' >/dev/null
   curl -fsS -X POST http://127.0.0.1:9200/_aliases -H 'Content-Type: application/json' -d \
     '{"actions":[{"remove":{"index":"products_v2","alias":"products_write"}},
