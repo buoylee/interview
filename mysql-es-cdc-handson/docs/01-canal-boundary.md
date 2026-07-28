@@ -5,10 +5,11 @@ Canal captures and parses committed MySQL binlog changes and delivers incrementa
 This pinned official Canal Adapter 1.1.8 run did **not** produce the intended Bulk partial failure: the byte-mapped source value `1000` was observed in Elasticsearch as `-24`. This is an observed coercion boundary, not a successful poison-item experiment and not a guarantee.
 
 ## Pinned observed results
-- `m1-basic.result`: `OBSERVED_INSERT_UPDATE_WITH_COMPUTED_FIELD_GAP`; `updated_at_matches_source`: `false`; result SHA-256: `d817a038b826ef83980e2f7e21b4d9cccd66a75ca16be638821dc025d161c2bd`.
-- `m1-restart.result`: `OBSERVED_RESTART_RECOVERY`; result SHA-256: `972392aec6053fd7c96a9639244c64d03defe951caf35ca7f868d7c2ac9e577d`.
-- `m1-hard-delete.result`: `OBSERVED_DELETE_PROPAGATION`; result SHA-256: `22664889f3ff4892895cffd678fafe282085bb9f01a0e9014c0aba79955ff4f3`.
-- `m1-bulk-partial.bulk_partial_failure_observed`: `false`; `current_run_error_proven`: `false`; result SHA-256: `bc6c4c542125f5655d9820d2724d7b2d6f709a55c769cd850d4a23f51e59ed79`.
+- `m1-basic.result`: `OBSERVED_INSERT_UPDATE_WITH_COMPUTED_FIELD_GAP`; `updated_at_matches_source`: `false`.
+- `m1-restart.result`: `OBSERVED_RESTART_RECOVERY`.
+- `m1-hard-delete.result`: `OBSERVED_DELETE_PROPAGATION`.
+- `m1-bulk-partial.bulk_partial_failure_observed`: `false`; `current_run_error_proven`: `false`.
+- Stable claim manifest SHA-256: `5218cc78d3abcb6cba139840ca9dd79f6bd311897822d11da0e20e194a6e4c2a`.
 
 The baseline computed-field gap is explicit: the locked `DATE_FORMAT(...) AS updated_at` expression produced a non-null MySQL value but `null` in the Adapter incremental target, so `updated_at_matches_source` is `false`.
 

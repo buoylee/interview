@@ -73,3 +73,10 @@ gate-m1:
 	fi
 	$(MAKE) reset
 	$(MAKE) smoke-m0
+	git diff --exit-code -- docs/01-canal-boundary.md
+	@tracked_status="$$(git status --porcelain --untracked-files=no)"; \
+	if test -n "$$tracked_status"; then \
+		echo "Tracked worktree is not clean after M1 gate:" >&2; \
+		echo "$$tracked_status" >&2; \
+		exit 1; \
+	fi

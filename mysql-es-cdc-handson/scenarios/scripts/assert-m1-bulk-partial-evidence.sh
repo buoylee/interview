@@ -37,7 +37,12 @@ jq -e '
   (.etl_invoked | type) == "boolean" and
   (.etl_repair_succeeded | type) == "boolean" and
   (.etl_required == (.invalid_item_retried_after_mapping_fix | not)) and
-  (if .etl_required then .etl_invoked else (.etl_invoked | not) end) and
+  (if .etl_required then
+    .etl_invoked and .etl_repair_succeeded
+   else
+    (.etl_invoked | not) and .invalid_item_retried_after_mapping_fix and
+    (.etl_repair_succeeded | not)
+   end) and
   .partial_failure_experiment_valid == true and
   .final_consistency_claim == false
 ' "$out/result.json" >/dev/null

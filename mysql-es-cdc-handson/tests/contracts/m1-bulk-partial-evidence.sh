@@ -182,6 +182,57 @@ jq -e '
   .final_consistency_claim == false
 ' "$etl/result.json" >/dev/null
 
+assert_rejected_etl_completion() {
+  local fixture="$1"
+  local message="$2"
+  if bash scenarios/scripts/derive-m1-bulk-partial-result.sh "$fixture" \
+      >"$fixture/result.json" 2>/dev/null; then
+    echo "$message" >&2
+    exit 1
+  fi
+}
+
+cp -R "$etl" "$fixture_root/etl-final-missing"
+printf '%s\n' \
+  '{"requested_url":"http://127.0.0.1:9200/products_adapter_v1/_doc/1402","transport_ok":true,"http_status":404,"body":{"_index":"products_adapter_v1","_id":"1402","found":false}}' \
+  >"$fixture_root/etl-final-missing/1402-final.json"
+assert_rejected_etl_completion "$fixture_root/etl-final-missing" \
+  "ETL HTTP 200/succeeded=true was accepted while final 1402 remained absent"
+
+cp -R "$etl" "$fixture_root/etl-http-error"
+jq '.http_status = 503' "$fixture_root/etl-http-error/etl-action.json" \
+  >"$fixture_root/etl-http-error/etl-action.json.tmp"
+mv "$fixture_root/etl-http-error/etl-action.json.tmp" \
+  "$fixture_root/etl-http-error/etl-action.json"
+assert_rejected_etl_completion "$fixture_root/etl-http-error" \
+  "ETL non-200 response was accepted"
+
+cp -R "$etl" "$fixture_root/etl-body-false"
+jq '.response_body.succeeded = false' "$fixture_root/etl-body-false/etl-action.json" \
+  >"$fixture_root/etl-body-false/etl-action.json.tmp"
+mv "$fixture_root/etl-body-false/etl-action.json.tmp" \
+  "$fixture_root/etl-body-false/etl-action.json"
+assert_rejected_etl_completion "$fixture_root/etl-body-false" \
+  "ETL succeeded=false response was accepted"
+
+cp -R "$etl" "$fixture_root/etl-body-malformed"
+jq '.response_body = {message:"not the official success contract"}' \
+  "$fixture_root/etl-body-malformed/etl-action.json" \
+  >"$fixture_root/etl-body-malformed/etl-action.json.tmp"
+mv "$fixture_root/etl-body-malformed/etl-action.json.tmp" \
+  "$fixture_root/etl-body-malformed/etl-action.json"
+assert_rejected_etl_completion "$fixture_root/etl-body-malformed" \
+  "ETL malformed success body was accepted"
+
+cp -R "$etl" "$fixture_root/etl-wrong-final-price"
+jq '.body._source.price_cents = 999' \
+  "$fixture_root/etl-wrong-final-price/1402-final.json" \
+  >"$fixture_root/etl-wrong-final-price/1402-final.json.tmp"
+mv "$fixture_root/etl-wrong-final-price/1402-final.json.tmp" \
+  "$fixture_root/etl-wrong-final-price/1402-final.json"
+assert_rejected_etl_completion "$fixture_root/etl-wrong-final-price" \
+  "ETL final document with price other than 1000 was accepted"
+
 # Characterize the pinned 1.1.8 behavior observed live: the ES8 Adapter may
 # narrow 1000 to -24 before Bulk, so the intended mapping rejection never
 # occurs. This is evidence to render, not a successful partial-failure claim.

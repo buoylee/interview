@@ -231,8 +231,9 @@ jq -e -L scenarios/scripts -n '
     ($etl_action.invoked | type) == "boolean" and
     if $etl_required then
       $etl_action.invoked == true and $etl_action.transport_ok == true and
-      ($etl_action.http_status | type) == "number" and
-      ($etl_action.response_body | type) == "object"
+      $etl_action.http_status == 200 and
+      ($etl_action.response_body | type) == "object" and
+      $etl_action.response_body.succeeded == true
     else
       $etl_action == {
         official_archive_sha256:"e9366226860b6939ace0eb6d46a1a365d71ab45b4292c66e73bba8d9f067a340",
@@ -244,7 +245,15 @@ jq -e -L scenarios/scripts -n '
   (get_valid($final_1402;1402;1000)) as $final_get_valid |
   ($etl_action.invoked == true and $etl_action.transport_ok == true and
     $etl_action.http_status == 200 and
-    $etl_action.response_body.succeeded == true and found($final_1402)) as $etl_repair_succeeded |
+    $etl_action.response_body.succeeded == true and
+    found($final_1402) and
+    $final_1402.body._source.price_cents == 1000) as $etl_repair_succeeded |
+  ((if $etl_required then
+      $etl_repair_succeeded
+    else
+      $retried_after_fix and ($etl_action.invoked | not) and
+      found($final_1402) and $final_1402.body._source.price_cents == 1000
+    end)) as $completion_proven |
   ($input_match and $partial_mapping_proven and $partial_process_proven and
     $same_transaction_proven and $first_source_proven and
     $failure_process_current and $current_run_log_proven and
@@ -253,7 +262,7 @@ jq -e -L scenarios/scripts -n '
     $mapping_repair_proven and $same_container_repair_restart and
     $repair_mapping_load_current and $retry_observation_valid and
     $etl_endpoint_proven and
-    $etl_action_valid and $final_get_valid) as $experiment_valid |
+    $etl_action_valid and $final_get_valid and $completion_proven) as $experiment_valid |
   if $experiment_valid then {
     scenario_id:"m1-bulk-partial",
     input_commands_match:$input_match,
@@ -322,7 +331,8 @@ jq -e -L scenarios/scripts -n '
     etl_endpoint_proven:$etl_endpoint_proven,
     etl_endpoint_proof:$etl_endpoint_proof,
     etl_action_valid:$etl_action_valid,
-    final_get_valid:$final_get_valid
+    final_get_valid:$final_get_valid,
+    completion_proven:$completion_proven
   } | tostring) end
 ' \
   --slurpfile input "$out/input-commands.json" \

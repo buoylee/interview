@@ -339,9 +339,15 @@ else
     ' >"$out/etl-action.json"
   fi
   rm -f "$etl_body"
-  poll_until 60 document_is_present 1402 1000 || true
+  etl_completion_observed=true
+  if ! poll_until 60 document_is_present 1402 1000; then
+    etl_completion_observed=false
+  fi
 fi
 capture_es_get 1402 "$out/1402-final.json"
 
 bash scenarios/scripts/derive-m1-bulk-partial-result.sh "$out" >"$out/result.json"
 bash scenarios/scripts/assert-m1-bulk-partial-evidence.sh "$out"
+if test "$retry_deadline" = true; then
+  test "$etl_completion_observed" = true
+fi
