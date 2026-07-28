@@ -131,7 +131,7 @@ public class SyncRecordProcessor {
         return null;
     }
 
-    private static List<RevisionSignal> deduplicate(List<RevisionSignal> parsed) {
+    static List<RevisionSignal> deduplicate(List<RevisionSignal> parsed) {
         Map<Long, RevisionSignal> byProduct = new LinkedHashMap<>();
         for (RevisionSignal signal : parsed) {
             byProduct.merge(signal.productId(), signal, (left, right) ->
@@ -157,15 +157,18 @@ public class SyncRecordProcessor {
                 }
                 continue;
             }
-            Map<String, SearchDocument> requested = new LinkedHashMap<>();
-            for (SearchDocument document : pending) {
-                requested.put(identity(document.productId(), document.sourceRevision()), document);
+            if (result.items().size() != pending.size()) {
+                throw new RetryablePipelineException(
+                        "Bulk response item count does not match the pending request");
             }
             List<SearchDocument> retry = new ArrayList<>();
-            for (BulkItemResult item : result.items()) {
-                SearchDocument document = requested.remove(identity(item.productId(), item.revision()));
-                if (document == null) {
-                    throw new RetryablePipelineException("Bulk response contains an unexpected item identity");
+            for (int position = 0; position < pending.size(); position++) {
+                SearchDocument document = pending.get(position);
+                BulkItemResult item = result.items().get(position);
+                if (item.productId() != document.productId()
+                        || item.revision() != document.sourceRevision()) {
+                    throw new RetryablePipelineException(
+                            "Bulk response item identity does not match request position " + position);
                 }
                 if (item.outcome() == BulkOutcome.APPLIED) {
                     applied++;
@@ -176,9 +179,6 @@ public class SyncRecordProcessor {
                 } else {
                     retry.add(document);
                 }
-            }
-            if (!requested.isEmpty()) {
-                throw new RetryablePipelineException("Bulk response omitted requested item identities");
             }
             pending = List.copyOf(retry);
         }
@@ -216,10 +216,6 @@ public class SyncRecordProcessor {
                 .findFirst()
                 .orElseThrow(() -> new RetryablePipelineException(
                         "permanent Bulk item has no matching requested document"));
-    }
-
-    private static String identity(long productId, long revision) {
-        return productId + ":" + revision;
     }
 
     private static String recordId(ConsumerRecord<String, String> record) {

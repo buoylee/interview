@@ -58,7 +58,7 @@ class SyncRecordProcessorTest {
                 item(8, 2, BulkOutcome.STALE, 409, "version_conflict_engine_exception"))));
 
         ProcessingResult result = processor.process(record(message(
-                row(7, 3, 0) + "," + row(7, 4, 1) + "," + row(8, 2, 2))));
+                row(7, 3, false) + "," + row(7, 4, true) + "," + row(8, 2, true))));
 
         assertThat(result).isEqualTo(new ProcessingResult(2, 1, 1, 0, 0, 4));
         verify(source, times(1)).load(7);
@@ -76,7 +76,8 @@ class SyncRecordProcessorTest {
                 .thenReturn(new BulkWriteResult(List.of(
                         item(8, 2, BulkOutcome.APPLIED, 200, null))));
 
-        ProcessingResult result = processor.process(record(message(row(7, 4, 0) + "," + row(8, 2, 1))));
+        ProcessingResult result = processor.process(record(message(
+                row(7, 4, true) + "," + row(8, 2, true))));
 
         assertThat(result.appliedCount()).isEqualTo(2);
         @SuppressWarnings("unchecked")
@@ -86,12 +87,49 @@ class SyncRecordProcessorTest {
     }
 
     @Test
+    void rejects_out_of_order_bulk_response_without_retry_dlq_or_settlement() {
+        when(source.load(7)).thenReturn(Optional.of(snapshot(7, 4)));
+        when(source.load(8)).thenReturn(Optional.of(snapshot(8, 2)));
+        when(elasticsearch.write(eq("products_write"), any())).thenReturn(new BulkWriteResult(List.of(
+                item(8, 2, BulkOutcome.APPLIED, 201, null),
+                item(7, 4, BulkOutcome.APPLIED, 201, null))));
+
+        assertThatThrownBy(() -> processor.process(record(message(
+                row(7, 4, true) + "," + row(8, 2, true)))))
+                .isInstanceOf(RetryablePipelineException.class);
+        verify(elasticsearch, times(1)).write(eq("products_write"), any());
+        verify(productDlq, never()).publish(any());
+    }
+
+    @Test
+    void rejects_duplicate_missing_and_extra_bulk_item_identities_once() {
+        assertProtocolViolation(List.of(
+                item(7, 4, BulkOutcome.APPLIED, 201, null),
+                item(7, 4, BulkOutcome.APPLIED, 201, null)));
+        assertProtocolViolation(List.of(item(7, 4, BulkOutcome.APPLIED, 201, null)));
+        assertProtocolViolation(List.of(
+                item(7, 4, BulkOutcome.APPLIED, 201, null),
+                item(8, 2, BulkOutcome.APPLIED, 201, null),
+                item(9, 1, BulkOutcome.APPLIED, 201, null)));
+    }
+
+    @Test
+    void equal_revision_tie_keeps_first_signal_in_original_row_order() {
+        RevisionSignal first = new RevisionSignal(7, 4, false, 55, 0);
+        RevisionSignal second = new RevisionSignal(7, 4, true, 55, 9);
+
+        List<RevisionSignal> selected = SyncRecordProcessor.deduplicate(List.of(first, second));
+
+        assertThat(selected).containsExactly(first);
+    }
+
+    @Test
     void exhausted_retryable_failure_never_becomes_dlq() {
         when(source.load(7)).thenReturn(Optional.of(snapshot(7, 4)));
         when(elasticsearch.write(eq("products_write"), any())).thenReturn(new BulkWriteResult(List.of(
                 item(7, 4, BulkOutcome.RETRYABLE_FAILURE, 503, "unavailable"))));
 
-        assertThatThrownBy(() -> processor.process(record(message(row(7, 4, 0)))))
+        assertThatThrownBy(() -> processor.process(record(message(row(7, 4, true)))))
                 .isInstanceOf(RetryablePipelineException.class);
         verify(elasticsearch, times(3)).write(eq("products_write"), any());
         verify(productDlq, never()).publish(any());
@@ -102,7 +140,7 @@ class SyncRecordProcessorTest {
         when(source.load(7)).thenReturn(Optional.of(snapshot(7, 4)));
         when(elasticsearch.write(eq("products_write"), any()))
                 .thenThrow(new BulkTransportException("down"));
-        assertThatThrownBy(() -> processor.process(record(message(row(7, 4, 0)))))
+        assertThatThrownBy(() -> processor.process(record(message(row(7, 4, true)))))
                 .isInstanceOf(RetryablePipelineException.class);
         verify(elasticsearch, times(3)).write(eq("products_write"), any());
     }
@@ -110,14 +148,14 @@ class SyncRecordProcessorTest {
     @Test
     void missing_source_and_permanent_bulk_item_are_durable_before_settlement() {
         when(source.load(7)).thenReturn(Optional.empty());
-        ProcessingResult missing = processor.process(record(message(row(7, 4, 0))));
+        ProcessingResult missing = processor.process(record(message(row(7, 4, true))));
         assertThat(missing.productDlqCount()).isEqualTo(1);
         assertThat(missing.highestSourceRevision()).isZero();
 
         when(source.load(8)).thenReturn(Optional.of(snapshot(8, 2)));
         when(elasticsearch.write(eq("products_write"), any())).thenReturn(new BulkWriteResult(List.of(
                 item(8, 2, BulkOutcome.PERMANENT_FAILURE, 409, "mapper_parsing_exception"))));
-        ProcessingResult permanent = processor.process(record(message(row(8, 2, 0))));
+        ProcessingResult permanent = processor.process(record(message(row(8, 2, true))));
         assertThat(permanent.productDlqCount()).isEqualTo(1);
         ArgumentCaptor<DlqRecord> captor = ArgumentCaptor.forClass(DlqRecord.class);
         verify(productDlq, times(2)).publish(captor.capture());
@@ -129,7 +167,7 @@ class SyncRecordProcessorTest {
     @Test
     void source_behind_event_is_retryable_and_never_projected_or_dlqd() {
         when(source.load(7)).thenReturn(Optional.of(snapshot(7, 3)));
-        assertThatThrownBy(() -> processor.process(record(message(row(7, 4, 0)))))
+        assertThatThrownBy(() -> processor.process(record(message(row(7, 4, true)))))
                 .isInstanceOf(RetryablePipelineException.class);
         verify(elasticsearch, never()).write(any(), any());
         verify(productDlq, never()).publish(any());
@@ -165,7 +203,7 @@ class SyncRecordProcessorTest {
         when(source.load(7)).thenReturn(Optional.empty());
         org.mockito.Mockito.doThrow(new IllegalStateException("db down"))
                 .when(productDlq).publish(any());
-        assertThatThrownBy(() -> processor.process(record(message(row(7, 4, 0)))))
+        assertThatThrownBy(() -> processor.process(record(message(row(7, 4, true)))))
                 .isInstanceOf(IllegalStateException.class);
         verify(failpoints, never()).hit(Failpoint.AFTER_DLQ_PUBLISH);
     }
@@ -177,6 +215,20 @@ class SyncRecordProcessorTest {
     private SyncRecordProcessor processorWith(CanalRevisionParser selectedParser) {
         return new SyncRecordProcessor(selectedParser, source, new SearchDocumentProjector(),
                 elasticsearch, productDlq, recordDlq, failpoints, "products_write", 3);
+    }
+
+    private void assertProtocolViolation(List<BulkItemResult> responseItems) {
+        org.mockito.Mockito.reset(source, elasticsearch, productDlq);
+        when(source.load(7)).thenReturn(Optional.of(snapshot(7, 4)));
+        when(source.load(8)).thenReturn(Optional.of(snapshot(8, 2)));
+        when(elasticsearch.write(eq("products_write"), any()))
+                .thenReturn(new BulkWriteResult(responseItems));
+
+        assertThatThrownBy(() -> processor.process(record(message(
+                row(7, 4, true) + "," + row(8, 2, true)))))
+                .isInstanceOf(RetryablePipelineException.class);
+        verify(elasticsearch, times(1)).write(eq("products_write"), any());
+        verify(productDlq, never()).publish(any());
     }
 
     private static final class CountingParser extends CanalRevisionParser {
@@ -207,8 +259,8 @@ class SyncRecordProcessorTest {
                 + "\"isDdl\":false,\"data\":[" + rows + "]}";
     }
 
-    private static String row(long id, long revision, int ignored) {
+    private static String row(long id, long revision, boolean active) {
         return "{\"product_id\":\"" + id + "\",\"revision\":\"" + revision
-                + "\",\"active\":\"1\"}";
+                + "\",\"active\":\"" + (active ? "1" : "0") + "\"}";
     }
 }
