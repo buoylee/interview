@@ -15,7 +15,7 @@ down:
 	$(DC) down
 
 reset:
-	$(DC) down --volumes --remove-orphans
+	$(DC) --profile recovery down --volumes --remove-orphans
 	@mkdir -p evidence
 	@find evidence -mindepth 1 -maxdepth 1 -type f -delete
 

@@ -4,6 +4,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DC=(docker compose --project-name mysql-ha --file "$ROOT/compose.yml")
 scenario="${1:?usage: run.sh SCENARIO}"
+if [ "$scenario" = ha-cannot-replace-pitr ]; then
+  exec "$ROOT/scenarios/pitr.sh"
+fi
 case "$scenario" in
   planned-switchover|primary-crash|primary-partition|quorum-loss|slow-member|router-failure|member-rejoin) ;;
   *) echo "unsupported scenario: $scenario" >&2; exit 2 ;;

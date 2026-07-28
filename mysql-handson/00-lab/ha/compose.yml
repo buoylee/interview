@@ -18,6 +18,23 @@ x-db-common: &db-common
   networks: [ha-net]
 
 services:
+  recovery:
+    image: mysql:8.4.10
+    profiles: ["recovery"]
+    container_name: mysql-ha-recovery
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-ha-root}
+      MYSQL_ROOT_HOST: "%"
+    ports: ["13309:3306"]
+    volumes: ["recovery-data:/var/lib/mysql"]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 3s
+      timeout: 2s
+      retries: 40
+      start_period: 20s
+    networks: [ha-net]
+
   verifier:
     build:
       context: .
@@ -162,3 +179,4 @@ volumes:
   db1-data:
   db2-data:
   db3-data:
+  recovery-data:
