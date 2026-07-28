@@ -72,6 +72,12 @@ case "$expected_count" in ''|*[!0-9]*) echo "invalid expected row count" >&2; ex
   echo "unexpected writes raced the backup/replay window" >&2; exit 1;
 }
 printf '%s\n' "$expected_count" > "$OUT/expected-count.txt"
+projection_sql="SELECT CONCAT_WS(CHAR(9), IFNULL(CONCAT('H',HEX(request_id)),'N'), IFNULL(CONCAT('H',HEX(CAST(payload AS CHAR CHARACTER SET utf8mb4))),'N'), IFNULL(CONCAT('H',HEX(via_router)),'N'), IFNULL(CONCAT('H',HEX(written_by)),'N')) FROM ha_lab.orders ORDER BY request_id"
+"${DC[@]}" run --rm shell mysql -hrouter-a -P6446 -uroot -p"$PASSWORD" --batch --raw -Nse \
+  "$projection_sql" > "$OUT/expected-projection.tsv"
+[ "$(wc -l < "$OUT/expected-projection.tsv" | tr -d ' ')" = "$expected_count" ] || {
+  echo "pre-DELETE projection row count is incomplete" >&2; exit 1;
+}
 
 "${DC[@]}" run --rm shell mysql -hrouter-a -P6446 -uroot -p"$PASSWORD" -e \
   'DELETE FROM ha_lab.orders'
@@ -89,11 +95,26 @@ for member in db1 db2 db3; do
 done
 
 "${DC[@]}" --profile recovery up -d recovery
+: > "$OUT/recovery-readiness-errors.txt"
+readiness_started=$SECONDS
+recovery_ready=0
 for _ in $(seq 1 60); do
-  if "${DC[@]}" exec -T recovery mysqladmin ping -uroot -p"$PASSWORD" --silent; then break; fi
+  readiness_attempt=$_
+  if readiness_output="$("${DC[@]}" exec -T recovery mysql -uroot -p"$PASSWORD" -Nse \
+    'SELECT 1 /* recovery-readiness */' 2>> "$OUT/recovery-readiness-errors.txt")" && \
+    [ "$readiness_output" = 1 ]; then
+    recovery_ready=1
+    break
+  fi
   sleep 2
 done
-"${DC[@]}" exec -T recovery mysqladmin ping -uroot -p"$PASSWORD" --silent
+readiness_elapsed=$((SECONDS - readiness_started))
+printf 'attempts=%s elapsed_seconds=%s authenticated=%s\n' \
+  "$readiness_attempt" "$readiness_elapsed" "$recovery_ready" \
+  > "$OUT/recovery-readiness.txt"
+[ "$recovery_ready" = 1 ] || {
+  echo "recovery did not accept authenticated SQL within 120 seconds" >&2; exit 1;
+}
 "${DC[@]}" exec -T recovery mysql -uroot -p"$PASSWORD" < "$OUT/base.sql"
 "${DC[@]}" run --rm shell bash -o pipefail -c \
   "mysqlbinlog --read-from-remote-server --skip-gtids -h$primary -uroot -p'$PASSWORD' --start-position=$start_pos --stop-position=$stop_pos $start_file | mysql --binary-mode=1 -hrecovery -uroot -p'$PASSWORD'"
@@ -109,6 +130,14 @@ recovered_count="$("${DC[@]}" exec -T recovery mysql -uroot -p"$PASSWORD" -Nse \
   echo "recovered row count does not match pre-DELETE count" >&2; exit 1;
 }
 printf '%s\n' "$recovered_count" > "$OUT/recovered-count.txt"
+"${DC[@]}" exec -T recovery mysql -uroot -p"$PASSWORD" --batch --raw -Nse \
+  "$projection_sql" > "$OUT/recovered-projection.tsv"
+[ "$(wc -l < "$OUT/recovered-projection.tsv" | tr -d ' ')" = "$recovered_count" ] || {
+  echo "recovered projection row count is incomplete" >&2; exit 1;
+}
+cmp -s "$OUT/expected-projection.tsv" "$OUT/recovered-projection.tsv" || {
+  echo "recovered rows do not byte-match the intended pre-DELETE projection" >&2; exit 1;
+}
 
 "${DC[@]}" exec -T "$primary" mysql -uroot -p"$PASSWORD" -Nse \
   "SELECT MEMBER_HOST,MEMBER_STATE,MEMBER_ROLE FROM performance_schema.replication_group_members ORDER BY MEMBER_HOST" \

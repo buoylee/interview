@@ -26,24 +26,32 @@ Group Replication 能否自动撤销一个已经合法提交并复制的误删�
 `mysql-handson/00-lab/ha/evidence/runs/ha-cannot-replace-pitr/<run-id>/`。至少应包含：
 `source-primary.txt`、`base.sql`、`base-count.txt`、`binlog-window.txt`、
 `expected-count.txt`、`member-zero.txt`、`recovery-keep-row.txt`、
-`recovered-count.txt`、`final-topology.txt`、`final-member-counts.txt` 与
-`base-dump.stderr`。
+`recovered-count.txt`、`expected-projection.tsv`、`recovered-projection.tsv`、
+`final-topology.txt`、`final-member-counts.txt` 与 `base-dump.stderr`。
+`recovery-readiness.txt` 记录 recovery 接受已认证 SQL 所需的尝试次数与秒数；
+`recovery-readiness-errors.txt` 保留等待期间的认证／连接错误。
 
 ## 实测
 
-- 指定成功 run ID：`20260728T055250Z`。本机生成且被 Git ignore 的 archive 为
-  `mysql-handson/00-lab/ha/evidence/runs/ha-cannot-replace-pitr/20260728T055250Z/`；
+- 指定成功 run ID：`20260728T061309Z`。本机生成且被 Git ignore 的 archive 为
+  `mysql-handson/00-lab/ha/evidence/runs/ha-cannot-replace-pitr/20260728T061309Z/`；
   本节的数据分别来自其中的 `source-primary.txt`、`base-count.txt`、
   `binlog-window.txt`、`expected-count.txt`、`member-zero.txt`、
   `recovery-keep-row.txt`、`recovered-count.txt`、`final-topology.txt` 与
-  `final-member-counts.txt`。
+  `final-member-counts.txt`，完整行核对来自 `expected-projection.tsv` 与
+  `recovered-projection.tsv`，认证就绪边界来自 `recovery-readiness.txt`。
 - source Primary 为 `db1`；一致全备份内记录的 replay 起点是
   `binlog.000004:238`，保留行提交后的 stop position 是同一文件的 `591`。
   这些 file／position 是权威边界；运行时间不用于精确停止。
 - base dump 有 10 行；写入 `pitr-keep` 后预期为 11 行。Cluster-wide
   `DELETE` 后 `db1=0`、`db2=0`、`db3=0`，证明 HA 忠实复制了误操作。
 - 隔离 `recovery` 实例导入 base dump，再重放 `[238, 591)` 后得到 11 行，
-  且唯一查询命中 `pitr-keep`；destructive transaction 没有进入 replay。
+  且唯一查询命中 `pitr-keep`。恢复前后的 11 行都按 `request_id` 排序，并把
+  `request_id/payload/via_router/written_by` 逐栏编码为带 NULL 标记的 HEX；两份
+  projection 经 runtime `cmp -s` byte-for-byte 相同，destructive transaction
+  没有进入 replay，也没有其他行被替换或改写。
+- recovery 首次启动第 4 次尝试才接受已认证 SQL，耗时 6 秒；脚本没有把只证明
+  mysqld 存活的 `mysqladmin ping` 当成认证完成。
 - 恢复完成后在线 Cluster 仍为 `db1=PRIMARY/ONLINE`、
   `db2/db3=SECONDARY/ONLINE`，三成员再次查询仍各为 0 行。恢复数据没有覆盖
   在线 Cluster。

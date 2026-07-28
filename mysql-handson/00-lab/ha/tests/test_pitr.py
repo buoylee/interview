@@ -62,7 +62,10 @@ class PitrScenarioTest(unittest.TestCase):
                 "compose --project-name mysql-ha --file compose.yml --profile recovery down --volumes --remove-orphans\n",
             )
 
-    def controlled_root(self, stop_status="binlog.000002\t420\t\t\t"):
+    def controlled_root(
+        self, stop_status="binlog.000002\t420\t\t\t", altered_projection=False,
+        recovery_ready_after=1,
+    ):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name) / "ha"
@@ -95,9 +98,21 @@ class PitrScenarioTest(unittest.TestCase):
             "  *\"SHOW BINARY LOG STATUS\"*) printf '%b\\n' \"$FAKE_STOP_STATUS\" ;;\n"
             "  *\"INSERT INTO ha_lab.orders\"*) touch \"$FAKE_STATE_DIR/keep\" ;;\n"
             "  *\"DELETE FROM ha_lab.orders\"*) touch \"$FAKE_STATE_DIR/deleted\" ;;\n"
+            "  *\"HEX(request_id)\"*)\n"
+            "    for i in $(seq 1 10); do\n"
+            "      payload=H7B7D\n"
+            "      if [[ \"$*\" = *\"exec -T recovery\"* ]] && [ \"${FAKE_ALTERED_PROJECTION:-0}\" = 1 ] && [ \"$i\" = 2 ]; then payload=H616C7465726564; fi\n"
+            "      printf 'H726F772D%s\\t%s\\tH726F757465722D62\\tH646231\\n' \"$i\" \"$payload\"\n"
+            "    done\n"
+            "    printf 'H706974722D6B656570\\tH7B7D\\tH726F757465722D61\\tH646231\\n' ;;\n"
             "  *\"SELECT COUNT(*) FROM ha_lab.orders\"*)\n"
             "    case \"$*\" in *\"exec -T recovery\"*) printf '11\\n' ;; *\"exec -T db\"*) if [ -f \"$FAKE_STATE_DIR/deleted\" ]; then printf '0\\n'; else printf '10\\n'; fi ;; *) printf '11\\n' ;; esac ;;\n"
             "  *\"WHERE request_id='pitr-keep'\"*) printf 'pitr-keep\\n' ;;\n"
+            "  *\"SELECT 1 /* recovery-readiness */\"*)\n"
+            "    attempts=0; [ ! -f \"$FAKE_READINESS_COUNT\" ] || attempts=$(cat \"$FAKE_READINESS_COUNT\")\n"
+            "    attempts=$((attempts + 1)); printf '%s' \"$attempts\" > \"$FAKE_READINESS_COUNT\"\n"
+            "    if [ \"$attempts\" -lt \"$FAKE_RECOVERY_READY_AFTER\" ]; then exit 1; fi\n"
+            "    printf '1\\n' ;;\n"
             "  *\"replication_group_members\"*) printf 'db1\\tONLINE\\tPRIMARY\\ndb2\\tONLINE\\tSECONDARY\\ndb3\\tONLINE\\tSECONDARY\\n' ;;\n"
             "  *\"mysqladmin ping\"*) exit 0 ;;\n"
             "esac\n",
@@ -111,8 +126,27 @@ class PitrScenarioTest(unittest.TestCase):
             "FAKE_MAKE_LOG": str(make_log),
             "FAKE_STOP_STATUS": stop_status,
             "FAKE_STATE_DIR": str(root),
+            "FAKE_ALTERED_PROJECTION": "1" if altered_projection else "0",
+            "FAKE_READINESS_COUNT": str(root / "readiness-count"),
+            "FAKE_RECOVERY_READY_AFTER": str(recovery_ready_after),
         }
         return root, docker_log, make_log, environment
+
+    def test_pitr_waits_for_authenticated_recovery_sql_not_server_ping(self):
+        """Catches mysqladmin ping accepting the temporary unauthenticated init server."""
+        root, docker_log, _make_log, environment = self.controlled_root(
+            recovery_ready_after=3,
+        )
+
+        result = subprocess.run(
+            ["bash", "scenarios/pitr.sh"], cwd=root, env=environment,
+            text=True, capture_output=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = docker_log.read_text(encoding="utf-8")
+        self.assertEqual(calls.count("SELECT 1 /* recovery-readiness */"), 3)
+        self.assertNotIn("exec -T recovery mysqladmin ping", calls)
 
     def test_pitr_orders_isolated_recovery_and_proves_pre_delete_rows(self):
         """Catches replay that races its dump boundary, includes DELETE, or targets the Cluster."""
@@ -140,12 +174,39 @@ class PitrScenarioTest(unittest.TestCase):
         self.assertEqual((evidence / "expected-count.txt").read_text(), "11\n")
         self.assertEqual((evidence / "recovered-count.txt").read_text(), "11\n")
         self.assertEqual((evidence / "recovery-keep-row.txt").read_text(), "pitr-keep\n")
+        self.assertEqual(
+            (evidence / "expected-projection.tsv").read_bytes(),
+            (evidence / "recovered-projection.tsv").read_bytes(),
+        )
         self.assertEqual((evidence / "member-zero.txt").read_text(), "db1 0\ndb2 0\ndb3 0\n")
         self.assertEqual(
             (evidence / "final-member-counts.txt").read_text(),
             "db1 0\ndb2 0\ndb3 0\n",
         )
         self.assertEqual((evidence / "binlog-window.txt").read_text(), "binlog.000002 157 420\n")
+
+    def test_pitr_rejects_same_count_and_keep_with_altered_row_content(self):
+        """Catches count/keep checks masking replacement of another intended row."""
+        root, _docker_log, _make_log, environment = self.controlled_root(
+            altered_projection=True,
+        )
+
+        result = subprocess.run(
+            ["bash", "scenarios/pitr.sh"], cwd=root, env=environment,
+            text=True, capture_output=True,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        evidence = root / "evidence/pitr"
+        self.assertEqual((evidence / "expected-count.txt").read_text(), "11\n")
+        self.assertEqual((evidence / "recovered-count.txt").read_text(), "11\n")
+        self.assertEqual((evidence / "recovery-keep-row.txt").read_text(), "pitr-keep\n")
+        self.assertNotEqual(
+            (evidence / "expected-projection.tsv").read_bytes(),
+            (evidence / "recovered-projection.tsv").read_bytes(),
+        )
+        runs = root / "evidence/runs/ha-cannot-replace-pitr"
+        self.assertFalse(runs.exists(), "mismatched recovery must not be archived as success")
 
     def test_pitr_aborts_before_delete_when_status_is_multiline(self):
         """Catches ambiguous binary-log status being accepted as a replay boundary."""
