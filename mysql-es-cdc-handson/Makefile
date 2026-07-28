@@ -39,6 +39,7 @@ verify: assert-java-21
 	bash tests/contracts/m4-reconciliation-control-negative.sh
 	bash tests/contracts/m4-dlq-evidence-tamper.sh
 	bash tests/contracts/m5-write-gate-routing.sh
+	bash tests/contracts/m5-rebuild-schema-drift.sh
 	./mvnw -q test
 	bash scenarios/scripts/verify-product-transactions.sh
 

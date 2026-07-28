@@ -3,20 +3,37 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 schema="${1:-product_catalog}"
 [[ "$schema" =~ ^[a-zA-Z0-9_]+$ ]] || exit 2
-for table in product_write_gate cdc_barrier rebuild_run rebuild_partition_offset canal_position_recovery; do
-  docker compose -f infra/compose.yaml exec -T mysql mysql -uroot -prootpass -N -B -e \
-    "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='$schema' AND TABLE_NAME='$table'" 2>/dev/null | grep -qx "$table"
-done
-docker compose -f infra/compose.yaml exec -T mysql mysql -uroot -prootpass -N -B -e \
-  "SELECT CONCAT(COUNT(*),':',MIN(singleton_id),':',MIN(closed)) FROM $schema.product_write_gate" 2>/dev/null | grep -qx '1:1:0'
-contracts="$(docker compose -f infra/compose.yaml exec -T mysql mysql -uroot -prootpass -N -B -e "
-SELECT CONCAT(TABLE_NAME,':',CONSTRAINT_NAME,':',CONSTRAINT_TYPE) FROM information_schema.TABLE_CONSTRAINTS
-WHERE CONSTRAINT_SCHEMA='$schema' AND TABLE_NAME IN ('product_write_gate','cdc_barrier','rebuild_run','rebuild_partition_offset','canal_position_recovery')
-AND CONSTRAINT_NAME IN ('chk_product_write_gate_singleton','chk_cdc_barrier_token','uk_rebuild_generation','fk_rebuild_offset_run','uk_canal_recovery_run','fk_canal_recovery_run') ORDER BY TABLE_NAME,CONSTRAINT_NAME;
-" 2>/dev/null)"
-[[ "$(printf '%s\n' "$contracts" | wc -l | tr -d ' ')" == 6 ]] || { echo "rebuild FK/index/check drift detected" >&2; exit 1; }
-grants="$(docker compose -f infra/compose.yaml exec -T mysql mysql -uroot -prootpass -N -B -e "
-SELECT COUNT(*) FROM information_schema.TABLE_PRIVILEGES WHERE GRANTEE=\"'verifier'@'%'\" AND TABLE_SCHEMA='$schema'
-AND TABLE_NAME IN ('product_write_gate','cdc_barrier','rebuild_run','rebuild_partition_offset','canal_position_recovery');" 2>/dev/null)"
-[[ "$grants" == 13 ]] || { echo "rebuild grant drift detected: $grants" >&2; exit 1; }
-echo "rebuild control schema contract passed"
+canonical="m5_contract_${$}"
+mysql=(docker compose -f infra/compose.yaml exec -T mysql mysql -uroot -prootpass -N -B)
+trap '"${mysql[@]}" -e "DROP DATABASE IF EXISTS $canonical" >/dev/null 2>&1 || true' EXIT
+"${mysql[@]}" -e "DROP DATABASE IF EXISTS $canonical; CREATE DATABASE $canonical CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci"
+sed -e "s/USE product_catalog;/USE $canonical;/" -e '/^GRANT /d' -e '/^FLUSH PRIVILEGES/d' infra/mysql/init/05-rebuild-control.sql | "${mysql[@]}"
+
+metadata() {
+  local target="$1"
+  "${mysql[@]}" -e "
+SELECT CONCAT('column:',TABLE_NAME,':',ORDINAL_POSITION,':',COLUMN_NAME,':',COLUMN_TYPE,':',IS_NULLABLE,':',IFNULL(COLUMN_DEFAULT,'<NULL>'),':',EXTRA)
+FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$target';
+SELECT CONCAT('index:',TABLE_NAME,':',INDEX_NAME,':',NON_UNIQUE,':',SEQ_IN_INDEX,':',COLUMN_NAME,':',INDEX_TYPE,':',IS_VISIBLE,':',IFNULL(NULLABLE,'<EMPTY>'))
+FROM information_schema.STATISTICS WHERE TABLE_SCHEMA='$target';
+SELECT CONCAT('constraint:',TABLE_NAME,':',CONSTRAINT_NAME,':',CONSTRAINT_TYPE)
+FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA='$target';
+SELECT CONCAT('check:',tc.TABLE_NAME,':',tc.CONSTRAINT_NAME,':',LOWER(REPLACE(REPLACE(REPLACE(cc.CHECK_CLAUSE,' ',''),CHAR(96),''),'_utf8mb4','')))
+FROM information_schema.TABLE_CONSTRAINTS tc JOIN information_schema.CHECK_CONSTRAINTS cc
+ON cc.CONSTRAINT_SCHEMA=tc.CONSTRAINT_SCHEMA AND cc.CONSTRAINT_NAME=tc.CONSTRAINT_NAME WHERE tc.CONSTRAINT_SCHEMA='$target';
+SELECT CONCAT('fk:',TABLE_NAME,':',CONSTRAINT_NAME,':',COLUMN_NAME,':',REFERENCED_TABLE_NAME,':',REFERENCED_COLUMN_NAME)
+FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA='$target' AND REFERENCED_TABLE_NAME IS NOT NULL;
+SELECT CONCAT('fk_rule:',TABLE_NAME,':',CONSTRAINT_NAME,':',UPDATE_RULE,':',DELETE_RULE)
+FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA='$target';
+SELECT CONCAT('table:',TABLE_NAME,':',ENGINE,':',TABLE_COLLATION)
+FROM information_schema.TABLES WHERE TABLE_SCHEMA='$target';" 2>/dev/null | LC_ALL=C sort
+}
+actual="$(metadata "$schema" | grep -E ':(product_write_gate|cdc_barrier|rebuild_run|rebuild_partition_offset|canal_position_recovery):|^(column|index|constraint|check|fk|fk_rule|table):(product_write_gate|cdc_barrier|rebuild_run|rebuild_partition_offset|canal_position_recovery):')"
+expected="$(metadata "$canonical")"
+[[ "$actual" == "$expected" ]] || { echo "rebuild exact schema drift detected" >&2; diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$actual") >&2 || true; exit 1; }
+
+"${mysql[@]}" -e "SELECT CONCAT(COUNT(*),':',MIN(singleton_id),':',MIN(closed)) FROM $schema.product_write_gate" 2>/dev/null | grep -qx '1:1:0'
+grants="$("${mysql[@]}" -e "SELECT CONCAT(TABLE_NAME,':',PRIVILEGE_TYPE,':',IS_GRANTABLE) FROM information_schema.TABLE_PRIVILEGES WHERE GRANTEE=\"'verifier'@'%'\" AND TABLE_SCHEMA='$schema' AND TABLE_NAME IN ('product_write_gate','cdc_barrier','rebuild_run','rebuild_partition_offset','canal_position_recovery') ORDER BY TABLE_NAME,PRIVILEGE_TYPE" 2>/dev/null)"
+expected_grants=$'canal_position_recovery:INSERT:NO\ncanal_position_recovery:SELECT:NO\ncanal_position_recovery:UPDATE:NO\ncdc_barrier:INSERT:NO\ncdc_barrier:SELECT:NO\nproduct_write_gate:SELECT:NO\nproduct_write_gate:UPDATE:NO\nrebuild_partition_offset:INSERT:NO\nrebuild_partition_offset:SELECT:NO\nrebuild_partition_offset:UPDATE:NO\nrebuild_run:INSERT:NO\nrebuild_run:SELECT:NO\nrebuild_run:UPDATE:NO'
+[[ "$grants" == "$expected_grants" ]] || { echo "rebuild exact grant drift detected" >&2; diff -u <(printf '%s\n' "$expected_grants") <(printf '%s\n' "$grants") >&2 || true; exit 1; }
+echo "rebuild exact schema contract passed"
