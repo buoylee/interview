@@ -16,6 +16,7 @@ make scenario SCENARIO=planned-switchover
 
 ## 客户端证据
 
+- 指定成功 run ID：`20260726T094213Z`。本机生成且被 Git ignore 的 archive 为 `mysql-handson/00-lab/ha/evidence/runs/planned-switchover/20260726T094213Z/`；追溯本节至少读取 `verification.json`、`scenario-verification.json`、`events.jsonl`，session／分段 RTO 另来自 `session.json`、`timeline.jsonl`，写入分布来自 `written-by.txt`。archive 不是本次 commit 的内容，run ID 才是本地证据索引。
 - `fault_begin=2026-07-26T09:41:48.494226+00:00`，`fault_active=09:41:53.023409`，`fault_end=09:42:05.669761`。
 - `SUCCESS=386`、`FAILURE=2`、`UNKNOWN=0`；故障窗口内有 180 次 SUCCESS。
 - 旧 session 从 `db1` 断开，新 session 在 `db2` 重连；`rto_ms=194`。
@@ -44,5 +45,5 @@ make scenario SCENARIO=planned-switchover
 
 ## 连到的面试卡
 
-- [切主流程（计划内切换）](../../README.md#case-b切主流程计划内切换)
-- [MySQL Router 的职责边界](../../README.md#方案-dmysql-routerinnodb-cluster)
+- [README：Case B「切主流程（计划内切换）」](../../README.md)
+- [README：§3.7 MySQL Router](../../README.md)

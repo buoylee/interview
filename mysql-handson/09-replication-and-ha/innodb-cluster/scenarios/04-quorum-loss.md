@@ -16,6 +16,7 @@ make scenario SCENARIO=quorum-loss
 
 ## 客户端证据
 
+- 指定成功 run ID：`20260728T051412Z`。本机生成且被 Git ignore 的 archive 为 `mysql-handson/00-lab/ha/evidence/runs/quorum-loss/20260728T051412Z/`；追溯本节至少读取 `verification.json`、`scenario-verification.json`、`events.jsonl`，完整恢复断言另来自 `quorum-recovery-fence-initial.jsonl`、`quorum-recovery-fence-final.jsonl`、`quorum-recovery-gtid-initial.jsonl`、`quorum-recovery-gtid-final.jsonl`、`quorum-recovery-stop-status.jsonl`、`quorum-recovery-reboot-dry-run.txt`、`quorum-recovery-reboot-actual.txt`、`quorum-recovery-topology.txt`、`quorum-recovery-writable-primary.txt`、`quorum-recovery-router-rollback-probe.json`。archive 不是本次 commit 的内容，run ID 才是本地证据索引。
 - `fault_begin=2026-07-28T05:12:11.853741+00:00`，`fault_active=05:12:12.744917`，`quorum_blocked=05:12:23.575762`，`quorum_restore_begin=05:12:29.220116`，`fault_end=05:14:04.949834`。
 - grace window 为 `10830ms`：0 SUCCESS、2 FAILURE、4 UNKNOWN；明确 blocked window 为 `5644ms`：14 FAILURE、0 SUCCESS、0 UNKNOWN。
 - 整段故障窗为 0 SUCCESS、18 FAILURE、6 UNKNOWN；`rto_ms=109818`。
@@ -44,5 +45,5 @@ make scenario SCENARIO=quorum-loss
 
 ## 连到的面试卡
 
-- [MGR 多数派与三节点生产基线](../../README.md#34-mgrmysql-group-replication)
-- [MGR 节点离群（UNREACHABLE／ERROR）](../../README.md#case-dmgr-节点离群unreachable--error-状态)
+- [README：§3.6 MGR 简述（Paxos／单主多主／流控）](../../README.md)
+- [README：Case D「MGR 节点离群（UNREACHABLE／ERROR）」](../../README.md)

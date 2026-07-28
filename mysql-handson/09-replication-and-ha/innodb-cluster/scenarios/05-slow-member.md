@@ -16,6 +16,7 @@ make scenario SCENARIO=slow-member
 
 ## 客户端证据
 
+- 指定成功 run ID：`20260728T052238Z`。本机生成且被 Git ignore 的 archive 为 `mysql-handson/00-lab/ha/evidence/runs/slow-member/20260728T052238Z/`；追溯本节至少读取 `verification.json`、`scenario-verification.json`、`events.jsonl`，queue／threshold／p95 来自 `metrics.jsonl`，写入分布来自 `written-by.txt`。archive 不是本次 commit 的内容，run ID 才是本地证据索引。
 - `fault_begin=2026-07-28T05:20:19.797890+00:00`，`fault_active=05:20:20.305006`，`fault_end=05:22:31.689642`。
 - 全程 `SUCCESS=5447`、`FAILURE=0`、`UNKNOWN=0`；故障窗口内 5260 次 SUCCESS，`rto_ms=148`。
 - before p95 为 `440ms`，active p95 为 `271ms`。
@@ -43,5 +44,5 @@ make scenario SCENARIO=slow-member
 
 ## 连到的面试卡
 
-- [MGR Flow Control](../../README.md#34-mgrmysql-group-replication)
-- [三节点生产基线](../../README.md#34-mgrmysql-group-replication)
+- [README：§3.6 MGR 简述（Paxos／单主多主／流控）](../../README.md)
+- [README：§3.6 的三节点生产基线](../../README.md)

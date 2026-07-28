@@ -16,6 +16,7 @@ make scenario SCENARIO=member-rejoin
 
 ## 客户端证据
 
+- 指定成功 run ID：`20260728T052648Z`。本机生成且被 Git ignore 的 archive 为 `mysql-handson/00-lab/ha/evidence/runs/member-rejoin/20260728T052648Z/`；追溯本节至少读取 `verification.json`、`scenario-verification.json`、`events.jsonl`，请求结果来自 `ledger-router-a.jsonl`、`ledger-router-b.jsonl`，写入分布来自 `written-by.txt`。archive 不是本次 commit 的内容，run ID 才是本地证据索引。
 - `fault_begin=2026-07-28T05:26:08.814658+00:00`，`fault_active=05:26:09.143865`，`rejoin_begin=05:26:21.453441`，`rejoin_online=05:26:41.507255`，`fault_end=05:26:41.609658`。
 - 全程 `SUCCESS=420`、`UNKNOWN=2`；故障窗口内 254 SUCCESS、0 FAILURE、2 UNKNOWN，`rto_ms=5459`。
 
@@ -43,5 +44,5 @@ make scenario SCENARIO=member-rejoin
 
 ## 连到的面试卡
 
-- [MGR 节点离群与 rejoin](../../README.md#case-dmgr-节点离群unreachable--error-状态)
+- [README：Case D「MGR 节点离群与 rejoin」](../../README.md)
 - [GTID 自动续传与 errant transaction](../../../99-interview-cards/q-gtid-auto-resume.md)

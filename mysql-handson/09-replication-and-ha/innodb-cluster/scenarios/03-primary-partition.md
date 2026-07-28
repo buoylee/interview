@@ -16,6 +16,7 @@ make scenario SCENARIO=primary-partition
 
 ## 客户端证据
 
+- 指定成功 run ID：`20260726T100107Z`。本机生成且被 Git ignore 的 archive 为 `mysql-handson/00-lab/ha/evidence/runs/primary-partition/20260726T100107Z/`；追溯本节至少读取 `verification.json`、`scenario-verification.json`、`events.jsonl`，少数派写栅栏来自 `fencing.json`，session／分段 RTO 来自 `session.json`、`timeline.jsonl`，写入分布来自 `written-by.txt`。archive 不是本次 commit 的内容，run ID 才是本地证据索引。
 - `fault_begin=2026-07-26T10:00:09.725464+00:00`，`fault_active=10:00:20.348304`，`rejoin_begin=10:00:44.370201`，`rejoin_online=10:01:00.006653`，`fault_end=10:01:00.204404`。
 - `SUCCESS=503`、`FAILURE=46`、`UNKNOWN=0`；故障窗口内为 347 SUCCESS、30 FAILURE。
 - 旧 session 从隔离的 `db1` 断开，新 session 连到 `db2`；`rto_ms=21922`。
@@ -44,5 +45,5 @@ make scenario SCENARIO=primary-partition
 
 ## 连到的面试卡
 
-- [MGR 节点离群（UNREACHABLE／ERROR）](../../README.md#case-dmgr-节点离群unreachable--error-状态)
-- [MGR 多数派与三节点生产基线](../../README.md#34-mgrmysql-group-replication)
+- [README：Case D「MGR 节点离群（UNREACHABLE／ERROR）」](../../README.md)
+- [README：§3.6 MGR 简述（Paxos／单主多主／流控）](../../README.md)

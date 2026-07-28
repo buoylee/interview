@@ -16,6 +16,7 @@ make scenario SCENARIO=router-failure
 
 ## 客户端证据
 
+- 指定成功 run ID：`20260728T052430Z`。本机生成且被 Git ignore 的 archive 为 `mysql-handson/00-lab/ha/evidence/runs/router-failure/20260728T052430Z/`；追溯本节至少读取 `verification.json`、`scenario-verification.json`、`events.jsonl`，两入口各自结果来自 `ledger-router-a.jsonl`、`ledger-router-b.jsonl`，写入分布来自 `written-by.txt`。archive 不是本次 commit 的内容，run ID 才是本地证据索引。
 - `fault_begin=2026-07-28T05:24:09.563474+00:00`，`fault_active=05:24:09.849046`，`fault_end=05:24:24.225745`。
 - 故障窗内 Router A 为 8 SUCCESS、10 FAILURE；Router B 为 113 SUCCESS、0 FAILURE、0 UNKNOWN。窗口整体为 121 SUCCESS、11 FAILURE，`rto_ms=123`。
 - 全程 Router A 为 90 SUCCESS、11 FAILURE、1 UNKNOWN；Router B 为 197 SUCCESS。
@@ -44,5 +45,5 @@ make scenario SCENARIO=router-failure
 
 ## 连到的面试卡
 
-- [MySQL Router 双实例生产边界](../../README.md#方案-dmysql-routerinnodb-cluster)
-- [MySQL Router 端口与路由职责](../../README.md#方案-dmysql-routerinnodb-cluster)
+- [README：§3.7 MySQL Router 双实例生产边界](../../README.md)
+- [README：§3.7 MySQL Router 端口与路由职责](../../README.md)
