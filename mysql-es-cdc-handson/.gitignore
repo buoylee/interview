@@ -1,5 +1,9 @@
 target/
 **/target/
+!consistency-verifier/src/main/java/com/interview/mysqlescdc/verifier/target/
+!consistency-verifier/src/main/java/com/interview/mysqlescdc/verifier/target/**
+!consistency-verifier/src/test/java/com/interview/mysqlescdc/verifier/target/
+!consistency-verifier/src/test/java/com/interview/mysqlescdc/verifier/target/**
 .idea/
 .vscode/
 .DS_Store
