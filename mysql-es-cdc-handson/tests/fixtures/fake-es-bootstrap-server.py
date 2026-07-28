@@ -21,6 +21,32 @@ compatible_mapping = {
 }
 
 
+def normalized_template():
+    template = {
+        "settings": {
+            "index": {
+                "number_of_shards": "1",
+                "number_of_replicas": "0",
+            }
+        },
+        "mappings": properties,
+    }
+    index_template = {
+        "index_patterns": ["products_v*", "products_adapter_v*"],
+        "template": template,
+        "composed_of": [],
+    }
+    if mode == "malicious-composed-of":
+        index_template["composed_of"] = ["malicious-component"]
+    elif mode == "unexpected-data-stream":
+        index_template["data_stream"] = {}
+    elif mode == "extra-template-setting":
+        template["settings"]["index"]["refresh_interval"] = "1s"
+    elif mode == "extra-template-alias":
+        template["aliases"] = {"unexpected_alias": {}}
+    return {"index_templates": [{"name": "products-search", "index_template": index_template}]}
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_args):
         pass
@@ -47,6 +73,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/_index_template/products-search":
             if mode == "incompatible-template":
                 self.respond(200, {"index_templates": [{"index_template": {"index_patterns": ["wrong-*"], "template": {}}}]})
+            elif mode in {"malicious-composed-of", "unexpected-data-stream", "extra-template-setting", "extra-template-alias"}:
+                self.respond(200, normalized_template())
             else:
                 self.respond(404)
         elif self.path == "/products_v2/_mapping":

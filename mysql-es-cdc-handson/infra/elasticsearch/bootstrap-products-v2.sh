@@ -18,11 +18,20 @@ template_payload="${tmp_dir}/template.json"
 template_status="$(read_status '/_index_template/products-search' "$template_payload")"
 case "$template_status" in
   200)
+    # The index-template key allowlist also rejects priority, version, _meta,
+    # data_stream, and any other field that can alter matching or index output.
     if ! jq -e --slurpfile expected infra/elasticsearch/index-template.json \
       '.index_templates | length == 1
+       and .[0].name == "products-search"
        and .[0].index_template.index_patterns == $expected[0].index_patterns
+       and (.[0].index_template.composed_of // []) == []
+       and (.[0].index_template.data_stream == null)
+       and ((.[0].index_template | keys) - ["composed_of"] | sort) == ["index_patterns", "template"]
+       and (((.[0].index_template.template | keys) - ["aliases"]) | sort) == ["mappings", "settings"]
        and .[0].index_template.template.mappings == $expected[0].template.mappings
        and (.[0].index_template.template.aliases // {}) == {}
+       and (.[0].index_template.template.settings | keys) == ["index"]
+       and (.[0].index_template.template.settings.index | keys | sort) == ["number_of_replicas", "number_of_shards"]
        and (.[0].index_template.template.settings.index.number_of_shards | tonumber) == $expected[0].template.settings.number_of_shards
        and (.[0].index_template.template.settings.index.number_of_replicas | tonumber) == $expected[0].template.settings.number_of_replicas' \
       "$template_payload" >/dev/null; then
@@ -95,6 +104,10 @@ write_alias_state="$(check_alias products_write '{"is_write_index":true}')"
 search_alias_state="$(check_alias products_search '{"filter":{"term":{"searchable":true}}}')"
 
 # Mutation phase starts only after the complete read-only preflight succeeds.
+# Operational contract: run this bootstrap with one administrative writer and
+# no concurrent template/index/alias mutations. The final reads can detect a
+# race after mutation, but this script cannot roll back one and does not claim
+# fail-closed behavior against arbitrary concurrent Elasticsearch admins.
 if [[ "$template_missing" == true ]]; then
   curl -fsS -X PUT "${es_url}/_index_template/products-search" \
     -H 'Content-Type: application/json' \

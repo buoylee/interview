@@ -48,6 +48,8 @@ make reset && make smoke-m0
 
 本地端口：product-service 8081、MySQL 3308、Kafka 29092、Canal 11111/11112、Elasticsearch 9200、Toxiproxy API 8474。consumer/verifier 仅在 `m0-tools` profile 下定义，预留 8082/8083，默认不启动。仓库中的账号密码只用于本地实验，不得用于共享或生产环境。
 
+`make bootstrap-products-v2` 的安全前提是 single-writer：执行期间不得有其他管理员并发修改同名 index template、physical index 或 aliases。脚本先只读检查完整兼容性，再执行创建，并用最终读取检测明显竞态；最终检查不能回滚已经发生的竞态，因此这里不声称面对任意并发管理操作仍可 fail closed。
+
 ## Canal 1.1.8 边界
 
 本实验固定的 release-native ACK cursor 是 `/home/admin/canal-data/products/meta.dat`，不是 parser 的 `parse.dat`。正式 smoke 在 normal stop 前先证明 ACK、cursor persist 和 Kafka end offsets，再验证 exact resume。Canal 1.1.8 static-destination normal stop 可能记录已知 upstream `future=null` `NullPointerException`；evidence 只按本次 stop 观察 `present/absent`，它既不是成功条件，也不能推广成“无害”或 clean/safe shutdown。

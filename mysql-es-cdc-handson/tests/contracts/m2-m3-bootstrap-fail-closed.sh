@@ -13,7 +13,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-for mode in incompatible-template incompatible-index incompatible-alias; do
+for mode in \
+  incompatible-template malicious-composed-of unexpected-data-stream \
+  extra-template-setting extra-template-alias incompatible-index incompatible-alias; do
   port_file="${tmp_dir}/${mode}.port"
   log_file="${tmp_dir}/${mode}.log"
   : >"$log_file"
