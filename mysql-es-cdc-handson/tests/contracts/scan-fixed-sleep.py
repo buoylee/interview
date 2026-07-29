@@ -59,10 +59,15 @@ def scan(path: Path) -> list[tuple[int, str]]:
         return findings
     if path.name != "wait-condition.sh":
         return [(number, "fixed sleep command") for number, _ in active_sleep_lines]
-    if "deadline_epoch" not in text or "attempt" not in text or not re.search(r"\bwhile\b", text):
+    old_shape = "deadline_epoch" in text
+    new_shape = "deadline_ms" in text and "sleep_bounded" in text and "terminate_tree" in text
+    if not (old_shape or new_shape) or "attempt" not in text or not re.search(r"\bwhile\b", text):
         findings.append((1, "wait primitive lacks deadline/attempt evidence"))
     for number, line in active_sleep_lines:
-        if line.rstrip(";") != 'sleep "$poll_seconds"':
+        grace = 'sleep "$pause"' in line and "grace_deadline" in line
+        poll = 'sleep "$(sleep_bounded "$poll_seconds" $((deadline_ms-now)))"' in line
+        legacy_poll = line.rstrip(";") == 'sleep "$poll_seconds"'
+        if not (grace or poll or legacy_poll):
             findings.append((number, "wait primitive sleep is not the bounded poll interval"))
     return findings
 

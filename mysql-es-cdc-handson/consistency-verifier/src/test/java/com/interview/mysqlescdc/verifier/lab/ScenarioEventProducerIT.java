@@ -35,5 +35,28 @@ class ScenarioEventProducerIT {
         assertThatThrownBy(()->new ScenarioEventProducer("localhost:1",false).send(new ScenarioEventRequest("product-search-revisions",1,PAYLOAD))).isInstanceOf(IllegalStateException.class);
     }
 
+    @Test void rejects_non_integral_nested_extra_and_out_of_range_flat_rows_before_sender_creation() {
+        var producer = new ScenarioEventProducer("localhost:1", true);
+        var invalidRows = List.of(
+                "{\"product_id\":1,\"revision\":1,\"active\":1,\"extra\":0}",
+                "{\"product_id\":true,\"revision\":1,\"active\":1}",
+                "{\"product_id\":1.5,\"revision\":1,\"active\":1}",
+                "{\"product_id\":0,\"revision\":1,\"active\":1}",
+                "{\"product_id\":1,\"revision\":0,\"active\":1}",
+                "{\"product_id\":1,\"revision\":1,\"active\":2}",
+                "{\"product_id\":1,\"revision\":1,\"active\":false}",
+                "{\"product_id\":{},\"revision\":1,\"active\":1}");
+        for (var row : invalidRows) {
+            var payload = "{\"database\":\"product_catalog\",\"table\":\"product_search_revision\",\"isDdl\":false,\"type\":\"UPDATE\",\"data\":[" + row + "]}";
+            assertThatThrownBy(() -> producer.send(new ScenarioEventRequest("product-search-revisions", 1, payload)))
+                    .as(row).isInstanceOf(IllegalArgumentException.class);
+        }
+        var row = "{\"product_id\":1,\"revision\":1,\"active\":1}";
+        var tooMany = "{\"database\":\"product_catalog\",\"table\":\"product_search_revision\",\"isDdl\":false,\"type\":\"UPDATE\",\"data\":[" +
+                String.join(",", java.util.Collections.nCopies(1001, row)) + "]}";
+        assertThatThrownBy(() -> producer.send(new ScenarioEventRequest("product-search-revisions", 1, tooMany)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     private static Properties consumerProperties(){var p=new Properties();p.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,"localhost:29092");p.put(ConsumerConfig.GROUP_ID_CONFIG,"m6-injection-it-"+ UUID.randomUUID());p.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG,"false");p.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,"none");p.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,StringDeserializer.class);p.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,StringDeserializer.class);return p;}
 }

@@ -1,0 +1,5 @@
+(if has("documents") then .documents |= sort_by(.product_id) else . end)
+| (if has("beginning") then .beginning |= sort_by(.partition) else . end)
+| (if has("end") then .end |= sort_by(.partition) else . end)
+| (if has("primary") then .primary |= sort_by(.partition) else . end)
+| (if has("shadow_and_barrier") then .shadow_and_barrier |= sort_by(.run_id,.phase,.partition_id) else . end)
