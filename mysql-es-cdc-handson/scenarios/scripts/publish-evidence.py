@@ -6,15 +6,29 @@ from __future__ import annotations
 import argparse
 import ctypes
 import errno
+import hashlib
 import os
 import platform
 import re
 import stat
+import subprocess
 import sys
+import tempfile
 
 
 UNSAFE_EXIT = 74
 UUID4 = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+EVIDENCE_FILES = (
+    "differences.json",
+    "es-snapshot.json",
+    "fault.json",
+    "input-commands.json",
+    "kafka-offsets.json",
+    "manifest.json",
+    "mysql-snapshot.json",
+    "recovery-actions.json",
+    "result.json",
+)
 
 
 class UnsafePublication(RuntimeError):
@@ -106,10 +120,19 @@ def entry_exists(parent_fd: int, name: str) -> bool:
         return False
 
 
-def controlled_hold(stage: str) -> None:
-    hold_path = os.environ.get("M6_RUNNER_PUBLISH_HOLD_DIR", "")
-    selected_stage = os.environ.get("M6_RUNNER_PUBLISH_HOLD_STAGE", "")
-    if not hold_path or selected_stage != stage:
+def controlled_hold(
+    stage: str,
+    path_variable: str = "M6_RUNNER_PUBLISH_HOLD_DIR",
+    stage_variable: str = "M6_RUNNER_PUBLISH_HOLD_STAGE",
+) -> None:
+    hold_path = os.environ.get(path_variable, "")
+    selected_stage = os.environ.get(stage_variable, "")
+    hooks_allowed = (
+        os.environ.get("M6_RUNNER_INTERNAL_TEST_HOOKS") == "fixture-fail-v1"
+        and os.environ.get("M6_RUNNER_EXECUTION_MODE", "fixture") == "fixture"
+        and bool(os.environ.get("M6_RUNNER_FIXTURE"))
+    )
+    if not hooks_allowed or not hold_path or selected_stage != stage:
         return
     # The hook is test coordination only; normalize macOS's /var -> /private/var
     # alias before applying the same pinned-directory checks.
@@ -124,6 +147,184 @@ def controlled_hold(stage: str) -> None:
         hold.verify()
     finally:
         hold.close()
+
+
+def file_digest(descriptor: int) -> str:
+    digest = hashlib.sha256()
+    os.lseek(descriptor, 0, os.SEEK_SET)
+    while True:
+        chunk = os.read(descriptor, 1024 * 1024)
+        if not chunk:
+            break
+        digest.update(chunk)
+    os.lseek(descriptor, 0, os.SEEK_SET)
+    return digest.hexdigest()
+
+
+def open_version(root: PinnedDirectory, scenario: str, token: str, canonical: bool) -> int:
+    if not scenario or scenario in {".", ".."} or "/" in scenario or not UUID4.fullmatch(token):
+        fail("unsafe evidence gate identity")
+    expected = f".runs/{scenario}/{token}"
+    if canonical:
+        try:
+            if os.readlink(scenario, dir_fd=root.fd) != expected:
+                fail("canonical evidence target changed")
+        except OSError as exc:
+            fail(f"canonical evidence is not a readable symlink: {exc.strerror}")
+    runs_fd = scenario_fd = -1
+    try:
+        runs_fd = os.open(".runs", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root.fd)
+        scenario_fd = os.open(scenario, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=runs_fd)
+        return os.open(token, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=scenario_fd)
+    except OSError as exc:
+        fail(f"evidence gate target is not physical: {exc.strerror}")
+    finally:
+        if scenario_fd >= 0:
+            os.close(scenario_fd)
+        if runs_fd >= 0:
+            os.close(runs_fd)
+
+
+def pin_evidence_files(version_fd: int) -> dict[str, tuple[int, tuple[int, int], int, str]]:
+    try:
+        names = os.listdir(version_fd)
+    except OSError as exc:
+        fail(f"cannot list pinned evidence target: {exc.strerror}")
+    if sorted(names) != sorted(EVIDENCE_FILES):
+        fail("pinned evidence target does not contain exactly the locked files")
+    pinned: dict[str, tuple[int, tuple[int, int], int, str]] = {}
+    try:
+        for name in EVIDENCE_FILES:
+            descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=version_fd)
+            metadata = os.fstat(descriptor)
+            if not stat.S_ISREG(metadata.st_mode):
+                os.close(descriptor)
+                fail("pinned evidence entry is not a regular file")
+            pinned[name] = (descriptor, identity(metadata), metadata.st_size, file_digest(descriptor))
+    except (OSError, UnsafePublication) as exc:
+        for descriptor, _, _, _ in pinned.values():
+            os.close(descriptor)
+        if isinstance(exc, UnsafePublication):
+            raise
+        fail(f"cannot pin evidence file: {exc.strerror}")
+    return pinned
+
+
+def verify_pinned_target(
+    root: PinnedDirectory,
+    scenario: str,
+    token: str,
+    canonical: bool,
+    expected_directory: tuple[int, int],
+    pinned: dict[str, tuple[int, tuple[int, int], int, str]],
+) -> None:
+    root.verify()
+    current_fd = open_version(root, scenario, token, canonical)
+    try:
+        if identity(os.fstat(current_fd)) != expected_directory:
+            fail("evidence gate target directory identity changed")
+        if sorted(os.listdir(current_fd)) != sorted(EVIDENCE_FILES):
+            fail("evidence gate target entries changed")
+        for name in EVIDENCE_FILES:
+            pinned_fd, expected_identity, expected_size, expected_digest = pinned[name]
+            pinned_metadata = os.fstat(pinned_fd)
+            named_metadata = os.stat(name, dir_fd=current_fd, follow_symlinks=False)
+            if (
+                identity(pinned_metadata) != expected_identity
+                or pinned_metadata.st_size != expected_size
+                or not stat.S_ISREG(named_metadata.st_mode)
+                or identity(named_metadata) != expected_identity
+                or named_metadata.st_size != expected_size
+                or file_digest(pinned_fd) != expected_digest
+            ):
+                fail("evidence gate file identity or content changed")
+            current_file = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=current_fd)
+            try:
+                current_metadata = os.fstat(current_file)
+                if (
+                    identity(current_metadata) != expected_identity
+                    or current_metadata.st_size != expected_size
+                    or file_digest(current_file) != expected_digest
+                ):
+                    fail("evidence gate reopened file changed")
+            finally:
+                os.close(current_file)
+    except OSError as exc:
+        fail(f"cannot verify pinned evidence target: {exc.strerror}")
+    finally:
+        os.close(current_fd)
+    root.verify()
+
+
+def copy_pinned_snapshot(
+    snapshot: str, pinned: dict[str, tuple[int, tuple[int, int], int, str]]
+) -> None:
+    for name in EVIDENCE_FILES:
+        descriptor, _, expected_size, expected_digest = pinned[name]
+        destination = os.path.join(snapshot, name)
+        digest = hashlib.sha256()
+        written = 0
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        with open(destination, "xb") as output:
+            while True:
+                chunk = os.read(descriptor, 1024 * 1024)
+                if not chunk:
+                    break
+                output.write(chunk)
+                digest.update(chunk)
+                written += len(chunk)
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        if written != expected_size or digest.hexdigest() != expected_digest:
+            fail("pinned evidence changed while creating gate snapshot")
+
+
+def run_gate(command: list[str], label: str) -> None:
+    try:
+        result = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+    except OSError as exc:
+        fail(f"cannot execute {label} gate: {exc.strerror}")
+    if result.returncode != 0:
+        fail(f"{label} gate rejected pinned evidence")
+
+
+def gate_evidence(
+    root_path: str,
+    scenario: str,
+    token: str,
+    canonical: bool,
+    evidence_contract: str,
+    secret_contract: str,
+) -> None:
+    root = PinnedDirectory(root_path)
+    version_fd = -1
+    pinned: dict[str, tuple[int, tuple[int, int], int, str]] = {}
+    try:
+        version_fd = open_version(root, scenario, token, canonical)
+        expected_directory = identity(os.fstat(version_fd))
+        pinned = pin_evidence_files(version_fd)
+        verify_pinned_target(root, scenario, token, canonical, expected_directory, pinned)
+        with tempfile.TemporaryDirectory(prefix="m6-evidence-gate-") as snapshot:
+            copy_pinned_snapshot(snapshot, pinned)
+            verify_pinned_target(root, scenario, token, canonical, expected_directory, pinned)
+            run_gate(["bash", evidence_contract, snapshot], "schema")
+            verify_pinned_target(root, scenario, token, canonical, expected_directory, pinned)
+            controlled_hold(
+                "canonical-between-gates",
+                "M6_RUNNER_GATE_HOLD_DIR",
+                "M6_RUNNER_GATE_HOLD_STAGE",
+            ) if canonical else None
+            verify_pinned_target(root, scenario, token, canonical, expected_directory, pinned)
+            run_gate(
+                ["bash", secret_contract, *[os.path.join(snapshot, name) for name in EVIDENCE_FILES]],
+                "secret",
+            )
+            verify_pinned_target(root, scenario, token, canonical, expected_directory, pinned)
+    finally:
+        for descriptor, _, _, _ in pinned.values():
+            os.close(descriptor)
+        if version_fd >= 0:
+            os.close(version_fd)
+        root.close()
 
 
 def ensure_contained(root: PinnedDirectory, child: PinnedDirectory) -> None:
@@ -310,6 +511,13 @@ def parser() -> argparse.ArgumentParser:
     verify = commands.add_parser("verify")
     verify.add_argument("root")
     verify.add_argument("scenario")
+    gate = commands.add_parser("gate")
+    gate.add_argument("root")
+    gate.add_argument("scenario")
+    gate.add_argument("token")
+    gate.add_argument("mode", choices=("version", "canonical"))
+    gate.add_argument("evidence_contract")
+    gate.add_argument("secret_contract")
     remove = commands.add_parser("remove")
     remove.add_argument("root")
     remove.add_argument("scenario")
@@ -326,6 +534,15 @@ def main() -> int:
             print(publish_canonical(args.root, args.scenario, args.token))
         elif args.command == "verify":
             print(verify_canonical(args.root, args.scenario))
+        elif args.command == "gate":
+            gate_evidence(
+                args.root,
+                args.scenario,
+                args.token,
+                args.mode == "canonical",
+                args.evidence_contract,
+                args.secret_contract,
+            )
         else:
             remove_canonical(args.root, args.scenario, args.token)
         return 0

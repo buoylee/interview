@@ -232,10 +232,10 @@ test ! -e "$evidence/duplicate-event"
 test -z "$(find "$evidence/.runs/duplicate-event" -mindepth 1 -maxdepth 1 -name '.incoming.*' -print -quit)"
 
 # Publication is not complete after validating only the private/staged bundle:
-# both gates must run through the actual canonical symlink, bracketed by target
-# identity verification.
-test "$(grep -Fc 'publish-evidence.py" verify' "$runner")" -eq 2
-grep -Fq 'evidence-contract.sh" "$canonical"' "$runner"
-grep -Fq 'no-evidence-secrets.sh" "$canonical"' "$runner"
+# both version and canonical gates must use the publisher's pinned-FD gate.
+test "$(grep -Fc 'publish-evidence.py" gate' "$runner")" -eq 2
+grep -Fq '"$evidence_root" "$scenario_id" "$token" canonical' "$runner"
+grep -Fq 'pin_evidence_files(version_fd)' "$root/scenarios/scripts/publish-evidence.py"
+grep -Fq 'verify_pinned_target(root, scenario, token, canonical' "$root/scenarios/scripts/publish-evidence.py"
 
 printf 'M6 Task 3 fix round 2 runner contract passed\n'

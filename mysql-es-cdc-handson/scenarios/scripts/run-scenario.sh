@@ -18,46 +18,92 @@ owned_dir() {
   test "$physical" = "$expected" || die_path "$path"
 }
 
-evidence_root="${M6_EVIDENCE_ROOT:-$root/evidence}"
-test -d "$evidence_root" && test ! -L "$evidence_root" || die_path "$evidence_root"
-evidence_root="$(cd "$evidence_root" && pwd -P)"
-owned_dir "$evidence_root/.runs" "$evidence_root"
-owned_dir "$evidence_root/.locks" "$evidence_root"
-owned_dir "$evidence_root/.runs/$scenario_id" "$evidence_root/.runs"
-runs_dir="$evidence_root/.runs/$scenario_id"
-locks_dir="$evidence_root/.locks"
-canonical="$evidence_root/$scenario_id"
+provisional_uuid() {
+  local first second third fourth last
+  first=$(((RANDOM << 17) ^ (RANDOM << 2) ^ ($$ & 0x1ffff)))
+  second=$((RANDOM & 0xffff))
+  third=$((0x4000 | (RANDOM & 0x0fff)))
+  fourth=$((0x8000 | (RANDOM & 0x3fff)))
+  last=$(((RANDOM << 30) | (RANDOM << 15) | RANDOM))
+  printf '%08x-%04x-%04x-%04x-%012x\n' "$first" "$second" "$third" "$fourth" "$last"
+}
 
-if test -L "$canonical"; then
-  target="$(readlink "$canonical")"
-  case "$target" in .runs/"$scenario_id"/*) ;; *) die_path "$canonical" ;; esac
-  resolved="$(cd "$(dirname "$canonical")" && cd "$(dirname "$target")" && pwd -P)/$(basename "$target")"
-  case "$resolved" in "$runs_dir"/*) ;; *) die_path "$canonical" ;; esac
-  test -d "$resolved" && test ! -L "$resolved" || die_path "$canonical"
-elif test -e "$canonical"; then
-  die_path "$canonical"
-fi
+test_hooks_allowed() {
+  test "${M6_RUNNER_EXECUTION_MODE:-fixture}" = fixture &&
+    test -n "${M6_RUNNER_FIXTURE:-}" && test -f "${M6_RUNNER_FIXTURE:-}"
+}
 
-lock="$locks_dir/$scenario_id"
-test ! -L "$lock" || die_path "$lock"
-mkdir "$lock" 2>/dev/null || { echo 'scenario already owned by another run' >&2; exit 75; }
-run_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
-token="$run_id";started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-private="$(mktemp -d "$evidence_root/.tmp.$scenario_id.XXXXXX")"
-test ! -L "$private" && test "$(cd "$private/.." && pwd -P)" = "$evidence_root" || { rmdir "$lock"; die_path "$private"; }
-bundle="$private/bundle";mkdir "$bundle"
-observations="$private/observations.json";cleanup_done=false;finalized=false;recovery_required=false
-version="$runs_dir/$token"
+setup_runner() {
+  local generated_run_id
+  evidence_root="${M6_EVIDENCE_ROOT:-$root/evidence}"
+  test -d "$evidence_root" && test ! -L "$evidence_root" || die_path "$evidence_root"
+  evidence_root="$(cd "$evidence_root" && pwd -P)"
+  owned_dir "$evidence_root/.runs" "$evidence_root"
+  owned_dir "$evidence_root/.locks" "$evidence_root"
+  owned_dir "$evidence_root/.runs/$scenario_id" "$evidence_root/.runs"
+  runs_dir="$evidence_root/.runs/$scenario_id"
+  locks_dir="$evidence_root/.locks"
+  canonical="$evidence_root/$scenario_id"
+
+  if test -L "$canonical"; then
+    target="$(readlink "$canonical")"
+    case "$target" in .runs/"$scenario_id"/*) ;; *) die_path "$canonical" ;; esac
+    resolved="$(cd "$(dirname "$canonical")" && cd "$(dirname "$target")" && pwd -P)/$(basename "$target")"
+    case "$resolved" in "$runs_dir"/*) ;; *) die_path "$canonical" ;; esac
+    test -d "$resolved" && test ! -L "$resolved" || die_path "$canonical"
+  elif test -e "$canonical"; then
+    die_path "$canonical"
+  fi
+
+  run_id="$(provisional_uuid)";token="$run_id"
+  started_at=1970-01-01T00:00:00Z
+  private=;bundle=;observations=;version="$runs_dir/$token"
+  cleanup_done=false;finalize_state=idle;finalize_rc=1;recovery_required=false
+  signal_exit_code=0;pending_signal_failure=;test_hook_forbidden=false
+  lock="$locks_dir/$scenario_id"
+  test ! -L "$lock" || die_path "$lock"
+  mkdir "$lock" 2>/dev/null || { echo 'scenario already owned by another run' >&2; exit 75; }
+
+  # From this point onward every signal has enough safe state to create one
+  # fail-closed attempt and release this run's lock.
+  trap cleanup EXIT
+  trap 'handle_signal 130' INT
+  trap 'handle_signal 143' TERM
+
+  unset M6_RUNNER_INTERNAL_TEST_HOOKS
+  if test_hooks_allowed; then
+    export M6_RUNNER_INTERNAL_TEST_HOOKS=fixture-fail-v1
+  elif test -n "${M6_RUNNER_HOLD_STAGE_DIR:-}${M6_RUNNER_FINALIZE_HOLD_DIR:-}${M6_RUNNER_PUBLISH_HOLD_DIR:-}${M6_RUNNER_GATE_HOLD_DIR:-}"; then
+    test_hook_forbidden=true
+  fi
+
+  generated_run_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+  if jq -en --arg value "$generated_run_id" '$value|test("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")' >/dev/null; then
+    run_id="$generated_run_id";token="$run_id";version="$runs_dir/$token"
+  else
+    fail_and_finalize 64 runner_generated_run_id_invalid
+  fi
+  started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  ensure_private
+}
+
+ensure_private() {
+  test -z "$private" || return 0
+  private="$(mktemp -d "$evidence_root/.tmp.$scenario_id.XXXXXX")"
+  test ! -L "$private" && test "$(cd "$private/.." && pwd -P)" = "$evidence_root" || die_path "$private"
+  bundle="$private/bundle";mkdir "$bundle"
+  observations="$private/observations.json"
+}
 
 cleanup() {
   local rc=$?;trap - EXIT INT TERM
-  if test -d "$private" && test ! -L "$private" && test "$(cd "$private/.." && pwd -P)" = "$evidence_root"; then rm -rf "$private"; fi
-  if test -d "$lock" && test ! -L "$lock" && test "$(cd "$lock/.." && pwd -P)" = "$locks_dir"; then rmdir "$lock" 2>/dev/null || true; fi
+  if test -n "${private:-}" && test -d "$private" && test ! -L "$private" && test "$(cd "$private/.." && pwd -P)" = "$evidence_root"; then rm -rf "$private"; fi
+  if test -n "${lock:-}" && test -d "$lock" && test ! -L "$lock" && test "$(cd "$lock/.." && pwd -P)" = "$locks_dir"; then rmdir "$lock" 2>/dev/null || true; fi
   exit "$rc"
 }
-trap cleanup EXIT
 
 fallback_observations() {
+  ensure_private
   jq -n --arg run "$run_id" --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{
     consistency_preconditions:[{name:"runner-finalizer",satisfied:false,observed_at:$now}],source_watermark:0,
     target_watermarks:{mysql_revision:0,elasticsearch_revision:0,passed:false},watermark_run_id:$run,applied_offsets:{"0":0,"1":0,"2":0},
@@ -69,54 +115,48 @@ fallback_observations() {
 }
 
 add_failure() {
-  local failure="$1" tmp="$private/observations.next"
+  local failure="$1" tmp
+  ensure_private;tmp="$private/observations.next"
   test -s "$observations" && jq -e 'type=="object"' "$observations" >/dev/null 2>&1 || fallback_observations
   jq --arg failure "$failure" '.runner_failures=((.runner_failures//[])+[$failure]|unique)' "$observations" >"$tmp" && mv "$tmp" "$observations"
 }
 
 safe_commands() {
-  jq -e 'def safe:
-    type=="array" and all(.[];
-      (keys_unsorted|all(.=="sequence" or .=="kind" or .=="target" or .=="method" or .=="path" or .=="body_sha256" or .=="fixture_path" or .=="fixture_sha256" or .=="started_at" or .=="finished_at" or .=="exit_code")) and
-      (.sequence|type)=="number" and (.kind|IN("HTTP","SQL_FIXTURE","CONTROL")) and (.target|type)=="string" and
-      (.method|type)=="string" and (.path|type)=="string" and (.path|startswith("/")) and (.path|contains("..")|not) and
-      (.exit_code|type)=="number" and ((has("body_sha256")|not) or (.body_sha256|test("^[a-f0-9]{64}$"))) and
-      ((has("fixture_path")|not) or (((.fixture_path|startswith("/"))|not) and (.fixture_path|contains("..")|not))) and
-      ((has("fixture_sha256")|not) or (.fixture_sha256|test("^[a-f0-9]{64}$"))));
-    type=="object" and (.commands|safe) and (.recovery_commands|safe)' "$observations" >/dev/null
+  bash "$root/scenarios/scripts/validate-runner-json.sh" commands "$observations"
 }
 
 publish_attempt() {
-  local result="$1" canonical_status target_before target_after
+  local result="$1" canonical_status gate_rc
   owned_dir "$runs_dir" "$evidence_root/.runs"
   python3 "$root/scenarios/scripts/publish-evidence.py" version \
     "$evidence_root" "$bundle" "$runs_dir" "$token" || return $?
-  bash "$root/tests/contracts/evidence-contract.sh" "$version" >/dev/null || return 76
-  bash "$root/tests/contracts/no-evidence-secrets.sh" "$version"/*.json >/dev/null || return 77
+  python3 "$root/scenarios/scripts/publish-evidence.py" gate \
+    "$evidence_root" "$scenario_id" "$token" version \
+    "$root/tests/contracts/evidence-contract.sh" \
+    "$root/tests/contracts/no-evidence-secrets.sh" || return $?
   test "${M6_RUNNER_FAIL_STAGE:-}" != before-replace || return 86
   canonical_status="$(python3 "$root/scenarios/scripts/publish-evidence.py" canonical \
     "$evidence_root" "$scenario_id" "$token")" || return $?
-  target_before="$(python3 "$root/scenarios/scripts/publish-evidence.py" verify \
-    "$evidence_root" "$scenario_id")" || return $?
-  if ! bash "$root/tests/contracts/evidence-contract.sh" "$canonical" >/dev/null; then
+  if python3 "$root/scenarios/scripts/publish-evidence.py" gate \
+    "$evidence_root" "$scenario_id" "$token" canonical \
+    "$root/tests/contracts/evidence-contract.sh" \
+    "$root/tests/contracts/no-evidence-secrets.sh"; then
+    gate_rc=0
+  else
+    gate_rc=$?
+  fi
+  if test "$gate_rc" -ne 0; then
     test "$canonical_status" != published || python3 "$root/scenarios/scripts/publish-evidence.py" remove \
       "$evidence_root" "$scenario_id" "$token" >/dev/null 2>&1 || true
-    return 76
+    return "$gate_rc"
   fi
-  if ! bash "$root/tests/contracts/no-evidence-secrets.sh" "$canonical"/*.json >/dev/null; then
-    test "$canonical_status" != published || python3 "$root/scenarios/scripts/publish-evidence.py" remove \
-      "$evidence_root" "$scenario_id" "$token" >/dev/null 2>&1 || true
-    return 77
-  fi
-  target_after="$(python3 "$root/scenarios/scripts/publish-evidence.py" verify \
-    "$evidence_root" "$scenario_id")" || return $?
-  test "$target_after" = "$target_before" || return 74
 }
 
-finalize() {
+finalize_once() {
   local terminal_rc=1 result_rc=1 recovery_rc=0 result=FAIL terminal recovery_output external_clear=false
-  $finalized && return 1;finalized=true
   test -s "$observations" || fallback_observations
+  if $test_hook_forbidden; then add_failure runner_test_hook_forbidden;test_hook_forbidden=false;fi
+  consume_pending_signal
   if $recovery_required; then
     recovery_output="$private/recovery-output.json"
     if bash "$root/scenarios/scripts/dispatch-recovery.sh" "$scenario_id" "$private" "$token" >"$recovery_output"; then
@@ -125,12 +165,8 @@ finalize() {
       recovery_rc=$?
     fi
     test ! -e "$private/fault-status.json" && external_clear=true
-    if ! jq -e --arg scenario "$scenario_id" --arg token "$token" --argjson external_clear "$external_clear" '
-      (keys_unsorted|sort) == ["cleanup_actions","commands","external_status","owner_token","recovery_action_observed","scenario_id"] and
-      .scenario_id==$scenario and .owner_token==$token and
-      .recovery_action_observed==$external_clear and .external_status.observed==$external_clear and
-      (.cleanup_actions|type)=="array" and (.commands|type)=="array"
-    ' "$recovery_output" >/dev/null 2>&1; then
+    if ! bash "$root/scenarios/scripts/validate-runner-json.sh" recovery \
+      "$scenario_id" "$token" "$external_clear" "$recovery_rc" "$recovery_output"; then
       recovery_rc=73
       jq -n --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{
         recovery_action_observed:false,
@@ -166,17 +202,73 @@ finalize() {
   test "$terminal_rc" -eq 0 && test "$result_rc" -eq 0 && test "$recovery_rc" -eq 0
 }
 
-fail_and_finalize() { local code="$1" failure="$2";add_failure "$failure";set +e;finalize;set -e;exit "$code"; }
-handle_signal() { local code="$1";trap - INT TERM;fail_and_finalize "$code" "signal_$code"; }
+consume_pending_signal() {
+  local failure="${pending_signal_failure:-}"
+  test -n "$failure" || return 0
+  pending_signal_failure=
+  add_failure "$failure"
+}
+
+finalizer_hold() {
+  local hold_dir="${M6_RUNNER_FINALIZE_HOLD_DIR:-}"
+  test -n "$hold_dir" || return 0
+  test_hooks_allowed || { test_hook_forbidden=true;return 0; }
+  test -d "$hold_dir" && test ! -L "$hold_dir" || { add_failure runner_hold_path_unsafe;return 0; }
+  touch "$hold_dir/finalizer-entered.ready"
+  while test ! -f "$hold_dir/finalizer-entered.release"; do :; done
+}
+
+finalize() {
+  local rc
+  case "$finalize_state" in
+    done) return "$finalize_rc" ;;
+    finalizing) return 0 ;;
+  esac
+  finalize_state=finalizing
+  ensure_private
+  finalizer_hold
+  consume_pending_signal
+  finalize_once
+  rc=$?
+  consume_pending_signal
+  finalize_rc="$rc"
+  finalize_state=done
+  return "$finalize_rc"
+}
+
+fail_and_finalize() {
+  local code="$1" failure="$2"
+  add_failure "$failure"
+  set +e
+  finalize
+  set -e
+  exit "$code"
+}
+
+handle_signal() {
+  local code="$1"
+  signal_exit_code="$code"
+  pending_signal_failure="signal_$code"
+  case "$finalize_state" in
+    finalizing) return 0 ;;
+    done) exit "$signal_exit_code" ;;
+  esac
+  set +e
+  finalize
+  set -e
+  exit "$signal_exit_code"
+}
+
 hold_stage() {
   local stage="$1" hold_dir="${M6_RUNNER_HOLD_STAGE_DIR:-}"
   test -n "$hold_dir" || return 0
+  test_hooks_allowed || { test_hook_forbidden=true;return 0; }
   test -d "$hold_dir" && test ! -L "$hold_dir" || fail_and_finalize 74 runner_hold_path_unsafe
   touch "$hold_dir/$stage.ready"
   while test ! -f "$hold_dir/$stage.release"; do :; done
 }
-trap 'handle_signal 130' INT;trap 'handle_signal 143' TERM
 
+setup_runner
 hold_stage after-finalizer
 requested_run_id="${M6_RUNNER_RUN_ID:-}"
 if test -n "$requested_run_id"; then
@@ -219,4 +311,9 @@ dispatch_rc=$?
 set -e
 test "$dispatch_rc" -eq 0 || fail_and_finalize 73 runner_dispatch_failure
 if test -n "${M6_RUNNER_HOLD_FILE:-}";then touch "$M6_RUNNER_HOLD_FILE.ready";while test ! -f "$M6_RUNNER_HOLD_FILE.release";do :;done;fi
+set +e
 finalize
+final_rc=$?
+set -e
+test "$signal_exit_code" -eq 0 || exit "$signal_exit_code"
+exit "$final_rc"

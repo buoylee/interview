@@ -19,6 +19,7 @@ if test -n "${M6_RUNNER_FIXTURE:-}";then
   status_clear=false
   test ! -e "$run_dir/fault-status.json" && status_clear=true
   finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  output="$run_dir/recovery-dispatch.json"
   jq -n \
     --arg scenario "$scenario_id" \
     --arg token "$token" \
@@ -31,13 +32,32 @@ if test -n "${M6_RUNNER_FIXTURE:-}";then
       scenario_id:$scenario,
       owner_token:$token,
       recovery_action_observed:$status_clear,
-      external_status:{resource:"fixture-fault",active:false,observed:$status_clear},
+      external_status:{resource:"fixture-fault",active:($status_clear|not),observed:$status_clear},
       cleanup_actions:[{name:"dispatch-owned-fixture-fault",success:$success,finished_at:$finished}],
       commands:[{
         sequence:1,kind:"CONTROL",target:"fixture-fault-status",method:"DELETE",
         path:"/owned/fixture-fault",started_at:$started,finished_at:$finished,exit_code:$exit_code
       }]
-    }'
+    }' >"$output"
+  if test -n "${M6_RUNNER_RECOVERY_OUTPUT_MODE:-}"; then
+    test "${M6_RUNNER_INTERNAL_TEST_HOOKS:-}" = fixture-fail-v1 || {
+      echo 'recovery output fixture hook is forbidden' >&2
+      exit 73
+    }
+    case "$M6_RUNNER_RECOVERY_OUTPUT_MODE" in
+      top-extra) jq '.unexpected=true' "$output" >"$output.next" ;;
+      external-extra) jq '.external_status.extra=true' "$output" >"$output.next" ;;
+      command-shell) jq '.commands[0].shell="printf forbidden"' "$output" >"$output.next" ;;
+      command-auth) jq '.commands[0][("author"+"ization")]="forbidden"' "$output" >"$output.next" ;;
+      command-path) jq '.commands[0].path="/../escape"' "$output" >"$output.next" ;;
+      success-exit-mismatch) jq '.commands[0].exit_code=73' "$output" >"$output.next" ;;
+      status-mismatch) jq '.external_status.observed=false' "$output" >"$output.next" ;;
+      cleanup-mismatch) jq '.cleanup_actions[0].success=false' "$output" >"$output.next" ;;
+      *) echo 'unknown recovery output fixture mode' >&2;exit 73 ;;
+    esac
+    mv "$output.next" "$output"
+  fi
+  cat "$output"
   exit "$exit_code"
 fi
 echo "Task 3 has no real recovery executor for $scenario_id" >&2;exit 69
