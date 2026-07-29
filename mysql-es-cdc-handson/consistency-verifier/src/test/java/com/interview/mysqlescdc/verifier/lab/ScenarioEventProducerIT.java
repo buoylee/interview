@@ -19,6 +19,7 @@ class ScenarioEventProducerIT {
     @Test void sends_to_exact_partition_with_null_key_and_returns_broker_offset() {
         var producer = new ScenarioEventProducer("localhost:29092", true);
         var ack = producer.send(new ScenarioEventRequest("product-search-revisions", 1, PAYLOAD));
+        assertThat(ack.topic()).isEqualTo("product-search-revisions");
         assertThat(ack.partition()).isEqualTo(1);
         try (var consumer = new KafkaConsumer<String,String>(consumerProperties())) {
             var tp = new TopicPartition("product-search-revisions",1);consumer.assign(List.of(tp));consumer.seek(tp,ack.offset());

@@ -23,9 +23,12 @@ jq -n --arg project "$project" '{purpose:"m6-dedicated-retention",compose_projec
 "${compose[@]}" --profile m0-tools up -d --build
 "${compose[@]}" exec -T consistency-verifier sh -c 'until curl -fsS http://127.0.0.1:8083/actuator/health >/dev/null;do sleep 1;done'
 payload='{"database":"product_catalog","table":"product_search_revision","isDdl":false,"type":"UPDATE","data":[{"product_id":"900001","revision":"1","active":"1"}]}'
-seed_ack="$tmp/seed-ack.json";broker_ack="$("${compose[@]}" exec -T consistency-verifier curl -fsS -X POST http://127.0.0.1:8083/internal/lab/scenario-events -H 'Content-Type: application/json' -d "$(jq -cn --arg payload "$payload" '{topic:"product-search-revisions",partition:0,payload:$payload}')")"
-jq -n --argjson ack "$broker_ack" --argjson event "$payload" '{topic:"product-search-revisions",partition:$ack.partition,offset:$ack.offset,injected_rows:($event.data|length)}' >"$seed_ack"
-jq -e '.topic=="product-search-revisions" and .partition==0 and (.offset|type)=="number" and .offset>=0 and .injected_rows==1' "$seed_ack" >/dev/null
+seed_ack="$tmp/seed-ack.json";seed_record="$tmp/seed-record.json"
+"${compose[@]}" exec -T consistency-verifier curl -fsS -X POST http://127.0.0.1:8083/internal/lab/scenario-events -H 'Content-Type: application/json' -d "$(jq -cn --arg payload "$payload" '{topic:"product-search-revisions",partition:0,payload:$payload}')" >"$seed_ack"
+jq -e 'type=="object" and keys==["offset","partition","topic"] and .topic=="product-search-revisions" and .partition==0 and (.offset|type)=="number" and (.offset|floor)==.offset and .offset>=0' "$seed_ack" >/dev/null
+seed_topic="$(jq -r .topic "$seed_ack")";seed_partition="$(jq -r .partition "$seed_ack")";seed_offset="$(jq -r .offset "$seed_ack")"
+"${compose[@]}" exec -T kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka:9092 --topic "$seed_topic" --partition "$seed_partition" --offset "$seed_offset" --max-messages 1 --timeout-ms 10000 >"$seed_record"
+bash "$root/scenarios/scripts/assert-retention-seed.sh" "$seed_ack" "$seed_record"
 "$root/scenarios/scripts/wait-condition.sh" 'consumer commits seed event' 60 1 bash -c 'docker compose -p "$1" -f "$2" exec -T kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server kafka:9092 --group product-search-sync-v1 --describe 2>/dev/null|awk '\''$2=="product-search-revisions"&&$4~/^[0-9]+$/{found=1}END{exit !found}'\''' _ "$project" "$root/infra/compose.yaml"
 
 snapshot(){
