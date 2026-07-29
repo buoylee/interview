@@ -17,11 +17,18 @@ PATTERNS = (
     ("bearer-value", re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")),
     ("canal-credential", re.compile(r"(?i)\bcanalpass\b")),
     ("root-basic-auth", re.compile(r"(?i)\broot:root\b")),
+    ("root-password-literal", re.compile(r"(?i)\brootpass\b")),
+)
+PWD_ASSIGNMENT = re.compile(
+    r"(?i)\b(?:MYSQL_PWD|[A-Z][A-Z0-9_]*_PWD)\s*=\s*(['\"]?)([^'\"\s;,]+)"
 )
 BASE64_TOKEN = re.compile(r"(?<![A-Za-z0-9+/=])[A-Za-z0-9+/]{16,}={0,2}(?![A-Za-z0-9+/=])")
 
 
 def first_pattern(text: str):
+    for match in PWD_ASSIGNMENT.finditer(text):
+        if not match.group(2).startswith("$"):
+            return "pwd-env-literal"
     for name, pattern in PATTERNS:
         if pattern.search(text):
             return name

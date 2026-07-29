@@ -1,15 +1,57 @@
 #!/usr/bin/env bash
 set -euo pipefail
-root="$(cd "$(dirname "$0")/../.." && pwd)";case "${COMPOSE_PROJECT_NAME:-}" in *m6*) ;;*) echo 'retention gap contract requires isolated M6 COMPOSE_PROJECT_NAME' >&2;exit 64;;esac
-tmp="$(mktemp -d)";trap 'rm -rf "$tmp"' EXIT;export MYSQL_PWD="${MYSQL_PWD:?MYSQL_PWD required}" SCENARIO_CLEANUP_FILE="$tmp/cleanup"
-export SCENARIO_STATE_DIR="$tmp/mysql";mkdir -p "$SCENARIO_STATE_DIR";bash "$root/scenarios/scripts/fault-retention.sh" apply mysql >"$tmp/mysql-result.json"
+root="$(cd "$(dirname "$0")/../.." && pwd)";tmp="$(mktemp -d)";project="mysql-es-cdc-handson-m6-retention-$$"
+case "$project" in mysql-es-cdc-handson-m6-?*) ;;*) exit 64;;esac
+override="$tmp/no-host-ports.yaml";marker="$tmp/provenance.json";cleanup="$tmp/cleanup"
+cat >"$override" <<'YAML'
+services:
+  mysql: {ports: !reset []}
+  kafka: {ports: !reset []}
+  elasticsearch: {ports: !reset []}
+  toxiproxy: {ports: !reset []}
+  canal: {ports: !reset []}
+  product-service: {ports: !reset []}
+  search-sync-consumer: {ports: !reset []}
+  consistency-verifier: {ports: !reset []}
+YAML
+compose=(docker compose -p "$project" -f "$root/infra/compose.yaml" -f "$override")
+cleanup_project(){ "${compose[@]}" --profile m0-tools down --volumes --remove-orphans >/dev/null 2>&1||true;rm -rf "$tmp"; }
+trap cleanup_project EXIT INT TERM
+export COMPOSE_PROJECT_NAME="$project" MYSQL_PWD="${MYSQL_PWD:?MYSQL_PWD required}" MYSQL_USER=root
+export M6_RETENTION_DESTRUCTIVE_ACK=I_UNDERSTAND_M6_DEDICATED_RETENTION_DESTROYS_LOGS SCENARIO_PROVENANCE_FILE="$marker" SCENARIO_CLEANUP_FILE="$cleanup"
+jq -n --arg project "$project" '{purpose:"m6-dedicated-retention",compose_project:$project}' >"$marker"
+"${compose[@]}" --profile m0-tools up -d --build
+"${compose[@]}" exec -T consistency-verifier sh -c 'until curl -fsS http://127.0.0.1:8083/actuator/health >/dev/null;do sleep 1;done'
+payload='{"database":"product_catalog","table":"product_search_revision","isDdl":false,"type":"UPDATE","data":[{"product_id":"900001","revision":"0","active":"1"}]}'
+"${compose[@]}" exec -T consistency-verifier curl -fsS -X POST http://127.0.0.1:8083/internal/lab/scenario-events -H 'Content-Type: application/json' -d "$(jq -cn --arg payload "$payload" '{topic:"product-search-revisions",partition:0,payload:$payload}')" >/dev/null
+"$root/scenarios/scripts/wait-condition.sh" 'consumer commits seed event' 60 1 bash -c 'docker compose -p "$1" -f "$2" exec -T kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server kafka:9092 --group product-search-sync-v1 --describe 2>/dev/null|awk '\''$2=="product-search-revisions"&&$4~/^[0-9]+$/{found=1}END{exit !found}'\''' _ "$project" "$root/infra/compose.yaml"
+
+snapshot(){
+  "${compose[@]}" exec -T -e MYSQL_PWD="$MYSQL_PWD" mysql mysql -N -B -uroot -e 'SELECT @@GLOBAL.binlog_expire_logs_seconds;SHOW BINARY LOGS'|sha256sum
+  "${compose[@]}" exec -T kafka /opt/kafka/bin/kafka-configs.sh --bootstrap-server kafka:9092 --entity-type topics --entity-name product-search-revisions --describe|sha256sum
+  "${compose[@]}" exec -T kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server kafka:9092 --group product-search-sync-v1 --describe 2>/dev/null|sha256sum
+  "${compose[@]}" ps --format json|jq -sS '[.[]|{Service,State}]'|sha256sum
+}
+before_negative="$(snapshot)"
+set +e
+M6_RETENTION_DESTRUCTIVE_ACK= SCENARIO_STATE_DIR="$tmp/noack" bash "$root/scenarios/scripts/fault-retention.sh" apply mysql >/dev/null 2>&1;noack_rc=$?
+SCENARIO_PROVENANCE_FILE="$tmp/missing" SCENARIO_STATE_DIR="$tmp/nomarker" bash "$root/scenarios/scripts/fault-retention.sh" apply mysql >/dev/null 2>&1;marker_rc=$?
+COMPOSE_PROJECT_NAME=shared-project SCENARIO_STATE_DIR="$tmp/wrong-project" bash "$root/scenarios/scripts/fault-retention.sh" apply mysql >/dev/null 2>&1;project_rc=$?
+set -e
+test "$noack_rc" -eq 64;test "$marker_rc" -eq 64;test "$project_rc" -eq 64
+test ! -e "$tmp/noack";test ! -e "$tmp/nomarker";test ! -e "$tmp/wrong-project";test ! -e "$cleanup"
+test "$(snapshot)" = "$before_negative"
+
+export SCENARIO_STATE_DIR="$tmp/mysql";bash "$root/scenarios/scripts/fault-retention.sh" apply mysql >"$tmp/mysql-result.json"
 jq -e '.recorded_present==false' "$tmp/mysql-result.json" >/dev/null
 jq -e '. as $s|.action=="safe-old-file-purge-confirmed" and .before_files==(.before_files|sort) and .after_files==(.after_files|sort) and (.before_files|index($s.recorded_old))!=null and (.after_files|index($s.recorded_old))==null and .current_after!=.recorded_old' "$SCENARIO_STATE_DIR/mysql-retention.json" >/dev/null
-test "$(jq -r .expire_before "$SCENARIO_STATE_DIR/mysql-retention.json")" = "$(docker compose -f "$root/infra/compose.yaml" exec -T -e MYSQL_PWD="$MYSQL_PWD" mysql mysql -N -B -uroot -e 'SELECT @@GLOBAL.binlog_expire_logs_seconds')"
-config_before="$(docker compose -f "$root/infra/compose.yaml" exec -T kafka /opt/kafka/bin/kafka-configs.sh --bootstrap-server kafka:9092 --entity-type topics --entity-name product-search-revisions --describe|sed 's/^.*Configs: //')"
-export SCENARIO_STATE_DIR="$tmp/kafka";mkdir -p "$SCENARIO_STATE_DIR";bash "$root/scenarios/scripts/fault-retention.sh" apply kafka >"$tmp/kafka-result.json"
+
+config_before="$("${compose[@]}" exec -T kafka /opt/kafka/bin/kafka-configs.sh --bootstrap-server kafka:9092 --entity-type topics --entity-name product-search-revisions --describe|sed 's/^.*Configs: //')"
+export SCENARIO_STATE_DIR="$tmp/kafka";bash "$root/scenarios/scripts/fault-retention.sh" apply kafka >"$tmp/kafka-result.json"
 jq -e '.gap==true' "$tmp/kafka-result.json" >/dev/null
 jq -e '. as $s|.action=="delete-records-confirmed" and (.after.beginning[($s.partition|tostring)]>$s.captured_committed)' "$SCENARIO_STATE_DIR/kafka-retention.json" >/dev/null
-config_after="$(docker compose -f "$root/infra/compose.yaml" exec -T kafka /opt/kafka/bin/kafka-configs.sh --bootstrap-server kafka:9092 --entity-type topics --entity-name product-search-revisions --describe|sed 's/^.*Configs: //')";test "$config_after" = "$config_before"
+config_after="$("${compose[@]}" exec -T kafka /opt/kafka/bin/kafka-configs.sh --bootstrap-server kafka:9092 --entity-type topics --entity-name product-search-revisions --describe|sed 's/^.*Configs: //')";test "$config_after" = "$config_before"
+bash "$root/tests/contracts/no-evidence-secrets.sh" "$cleanup" >/dev/null
+! grep -Eq 'MYSQL_PWD|_PWD|rootpass|eval' "$cleanup"
 bash "$root/scenarios/scripts/fault-retention.sh" remove kafka >/dev/null
-printf 'M6 real isolated retention gaps contract passed\n'
+printf 'M6 real dedicated retention gaps contract passed\n'

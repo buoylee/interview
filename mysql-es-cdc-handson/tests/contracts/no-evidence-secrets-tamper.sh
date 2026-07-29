@@ -23,6 +23,21 @@ for fixture in "$fixtures"/reject-*; do
 done
 for fixture in "$fixtures"/allow-*; do bash "$scanner" "$fixture" >/dev/null; done
 
+for encoded_case in \
+  'MYSQL_PWD=value-do-not-echo' \
+  'DATABASE_PWD=value-do-not-echo' \
+  'rootpass' \
+  'MYSQL_PWD%3Dvalue-do-not-echo' \
+  'TVlTUUxfUFdEPXZhbHVlLWRvLW5vdC1lY2hv'; do
+  diagnostic="$tmp/encoded-$(printf '%s' "$encoded_case" | cksum | cut -d' ' -f1).txt"
+  if printf '%s\n' "$encoded_case" | python3 "$project_root/tests/contracts/scan-evidence-secrets.py" --stdin fixture worktree >"$diagnostic" 2>&1; then
+    echo 'credential encoding fixture accepted' >&2
+    exit 1
+  fi
+  test "$(wc -c <"$diagnostic" | tr -d ' ')" -le 512
+  ! grep -F 'value-do-not-echo' "$diagnostic" >/dev/null
+done
+
 repo="$tmp/repo"
 mkdir -p "$repo/evidence/test-scenario"
 git -C "$repo" init -q

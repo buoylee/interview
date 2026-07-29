@@ -38,21 +38,36 @@ fi
 mysql_image="mysql:8.4.8"
 container="m0-product-it-$RANDOM-$$"
 dependency_tree="$(mktemp "${TMPDIR:-/tmp}/m0-product-dependencies.XXXXXX")"
+owns_container=true
 
 cleanup() {
-  docker rm -f "$container" >/dev/null 2>&1 || true
+  $owns_container && docker rm -f "$container" >/dev/null 2>&1 || true
   rm -f "$dependency_tree"
 }
 trap cleanup EXIT
 
-docker run -d --name "$container" \
-  -e MYSQL_ROOT_PASSWORD=rootpass \
-  -e MYSQL_DATABASE=product_catalog \
-  -e MYSQL_USER=product \
-  -e MYSQL_PASSWORD=productpass \
-  -p 127.0.0.1::3306 \
-  -v "$PWD/infra/mysql/init:/docker-entrypoint-initdb.d:ro" \
-  "$mysql_image" >/dev/null
+if [ "${PRODUCT_IT_REUSE_COMPOSE_MYSQL:-false}" = true ]; then
+  case "${COMPOSE_PROJECT_NAME:-}" in mysql-es-cdc-handson-m6-verify-?*) ;;*) echo 'reuse requires dedicated m6 verify project' >&2;exit 64;;esac
+  container="$(docker compose -f infra/compose.yaml ps -q mysql)"
+  test -n "$container"
+  test "$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "$container")" = "$COMPOSE_PROJECT_NAME"
+  test "$(docker inspect -f '{{.Config.Image}}' "$container")" = "$mysql_image"
+  test "$(docker inspect -f '{{.State.Health.Status}}' "$container")" = healthy
+  marker="${SCENARIO_PROVENANCE_FILE:?reuse requires project provenance}"
+  jq -e --arg project "$COMPOSE_PROJECT_NAME" '.purpose=="m6-dedicated-retention" and .compose_project==$project' "$marker" >/dev/null
+  schema_identity="$(docker exec -e MYSQL_PWD="${MYSQL_PWD:?MYSQL_PWD required}" "$container" mysql -N -B -uroot -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='product_catalog' AND table_name IN ('products','product_search_revision');")"
+  test "$schema_identity" -eq 2
+  owns_container=false
+else
+  docker run -d --name "$container" \
+    -e MYSQL_ROOT_PASSWORD="${MYSQL_PWD:?MYSQL_PWD required}" \
+    -e MYSQL_DATABASE=product_catalog \
+    -e MYSQL_USER=product \
+    -e MYSQL_PASSWORD=productpass \
+    -p 127.0.0.1::3306 \
+    -v "$PWD/infra/mysql/init:/docker-entrypoint-initdb.d:ro" \
+    "$mysql_image" >/dev/null
+fi
 
 deadline=$((SECONDS + 90))
 until docker exec "$container" mysqladmin ping -h 127.0.0.1 -uproduct -pproductpass --silent >/dev/null 2>&1; do
