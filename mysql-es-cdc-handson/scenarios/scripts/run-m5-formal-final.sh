@@ -18,7 +18,7 @@ round(){
     --arg mysqlVolume "$(docker volume inspect mysql-es-cdc-handson_mysql-data --format '{{.Name}}:{{.CreatedAt}}')" \
     --arg kafkaVolume "$(docker volume inspect mysql-es-cdc-handson_kafka-data --format '{{.Name}}:{{.CreatedAt}}')" \
     --arg canalVolume "$(docker volume inspect mysql-es-cdc-handson_canal-data --format '{{.Name}}:{{.CreatedAt}}')" \
-    --arg clusterId "$("${compose[@]}" exec -T kafka sh -lc "grep '^cluster.id=' /tmp/kraft-combined-logs/meta.properties|cut -d= -f2")" \
+    --arg clusterId "$("${compose[@]}" exec -T kafka sh -lc "grep '^cluster.id=' /tmp/kafka-logs/meta.properties|cut -d= -f2")" \
     '{head:$head,round:($round|tonumber),mysqlVolume:$mysqlVolume,kafkaVolume:$kafkaVolume,canalVolume:$canalVolume,kafkaClusterId:$clusterId}' >"$evidence/reset-provenance.json"
   "${compose[@]}" exec -T kafka /opt/kafka/bin/kafka-get-offsets.sh --bootstrap-server kafka:9092 --topic product-search-revisions --time -2 >"$evidence/initial-beginning-offsets.txt"
   "${compose[@]}" exec -T kafka /opt/kafka/bin/kafka-get-offsets.sh --bootstrap-server kafka:9092 --topic product-search-revisions --time -1 >"$evidence/initial-end-offsets.txt"

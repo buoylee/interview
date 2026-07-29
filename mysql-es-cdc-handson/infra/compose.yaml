@@ -45,7 +45,7 @@ services:
         published: "29092"
         host_ip: 127.0.0.1
     volumes:
-      - kafka-data:/tmp/kraft-combined-logs
+      - kafka-data:/tmp/kafka-logs
     healthcheck:
       test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "kafka:9092", "--list"]
       interval: 5s
