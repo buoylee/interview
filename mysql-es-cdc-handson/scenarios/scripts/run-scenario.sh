@@ -41,15 +41,13 @@ fi
 lock="$locks_dir/$scenario_id"
 test ! -L "$lock" || die_path "$lock"
 mkdir "$lock" 2>/dev/null || { echo 'scenario already owned by another run' >&2; exit 75; }
-run_id="${M6_RUNNER_RUN_ID:-$(uuidgen | tr '[:upper:]' '[:lower:]')}"
-jq -en --arg value "$run_id" '$value|test("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")' >/dev/null || { rmdir "$lock"; exit 64; }
+run_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
 token="$run_id";started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-version="$runs_dir/$token"
-test ! -L "$version" && test ! -e "$version" || { rmdir "$lock"; die_path "$version"; }
 private="$(mktemp -d "$evidence_root/.tmp.$scenario_id.XXXXXX")"
 test ! -L "$private" && test "$(cd "$private/.." && pwd -P)" = "$evidence_root" || { rmdir "$lock"; die_path "$private"; }
-bundle="$private/bundle";mkdir "$bundle";printf '%s\n' "$token" >"$private/owner-token"
-observations="$private/observations.json";cleanup_done=false;finalized=false;fault_dispatched=false
+bundle="$private/bundle";mkdir "$bundle"
+observations="$private/observations.json";cleanup_done=false;finalized=false;recovery_required=false
+version="$runs_dir/$token"
 
 cleanup() {
   local rc=$?;trap - EXIT INT TERM
@@ -89,24 +87,64 @@ safe_commands() {
 }
 
 publish_attempt() {
-  local result="$1" link
+  local result="$1" canonical_status target_before target_after
   owned_dir "$runs_dir" "$evidence_root/.runs"
-  test ! -L "$version" && test ! -e "$version" || die_path "$version"
-  mv "$bundle" "$version"
-  if test "$result" = FAIL && test -e "$canonical"; then return 0; fi
-  if test "$result" = FAIL && test -L "$canonical"; then return 0; fi
-  link="$evidence_root/.link.$scenario_id.$token";test ! -e "$link" && test ! -L "$link" || die_path "$link"
-  ln -s ".runs/$scenario_id/$token" "$link"
-  test "${M6_RUNNER_FAIL_STAGE:-}" != before-replace || { rm "$link"; return 86; }
-  mv -fh "$link" "$canonical"
+  python3 "$root/scenarios/scripts/publish-evidence.py" version \
+    "$evidence_root" "$bundle" "$runs_dir" "$token" || return $?
+  bash "$root/tests/contracts/evidence-contract.sh" "$version" >/dev/null || return 76
+  bash "$root/tests/contracts/no-evidence-secrets.sh" "$version"/*.json >/dev/null || return 77
+  test "${M6_RUNNER_FAIL_STAGE:-}" != before-replace || return 86
+  canonical_status="$(python3 "$root/scenarios/scripts/publish-evidence.py" canonical \
+    "$evidence_root" "$scenario_id" "$token")" || return $?
+  target_before="$(python3 "$root/scenarios/scripts/publish-evidence.py" verify \
+    "$evidence_root" "$scenario_id")" || return $?
+  if ! bash "$root/tests/contracts/evidence-contract.sh" "$canonical" >/dev/null; then
+    test "$canonical_status" != published || python3 "$root/scenarios/scripts/publish-evidence.py" remove \
+      "$evidence_root" "$scenario_id" "$token" >/dev/null 2>&1 || true
+    return 76
+  fi
+  if ! bash "$root/tests/contracts/no-evidence-secrets.sh" "$canonical"/*.json >/dev/null; then
+    test "$canonical_status" != published || python3 "$root/scenarios/scripts/publish-evidence.py" remove \
+      "$evidence_root" "$scenario_id" "$token" >/dev/null 2>&1 || true
+    return 77
+  fi
+  target_after="$(python3 "$root/scenarios/scripts/publish-evidence.py" verify \
+    "$evidence_root" "$scenario_id")" || return $?
+  test "$target_after" = "$target_before" || return 74
 }
 
 finalize() {
-  local terminal_rc=1 result_rc=1 recovery_rc=0 result=FAIL terminal
+  local terminal_rc=1 result_rc=1 recovery_rc=0 result=FAIL terminal recovery_output external_clear=false
   $finalized && return 1;finalized=true
   test -s "$observations" || fallback_observations
-  if $fault_dispatched; then
-    if ! bash "$root/scenarios/scripts/dispatch-recovery.sh" "$scenario_id" "$private" "$token" >/dev/null; then recovery_rc=$?;add_failure runner_recovery_failure;fi
+  if $recovery_required; then
+    recovery_output="$private/recovery-output.json"
+    if bash "$root/scenarios/scripts/dispatch-recovery.sh" "$scenario_id" "$private" "$token" >"$recovery_output"; then
+      recovery_rc=0
+    else
+      recovery_rc=$?
+    fi
+    test ! -e "$private/fault-status.json" && external_clear=true
+    if ! jq -e --arg scenario "$scenario_id" --arg token "$token" --argjson external_clear "$external_clear" '
+      (keys_unsorted|sort) == ["cleanup_actions","commands","external_status","owner_token","recovery_action_observed","scenario_id"] and
+      .scenario_id==$scenario and .owner_token==$token and
+      .recovery_action_observed==$external_clear and .external_status.observed==$external_clear and
+      (.cleanup_actions|type)=="array" and (.commands|type)=="array"
+    ' "$recovery_output" >/dev/null 2>&1; then
+      recovery_rc=73
+      jq -n --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{
+        recovery_action_observed:false,
+        cleanup_actions:[{name:"dispatch-owned-recovery-output",success:false,finished_at:$now}],
+        commands:[]
+      }' >"$recovery_output"
+    fi
+    jq --slurpfile recovery "$recovery_output" '
+      .recovery_action_observed=$recovery[0].recovery_action_observed |
+      .cleanup_actions=$recovery[0].cleanup_actions |
+      .recovery_commands=$recovery[0].commands
+    ' "$observations" >"$private/observations.recovered" &&
+      mv "$private/observations.recovered" "$observations"
+    if test "$recovery_rc" -ne 0 || test "$external_clear" != true; then add_failure runner_recovery_failure;fi
   fi
   jq -n --arg scenario "$scenario_id" --arg run "$run_id" --arg head "$(git -C "$root" rev-parse HEAD)" '{schema_version:1,scenario_id:$scenario,runner_run_id:$run,project_head:$head}' >"$bundle/manifest.json"
   jq -n --arg scenario "$scenario_id" --arg run "$run_id" --slurpfile o "$observations" '{schema_version:1,scenario_id:$scenario,runner_run_id:$run,commands:($o[0].commands//[])}' >"$bundle/input-commands.json"
@@ -130,17 +168,55 @@ finalize() {
 
 fail_and_finalize() { local code="$1" failure="$2";add_failure "$failure";set +e;finalize;set -e;exit "$code"; }
 handle_signal() { local code="$1";trap - INT TERM;fail_and_finalize "$code" "signal_$code"; }
+hold_stage() {
+  local stage="$1" hold_dir="${M6_RUNNER_HOLD_STAGE_DIR:-}"
+  test -n "$hold_dir" || return 0
+  test -d "$hold_dir" && test ! -L "$hold_dir" || fail_and_finalize 74 runner_hold_path_unsafe
+  touch "$hold_dir/$stage.ready"
+  while test ! -f "$hold_dir/$stage.release"; do :; done
+}
 trap 'handle_signal 130' INT;trap 'handle_signal 143' TERM
+
+hold_stage after-finalizer
+requested_run_id="${M6_RUNNER_RUN_ID:-}"
+if test -n "$requested_run_id"; then
+  if jq -en --arg value "$requested_run_id" '$value|test("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")' >/dev/null; then
+    run_id="$requested_run_id";token="$run_id";version="$runs_dir/$token"
+  else
+    printf '%s\n' "$token" >"$private/owner-token"
+    fail_and_finalize 64 runner_run_id_invalid
+  fi
+fi
+printf '%s\n' "$token" >"$private/owner-token"
+if test -e "$version" || test -L "$version"; then
+  add_failure runner_version_exists
+  while :; do
+    run_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+    token="$run_id";version="$runs_dir/$token"
+    test ! -e "$version" && test ! -L "$version" && break
+  done
+  printf '%s\n' "$token" >"$private/owner-token"
+  fail_and_finalize 74 runner_version_exists
+fi
 
 fixture="${M6_RUNNER_FIXTURE:-}"
 test -n "$fixture" && test -f "$fixture" || fail_and_finalize 69 runner_fixture_missing
 if test "${M6_RUNNER_FAIL_STAGE:-}" = parse || ! jq -e 'type=="object"' "$fixture" >/dev/null 2>&1; then fail_and_finalize 70 runner_parse_failure;fi
 cp "$fixture" "$observations"
+tmp_observations="$private/observations.fixture"
+jq '.recovery_action_observed=false|.cleanup_actions=[]|.recovery_commands=[]' "$observations" >"$tmp_observations"
+mv "$tmp_observations" "$observations"
 add_failure fixture_mode_forbids_pass
 if test "${M6_RUNNER_FAIL_STAGE:-}" = command || ! safe_commands; then fallback_observations;fail_and_finalize 71 runner_command_failure;fi
 if test "${M6_RUNNER_FAIL_STAGE:-}" = manifest; then fail_and_finalize 72 runner_manifest_failure;fi
 if test "${M6_RUNNER_FAIL_STAGE:-}" = dispatch; then fail_and_finalize 73 runner_dispatch_failure;fi
-if ! bash "$root/scenarios/scripts/dispatch-fault.sh" "$scenario_id" "$private" "$token" >/dev/null; then fail_and_finalize 73 runner_dispatch_failure;fi
-fault_dispatched=true
+jq -n --arg scenario "$scenario_id" --arg token "$token" \
+  '{scenario_id:$scenario,owner_token:$token,registered:true}' >"$private/cleanup-intent.json"
+recovery_required=true
+set +e
+bash "$root/scenarios/scripts/dispatch-fault.sh" "$scenario_id" "$private" "$token" >"$private/fault-dispatch-output.json"
+dispatch_rc=$?
+set -e
+test "$dispatch_rc" -eq 0 || fail_and_finalize 73 runner_dispatch_failure
 if test -n "${M6_RUNNER_HOLD_FILE:-}";then touch "$M6_RUNNER_HOLD_FILE.ready";while test ! -f "$M6_RUNNER_HOLD_FILE.release";do :;done;fi
 finalize
