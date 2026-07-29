@@ -49,6 +49,12 @@ def scan(text: str):
 
 
 def main() -> int:
+    if len(sys.argv) == 4 and sys.argv[1] == "--stdin":
+        finding = scan(sys.stdin.read())
+        if finding:
+            print(f"{sys.argv[2]}: source={sys.argv[3]} rule={finding}", file=sys.stderr)
+            return 1
+        return 0
     failures = 0
     for name in sys.argv[1:]:
         path = Path(name)
@@ -56,7 +62,7 @@ def main() -> int:
             continue
         finding = scan(path.read_text(encoding="utf-8", errors="replace"))
         if finding:
-            print(f"{path}: forbidden evidence credential ({finding})", file=sys.stderr)
+            print(f"{path}: source=worktree rule={finding}", file=sys.stderr)
             failures += 1
             if failures >= 20:
                 print("secret diagnostics truncated after 20 paths", file=sys.stderr)
