@@ -164,6 +164,7 @@ public class SyncRecordProcessor {
         for (int attempt = 1; !pending.isEmpty() && attempt <= retryAttempts; attempt++) {
             BulkWriteResult result;
             try {
+                failpoints.hit(Failpoint.BEFORE_ES_BULK);
                 result = elasticsearch.write(targetAlias, pending);
             } catch (BulkTransportException | BulkProtocolException exception) {
                 if (metrics != null) metrics.recordRetry(exception instanceof BulkTransportException

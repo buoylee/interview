@@ -23,12 +23,21 @@ services:
       timeout: 3s
       retries: 30
 
+  kafka-volume-init:
+    image: apache/kafka:4.1.2
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["test \"$$(stat -c %u /tmp/kafka-logs)\" = 1000 || chown -R 1000:1000 /tmp/kafka-logs"]
+    volumes:
+      - kafka-data:/tmp/kafka-logs
+
   kafka:
     image: apache/kafka:4.1.2
-    # Docker creates a fresh named volume as root; this image otherwise runs as
-    # uid 1000 and cannot format the mounted KRaft log directory.
-    user: "0:0"
+    user: "1000:1000"
     hostname: kafka
+    depends_on:
+      kafka-volume-init:
+        condition: service_completed_successfully
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
@@ -78,7 +87,7 @@ services:
       kafka-init:
         condition: service_completed_successfully
       toxiproxy:
-        condition: service_started
+        condition: service_healthy
     ports:
       - target: 11111
         published: "11111"
@@ -135,6 +144,11 @@ services:
         condition: service_healthy
     volumes:
       - ./toxiproxy/proxies.json:/config/proxies.json:ro
+    healthcheck:
+      test: ["CMD", "/toxiproxy-cli", "-host=127.0.0.1", "-port=8474", "list"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   product-service:
     image: mysql-es-cdc-handson/product-service:0.1.0-local
@@ -163,7 +177,7 @@ services:
       kafka-init:
         condition: service_completed_successfully
       toxiproxy:
-        condition: service_started
+        condition: service_healthy
     environment:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/product_catalog?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
       SPRING_DATASOURCE_USERNAME: product
@@ -187,7 +201,7 @@ services:
       kafka-init:
         condition: service_completed_successfully
       toxiproxy:
-        condition: service_started
+        condition: service_healthy
     environment:
       SERVER_PORT: 8083
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/product_catalog?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC

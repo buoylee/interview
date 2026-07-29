@@ -11,7 +11,7 @@ docker compose -f infra/compose.yaml --profile m0-tools config --format json >"$
 docker compose -f infra/compose.yaml config --format json >"$default_config"
 
 jq -e '
-  (.services | keys) == ["canal","elasticsearch","kafka","kafka-init","mysql","product-service","toxiproxy"] and
+  (.services | keys) == ["canal","elasticsearch","kafka","kafka-init","kafka-volume-init","mysql","product-service","toxiproxy"] and
   .services["product-service"] != null and
   .services["search-sync-consumer"] == null and
   .services["consistency-verifier"] == null
@@ -37,11 +37,12 @@ jq -e '
 ' "$default_config" >/dev/null
 
 jq -e '
-  (.services | keys) == ["canal","consistency-verifier","elasticsearch","kafka","kafka-init","mysql","product-service","search-sync-consumer","toxiproxy"] and
+  (.services | keys) == ["canal","consistency-verifier","elasticsearch","kafka","kafka-init","kafka-volume-init","mysql","product-service","search-sync-consumer","toxiproxy"] and
   .services.mysql.image == "mysql:8.4.8" and
   .services.canal.image == "canal/canal-server:v1.1.8" and
   .services.kafka.image == "apache/kafka:4.1.2" and
   .services["kafka-init"].image == "apache/kafka:4.1.2" and
+  .services["kafka-volume-init"].image == "apache/kafka:4.1.2" and
   .services.elasticsearch.image == "docker.elastic.co/elasticsearch/elasticsearch:8.17.0" and
   .services.toxiproxy.image == "ghcr.io/shopify/toxiproxy:2.12.0" and
   .services["product-service"].image == "mysql-es-cdc-handson/product-service:0.1.0-local" and
@@ -54,13 +55,13 @@ jq -e '
   (.services["search-sync-consumer"].depends_on | keys) == ["kafka-init","mysql","toxiproxy"] and
   .services["search-sync-consumer"].depends_on.mysql.condition == "service_healthy" and
   .services["search-sync-consumer"].depends_on["kafka-init"].condition == "service_completed_successfully" and
-  .services["search-sync-consumer"].depends_on.toxiproxy.condition == "service_started" and
+  .services["search-sync-consumer"].depends_on.toxiproxy.condition == "service_healthy" and
   .services["search-sync-consumer"].environment.SPRING_KAFKA_BOOTSTRAP_SERVERS == "toxiproxy:8667" and
   .services["search-sync-consumer"].environment.PIPELINE_ELASTICSEARCH_BASE_URL == "http://toxiproxy:8666" and
   (.services["consistency-verifier"].depends_on | keys) == ["kafka-init","mysql","toxiproxy"] and
   .services["consistency-verifier"].depends_on["kafka-init"].condition == "service_completed_successfully" and
   .services["consistency-verifier"].depends_on.mysql.condition == "service_healthy" and
-  .services["consistency-verifier"].depends_on.toxiproxy.condition == "service_started" and
+  .services["consistency-verifier"].depends_on.toxiproxy.condition == "service_healthy" and
   .services["consistency-verifier"].environment.SPRING_DATASOURCE_USERNAME == "verifier" and
   .services["consistency-verifier"].environment.KAFKA_BOOTSTRAP_SERVERS == "toxiproxy:8667" and
   .services["consistency-verifier"].environment.SPRING_KAFKA_BOOTSTRAP_SERVERS == "toxiproxy:8667" and
@@ -70,12 +71,15 @@ jq -e '
   (.services.canal.depends_on | keys) == ["kafka-init","mysql","toxiproxy"] and
   .services.canal.depends_on["kafka-init"].condition == "service_completed_successfully" and
   .services.canal.depends_on.mysql.condition == "service_healthy" and
-  .services.canal.depends_on.toxiproxy.condition == "service_started" and
+  .services.canal.depends_on.toxiproxy.condition == "service_healthy" and
   (.services.toxiproxy.depends_on | keys) == ["elasticsearch","kafka","mysql"] and
   .services.toxiproxy.depends_on.elasticsearch.condition == "service_healthy" and
   .services.toxiproxy.depends_on.kafka.condition == "service_healthy" and
   .services.toxiproxy.depends_on.mysql.condition == "service_healthy" and
   .services["kafka-init"].entrypoint == ["/bin/bash","/create-topics.sh"] and
+  .services.kafka.user == "1000:1000" and
+  .services.kafka.depends_on["kafka-volume-init"].condition == "service_completed_successfully" and
+  .services["kafka-volume-init"].user == "0:0" and
   .services.kafka.environment.KAFKA_NODE_ID == "1" and
   .services.kafka.environment.KAFKA_CONTROLLER_QUORUM_VOTERS == "1@kafka:9093" and
   .services.kafka.environment.KAFKA_PROCESS_ROLES == "broker,controller" and

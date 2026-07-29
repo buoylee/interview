@@ -52,6 +52,19 @@ class SyncRecordProcessorTest {
             failpoints, "products_write", 3);
 
     @Test
+    void before_bulk_failpoint_is_immediately_before_each_elasticsearch_request() {
+        when(source.load(7)).thenReturn(Optional.of(snapshot(7, 4)));
+        when(elasticsearch.write(eq("products_write"), any())).thenReturn(new BulkWriteResult(List.of(
+                item(7, 4, BulkOutcome.APPLIED, 201, null))));
+
+        processor.process(record(message(row(7, 4, true))));
+
+        var order = inOrder(failpoints, elasticsearch);
+        order.verify(failpoints).hit(Failpoint.BEFORE_ES_BULK);
+        order.verify(elasticsearch).write(eq("products_write"), any());
+    }
+
+    @Test
     void records_low_cardinality_runtime_metrics_from_real_processing_outcomes() {
         var registry = new SimpleMeterRegistry();
         processor.configureMetrics(new PipelineMetrics(registry, () -> 0L, () -> 0L));
