@@ -25,6 +25,9 @@ services:
 
   kafka:
     image: apache/kafka:4.1.2
+    # Docker creates a fresh named volume as root; this image otherwise runs as
+    # uid 1000 and cannot format the mounted KRaft log directory.
+    user: "0:0"
     hostname: kafka
     environment:
       KAFKA_NODE_ID: 1
