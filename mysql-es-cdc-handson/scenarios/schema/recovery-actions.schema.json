@@ -1,0 +1,5 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "scenario_id", "runner_run_id", "rebuild_required_observed_before_rebuild", "commands", "cleanup_actions", "cleanup_failures"],
+  "properties": {"schema_version": {"const": 1}, "scenario_id": {"type": "string"}, "runner_run_id": {"type": "string", "format": "uuid"}, "rebuild_required_observed_before_rebuild": {"type": "boolean"}, "commands": {"type": "array"}, "cleanup_actions": {"type": "array"}, "cleanup_failures": {"type": "integer", "minimum": 0}}
+}

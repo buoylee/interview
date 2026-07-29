@@ -22,6 +22,18 @@ expect_rejected() {
   fi
 }
 
+expect_file_rejected() {
+  local name="$1" source="$2" file="$3" filter="$4" target
+  target="$tmp/$name"
+  cp -R "$source" "$target"
+  jq "$filter" "$target/$file" >"$target/file.tmp"
+  mv "$target/file.tmp" "$target/$file"
+  if bash "$contract" "$target" >/dev/null 2>&1; then
+    echo "tampered evidence accepted: $name ($file)" >&2
+    exit 1
+  fi
+}
+
 files=(manifest.json input-commands.json fault.json mysql-snapshot.json es-snapshot.json kafka-offsets.json differences.json recovery-actions.json result.json)
 for file in "${files[@]}"; do
   target="$tmp/missing-${file%.json}"
@@ -63,6 +75,12 @@ expect_rejected extra-watermark-field "$valid" '.target_watermarks.unexpected=tr
 expect_rejected extra-verification-field "$valid" '.verification.unexpected=true'
 expect_rejected malformed-verification-uuid "$valid" '.verification.run_id="not-a-uuid"'
 expect_rejected malformed-start-time "$valid" '.started_at="not-a-date"'
+expect_file_rejected verifier-run-cross-file "$valid" differences.json '.independent_verification.runId="22222222-2222-4222-8222-222222222222"'
+expect_file_rejected runner-run-cross-file "$valid" fault.json '.runner_run_id="22222222-2222-4222-8222-222222222222"'
+expect_file_rejected missing-manifest-provenance "$valid" manifest.json 'del(.git)'
+expect_file_rejected empty-input-command-proof "$valid" input-commands.json '.commands=[]'
+expect_file_rejected impossible-command-time "$valid" input-commands.json '.commands[0].finished_at="2026-07-28T19:59:59Z"'
+expect_file_rejected invented-case-fact "$valid" fault.json '.case_observations={kind:"invented"}'
 
 unknown="$tmp/unknown-scenario"
 cp -R "$valid" "$unknown"

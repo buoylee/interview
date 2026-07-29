@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS pipeline_condition (
   details_json JSON NOT NULL,
   observed_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   cleared_at TIMESTAMP(6) NULL,
+  owner_rebuild_run_id BINARY(16) NULL,
   PRIMARY KEY (condition_key)
 ) ENGINE=InnoDB;
 

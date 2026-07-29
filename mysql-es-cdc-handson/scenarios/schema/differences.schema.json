@@ -1,0 +1,5 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "scenario_id", "runner_run_id", "observations"],
+  "properties": {"schema_version": {"const": 1}, "scenario_id": {"type": "string"}, "runner_run_id": {"type": "string", "format": "uuid"}, "observations": {"type": "object"}, "independent_verification": {"type": "object", "additionalProperties": false, "required": ["runId", "target", "status", "sourceWatermarkStart", "sourceWatermarkEnd", "expectedCount", "actualCount", "differenceCount", "counts", "failureClass", "failureMessage"], "properties": {"runId": {"type": "string", "format": "uuid"}, "target": {"type": "string"}, "status": {"type": "string"}, "sourceWatermarkStart": {"type": "integer"}, "sourceWatermarkEnd": {"type": "integer"}, "expectedCount": {"type": "integer"}, "actualCount": {"type": "integer"}, "differenceCount": {"type": "integer", "minimum": 0}, "counts": {"type": "object"}, "failureClass": {"type": ["string", "null"]}, "failureMessage": {"type": ["string", "null"]}}}}
+}

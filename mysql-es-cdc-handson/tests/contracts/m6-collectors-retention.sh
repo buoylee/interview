@@ -11,7 +11,11 @@ bash "$root/scenarios/scripts/capture-kafka.sh" "$tmp/kafka.json"
 jq -e '([.beginning[].partition]==[0,1,2]) and ([.end[].partition]==[0,1,2]) and ([.primary[].partition]==[0,1,2]) and (.shadow_and_barrier|type)=="array"' "$tmp/kafka.json" >/dev/null
 bash "$root/scenarios/scripts/capture-manifest.sh" "$tmp/manifest.json"
 jq -e '.git.commit|test("^[a-f0-9]{40}$")' "$tmp/manifest.json" >/dev/null
-jq -e '.checked_in_config_hashes|length==6 and .==sort_by(.path) and all(.[];.sha256|test("^[a-f0-9]{64}$"))' "$tmp/manifest.json" >/dev/null
+jq -e '.checked_in_config_hashes|length>=14 and .==sort_by(.path) and all(.[];.sha256|test("^[a-f0-9]{64}$"))' "$tmp/manifest.json" >/dev/null
+for schema in "$root"/scenarios/schema/*.schema.json; do
+  relative="${schema#"$root"/}"
+  jq -e --arg path "$relative" 'any(.checked_in_config_hashes[];.path==$path)' "$tmp/manifest.json" >/dev/null
+done
 bash "$root/tests/contracts/no-evidence-secrets.sh" "$tmp/manifest.json" >/dev/null
 test -z "$(find "$tmp" -name '.tmp.*' -print -quit)"
 

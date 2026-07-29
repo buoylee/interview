@@ -16,22 +16,24 @@ def load(path: str):
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("schema")
-    parser.add_argument("instance")
+    parser.add_argument("paths", nargs="+", help="SCHEMA INSTANCE pairs")
     parser.add_argument("--array-property")
     args = parser.parse_args()
 
-    schema = load(args.schema)
-    instance = load(args.instance)
-    Draft202012Validator.check_schema(schema)
-    validator = Draft202012Validator(schema, format_checker=FormatChecker())
-    instances = instance[args.array_property] if args.array_property else [instance]
     errors = []
-    for index, item in enumerate(instances):
-        for error in validator.iter_errors(item):
-            location = "/".join(str(part) for part in error.absolute_path)
-            prefix = f"{args.array_property}/{index}" if args.array_property else "instance"
-            errors.append(f"{prefix}/{location}: {error.message}".rstrip("/"))
+    if len(args.paths) % 2:
+        parser.error("expected SCHEMA INSTANCE pairs")
+    for schema_path, instance_path in zip(args.paths[::2], args.paths[1::2]):
+        schema = load(schema_path)
+        instance = load(instance_path)
+        Draft202012Validator.check_schema(schema)
+        validator = Draft202012Validator(schema, format_checker=FormatChecker())
+        instances = instance[args.array_property] if args.array_property else [instance]
+        for index, item in enumerate(instances):
+            for error in validator.iter_errors(item):
+                location = "/".join(str(part) for part in error.absolute_path)
+                prefix = f"{args.array_property}/{index}" if args.array_property else "instance"
+                errors.append(f"{instance_path}:{prefix}/{location}: {error.message}".rstrip("/"))
     if errors:
         for error in sorted(errors):
             print(error, file=sys.stderr)

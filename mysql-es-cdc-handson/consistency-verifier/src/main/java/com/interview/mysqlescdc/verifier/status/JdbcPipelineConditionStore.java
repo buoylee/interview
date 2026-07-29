@@ -37,10 +37,10 @@ public class JdbcPipelineConditionStore implements PipelineConditionStore {
         }
         jdbc.sql("""
                 INSERT INTO pipeline_condition(
-                  condition_key, active, details_json, observed_at, cleared_at)
-                VALUES (:key, TRUE, CAST(:details AS JSON), CURRENT_TIMESTAMP(6), NULL)
+                  condition_key, active, details_json, observed_at, cleared_at, owner_rebuild_run_id)
+                VALUES (:key, TRUE, CAST(:details AS JSON), CURRENT_TIMESTAMP(6), NULL, NULL)
                 ON DUPLICATE KEY UPDATE active = TRUE, details_json = VALUES(details_json),
-                  observed_at = VALUES(observed_at), cleared_at = NULL
+                  observed_at = VALUES(observed_at), cleared_at = NULL, owner_rebuild_run_id = NULL
                 """).param("key", condition).param("details", boundedDetailsJson).update();
     }
 
@@ -53,8 +53,12 @@ public class JdbcPipelineConditionStore implements PipelineConditionStore {
                 UPDATE pipeline_condition
                 SET active = FALSE, cleared_at = CURRENT_TIMESTAMP(6)
                 WHERE condition_key IN ('LOG_GAP', 'REBUILD_REQUIRED') AND active = TRUE
-                """).update();
-        return true;
+                  AND owner_rebuild_run_id = UUID_TO_BIN(:run)
+                """).param("run", rebuildRunId.toString()).update();
+        return jdbc.sql("""
+                SELECT COUNT(*) FROM pipeline_condition
+                WHERE condition_key IN ('LOG_GAP', 'REBUILD_REQUIRED') AND active = TRUE
+                """).query(Long.class).single() == 0;
     }
 
     @Override

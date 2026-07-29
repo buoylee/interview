@@ -54,8 +54,34 @@ class JdbcPipelineConditionStoreIT {
         assertThat(store.activeConditions()).contains("LOG_GAP", "REBUILD_REQUIRED");
 
         rebuildEvidence.successful = true;
+        claimCondition("LOG_GAP", RUN);
+        claimCondition("REBUILD_REQUIRED", RUN);
         assertThat(store.clearLogGap(RUN)).isTrue();
         assertThat(store.activeConditions()).doesNotContain("LOG_GAP", "REBUILD_REQUIRED");
+    }
+
+    @Test
+    void an_old_successful_rebuild_cannot_clear_a_newer_gap_observation() {
+        store.activate("LOG_GAP", "{\"observation\":\"old\"}");
+        claimCondition("LOG_GAP", RUN);
+
+        store.activate("LOG_GAP", "{\"observation\":\"new\"}");
+        rebuildEvidence.successful = true;
+
+        assertThat(store.clearLogGap(RUN)).isFalse();
+        assertThat(store.activeConditions()).contains("LOG_GAP");
+        assertThat(fixture.sql("""
+                SELECT BIN_TO_UUID(owner_rebuild_run_id) FROM pipeline_condition
+                WHERE condition_key = 'LOG_GAP'
+                """).query(String.class).optional()).isEmpty();
+    }
+
+    private void claimCondition(String condition, UUID run) {
+        fixture.sql("""
+                UPDATE pipeline_condition
+                SET owner_rebuild_run_id = UUID_TO_BIN(:run)
+                WHERE condition_key = :condition AND active = TRUE
+                """).param("run", run.toString()).param("condition", condition).update();
     }
 
     @Test

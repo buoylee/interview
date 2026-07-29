@@ -1,0 +1,5 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "scenario_id", "runner_run_id", "consistency"],
+  "properties": {"schema_version": {"const": 1}, "scenario_id": {"type": "string"}, "runner_run_id": {"type": "string", "format": "uuid"}, "consistency": {"type": "string"}, "topic": {"type": "string"}, "beginning": {"type": "array"}, "end": {"type": "array"}, "primary": {"type": "array"}, "shadow_and_barrier": {"type": "array"}, "documents": {"type": "array"}, "raw_recovery_observations": {"type": "object"}}
+}

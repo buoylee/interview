@@ -59,6 +59,11 @@ produce_with_key() {
     --property parse.key=true --property key.separator=: >/dev/null
 }
 
+inject_scenario_event() {
+  local partition="$1" payload="$2" output="$3"
+  bash scenarios/scripts/inject-scenario-event.sh "$partition" "$payload" >"$output"
+}
+
 changed_partition() {
   jq -nr --slurpfile before "$1" --slurpfile after "$2" '
     [$after[0]|to_entries[]|select(.value==$before[0][.key]+1)|(.key|tonumber)] as $changed |
@@ -145,10 +150,11 @@ case_3() {
       create_product 6301 "$raw/create.json"; "${compose[@]}" stop canal >"$raw/canal-stop.log" 2>&1 || true
       copy_meta "$raw/old-meta.dat"; decode_meta "$raw/old-meta.dat" >"$raw/old-meta.json"
       old_journal="$(jq -r .journal "$raw/old-meta.json")"; old_position="$(jq -r .position "$raw/old-meta.json")"
-      mysql_root 'FLUSH BINARY LOGS;' >/dev/null; current="$(mysql_root 'SHOW BINARY LOG STATUS;'|awk '{print $1}')"
-      mysql_root "PURGE BINARY LOGS TO '$current';" >/dev/null
-      mysql_root 'SHOW BINARY LOGS' >"$raw/retained-binlogs.tsv"
-      retained="$(awk '{print $1}' "$raw/retained-binlogs.tsv"|jq -Rsc 'split("\n")|map(select(length>0))')"
+      jq -n --arg project "$COMPOSE_PROJECT_NAME" '{purpose:"m6-dedicated-retention",compose_project:$project}' >"$raw/retention-provenance.json"
+      MYSQL_PWD=rootpass MYSQL_USER=root SCENARIO_CLEANUP_FILE="$raw/retention-cleanup.sh" SCENARIO_STATE_DIR="$raw/retention-state" SCENARIO_PROVENANCE_FILE="$raw/retention-provenance.json" M6_RETENTION_DESTRUCTIVE_ACK=I_UNDERSTAND_M6_DEDICATED_RETENTION_DESTROYS_LOGS \
+        bash scenarios/scripts/fault-retention.sh apply mysql >"$raw/mysql-gap-status.json"
+      test "$(jq -r .recorded_file "$raw/mysql-gap-status.json")" = "$old_journal"
+      retained="$(jq -c .files "$raw/mysql-gap-status.json")"
       ! jq -e --arg journal "$old_journal" 'index($journal)!=null' <<<"$retained" >/dev/null
       "${compose[@]}" start canal >/dev/null
       "$waiter" 'Canal reports purged cursor' 120 0.2 bash -c 'docker compose -f "$1" logs --no-color canal 2>&1|grep -E '\''Could not find first log file name in binary log index file|purged|not found'\'' >/dev/null' _ "$PWD/infra/compose.yaml"
@@ -213,7 +219,7 @@ case_5() {
       record_intermediate REBUILD_REQUIRED; printf 'true\n' >"$M6_CASE_RUN_DIR/rebuild-required-before-rebuild"
       ;;
     recover)
-      start_rebuild NORMAL 200; mark_recovery
+      start_rebuild KAFKA_OFFSET_GAP 200; mark_recovery
       ;;
   esac
 }
@@ -222,7 +228,8 @@ case_6() {
   case "$1" in
     mutate)
       create_product 6601 "$raw/create.json"; group_json >"$raw/group-before.json"
-      arm_failpoint BEFORE_ES_BULK; change_price 6601 66101 "$raw/mutate.json"; wait_exit_86
+      SCENARIO_CLEANUP_FILE="$raw/process-cleanup.sh" bash scenarios/scripts/fault-process.sh apply BEFORE_ES_BULK \
+        bash -c 'curl -fsS -X PUT http://127.0.0.1:8081/api/products/6601/price -H "Content-Type: application/json" -d "{\"priceCents\":66101}" >"$1"' _ "$raw/mutate.json" >"$raw/process-fault.json"
       container_state >"$raw/crashed.json"; capture_matching_record 6601 2 "$raw/group-before.json" "$raw/record.json" "$raw/topic.txt"
       group_json >"$raw/group-crashed.json"; assert_offset_uncommitted "$raw/group-crashed.json" "$raw/record.json"
       ;;
@@ -241,7 +248,8 @@ case_7() {
   case "$1" in
     mutate)
       create_product 6701 "$raw/create.json"; group_json >"$raw/group-before.json"
-      arm_failpoint AFTER_ES_BULK_SUCCESS; change_price 6701 67101 "$raw/mutate.json"; wait_exit_86
+      SCENARIO_CLEANUP_FILE="$raw/process-cleanup.sh" bash scenarios/scripts/fault-process.sh apply AFTER_ES_BULK_SUCCESS \
+        bash -c 'curl -fsS -X PUT http://127.0.0.1:8081/api/products/6701/price -H "Content-Type: application/json" -d "{\"priceCents\":67101}" >"$1"' _ "$raw/mutate.json" >"$raw/process-fault.json"
       container_state >"$raw/crashed.json"; capture_matching_record 6701 2 "$raw/group-before.json" "$raw/record.json" "$raw/topic.txt"
       group_json >"$raw/group-crashed.json"; assert_offset_uncommitted "$raw/group-crashed.json" "$raw/record.json"
       curl -fsS http://127.0.0.1:9200/products_write/_doc/6701 >"$raw/es-before-restart.json"
@@ -291,7 +299,7 @@ case_9() {
     mutate)
       select_same_partition_product 6901 "$raw/selected.json"; id="$(jq -r .product_id "$raw/selected.json")"; payload="$(jq -c .record.payload "$raw/selected.json")"
       curl -fsS "http://127.0.0.1:9200/products_write/_doc/$id" >"$raw/es-before.json"; metric_value >"$raw/stale-before"
-      end_vector >"$raw/replay-before.json"; produce_with_key "$id" "$payload"
+      end_vector >"$raw/replay-before.json"; inject_scenario_event "$(jq -r .partition "$raw/selected.json")" "$payload" "$raw/injected-event.json"
       "$waiter" 'duplicate record settled' 60 0.2 bash -c 'before=$(jq "to_entries|map(.value)|add" "$1");after=$(docker compose -f "$2" exec -T kafka /opt/kafka/bin/kafka-get-offsets.sh --bootstrap-server kafka:9092 --topic product-search-revisions --time -1 2>/dev/null|awk -F: "{sum+=\$3}END{print sum}");test "$after" -eq $((before+1))' _ "$raw/replay-before.json" "$PWD/infra/compose.yaml"
       end_vector >"$raw/replay-after.json"; test "$(changed_partition "$raw/replay-before.json" "$raw/replay-after.json")" -eq "$(jq -r .partition "$raw/selected.json")"; wait_group_zero
       ;;
@@ -315,7 +323,7 @@ case_10() {
       wait_es_revision "$id" 3 "$raw/es-before-old-ready.json"
       curl -fsS "http://127.0.0.1:9200/products_write/_doc/$id" >"$raw/es-before-old.json"
       metric_value >"$raw/stale-before"
-      end_vector >"$raw/replay-before.json"; produce_with_key "$id" "$payload"
+      end_vector >"$raw/replay-before.json"; inject_scenario_event "$(jq -r .partition "$raw/selected.json")" "$payload" "$raw/injected-event.json"
       "$waiter" 'late old signal settled' 60 0.2 bash -c 'before=$(jq "to_entries|map(.value)|add" "$1");after=$(docker compose -f "$2" exec -T kafka /opt/kafka/bin/kafka-get-offsets.sh --bootstrap-server kafka:9092 --topic product-search-revisions --time -1 2>/dev/null|awk -F: "{sum+=\$3}END{print sum}");test "$after" -eq $((before+1))' _ "$raw/replay-before.json" "$PWD/infra/compose.yaml"
       end_vector >"$raw/replay-after.json"; test "$(changed_partition "$raw/replay-before.json" "$raw/replay-after.json")" -eq "$(jq -r .partition "$raw/selected.json")"; wait_group_zero
       ;;
@@ -410,7 +418,7 @@ case_14() {
     mutate)
       select_same_partition_product 7401 "$raw/selected.json"; id="$(jq -r .product_id "$raw/selected.json")"; payload="$(jq -c .record.payload "$raw/selected.json")"
       curl -fsS -X DELETE "http://127.0.0.1:8081/api/products/$id" >"$raw/delete.json"; jq -e '.revision==2' "$raw/delete.json" >/dev/null
-      wait_es_revision "$id" 2 "$raw/tombstone-before.json"; end_vector >"$raw/replay-before.json"; produce_with_key "$id" "$payload"; wait_group_zero
+      wait_es_revision "$id" 2 "$raw/tombstone-before.json"; end_vector >"$raw/replay-before.json"; inject_scenario_event "$(jq -r .partition "$raw/selected.json")" "$payload" "$raw/injected-event.json"; wait_group_zero
       ;;
     intermediate)
       id="$(jq -r .product_id "$raw/selected.json")"; curl -fsS "http://127.0.0.1:9200/products_write/_doc/$id" >"$raw/tombstone-after.json"
@@ -439,6 +447,7 @@ case_15() {
       wait "$p1" "$p2" "$p3" "$p4"; for f in "$raw"/concurrent-*.code; do code="$(cat "$f")"; test "$code" -ge 200 && test "$code" -lt 300; done
       wait_rebuild_phase "$run_id" GATING; rebuild_status "$run_id" >"$raw/status-gating.json"
       code="$(curl -sS -o "$raw/gated-write.json" -w '%{http_code}' -X PUT http://127.0.0.1:8081/api/products/7501/price -H 'Content-Type: application/json' -d '{"priceCents":75101}')"; test "$code" -eq 503
+      jq -n --argjson gated_write "$code" '{gated_write:$gated_write}' >"$raw/http-codes.json"
       ;;
     intermediate)
       jq -e '.status=="GATING"' "$raw/status-gating.json" >/dev/null
@@ -449,7 +458,8 @@ case_15() {
     recover)
       run_id="$(cat "$raw/rebuild-run-id")"; wait_rebuild_phase "$run_id" COMPLETED; rebuild_status "$run_id" >"$raw/rebuild-completed.json"
       jq -e '.status=="COMPLETED" and .aliasState=="NEW" and (.startOffsets|length)==3 and (.barrierOffsets|length)==3 and (.shadowOffsets|length)==3' "$raw/rebuild-completed.json" >/dev/null
-      code="$(curl -sS -o "$raw/post-gate-write.json" -w '%{http_code}' -X PUT http://127.0.0.1:8081/api/products/7501/price -H 'Content-Type: application/json' -d '{"priceCents":75101}')"; test "$code" -ge 200 && test "$code" -lt 300; mark_recovery
+      code="$(curl -sS -o "$raw/post-gate-write.json" -w '%{http_code}' -X PUT http://127.0.0.1:8081/api/products/7501/price -H 'Content-Type: application/json' -d '{"priceCents":75101}')"; test "$code" -ge 200 && test "$code" -lt 300
+      jq --argjson post_gate_write "$code" '.+{post_gate_write:$post_gate_write}' "$raw/http-codes.json" >"$raw/http-codes.next"; mv "$raw/http-codes.next" "$raw/http-codes.json"; mark_recovery
       ;;
   esac
 }

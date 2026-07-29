@@ -1,0 +1,5 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "scenario_id", "runner_run_id", "consistency", "documents"],
+  "properties": {"schema_version": {"const": 1}, "scenario_id": {"type": "string"}, "runner_run_id": {"type": "string", "format": "uuid"}, "consistency": {"type": "string", "minLength": 1}, "documents": {"type": "array"}}
+}

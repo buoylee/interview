@@ -2,7 +2,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
-for migration in 03-pipeline-control.sql 04-reconciliation-control.sql 05-rebuild-control.sql; do
+for migration in 03-pipeline-control.sql 04-reconciliation-control.sql 05-rebuild-control.sql 06-m6-condition-ownership.sql; do
   docker compose -f infra/compose.yaml exec -T mysql \
     mysql -uroot -prootpass <"infra/mysql/init/$migration"
 done

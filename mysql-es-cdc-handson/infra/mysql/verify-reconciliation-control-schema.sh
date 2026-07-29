@@ -59,6 +59,7 @@ expected="$(printf '%s\n' \
   'column:pipeline_condition:3:details_json:json:NO:<NULL>:' \
   'column:pipeline_condition:4:observed_at:timestamp(6):NO:CURRENT_TIMESTAMP(6):DEFAULT_GENERATED' \
   'column:pipeline_condition:5:cleared_at:timestamp(6):YES:<NULL>:' \
+  'column:pipeline_condition:6:owner_rebuild_run_id:binary(16):YES:<NULL>:' \
   'column:repair_action:1:action_id:binary(16):NO:<NULL>:' \
   'column:repair_action:2:run_id:binary(16):NO:<NULL>:' \
   'column:repair_action:3:product_id:bigint unsigned:NO:<NULL>:' \

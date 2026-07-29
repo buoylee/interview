@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "scenario_id", "runner_run_id", "declared_fault", "cleanup_registered_before_fault"],
+  "properties": {
+    "schema_version": {"const": 1}, "scenario_id": {"type": "string"}, "runner_run_id": {"type": "string", "format": "uuid"},
+    "declared_fault": {"type": "object"}, "cleanup_registered_before_fault": {"type": "boolean"},
+    "observed_intermediate_states": {"type": "array", "items": {"type": "string"}},
+    "case_observations": {"type": "object", "additionalProperties": false, "required": ["scenario_id", "artifacts"], "properties": {"scenario_id": {"type": "string"}, "artifacts": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["path", "sha256"], "properties": {"path": {"type": "string", "minLength": 1}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "json": {}, "text": {"type": "string"}}, "oneOf": [{"required": ["json"]}, {"required": ["text"]}]}}}}
+  }
+}

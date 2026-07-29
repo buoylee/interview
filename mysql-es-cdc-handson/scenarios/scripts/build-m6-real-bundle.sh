@@ -12,13 +12,16 @@ bundle="${7:?bundle required}"
 cd "$root"
 mkdir -p "$bundle"
 
-jq -n --arg scenario "$scenario_id" --arg run "$run_id" --arg head "$(git rev-parse HEAD)" \
-  '{schema_version:1,scenario_id:$scenario,runner_run_id:$run,project_head:$head,execution_mode:"real"}' >"$bundle/manifest.json"
+bash scenarios/scripts/capture-manifest.sh "$run_dir/manifest-capture.json"
+jq --arg scenario "$scenario_id" --arg run "$run_id" \
+  '.+{scenario_id:$scenario,runner_run_id:$run,execution_mode:"real"}' \
+  "$run_dir/manifest-capture.json" >"$bundle/manifest.json"
 jq -n --arg scenario "$scenario_id" --arg run "$run_id" --slurpfile o "$observations" \
   '{schema_version:1,scenario_id:$scenario,runner_run_id:$run,commands:$o[0].commands}' >"$bundle/input-commands.json"
 jq -n --arg scenario "$scenario_id" --arg run "$run_id" --argjson fault "$(jq -c --arg id "$scenario_id" '.scenarios[]|select(.scenario_id==$id)|.fault' scenarios/catalog.json)" \
+  --slurpfile facts <(bash scenarios/scripts/collect-m6-case-facts.sh "$scenario_id" "$run_dir/raw") \
   --slurpfile states "$run_dir/intermediate-states.json" \
-  '{schema_version:1,scenario_id:$scenario,runner_run_id:$run,declared_fault:$fault,cleanup_registered_before_fault:true,observed_intermediate_states:$states[0]}' >"$bundle/fault.json"
+  '{schema_version:1,scenario_id:$scenario,runner_run_id:$run,declared_fault:$fault,cleanup_registered_before_fault:true,observed_intermediate_states:$states[0],case_observations:$facts[0]}' >"$bundle/fault.json"
 
 mysql_id="$(docker compose -f infra/compose.yaml ps -q mysql)"
 MYSQL_PWD="$(docker inspect "$mysql_id" | jq -r '.[0].Config.Env[]|select(startswith("MYSQL_ROOT_PASSWORD="))|split("=")[1]')"

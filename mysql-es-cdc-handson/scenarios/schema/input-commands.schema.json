@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {"command": {"type": "object", "additionalProperties": false, "required": ["sequence", "kind", "target", "method", "path", "started_at", "finished_at", "exit_code"], "properties": {"sequence": {"type": "integer", "minimum": 1}, "kind": {"enum": ["HTTP", "SQL_FIXTURE", "CONTROL"]}, "target": {"type": "string", "minLength": 1}, "method": {"enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "EXECUTE"]}, "path": {"type": "string", "pattern": "^/"}, "body_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "fixture_path": {"type": "string"}, "fixture_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "started_at": {"type": "string", "format": "date-time"}, "finished_at": {"type": "string", "format": "date-time"}, "exit_code": {"type": "integer", "minimum": 0, "maximum": 255}}}},
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "scenario_id", "runner_run_id", "commands"],
+  "properties": {"schema_version": {"const": 1}, "scenario_id": {"type": "string"}, "runner_run_id": {"type": "string", "format": "uuid"}, "commands": {"type": "array", "items": {"$ref": "#/$defs/command"}}}
+}

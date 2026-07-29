@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "scenario_id", "runner_run_id"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "scenario_id": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "runner_run_id": {"type": "string", "format": "uuid"},
+    "execution_mode": {"enum": ["real", "fail-closed"]},
+    "git": {
+      "type": "object", "additionalProperties": false,
+      "required": ["commit", "dirty", "tracked_dirty", "untracked_count"],
+      "properties": {
+        "commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "dirty": {"type": "boolean"}, "tracked_dirty": {"type": "boolean"},
+        "untracked_count": {"type": "integer", "minimum": 0},
+        "excluded_runtime_output": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "platform": {"type": "object", "additionalProperties": false, "required": ["os", "architecture"], "properties": {"os": {"type": "string", "minLength": 1}, "architecture": {"type": "string", "minLength": 1}}},
+    "tools": {"type": "object", "additionalProperties": false, "required": ["java", "maven", "docker_compose"], "properties": {"java": {"type": "string", "minLength": 1}, "maven": {"type": "string", "minLength": 1}, "docker_compose": {"type": "string", "minLength": 1}}},
+    "images": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["service", "repository", "tag", "id"], "properties": {"service": {"type": ["string", "null"]}, "repository": {"type": "string"}, "tag": {"type": "string"}, "id": {"type": "string"}}}},
+    "checked_in_config_hashes": {"type": "array", "minItems": 6, "items": {"type": "object", "additionalProperties": false, "required": ["path", "sha256"], "properties": {"path": {"type": "string", "minLength": 1}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}},
+    "kafka_runtime": {"type": "object", "additionalProperties": false, "required": ["configured_user", "volume_init"], "properties": {"configured_user": {"type": "string"}, "volume_init": {"type": "string"}}},
+    "project_head": {"type": "string", "pattern": "^[a-f0-9]{40}$"}
+  }
+}

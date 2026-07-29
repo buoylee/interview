@@ -186,10 +186,10 @@ public class JdbcVerificationRunStore implements VerificationRunStore {
     @Override
     public void activateCondition(String conditionKey, String detailsJson) {
         jdbc.sql("""
-                INSERT INTO pipeline_condition(condition_key, active, details_json, observed_at, cleared_at)
-                VALUES (:key, TRUE, CAST(:details AS JSON), CURRENT_TIMESTAMP(6), NULL)
+                INSERT INTO pipeline_condition(condition_key, active, details_json, observed_at, cleared_at, owner_rebuild_run_id)
+                VALUES (:key, TRUE, CAST(:details AS JSON), CURRENT_TIMESTAMP(6), NULL, NULL)
                 ON DUPLICATE KEY UPDATE active = TRUE, details_json = VALUES(details_json),
-                  observed_at = VALUES(observed_at), cleared_at = NULL
+                  observed_at = VALUES(observed_at), cleared_at = NULL, owner_rebuild_run_id = NULL
                 """).param("key", conditionKey).param("details", detailsJson).update();
     }
 

@@ -19,7 +19,10 @@ raw="$run_dir/raw"
 ' _ "$root/infra/compose.yaml" >/dev/null
 
 curl -fsS -X POST http://127.0.0.1:9200/products_write/_refresh >"$raw/final-refresh.json"
-curl -fsS -X POST http://127.0.0.1:8083/internal/reconciliation/runs -H 'Content-Type: application/json' -d '{"target":"products_write","pageSize":200}' >"$raw/final-verification.json"
+verification_body='{"target":"products_write","pageSize":200}'
+verification_started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+curl -fsS -X POST http://127.0.0.1:8083/internal/reconciliation/runs -H 'Content-Type: application/json' -d "$verification_body" >"$raw/final-verification.json"
+verification_finished="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 jq -e '.status=="PASS" and .differenceCount==0' "$raw/final-verification.json" >/dev/null
 curl -fsS http://127.0.0.1:8083/internal/pipeline/status >"$raw/final-pipeline-status.json"
 jq -e '.state=="HEALTHY" and (.activeConditions|length)==0 and .kafkaLag==0 and .unresolvedDlq==0 and .latestDifferenceCount==0' "$raw/final-pipeline-status.json" >/dev/null
@@ -75,18 +78,28 @@ if test "$scenario_id" = canal-outage-beyond-binlog-retention; then
 fi
 
 now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-jq -n --slurpfile setup "$run_dir/setup-observation.json" --arg run "$run_id" --arg now "$now" \
+jq -n --slurpfile setup "$run_dir/setup-observation.json" --slurpfile verifier "$raw/final-verification.json" \
+  --arg run "$run_id" --arg now "$now" --arg command_started "$verification_started" --arg command_finished "$verification_finished" \
+  --arg body_sha256 "$(printf '%s' "$verification_body" | shasum -a 256 | awk '{print $1}')" \
   --argjson source "$source_watermark" --argjson es "$es_watermark" --argjson offsets "$offsets" \
   --argjson intermediate "$intermediate" --argjson product_dlq "$product_dlq" --argjson record_dlq "$record_dlq" \
   --argjson rebuild "$rebuild" --argjson canal "$canal_recovery" '{
     consistency_preconditions:$setup[0].consistency_preconditions,
     source_watermark:$source,
     target_watermarks:{mysql_revision:$source,elasticsearch_revision:$es,passed:($es >= $source)},
-    watermark_run_id:$run,applied_offsets:$offsets,scenario_lag_satisfied:true,
+    watermark_run_id:$verifier[0].runId,applied_offsets:$offsets,scenario_lag_satisfied:true,
     product_unresolved_dlq_count:$product_dlq,record_unresolved_dlq_count:$record_dlq,
-    verification:{run_id:$run,status:"PASS",conclusive:true,stable:true,exact_managed_field_diff_count:0,version_metadata_diff_count:0,observed_at:$now},
-    exact_diff_count:0,tombstone_mismatch_count:0,canal_position_recovery:$canal,
+    verification:{run_id:$verifier[0].runId,status:$verifier[0].status,
+      conclusive:($verifier[0].status != "INCONCLUSIVE"),
+      stable:($verifier[0].sourceWatermarkStart == $verifier[0].sourceWatermarkEnd),
+      exact_managed_field_diff_count:$verifier[0].differenceCount,
+      version_metadata_diff_count:($verifier[0].counts.VERSION_METADATA_MISMATCH // 0),observed_at:$now},
+    exact_diff_count:$verifier[0].differenceCount,
+    tombstone_mismatch_count:($verifier[0].counts.TOMBSTONE_MISMATCH // 0),canal_position_recovery:$canal,
     observed_intermediate_states:$intermediate,observed_pipeline_state:"HEALTHY",
     recovery_action_observed:true,rebuild_required_before_rebuild:$rebuild,
-    commands:[],recovery_commands:[],cleanup_actions:[],runner_failures:[]
+    commands:[{sequence:1,kind:"HTTP",target:"consistency-verifier",method:"POST",
+      path:"/internal/reconciliation/runs",body_sha256:$body_sha256,
+      started_at:$command_started,finished_at:$command_finished,exit_code:0}],
+    recovery_commands:[],cleanup_actions:[],runner_failures:[]
   }' >"$output"
