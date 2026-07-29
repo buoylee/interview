@@ -1,0 +1,2 @@
+package com.interview.mysqlescdc.verifier.rebuild;
+public enum RebuildFailpoint{NONE,BEFORE_ALIAS_SWITCH,AFTER_ALIAS_SWITCH_BEFORE_GATE_OPEN}

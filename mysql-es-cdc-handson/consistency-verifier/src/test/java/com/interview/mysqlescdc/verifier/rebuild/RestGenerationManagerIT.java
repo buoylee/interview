@@ -58,6 +58,7 @@ class RestGenerationManagerIT {
         assertThat(root.sql("SELECT generation_name FROM rebuild_run WHERE run_id=UUID_TO_BIN(:run)").param("run",run.toString()).query(String.class).single()).isEqualTo(generation.name());
         assertThatThrownBy(() -> manager.create(run)).isInstanceOf(RuntimeException.class);
     }
+    @Test void exact_pre_reserved_created_row_is_verified_then_used_for_es_creation(){UUID run=UUID.fromString("dddddddd-0000-0000-0000-000000000001");String name="products_v3_20260722120000_dddddddd";root.sql("INSERT INTO rebuild_run(run_id,generation_name,status) VALUES(UUID_TO_BIN(:run),:name,'CREATED')").param("run",run.toString()).param("name",name).update();IndexGeneration generation=manager.create(run);assertThat(generation.name()).isEqualTo(name);assertThat(request("GET","/"+name,null,200)).contains(run.toString());}
     @Test void missing_or_conflicting_durable_reservation_rejects_before_alias_side_effect() {
         UUID missing=UUID.randomUUID();
         assertThatThrownBy(() -> manager.atomicCutover(new IndexGeneration(missing,"products_v3_forged",now))).isInstanceOf(RuntimeException.class);

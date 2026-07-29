@@ -23,7 +23,7 @@ public final class RestGenerationManager implements GenerationManager {
     private static final DateTimeFormatter STAMP=DateTimeFormatter.ofPattern("yyyyMMddHHmmss").withZone(ZoneOffset.UTC);
     private final JdbcClient jdbc; private final HttpClient http; private final JsonMapper json; private final String base; private final Clock clock;
     private final Runnable beforePersistSwapped;
-    public RestGenerationManager(JdbcClient jdbc,@Value("${verification.elasticsearch-url:http://localhost:9200}") String base) {
+    @org.springframework.beans.factory.annotation.Autowired public RestGenerationManager(JdbcClient jdbc,@Value("${verification.elasticsearch-url:http://localhost:9200}") String base) {
         this(jdbc,HttpClient.newHttpClient(),JsonMapper.builder().build(),base,Clock.systemUTC(),()->{});
     }
     RestGenerationManager(JdbcClient jdbc,HttpClient http,JsonMapper json,String base,Clock clock) {
@@ -34,7 +34,8 @@ public final class RestGenerationManager implements GenerationManager {
     }
     @Override public IndexGeneration create(UUID runId) {
         Instant created=clock.instant(); String name="products_v3_"+STAMP.format(created)+"_"+runId.toString().substring(0,8);
-        jdbc.sql("INSERT INTO rebuild_run(run_id,generation_name,status) VALUES(UUID_TO_BIN(:run),:name,'CREATED')")
+        var reserved=jdbc.sql("SELECT generation_name name,status,source_count sourceCount,alias_swapped swapped FROM rebuild_run WHERE run_id=UUID_TO_BIN(:run)").param("run",runId.toString()).query(CreateReservation.class).optional();
+        if(reserved.isPresent()){var r=reserved.get();if(!"CREATED".equals(r.status())||r.sourceCount()!=0||r.swapped()||!r.name().matches("products_v3_[0-9]{14}_"+runId.toString().substring(0,8)))throw new IllegalStateException("invalid pre-reserved generation");name=r.name();created=java.time.LocalDateTime.parse(name.substring(12,26),DateTimeFormatter.ofPattern("yyyyMMddHHmmss")).toInstant(ZoneOffset.UTC);}else jdbc.sql("INSERT INTO rebuild_run(run_id,generation_name,status) VALUES(UUID_TO_BIN(:run),:name,'CREATED')")
                 .param("run",runId.toString()).param("name",name).update();
         try (InputStream input=getClass().getResourceAsStream("/products-v3-template.json")) {
             ObjectNode body=(ObjectNode)json.readTree(input);
@@ -72,6 +73,14 @@ public final class RestGenerationManager implements GenerationManager {
         if(changed!=1) throw new IllegalStateException("aliases moved but durable swapped evidence was not persisted");
         return new AliasCutoverResult(old,generation.name(),false);
     }
+    public RebuildCoordinator.AliasTopology topology(IndexGeneration generation) {
+        try {
+            return aliases().index().equals(generation.name())
+                    ? RebuildCoordinator.AliasTopology.NEW : RebuildCoordinator.AliasTopology.OLD;
+        } catch (RuntimeException invalidTopology) {
+            return RebuildCoordinator.AliasTopology.CONTRADICTORY;
+        }
+    }
     private AliasState aliases() {
         JsonNode root=json.readTree(response("GET","/_alias/products_search,products_write",null,200));
         if (root.size()!=1) throw new IllegalStateException("aliases must share exactly one index");
@@ -91,4 +100,5 @@ public final class RestGenerationManager implements GenerationManager {
     }
     private record AliasState(String index) {}
     private record Reservation(String name,String status,boolean swapped) {}
+    private record CreateReservation(String name,String status,long sourceCount,boolean swapped) {}
 }

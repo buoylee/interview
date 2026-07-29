@@ -30,6 +30,7 @@ import tools.jackson.databind.json.JsonMapper;
 class BarrierRoutingIT {
     @Autowired JdbcClient jdbc;
     @Autowired BarrierPublisher publisher;
+    @Autowired BarrierObserver observer;
     JdbcClient root;
     @BeforeEach void setUp() {
         root = JdbcClient.create(new DriverManagerDataSource("jdbc:mysql://localhost:3308/product_catalog?useSSL=false&allowPublicKeyRetrieval=true", "root", "rootpass"));
@@ -88,6 +89,21 @@ class BarrierRoutingIT {
     }
     @Test void rejects_any_partition_count_other_than_three() {
         assertThatThrownBy(() -> publisher.publish(UUID.randomUUID(),2)).isInstanceOf(IllegalArgumentException.class);
+    }
+    @Test void observer_returns_exact_marker_next_offsets_from_prepublication_vector(){List<TopicPartition> partitions=List.of(new TopicPartition("product-search-revisions",0),new TopicPartition("product-search-revisions",1),new TopicPartition("product-search-revisions",2));Map<TopicPartition,Long> before=awaitStableEndOffsets(partitions);UUID run=UUID.randomUUID();Barrier barrier=publisher.publish(run,3);Map<TopicPartition,Long> observed=observer.awaitAll("product-search-revisions",barrier,before,Duration.ofSeconds(45));partitions.forEach(tp->assertThat(observed.get(tp)).isEqualTo(before.get(tp)+1));}
+    private static Map<TopicPartition,Long> awaitStableEndOffsets(List<TopicPartition> partitions) {
+        try (KafkaConsumer<String,String> consumer=new KafkaConsumer<>(consumerProperties())) {
+            Map<TopicPartition,Long> previous=consumer.endOffsets(partitions);
+            Instant stableSince=Instant.now();
+            Instant deadline=stableSince.plusSeconds(10);
+            while (Instant.now().isBefore(deadline)) {
+                Map<TopicPartition,Long> current=consumer.endOffsets(partitions);
+                if (!current.equals(previous)) { previous=current; stableSince=Instant.now(); }
+                if (Duration.between(stableSince,Instant.now()).compareTo(Duration.ofSeconds(1))>=0) return previous;
+                try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IllegalStateException(e); }
+            }
+            throw new IllegalStateException("topic did not become quiescent");
+        }
     }
     private static Properties consumerProperties() {
         Properties p=new Properties();
