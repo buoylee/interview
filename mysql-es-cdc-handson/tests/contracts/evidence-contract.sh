@@ -65,7 +65,15 @@ jq -e --slurpfile result "$bundle/result.json" '
     ([.beginning[].partition]|sort)==[0,1,2] and
     ([.end[].partition]|sort)==[0,1,2] and
     ([.primary[].partition]|sort)==[0,1,2] and
-    all(.primary[]; .offset==$result[0].applied_offsets[(.partition|tostring)] and .lag==0) and
+    .end as $ends |
+    all(.primary[]; . as $primary |
+      [$ends[]|select(.partition==$primary.partition)][0] as $end |
+      if $end.offset==0 then
+        $primary.offset==null and $primary.lag==null and
+        $result[0].applied_offsets[($primary.partition|tostring)]==0
+      else
+        $primary.offset==$result[0].applied_offsets[($primary.partition|tostring)] and $primary.lag==0
+      end) and
     all(.beginning[]; . as $row | .offset <= $result[0].applied_offsets[($row.partition|tostring)]) and
     all(.end[]; . as $row | .offset >= $result[0].applied_offsets[($row.partition|tostring)]) and
     (if $result[0].requires_rebuild then
