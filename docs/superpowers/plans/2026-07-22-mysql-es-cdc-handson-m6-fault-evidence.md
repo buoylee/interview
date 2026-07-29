@@ -520,6 +520,13 @@ atomically replace evidence/{scenario-id} from the temporary bundle
 run evidence-contract.sh and no-evidence-secrets.sh
 ~~~
 
+Every post-ID-validation attempt that can be represented safely is retained as an immutable, schema-valid nine-file bundle at
+`evidence/.runs/{scenario-id}/{runner-run-id}`. A FAIL becomes the canonical symlink only when no canonical evidence exists;
+otherwise it remains a locatable failed attempt and cannot replace the previous canonical bundle. A later non-fixture PASS may
+atomically replace canonical. Controlled fixture mode can publish only FAIL and must preserve fixture-observed run IDs and cleanup
+observations instead of rebinding them to the runner. The evidence root, `.runs`, `.locks`, scenario, and version parents must be
+physical contained directories rather than symlink traversal points.
+
 The runner's cleanup removes toxics, restores retention, disarms failpoints, resumes paused consumers, and reopens only a gate owned by the current run.
 
 - [ ] **Step 3: Make result derivation non-forgeable by scenario scripts**

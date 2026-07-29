@@ -30,7 +30,7 @@ jq -n --argjson row "$row" --slurpfile o "$observations" --slurpfile recovery "$
     dependency_versions:{mysql:"8.4.8",canal:"1.1.8",kafka:"4.1.2",elasticsearch:"8.17.0",project_head:$head},
     consistency_preconditions:$x.consistency_preconditions,source_watermark:$x.source_watermark,target_watermarks:$x.target_watermarks,
     applied_offsets:$x.applied_offsets,product_unresolved_dlq_count:$x.product_unresolved_dlq_count,record_unresolved_dlq_count:$x.record_unresolved_dlq_count,
-    unresolved_dlq_count:($x.product_unresolved_dlq_count+$x.record_unresolved_dlq_count),verification:$x.verification,
+    unresolved_dlq_count:($x.product_unresolved_dlq_count+$x.record_unresolved_dlq_count),verification:($x.verification+{run_id:($x.verification.run_id//"00000000-0000-4000-8000-000000000000")}),
     exact_diff_count:$x.exact_diff_count,tombstone_mismatch_count:$x.tombstone_mismatch_count,canal_position_recovery:($x.canal_position_recovery//null),
     expected_intermediate_states:$row.expected_intermediate_states,observed_intermediate_states:$x.observed_intermediate_states,
     expected_pipeline_state:$row.expected_terminal_state,observed_pipeline_state:$x.observed_pipeline_state,recovery_action:$row.recovery_action,
