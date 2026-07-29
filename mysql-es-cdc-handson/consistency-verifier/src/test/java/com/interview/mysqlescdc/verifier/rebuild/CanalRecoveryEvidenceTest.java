@@ -32,6 +32,13 @@ class CanalRecoveryEvidenceTest {
         assertThatThrownBy(invalid::validate).isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test void normal_sentinels_must_be_strictly_after_the_restart_vector() {
+        assertThatThrownBy(evidenceWithNormalSentinels(Map.of(0,10L,1,20L,2,30L))::validate).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(evidenceWithNormalSentinels(Map.of(0,9L,1,21L,2,31L))::validate).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(evidenceWithNormalSentinels(Map.of(0,11L,1,21L))::validate).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(evidenceWithNormalSentinels(Map.of(0,11L,1,21L,3,31L))::validate).isInstanceOf(IllegalArgumentException.class);
+    }
+
     private static CanalRecoveryEvidence valid() {
         UUID anchor = UUID.randomUUID(), normal = UUID.randomUUID();
         Map<Integer,Long> vector = Map.of(0,10L,1,20L,2,30L);
@@ -41,7 +48,7 @@ class CanalRecoveryEvidenceTest {
                         new CanalRecoveryEvidence.ManifestEntry(3,"mysql-bin.000003")),
                 "mysql-bin.000002",2,700,"b".repeat(64),"mysql-bin.000002",2,800,
                 anchor,vector,sentinels(anchor,vector),vector,"b".repeat(64),"mysql-bin.000002",2,800,
-                vector,normal,vector,sentinels(normal,vector));
+                vector,normal,increment(vector),sentinels(normal,increment(vector)));
     }
 
     private static List<CanalRecoveryEvidence.Sentinel> sentinels(UUID runId,Map<Integer,Long> vector) {
@@ -60,4 +67,16 @@ class CanalRecoveryEvidenceTest {
                 e.normalRestartPosition(),after,e.normalSentinelRunId(),e.normalSentinelOffsets(),
                 e.normalSentinelEvents());
     }
+    private static CanalRecoveryEvidence evidenceWithNormalSentinels(Map<Integer,Long> sentinels) {
+        CanalRecoveryEvidence e=valid();
+        return new CanalRecoveryEvidence(e.recoveryId(),e.cursorPath(),e.cursorBackupPath(),e.oldCursorSha256(),
+                e.oldJournalName(),e.oldPosition(),e.retainedManifest(),e.resetLowerBoundJournal(),
+                e.resetLowerBoundFileIndex(),e.resetLowerBoundPosition(),e.resetCursorSha256(),
+                e.resetJournalName(),e.resetFileIndex(),e.resetPosition(),e.resetAnchorRunId(),
+                e.resetAnchorOffsets(),e.resetAnchorEvents(),e.resetRestartOffsetsBefore(),
+                e.normalRestartCursorSha256(),e.normalRestartJournalName(),e.normalRestartFileIndex(),
+                e.normalRestartPosition(),e.normalRestartOffsetsAfter(),e.normalSentinelRunId(),sentinels,
+                sentinels.keySet().equals(java.util.Set.of(0,1,2))?sentinels(e.normalSentinelRunId(),sentinels):e.normalSentinelEvents());
+    }
+    private static Map<Integer,Long> increment(Map<Integer,Long> vector){return Map.of(0,vector.get(0)+1,1,vector.get(1)+1,2,vector.get(2)+1);}
 }

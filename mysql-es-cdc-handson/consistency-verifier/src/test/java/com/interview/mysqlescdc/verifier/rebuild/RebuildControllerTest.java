@@ -4,9 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 class RebuildControllerTest {
     @Test void loopback_start_uses_coordinator_contract() {
@@ -14,8 +18,7 @@ class RebuildControllerTest {
         var coordinator=new RebuildCoordinator(store,new NoopWorkflow(),new RebuildFailpointRegistry(true));
         var controller=new RebuildController(coordinator,new RebuildFailpointRegistry(true),null);
         UUID run=UUID.randomUUID();
-        MockHttpServletRequest request=loopback("127.0.0.1");
-        var response=controller.start(new RebuildController.Start(run,"MYSQL_BINLOG_GAP",null,null),request);
+        var response=controller.start(new RebuildController.Start(run,"MYSQL_BINLOG_GAP","product-search-revisions",200),loopback("127.0.0.1"));
         assertThat(response.getBody().status()).isEqualTo("CANAL_RECOVERY_REQUIRED");
         assertThat(store.request).isEqualTo(new RebuildRequest(run,"MYSQL_BINLOG_GAP","product-search-revisions",200));
     }
@@ -26,13 +29,42 @@ class RebuildControllerTest {
                 .isInstanceOf(ResponseStatusException.class).hasMessageContaining("403");
     }
 
-    @Test void failpoints_are_rejected_when_lab_mode_is_disabled() {
+    @Test void both_failpoint_mutations_are_rejected_when_lab_mode_is_disabled() {
         var controller=new RebuildController(null,new RebuildFailpointRegistry(false),null);
         assertThatThrownBy(()->controller.failpoint(RebuildFailpoint.BEFORE_ALIAS_SWITCH,loopback("::1")))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("disabled");
+        assertThatThrownBy(()->controller.clear(loopback("::1")))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("disabled");
     }
 
+    @ParameterizedTest @MethodSource("invalidStarts")
+    void invalid_v1_contract_is_rejected_before_persistence_or_side_effects(RebuildController.Start invalid) {
+        FakeStore store=new FakeStore();NoopWorkflow workflow=new NoopWorkflow();
+        var controller=new RebuildController(new RebuildCoordinator(store,workflow,new RebuildFailpointRegistry(true)),new RebuildFailpointRegistry(true),null);
+        assertThatThrownBy(()->controller.start(invalid,loopback("127.0.0.1"))).isInstanceOf(IllegalArgumentException.class);
+        assertThat(store.createCalls).isZero();assertThat(workflow.calls).isZero();
+    }
+
+    @Test void invalid_contract_is_exposed_as_bounded_http_400() {
+        var response=new RebuildApiExceptionHandler().invalid(new IllegalArgumentException("bad request"));
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).containsEntry("code","REBUILD_REJECTED").containsEntry("message","bad request");
+    }
+
+    static Stream<RebuildController.Start> invalidStarts(){UUID run=UUID.randomUUID();return Stream.of(
+            new RebuildController.Start(null,"NORMAL","product-search-revisions",200),
+            new RebuildController.Start(run,null,"product-search-revisions",200),
+            new RebuildController.Start(run,"","product-search-revisions",200),
+            new RebuildController.Start(run,"OTHER","product-search-revisions",200),
+            new RebuildController.Start(run,"NORMAL",null,200),
+            new RebuildController.Start(run,"NORMAL","",200),
+            new RebuildController.Start(run,"NORMAL","other-topic",200),
+            new RebuildController.Start(run,"NORMAL","product-search-revisions",0),
+            new RebuildController.Start(run,"NORMAL","product-search-revisions",-1),
+            new RebuildController.Start(run,"NORMAL","product-search-revisions",201),
+            new RebuildController.Start(run,"NORMAL","product-search-revisions",1001));}
+
     private static MockHttpServletRequest loopback(String address){var request=new MockHttpServletRequest();request.setRemoteAddr(address);return request;}
-    private static final class FakeStore implements RebuildRunStore{RebuildRequest request;String status;public void create(RebuildRequest r){request=r;status="CREATED";}public void transition(UUID r,String expected,String next){assertThat(status).isEqualTo(expected);status=next;}public void fail(UUID r,Throwable t){status="FAILED";}public RebuildStatus get(UUID r){return new RebuildStatus(r,status,"generation",null,false);}}
-    private static final class NoopWorkflow implements RebuildCoordinator.Workflow{public void captureStart(UUID r){}public void createGeneration(UUID r){}public void openSnapshot(UUID r){}public void startShadow(UUID r){}public void scanSnapshot(UUID r){}public void closeSnapshot(UUID r){}public void assertRetained(UUID r){}public void closeGate(UUID r){}public void publishBarrier(UUID r){}public void observeBarrier(UUID r){}public void awaitPrimary(UUID r){}public void awaitShadow(UUID r){}public void pausePrimary(UUID r){}public void verifyPhysical(UUID r){}public void requireEligible(UUID r){}public void cutover(UUID r){}public void stopShadow(UUID r){}public void resumePrimary(UUID r){}public void clearLogGap(UUID r){}public void openGate(UUID r){}}
+    private static final class FakeStore implements RebuildRunStore{RebuildRequest request;String status;int createCalls;public void create(RebuildRequest r){createCalls++;request=r;status="CREATED";}public void transition(UUID r,String expected,String next){assertThat(status).isEqualTo(expected);status=next;}public void fail(UUID r,Throwable t){status="FAILED";}public RebuildStatus get(UUID r){return new RebuildStatus(r,status,"generation",null,false);}}
+    private static final class NoopWorkflow implements RebuildCoordinator.Workflow{int calls;private void call(){calls++;}public void captureStart(UUID r){call();}public void createGeneration(UUID r){call();}public void openSnapshot(UUID r){call();}public void startShadow(UUID r){call();}public void scanSnapshot(UUID r){call();}public void closeSnapshot(UUID r){call();}public void assertRetained(UUID r){call();}public void closeGate(UUID r){call();}public void publishBarrier(UUID r){call();}public void observeBarrier(UUID r){call();}public void awaitPrimary(UUID r){call();}public void awaitShadow(UUID r){call();}public void pausePrimary(UUID r){call();}public void verifyPhysical(UUID r){call();}public void requireEligible(UUID r){call();}public void cutover(UUID r){call();}public void stopShadow(UUID r){call();}public void resumePrimary(UUID r){call();}public void clearLogGap(UUID r){call();}public void openGate(UUID r){call();}}
 }

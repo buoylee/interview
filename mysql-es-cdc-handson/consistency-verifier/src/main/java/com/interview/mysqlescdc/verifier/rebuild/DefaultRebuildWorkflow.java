@@ -180,10 +180,9 @@ public final class DefaultRebuildWorkflow implements RebuildCoordinator.Workflow
     }
 
     private RebuildRequestData run(UUID runId) {
-        return jdbc.sql("""
-                SELECT generation_name generation, 'product-search-revisions' topic, 200 pageSize
-                FROM rebuild_run WHERE run_id=UUID_TO_BIN(:run)
-                """).param("run", runId.toString()).query(RebuildRequestData.class).single();
+        String generation = jdbc.sql("SELECT generation_name FROM rebuild_run WHERE run_id=UUID_TO_BIN(:run)")
+                .param("run", runId.toString()).query(String.class).single();
+        return new RebuildRequestData(generation, RebuildRequest.TOPIC, RebuildRequest.PAGE_SIZE);
     }
 
     private Map<TopicPartition, Long> load(UUID runId, String phase) {

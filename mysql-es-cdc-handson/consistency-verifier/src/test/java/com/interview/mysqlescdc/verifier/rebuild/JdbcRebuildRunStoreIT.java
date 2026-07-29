@@ -26,8 +26,8 @@ class JdbcRebuildRunStoreIT {
 
     @Test void real_mysql_enforces_one_nonterminal_run_and_current_state_cas() {
         UUID first = UUID.randomUUID(), second = UUID.randomUUID();
-        store.create(new RebuildRequest(first,"MANUAL","product-search-revisions",200));
-        assertThatThrownBy(() -> store.create(new RebuildRequest(second,"MANUAL","product-search-revisions",200)))
+        store.create(new RebuildRequest(first,"NORMAL","product-search-revisions",200));
+        assertThatThrownBy(() -> store.create(new RebuildRequest(second,"NORMAL","product-search-revisions",200)))
                 .hasMessageContaining("one nonterminal");
         store.transition(first,"CREATED","SNAPSHOTTING");
         assertThatThrownBy(() -> store.transition(first,"CREATED","REPLAYING"))

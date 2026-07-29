@@ -57,6 +57,9 @@ public record CanalRecoveryEvidence(
         if (!resetAnchorOffsets.equals(resetRestartOffsetsBefore)
                 || !resetAnchorOffsets.equals(normalRestartOffsetsAfter)) invalid();
         if (resetAnchorRunId.equals(normalSentinelRunId)) invalid();
+        for (int partition : Set.of(0, 1, 2)) {
+            if (normalSentinelOffsets.get(partition) <= normalRestartOffsetsAfter.get(partition)) invalid();
+        }
         sentinels(resetAnchorEvents, resetAnchorRunId, resetAnchorOffsets);
         sentinels(normalSentinelEvents, normalSentinelRunId, normalSentinelOffsets);
     }

@@ -33,11 +33,9 @@ public final class RebuildController {
     @PostMapping("/runs")
     public ResponseEntity<RebuildStatus> start(@RequestBody Start body, HttpServletRequest request) {
         requireLoopback(request);
-        UUID runId = body.runId() == null ? UUID.randomUUID() : body.runId();
-        return ResponseEntity.ok(coordinator.start(new RebuildRequest(runId,
-                body.reason() == null ? "MANUAL" : body.reason(),
-                body.topic() == null ? "product-search-revisions" : body.topic(),
-                body.pageSize() == null ? 200 : body.pageSize())));
+        if (body == null || body.pageSize() == null) throw new IllegalArgumentException("exact v1 rebuild request required");
+        return ResponseEntity.ok(coordinator.start(new RebuildRequest(body.runId(),
+                body.reason(), body.topic(), body.pageSize())));
     }
 
     @GetMapping("/runs/{runId}")
