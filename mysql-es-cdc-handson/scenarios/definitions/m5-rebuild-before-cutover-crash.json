@@ -1,0 +1,9 @@
+{
+  "scenario_id": "m5-rebuild-before-cutover-crash",
+  "failpoint": "BEFORE_ALIAS_SWITCH",
+  "expected_alias_authority": "OLD",
+  "expected_gate": "OPEN",
+  "expected_primary_paused": false,
+  "expected_run_status": "FAILED",
+  "retain_failed_generation": true
+}

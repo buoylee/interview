@@ -16,7 +16,7 @@ class RebuildControllerTest {
     @Test void loopback_start_uses_coordinator_contract() {
         FakeStore store=new FakeStore();
         var coordinator=new RebuildCoordinator(store,new NoopWorkflow(),new RebuildFailpointRegistry(true));
-        var controller=new RebuildController(coordinator,new RebuildFailpointRegistry(true),null);
+        var controller=new RebuildController(coordinator,new RebuildFailpointRegistry(true),null,null,false);
         UUID run=UUID.randomUUID();
         var response=controller.start(new RebuildController.Start(run,"MYSQL_BINLOG_GAP","product-search-revisions",200),loopback("127.0.0.1"));
         assertThat(response.getBody().status()).isEqualTo("CANAL_RECOVERY_REQUIRED");
@@ -24,13 +24,13 @@ class RebuildControllerTest {
     }
 
     @Test void non_loopback_cannot_operate_internal_rebuild_api() {
-        var controller=new RebuildController(null,new RebuildFailpointRegistry(true),null);
+        var controller=new RebuildController(null,new RebuildFailpointRegistry(true),null,null,false);
         assertThatThrownBy(()->controller.status(UUID.randomUUID(),loopback("192.0.2.10")))
                 .isInstanceOf(ResponseStatusException.class).hasMessageContaining("403");
     }
 
     @Test void both_failpoint_mutations_are_rejected_when_lab_mode_is_disabled() {
-        var controller=new RebuildController(null,new RebuildFailpointRegistry(false),null);
+        var controller=new RebuildController(null,new RebuildFailpointRegistry(false),null,null,false);
         assertThatThrownBy(()->controller.failpoint(RebuildFailpoint.BEFORE_ALIAS_SWITCH,loopback("::1")))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("disabled");
         assertThatThrownBy(()->controller.clear(loopback("::1")))
@@ -40,7 +40,7 @@ class RebuildControllerTest {
     @ParameterizedTest @MethodSource("invalidStarts")
     void invalid_v1_contract_is_rejected_before_persistence_or_side_effects(RebuildController.Start invalid) {
         FakeStore store=new FakeStore();NoopWorkflow workflow=new NoopWorkflow();
-        var controller=new RebuildController(new RebuildCoordinator(store,workflow,new RebuildFailpointRegistry(true)),new RebuildFailpointRegistry(true),null);
+        var controller=new RebuildController(new RebuildCoordinator(store,workflow,new RebuildFailpointRegistry(true)),new RebuildFailpointRegistry(true),null,null,false);
         assertThatThrownBy(()->controller.start(invalid,loopback("127.0.0.1"))).isInstanceOf(IllegalArgumentException.class);
         assertThat(store.createCalls).isZero();assertThat(workflow.calls).isZero();
     }
@@ -49,6 +49,14 @@ class RebuildControllerTest {
         var response=new RebuildApiExceptionHandler().invalid(new IllegalArgumentException("bad request"));
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).containsEntry("code","REBUILD_REJECTED").containsEntry("message","bad request");
+    }
+
+    @Test void docker_bridge_address_is_accepted_only_by_explicit_lab_switch() {
+        var denied=new RebuildController(null,new RebuildFailpointRegistry(true),null,null,false);
+        assertThatThrownBy(()->denied.status(UUID.randomUUID(),loopback("172.18.0.1"))).isInstanceOf(ResponseStatusException.class);
+        FakeStore store=new FakeStore();store.status="COMPLETED";
+        var allowed=new RebuildController(new RebuildCoordinator(store,new NoopWorkflow(),new RebuildFailpointRegistry(true)),new RebuildFailpointRegistry(true),null,null,true);
+        assertThat(allowed.status(UUID.randomUUID(),loopback("172.18.0.1")).status()).isEqualTo("COMPLETED");
     }
 
     static Stream<RebuildController.Start> invalidStarts(){UUID run=UUID.randomUUID();return Stream.of(

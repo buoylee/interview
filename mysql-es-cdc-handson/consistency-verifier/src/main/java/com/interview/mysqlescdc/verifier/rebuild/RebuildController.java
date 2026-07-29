@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.beans.factory.annotation.Value;
 
 @RestController
 @RequestMapping("/internal/rebuild")
@@ -22,12 +23,17 @@ public final class RebuildController {
     private final RebuildCoordinator coordinator;
     private final RebuildFailpointRegistry failpoints;
     private final CanalRecoveryService canalRecovery;
+    private final CanalRecoveryBarrierService recoveryBarriers;
+    private final boolean allowDockerBridge;
 
     public RebuildController(RebuildCoordinator coordinator, RebuildFailpointRegistry failpoints,
-            CanalRecoveryService canalRecovery) {
+            CanalRecoveryService canalRecovery, CanalRecoveryBarrierService recoveryBarriers,
+            @Value("${lab.internal-api.allow-docker-bridge:false}") boolean allowDockerBridge) {
         this.coordinator = coordinator;
         this.failpoints = failpoints;
         this.canalRecovery = canalRecovery;
+        this.recoveryBarriers = recoveryBarriers;
+        this.allowDockerBridge = allowDockerBridge;
     }
 
     @PostMapping("/runs")
@@ -60,6 +66,12 @@ public final class RebuildController {
         return coordinator.completeCanalRecovery(runId,evidence,canalRecovery);
     }
 
+    @PostMapping("/runs/{runId}/canal-recovery/barriers/{markerRunId}")
+    public Barrier recoveryBarrier(@PathVariable UUID runId,@PathVariable UUID markerRunId,
+            HttpServletRequest request) {
+        requireLoopback(request);return recoveryBarriers.publish(runId,markerRunId);
+    }
+
     @PutMapping("/failpoint/{point}")
     public Map<String, String> failpoint(@PathVariable RebuildFailpoint point,
             HttpServletRequest request) {
@@ -71,9 +83,10 @@ public final class RebuildController {
         requireLoopback(request); failpoints.clear(); return Map.of("failpoint", "NONE");
     }
 
-    private static void requireLoopback(HttpServletRequest request) {
+    private void requireLoopback(HttpServletRequest request) {
         try {
-            if (!InetAddress.getByName(request.getRemoteAddr()).isLoopbackAddress()) {
+            InetAddress address=InetAddress.getByName(request.getRemoteAddr());
+            if (!address.isLoopbackAddress() && !(allowDockerBridge && address.isSiteLocalAddress())) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "rebuild API is loopback-only");
             }
         } catch (java.net.UnknownHostException invalidAddress) {

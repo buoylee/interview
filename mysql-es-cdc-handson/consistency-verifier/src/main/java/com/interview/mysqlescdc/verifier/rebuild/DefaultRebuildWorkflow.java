@@ -123,6 +123,7 @@ public final class DefaultRebuildWorkflow implements RebuildCoordinator.Workflow
 
     @Override public void verifyPhysical(UUID runId) {
         RebuildRequestData run = run(runId);
+        writer.refresh(run.generation());
         VerificationRunReport report = verifier.run(new VerificationRequest(run.generation(), run.pageSize()));
         int changed = jdbc.sql("""
                 UPDATE rebuild_run SET verification_run_id=UUID_TO_BIN(:verification),

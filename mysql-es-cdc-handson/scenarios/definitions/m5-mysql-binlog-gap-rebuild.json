@@ -1,0 +1,13 @@
+{
+  "scenario_id": "m5-mysql-binlog-gap-rebuild",
+  "gap_source": "PURGED_CANAL_ACK_CURSOR",
+  "rebuild_reason": "MYSQL_BINLOG_GAP",
+  "required_phase": "CANAL_RECOVERING",
+  "reset_mode_boots": 1,
+  "normal_mode": false,
+  "cursor_path": "/home/admin/canal-data/products/meta.dat",
+  "delete_cursor": false,
+  "delete_canal_volume": false,
+  "required_partitions": [0,1,2],
+  "expected_terminal_state": "HEALTHY"
+}

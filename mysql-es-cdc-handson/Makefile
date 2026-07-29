@@ -2,7 +2,7 @@ SHELL := /bin/bash
 COMPOSE := docker compose -f infra/compose.yaml
 COMPOSE_ADAPTER := $(COMPOSE) -f infra/compose.adapter.yaml
 
-.PHONY: assert-java-21 package up up-adapter down reset verify smoke-m0 evidence scenario-m1 verify-m1 gate-m1 bootstrap-products-v2 bootstrap-index verify-products-v2 scenario-m3-after-es scenario-m3-after-dlq scenario-m3 verify-m3 gate-m2-m3 reconcile scenario-m4 verify-m4
+.PHONY: assert-java-21 package up up-adapter down reset verify smoke-m0 evidence scenario-m1 verify-m1 gate-m1 bootstrap-products-v2 bootstrap-index verify-products-v2 scenario-m3-after-es scenario-m3-after-dlq scenario-m3 verify-m3 gate-m2-m3 reconcile scenario-m4 verify-m4 rebuild scenario-m5 verify-m5
 
 assert-java-21:
 	@java -version 2>&1 | head -n 1 | grep -Eq 'version "21([.]|\")' || { \
@@ -144,3 +144,20 @@ verify-m4: assert-java-21
 	git diff --check
 	@tracked_status="$$(git status --porcelain --untracked-files=no)"; \
 	if test -n "$$tracked_status"; then echo "Tracked worktree is not clean after M4 gate:" >&2; echo "$$tracked_status" >&2; exit 1; fi
+
+rebuild:
+	@run_id="$$(uuidgen | tr '[:upper:]' '[:lower:]')"; \
+	curl -fsS -X POST http://127.0.0.1:8083/internal/rebuild/runs \
+	  -H 'Content-Type: application/json' \
+	  -d "{\"runId\":\"$$run_id\",\"reason\":\"NORMAL\",\"topic\":\"product-search-revisions\",\"pageSize\":200}"
+
+scenario-m5:
+	bash scenarios/scripts/run-m5-rebuild.sh
+
+verify-m5: assert-java-21
+	./mvnw -q -pl product-service,search-sync-consumer,consistency-verifier test
+	bash tests/contracts/canal-position-recovery.sh
+	bash tests/contracts/m5-rebuild-completion-assets.sh
+	bash tests/end-to-end/m5-rebuild.sh
+	bash tests/contracts/check-verifier-independence.sh
+	git diff --check

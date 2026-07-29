@@ -1,0 +1,13 @@
+{
+  "scenario_id": "m5-concurrent-rebuild",
+  "seed": "catalog-500",
+  "scan_page_size": 10,
+  "mutations_during_scan": [
+    {"operation":"rename","productId":1001,"name":"Concurrent Name"},
+    {"operation":"inventory","productId":1002,"availableQuantity":77},
+    {"operation":"deactivate","productId":1003},
+    {"operation":"create","productId":2001,"sku":"SKU-2001"}
+  ],
+  "expected_gate_behavior": "HTTP_503_DURING_CUTOVER_ONLY",
+  "expected_terminal_state": "HEALTHY"
+}

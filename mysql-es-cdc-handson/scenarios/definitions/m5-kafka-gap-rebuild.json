@@ -1,0 +1,9 @@
+{
+  "scenario_id": "m5-kafka-gap-rebuild",
+  "gap_source": "CONFIRMED_BEGINNING_AFTER_COMMITTED",
+  "condition_before": "REBUILD_REQUIRED",
+  "restore_retention_before_rebuild": true,
+  "rebuild_reason": "NORMAL",
+  "clear_condition_with_successful_rebuild_id_only": true,
+  "expected_terminal_state": "HEALTHY"
+}

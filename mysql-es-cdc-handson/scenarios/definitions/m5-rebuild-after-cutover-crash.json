@@ -1,0 +1,9 @@
+{
+  "scenario_id": "m5-rebuild-after-cutover-crash",
+  "failpoint": "AFTER_ALIAS_SWITCH_BEFORE_GATE_OPEN",
+  "restart_service": "consistency-verifier",
+  "expected_alias_authority": "NEW",
+  "expected_recovery": "FORWARD_ONLY",
+  "expected_gate": "OPEN",
+  "expected_verification": "PASS"
+}
