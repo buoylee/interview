@@ -38,3 +38,5 @@ Tearing down its isolated lab volumes removes experiment state; it is not poison
 record recovery. Resolution needs a parser/wire fix followed by safe replay, or
 M4 independent reconciliation. The final gate therefore starts a separate fresh
 environment and proves both unresolved counts are zero there.
+
+The crash, partial-Bulk, mapping and DLQ transitions are evidenced by [evidence:consumer-crash-before-elasticsearch](../evidence/consumer-crash-before-elasticsearch/result.json), [evidence:consumer-crash-after-elasticsearch-before-offset](../evidence/consumer-crash-after-elasticsearch-before-offset/result.json), [evidence:elasticsearch-bulk-partial-failure](../evidence/elasticsearch-bulk-partial-failure/result.json), [evidence:mapping-conflict](../evidence/mapping-conflict/result.json), and [evidence:dlq-replay-fails-then-succeeds](../evidence/dlq-replay-fails-then-succeeds/result.json). General crash safety, zero data loss, and automatic recovery for every poison record are **not tested / non-goal**.

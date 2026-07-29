@@ -42,3 +42,5 @@ make verify-m5
 ```
 
 `M5_EVIDENCE_DIR` selects the evidence directory. Formal acceptance runs from two separate reset environments and evidence directories. The scenario runner removes only its task-created rows, failpoints, toxics, and `products_v3_*` generations when safe; it never removes `meta.dat` or the Canal data volume.
+
+The gap-to-rebuild, concurrent-write, and crash/cutover boundaries are evidenced by [evidence:canal-outage-beyond-binlog-retention](../evidence/canal-outage-beyond-binlog-retention/result.json), [evidence:consumer-offset-beyond-kafka-retention](../evidence/consumer-offset-beyond-kafka-retention/result.json), [evidence:rebuild-with-concurrent-writes](../evidence/rebuild-with-concurrent-writes/result.json), and [evidence:rebuild-crash-and-restart](../evidence/rebuild-crash-and-restart/result.json). Zero pause, MySQL historical recovery, all retention configurations, and a production availability SLO are **not tested / non-goal**.

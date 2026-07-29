@@ -2,6 +2,8 @@
 
 MySQL is the fact source; Elasticsearch is a repairable current-state projection.
 
+This document uses the [general financial reconciliation theory](../../financial-consistency/07-reconciliation/README.md) for difference, repair, review and audit concepts. It only specifies the MySQL-to-Elasticsearch read-model boundary; it does not duplicate the financial domain design.
+
 ## What a PASS proves
 
 A PASS proves that, during one stable source watermark, every source product has
@@ -37,3 +39,5 @@ PASS before the pipeline can return to HEALTHY.
 Reconciliation does not recreate missing binlog or Kafka history, recover lost
 MySQL facts, or make a moving snapshot conclusive. A moving source produces
 INCONCLUSIVE and repair is rejected. Confirmed log gaps require M5 rebuild.
+
+Independent drift and systematic-projector detection/repair are evidenced by [evidence:manual-elasticsearch-drift](../evidence/manual-elasticsearch-drift/result.json), [evidence:category-rename-multi-product](../evidence/category-rename-multi-product/result.json), and [evidence:consumer-systematic-mapping-bug](../evidence/consumer-systematic-mapping-bug/result.json). Reconciliation cannot recover MySQL history or certify a moving source; those limits, as well as production reconciliation SLOs, are **not tested / non-goal**. Log-gap routing is evidenced by [evidence:canal-outage-beyond-binlog-retention](../evidence/canal-outage-beyond-binlog-retention/result.json) and [evidence:consumer-offset-beyond-kafka-retention](../evidence/consumer-offset-beyond-kafka-retention/result.json).

@@ -170,10 +170,12 @@ public void syncToES(Product product) {
 | 优点 | 缺点 |
 |------|------|
 | **对业务代码零侵入** | 架构复杂（多一个组件） |
-| 数据一致性好（基于 Binlog，不会漏数据） | Binlog 解析有延迟（通常 1-3 秒） |
+| 自动捕获已提交行变化，能减少应用双写遗漏（有明确前提） | Binlog 解析有延迟（通常 1-3 秒） |
 | 能捕获所有变更（含直接 SQL 修改） | DDL 变更处理复杂 |
 
 **适用**：**大型生产环境首选**。
+
+**CDC 的精确边界**：基于 binlog 自动捕获已提交行变化，能减少应用双写遗漏；但只有在 binlog 位点与保留期有效、下游确认和重试正确、无不可回放日志缺口时，增量链路才可恢复。出现缺口必须靠独立检测和全量重建，Canal 本身不保证 MySQL 到 ES 端到端不丢。可运行的故障证据、revision/DLQ/对账/重建边界见 [MySQL → Canal → Elasticsearch 最终一致性实战](../../../mysql-es-cdc-handson/README.md)。
 
 ### 方案 4：Logstash JDBC
 
@@ -214,7 +216,7 @@ Logstash 定时轮询（如每分钟）：
 
 > **面试怎么答**："你们的数据怎么从 MySQL 同步到 ES 的？"
 >
-> 生产中我们用 Canal CDC 方案。Canal 伪装为 MySQL Slave 订阅 Binlog，实时捕获数据变更（INSERT/UPDATE/DELETE），通过 Kafka 中间层投递到 ES 写入消费者。选 CDC 的原因是对业务代码零侵入、基于 Binlog 不会漏数据、延迟在 1-3 秒可接受。一致性通过消费者幂等（用业务主键作为 ES 文档 _id）+ 全量校对任务（每天凌晨对比 MySQL 和 ES 数据量和关键字段）来保障。
+> 生产中我们用 Canal CDC 方案。Canal 伪装为 MySQL Slave 订阅 Binlog，自动捕获已提交行变化以减少应用双写遗漏，并通过 Kafka 投递到 ES 写入消费者。它的增量可恢复前提是位点和保留期有效、下游确认和重试正确、无不可回放缺口；缺口由独立检测和全量重建处理，Canal 本身不保证 MySQL 到 ES 端到端不丢。一致性还依赖 revision + external version 防倒退、逐 Bulk item 判定、持久 DLQ、独立对账与可验证重建；详见 [CDC lab README](../../../mysql-es-cdc-handson/README.md)。
 
 ---
 
@@ -296,7 +298,7 @@ MySQL 加字段 → Binlog 中有 DDL 事件 → Canal/Debezium 可以捕获。�
 
 **问题 2：Binlog 位点管理与故障恢复**
 
-Canal 记录当前消费到的 Binlog 文件名和位置（position）。故障恢复时从上次的位点继续消费，不会丢数据。但如果 Binlog 已经被 MySQL 清理（expire_logs_days 到期），需要全量重新导入。
+Canal 记录当前消费到的 Binlog 文件名和位置（position）。基于 binlog 自动捕获已提交行变化，能减少应用双写遗漏；但只有在 binlog 位点与保留期有效、下游确认和重试正确、无不可回放日志缺口时，增量链路才可恢复。出现缺口必须靠独立检测和全量重建，Canal 本身不保证 MySQL 到 ES 端到端不丢。具体的可运行边界见 [CDC lab README](../../../mysql-es-cdc-handson/README.md)。
 
 **问题 3：延迟监控**
 
@@ -316,9 +318,9 @@ Canal 记录当前消费到的 Binlog 文件名和位置（position）。故障�
   → 消费者再次写入 ES
   → 如果不做幂等处理，可能导致数据重复或不一致
 
-解决：用业务主键作为 ES 文档 _id
+解决：用业务主键作为 ES 文档 _id，并把它作为幂等定位键；它只能让“同一内容的重复写”落到同一文档，不能单独防止迟到旧消息覆盖新状态。
   PUT /products/_doc/{product_id}   ← 用 product_id 作为 _id
-  → 相同 _id 重复写入 = 覆盖（upsert） → 幂等！
+  → 还必须用单调 revision + ES external version 拒绝倒退；逐 Bulk item 判定、可持久化的 DLQ、独立对账与全量重建共同组成故障闭环（见 [CDC lab README](../../../mysql-es-cdc-handson/README.md)）。
 ```
 
 ### 消费失败处理
@@ -458,13 +460,13 @@ result = es.search(index="products", query={"match": {"name": "手机"}})
 
 **答**：同步双写最大的问题是无法保证事务一致性——MySQL 和 ES 不在同一个事务中，一个写入成功另一个失败就会导致数据不一致。而且同步调用 ES 会增加接口响应时间，ES 慢或超时直接影响业务。
 
-解决方案是改为异步双写（通过 MQ 解耦）或使用 CDC 方案（Canal/Debezium 监听 Binlog）。MQ 方案通过本地消息表或事务消息保证消息不丢失，消费者用文档 _id 保证幂等性。CDC 方案对业务代码零侵入，且基于 Binlog 不会漏数据。
+解决方案是改为异步双写（通过 MQ 解耦）或使用 CDC 方案（Canal/Debezium 监听 Binlog）。MQ 方案通过本地消息表或事务消息缩小发布窗口；文档 `_id` 只解决同一文档定位，仍需 revision 防倒退、逐 Bulk item 判定、DLQ 与对账。CDC 方案对业务代码低侵入：它自动捕获已提交行变化以减少应用双写遗漏，但并不凭 binlog 单独保证端到端不丢；位点/保留期、下游确认重试、缺口检测和全量重建同样是边界，见 [CDC lab README](../../../mysql-es-cdc-handson/README.md)。
 
 ### Q3：Canal/Debezium 和 MQ 双写的区别？各自优缺点？
 
 **答**：核心区别是数据变更的捕获方式。MQ 双写需要业务代码主动发消息，对代码有侵入；CDC 通过监听 MySQL Binlog 自动捕获所有变更，对业务代码零侵入。
 
-MQ 双写的优点是架构相对简单（不需要 Canal 组件），延迟可控，但需要每个写 MySQL 的地方都发 MQ 消息，容易遗漏。CDC 的优点是捕获所有变更（包括直接 SQL 修改、存储过程等），不会遗漏，但架构多了 Canal/Debezium 组件，运维复杂度更高。
+MQ 双写的优点是架构相对简单（不需要 Canal 组件），延迟可控，但需要每个写 MySQL 的地方都发 MQ 消息，容易遗漏。CDC 的优点是自动捕获已提交的行变化（包括直接 SQL 修改、存储过程等），从而减少应用双写遗漏；它仍依赖有效位点与保留期、正确的下游确认/重试，以及缺口后的独立检测和全量重建，不能被表述为“不会遗漏”。
 
 大型系统推荐 CDC，小型系统 MQ 双写足够。
 
@@ -472,7 +474,7 @@ MQ 双写的优点是架构相对简单（不需要 Canal 组件），延迟可�
 
 **答**：首先明确目标是最终一致性，不追求强一致性。保障方案分三个层次：
 
-第一，实时层：同步机制（CDC 或 MQ）保证数据变更秒级同步到 ES。消费者用 _id 幂等写入，失败重试+死信队列。
+第一，实时层：同步机制（CDC 或 MQ）在已定义的延迟目标内推进变更；消费者以 `_id` 定位文档，并以单调 revision + external version 拒绝旧写，逐 Bulk item 处理失败、重试和持久 DLQ。秒级延迟和生产 SLO 需要单独度量，不能由机制名称保证。
 
 第二，校对层：每天一次全量校对——对比 MySQL 和 ES 的数据量和关键字段，发现差异后增量修复。
 
@@ -484,7 +486,7 @@ MQ 双写的优点是架构相对简单（不需要 Canal 组件），延迟可�
 
 **答**：写入失败时先重试（3 次，指数退避），仍然失败就发送到死信队列（DLQ），触发告警后人工处理。常见失败原因：ES 集群 Red 状态、Mapping 类型冲突、文档大小超限。
 
-消费幂等通过用业务主键作为 ES 文档 _id 来保证。比如 product_id=123 的商品，ES 文档 _id 也设为 123。重复消费同一条消息只是再次 PUT /products/_doc/123，相当于 upsert 覆盖，结果幂等。
+业务主键作为 ES 文档 `_id` 只保证重复写落到同一个目标文档；它本身不是完整幂等或乱序防护。比如 product_id=123 的商品，ES 文档 `_id` 也设为 123，但还要在每次写入携带单调 revision 并用 external version 拒绝迟到旧事件。Bulk 必须逐 item 判定，不能只看 HTTP 总状态；无法结算的记录进入持久 DLQ，之后由独立对账发现漂移，必要时通过全量重建恢复（见 [CDC lab README](../../../mysql-es-cdc-handson/README.md)）。
 
 ### Q6：全量同步和增量同步怎么配合？
 
@@ -532,7 +534,7 @@ output {
   elasticsearch {
     hosts => ["http://localhost:9200"]
     index => "products"
-    document_id => "%{id}"           # 用 MySQL 的 id 作为 ES 文档 _id（幂等）
+    document_id => "%{id}"           # 用 MySQL id 定位同一文档；示例不覆盖 revision fencing/DLQ/对账
   }
 }
 
@@ -613,11 +615,11 @@ ES 的定位：搜索/分析副本，不是主数据库
   ★     同步双写            → 快速原型/小项目
 
 一致性保障三板斧：
-  实时层：CDC/MQ + 幂等消费 + 失败重试 + 死信队列
+  实时层：CDC/MQ + revision fencing + 逐 Bulk item 失败处理 + 持久 DLQ
   校对层：定时全量对比 + 增量修复
   补偿层：查 ES 没有 → 回查 MySQL → 触发补偿同步
 
-消费者幂等：用业务主键作为 ES 文档 _id
+消费者幂等：`_id` 定位 + revision fencing；再由 DLQ、对账和重建处理无法在线结算的故障
 ```
 
 **下一阶段**：阶段 10 生产运维与高级特性——ILM 索引生命周期管理、快照恢复、安全配置、Suggester 自动补全、向量搜索、Ingest Pipeline、ELK 架构。这是 ES 知识的最后一块拼图。

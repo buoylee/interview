@@ -2,7 +2,29 @@
 
 ## 先给结论
 
-Canal 是 MySQL binlog CDC（变更数据捕获）/增量订阅组件，不是端到端最终一致性方案。M0 只证明：MySQL 业务事实和 revision 在一个本地事务提交后，Canal 1.1.8 能把对应行变化发布到 Kafka。Kafka 中出现消息不等于 Elasticsearch 已经收敛。
+Canal 是 MySQL binlog CDC（变更数据捕获）/增量订阅组件，不是端到端最终一致性方案。
+
+它提供的是：读取并解析已提交 binlog、保存和恢复消费位点、把行级变更交给下游或 MQ。它改善了“如何捕获 MySQL 已提交变化”这一段，但不负责 Elasticsearch Bulk item 成败、Kafka offset 与 ES 写入的确认顺序、幂等和乱序、DLQ、独立对账、日志缺口判断、全量重建与 alias 切换。
+
+本项目在明确前提下实现 MySQL 与 Elasticsearch 当前状态的最终一致：MySQL 事实完整；binlog/Kafka 增量日志未出现不可回放缺口，或缺口后成功完成全量重建；消费者使用 at-least-once、当前状态重读、严格 revision 防倒退、逐 Bulk item 判定、持久 DLQ；独立对账能够发现并修复漂移；重建使用一致性快照、重叠增量回放、跨 partition barrier、短暂写闸门和原子 alias 切换。
+
+它不承诺强一致、exactly-once、零写入暂停、MySQL 历史恢复或生产可用性 SLO。
+
+这些是受控 lab 的能力边界：捕获与位点恢复见 [evidence:canal-normal-restart](evidence/canal-normal-restart/result.json)、[evidence:canal-outage-within-binlog-retention](evidence/canal-outage-within-binlog-retention/result.json)；不可回放缺口进入重建见 [evidence:canal-outage-beyond-binlog-retention](evidence/canal-outage-beyond-binlog-retention/result.json)。生产 SLO、任意部署和 MySQL 历史恢复均为 **not tested / non-goal**。
+
+## 责任矩阵（18 个故障场景）
+
+| Ability | Canal | Additional component/capability | Evidence |
+|---|---|---|---|
+| Capture committed MySQL row changes | yes | binlog retention and position monitoring | [evidence:canal-normal-restart](evidence/canal-normal-restart/result.json), [evidence:canal-outage-within-binlog-retention](evidence/canal-outage-within-binlog-retention/result.json), [evidence:canal-outage-beyond-binlog-retention](evidence/canal-outage-beyond-binlog-retention/result.json) |
+| Buffer and replay downstream work | no | Kafka with retained offsets | [evidence:kafka-temporary-unavailable](evidence/kafka-temporary-unavailable/result.json), [evidence:consumer-offset-beyond-kafka-retention](evidence/consumer-offset-beyond-kafka-retention/result.json) |
+| Prevent old writes from overwriting new | no | per-product revision + ES external version | [evidence:consumer-crash-after-elasticsearch-before-offset](evidence/consumer-crash-after-elasticsearch-before-offset/result.json), [evidence:duplicate-event](evidence/duplicate-event/result.json), [evidence:late-old-revision](evidence/late-old-revision/result.json), [evidence:delete-then-old-event-replay](evidence/delete-then-old-event-replay/result.json) |
+| Settle partial Bulk results | no | item inspection + retry classification + durable DLQ | [evidence:elasticsearch-bulk-partial-failure](evidence/elasticsearch-bulk-partial-failure/result.json), [evidence:mapping-conflict](evidence/mapping-conflict/result.json), [evidence:dlq-replay-fails-then-succeeds](evidence/dlq-replay-fails-then-succeeds/result.json) |
+| Detect projection bugs or manual drift | no | independent reconciliation | [evidence:manual-elasticsearch-drift](evidence/manual-elasticsearch-drift/result.json), [evidence:consumer-systematic-mapping-bug](evidence/consumer-systematic-mapping-bug/result.json) |
+| Recover an unreplayable log gap | no | full rebuild + shadow replay + barrier + atomic aliases | [evidence:canal-outage-beyond-binlog-retention](evidence/canal-outage-beyond-binlog-retention/result.json), [evidence:consumer-offset-beyond-kafka-retention](evidence/consumer-offset-beyond-kafka-retention/result.json), [evidence:rebuild-with-concurrent-writes](evidence/rebuild-with-concurrent-writes/result.json), [evidence:rebuild-crash-and-restart](evidence/rebuild-crash-and-restart/result.json) |
+| Prove HEALTHY | no | lag + DLQ + gap + recent exact verification state machine | [evidence:consumer-crash-before-elasticsearch](evidence/consumer-crash-before-elasticsearch/result.json), [evidence:category-rename-multi-product](evidence/category-rename-multi-product/result.json), [evidence:canal-normal-restart](evidence/canal-normal-restart/result.json), [evidence:canal-outage-within-binlog-retention](evidence/canal-outage-within-binlog-retention/result.json), [evidence:canal-outage-beyond-binlog-retention](evidence/canal-outage-beyond-binlog-retention/result.json), [evidence:kafka-temporary-unavailable](evidence/kafka-temporary-unavailable/result.json), [evidence:consumer-offset-beyond-kafka-retention](evidence/consumer-offset-beyond-kafka-retention/result.json), [evidence:consumer-crash-after-elasticsearch-before-offset](evidence/consumer-crash-after-elasticsearch-before-offset/result.json), [evidence:elasticsearch-bulk-partial-failure](evidence/elasticsearch-bulk-partial-failure/result.json), [evidence:duplicate-event](evidence/duplicate-event/result.json), [evidence:late-old-revision](evidence/late-old-revision/result.json), [evidence:mapping-conflict](evidence/mapping-conflict/result.json), [evidence:manual-elasticsearch-drift](evidence/manual-elasticsearch-drift/result.json), [evidence:category-rename-multi-product](evidence/category-rename-multi-product/result.json), [evidence:delete-then-old-event-replay](evidence/delete-then-old-event-replay/result.json), [evidence:rebuild-with-concurrent-writes](evidence/rebuild-with-concurrent-writes/result.json), [evidence:rebuild-crash-and-restart](evidence/rebuild-crash-and-restart/result.json), [evidence:consumer-systematic-mapping-bug](evidence/consumer-systematic-mapping-bug/result.json), [evidence:dlq-replay-fails-then-succeeds](evidence/dlq-replay-fails-then-succeeds/result.json) |
+
+这里的 `HEALTHY` 是本实验状态机在最近一次精确独立验证后的受控结论，不是持续的强一致或生产 SLO；后两者均为 **not tested / non-goal**。
 
 ## M0 能证明什么
 
@@ -35,11 +57,12 @@ make gate-m1
 ```bash
 make reset
 make verify
-make smoke-m0
 make evidence
 ```
 
-验收 fresh-run 可重复性时，完整执行两次：
+`make evidence` 是昂贵的 18 场景真实故障矩阵；它生成/替换证据，通常只在专门的证据验收中运行。`make verify` 是正常的组件测试与代表性端到端门禁，不会替代或重跑完整 18 场景矩阵。
+
+验收 fresh-run 可重复性是 **not tested / non-goal**（Task 6），本 Task 5 不执行两轮重置或重新生成证据：
 
 ```bash
 make reset && make smoke-m0

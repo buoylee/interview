@@ -2,7 +2,7 @@ SHELL := /bin/bash
 COMPOSE := docker compose -f infra/compose.yaml
 COMPOSE_ADAPTER := $(COMPOSE) -f infra/compose.adapter.yaml
 
-.PHONY: assert-java-21 package up up-adapter down reset verify smoke-m0 evidence scenario-m1 verify-m1 gate-m1 bootstrap-products-v2 bootstrap-index verify-products-v2 scenario-m3-after-es scenario-m3-after-dlq scenario-m3 verify-m3 gate-m2-m3 reconcile scenario-m4 verify-m4 rebuild scenario-m5 verify-m5 formal-final-m5
+.PHONY: assert-java-21 package up up-adapter down reset scenario evidence verify verify-fast smoke-m0 scenario-m1 verify-m1 gate-m1 bootstrap-products-v2 bootstrap-index verify-products-v2 scenario-m3-after-es scenario-m3-after-dlq scenario-m3 verify-m3 gate-m2-m3 reconcile scenario-m4 verify-m4 rebuild scenario-m5 verify-m5 formal-final-m5
 
 assert-java-21:
 	@java -version 2>&1 | head -n 1 | grep -Eq 'version "21([.]|\")' || { \
@@ -26,30 +26,24 @@ down:
 reset:
 	$(COMPOSE) --profile m0-tools down --volumes --remove-orphans
 
-verify: assert-java-21
-	bash tests/contracts/m0-layout.sh
-	bash tests/contracts/m0-compose.sh
-	bash tests/contracts/m0-evidence.sh
-	bash tests/contracts/m2-m3-wire-contract.sh
-	bash tests/contracts/m2-m3-pipeline-control-schema.sh
-	bash tests/contracts/m3-crash-evidence-tamper.sh
-	bash tests/contracts/m3-standard-evidence-tamper.sh
-	bash tests/contracts/m4-reconciliation-control.sh
-	bash tests/contracts/m4-verifier-independence-negative.sh
-	bash tests/contracts/m4-reconciliation-control-negative.sh
-	bash tests/contracts/m4-dlq-evidence-tamper.sh
-	bash tests/contracts/m5-write-gate-routing.sh
-	bash tests/contracts/m5-rebuild-schema-drift.sh
-	bash tests/contracts/m5-rebuild-repeat-apply.sh
-	bash tests/contracts/m5-generation-assets.sh
+scenario:
+	test -n "$(SCENARIO)"
+	bash scenarios/scripts/run-scenario.sh "$(SCENARIO)"
+
+evidence:
+	bash tests/end-to-end/m6-fault-matrix.sh
+
+verify-fast:
 	./mvnw -q test
-	bash scenarios/scripts/verify-product-transactions.sh
+	for test_script in tests/contracts/*.sh; do bash "$$test_script"; done
+
+verify: verify-fast
+	bash tests/end-to-end/m0-smoke.sh
+	bash tests/end-to-end/m4-reconciliation.sh
+	bash tests/end-to-end/m5-rebuild.sh
 
 smoke-m0: up
 	bash scenarios/scripts/smoke-m0.sh
-
-evidence: package
-	bash scenarios/scripts/record-image-digests.sh
 
 scenario-m1: up-adapter
 	bash scenarios/scripts/run-m1-basic.sh

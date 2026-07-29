@@ -82,6 +82,8 @@ trap 'rm -f "$temporary"' EXIT
     printf '%s\n' \
       'This pinned official Canal Adapter 1.1.8 run did produce a genuine Bulk partial failure: the invalid byte-mapped source value `1000` was absent before repair and the current-run mapping error was proven. This is one observed run, not a delivery or recovery guarantee.'
   fi
+  printf '%s\n' '' \
+    'Canal capture/restart/retention boundaries are evidenced by [evidence:canal-normal-restart](../evidence/canal-normal-restart/result.json), [evidence:canal-outage-within-binlog-retention](../evidence/canal-outage-within-binlog-retention/result.json), and [evidence:canal-outage-beyond-binlog-retention](../evidence/canal-outage-beyond-binlog-retention/result.json). Adapter behavior outside this pinned lab run and any end-to-end no-loss claim are **not tested / non-goal**.'
 
   printf '%s\n' '' '## Pinned observed results'
   printf -- '- `m1-basic.result`: `%s`; `updated_at_matches_source`: `%s`.\n' \
@@ -121,6 +123,8 @@ trap 'rm -f "$temporary"' EXIT
   printf '%s\n' '' '```bash' 'make scenario-m1' 'make verify-m1' '```'
   printf '%s\n' '' \
     'The links are meaningful in a generated workspace only; a clean checkout does not ship observed runtime JSON. No M1 result claims exactly-once processing or MySQL-to-Elasticsearch final consistency.'
+  printf '%s\n' '' \
+    'M1 Adapter runtime artifacts are **not tested / non-goal** for the committed M6 matrix; the final capability boundary is the lab [README](../README.md) and its committed `evidence:<scenario-id>` bundles.'
 } >"$temporary"
 mv "$temporary" "$output"
 trap - EXIT
