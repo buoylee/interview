@@ -1,7 +1,7 @@
 {
   "scenario_id": "m5-concurrent-rebuild",
   "seed": "catalog-500",
-  "scan_page_size": 10,
+  "scan_page_size": 200,
   "mutations_during_scan": [
     {"operation":"rename","productId":1001,"name":"Concurrent Name"},
     {"operation":"inventory","productId":1002,"availableQuantity":77},

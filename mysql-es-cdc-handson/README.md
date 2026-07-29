@@ -109,22 +109,7 @@ M4 的最终一致性声明只针对 MySQL 事实仍然存在、日志无确认�
 ```bash
 make scenario-m5
 make verify-m5
-```
-
-M5 包含并发扫描、alias 边界前后崩溃、真实 Kafka retention gap，以及保留
-`meta.dat` 证据的 MySQL binlog cursor rebootstrap。它能从仍存在的 MySQL 当前事实
-重建 Elasticsearch；不能恢复已从 MySQL 消失且从未保留的历史，也不把 Canal CDC
-组件本身描述为端到端最终一致性方案。
-
-## M5：可验证的全量重建
-
-[全量重建与无缺口切换 runbook](docs/05-rebuild-runbook.md)说明 `O_start`、一致性
-快照、shadow replay、三分区 barrier、独立 physical-index verification 和原子 alias
-边界。标准入口：
-
-```bash
-make scenario-m5
-make verify-m5
+make formal-final-m5 # latest clean HEAD, two fresh-volume rounds
 ```
 
 M5 包含并发扫描、alias 边界前后崩溃、真实 Kafka retention gap，以及保留

@@ -93,7 +93,7 @@ jq -e '
   ([.services["search-sync-consumer"].ports[] | [.published, .target]] == [["8082",8082]]) and
   ([.services["consistency-verifier"].ports[] | [.published, .target]] == [["8083",8083]]) and
   .services.canal.environment.CANAL_AUTO_RESET_LATEST_POS_MODE == "false" and
-  (.services.canal.command == ["/bin/bash","-c","chown admin:admin /home/admin/canal-data && exec /home/admin/app.sh"]) and
+  (.services.canal.command == ["/bin/bash","-c","cp /home/admin/canal-config/canal.properties /home/admin/canal-server/conf/canal.properties && sed -i \"s|^canal.auto.reset.latest.pos.mode.*|canal.auto.reset.latest.pos.mode = $${CANAL_AUTO_RESET_LATEST_POS_MODE}|\" /home/admin/canal-server/conf/canal.properties && chown admin:admin /home/admin/canal-data && exec /home/admin/app.sh"]) and
   any(.services.canal.volumes[]; .type == "volume" and .source == "canal-data" and .target == "/home/admin/canal-data")
 ' "$rendered_config" >/dev/null
 

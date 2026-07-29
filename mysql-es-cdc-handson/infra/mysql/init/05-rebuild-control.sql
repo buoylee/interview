@@ -58,10 +58,21 @@ CREATE TABLE IF NOT EXISTS canal_position_recovery (
   CONSTRAINT fk_canal_recovery_run FOREIGN KEY (rebuild_run_id) REFERENCES rebuild_run(run_id)
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS canal_recovery_observation (
+  rebuild_run_id BINARY(16) NOT NULL,
+  kind ENUM('RESET_ANCHOR','NORMAL_SENTINEL') NOT NULL,
+  marker_run_id BINARY(16) NOT NULL,
+  pre_offsets_json JSON NOT NULL, observed_offsets_json JSON NOT NULL, events_json JSON NOT NULL,
+  observed_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (rebuild_run_id, kind), UNIQUE KEY uk_canal_observation_marker (marker_run_id),
+  CONSTRAINT fk_canal_observation_run FOREIGN KEY (rebuild_run_id) REFERENCES rebuild_run(run_id)
+) ENGINE=InnoDB;
+
 GRANT SELECT, UPDATE ON product_catalog.product_write_gate TO 'verifier'@'%';
 GRANT SELECT, INSERT ON product_catalog.cdc_barrier TO 'verifier'@'%';
 GRANT SELECT, INSERT, UPDATE ON product_catalog.rebuild_run TO 'verifier'@'%';
 GRANT SELECT, INSERT, UPDATE ON product_catalog.rebuild_partition_offset TO 'verifier'@'%';
 GRANT SELECT, INSERT, UPDATE ON product_catalog.rebuild_partition_offset TO 'product'@'%';
 GRANT SELECT, INSERT, UPDATE ON product_catalog.canal_position_recovery TO 'verifier'@'%';
+GRANT SELECT, INSERT ON product_catalog.canal_recovery_observation TO 'verifier'@'%';
 FLUSH PRIVILEGES;

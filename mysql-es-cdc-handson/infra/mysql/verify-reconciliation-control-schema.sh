@@ -153,6 +153,7 @@ expected_grants="$({ for table in pipeline_condition repair_action verification_
   for privilege in DELETE INSERT SELECT UPDATE; do printf '%s:%s:NO\n' "$table" "$privilege"; done
 done
 for privilege in INSERT SELECT; do printf 'cdc_barrier:%s:NO\n' "$privilege"; done
+for privilege in INSERT SELECT; do printf 'canal_recovery_observation:%s:NO\n' "$privilege"; done
 for privilege in SELECT UPDATE; do printf 'product_write_gate:%s:NO\n' "$privilege"; done
 for table in canal_position_recovery rebuild_partition_offset rebuild_run; do
   for privilege in INSERT SELECT UPDATE; do printf '%s:%s:NO\n' "$table" "$privilege"; done

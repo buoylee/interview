@@ -67,9 +67,9 @@ public final class RebuildController {
     }
 
     @PostMapping("/runs/{runId}/canal-recovery/barriers/{markerRunId}")
-    public Barrier recoveryBarrier(@PathVariable UUID runId,@PathVariable UUID markerRunId,
-            HttpServletRequest request) {
-        requireLoopback(request);return recoveryBarriers.publish(runId,markerRunId);
+    public RecoveryBarrierObservation recoveryBarrier(@PathVariable UUID runId,@PathVariable UUID markerRunId,
+            @RequestBody RecoveryBarrierRequest body, HttpServletRequest request) {
+        requireLoopback(request);return recoveryBarriers.publishAndObserve(runId,markerRunId,body.kind(),body.preOffsets());
     }
 
     @PutMapping("/failpoint/{point}")
@@ -95,4 +95,5 @@ public final class RebuildController {
     }
 
     public record Start(UUID runId, String reason, String topic, Integer pageSize) {}
+    public record RecoveryBarrierRequest(String kind, Map<Integer,Long> preOffsets) {}
 }

@@ -200,6 +200,7 @@ public final class RebuildCoordinator {
             }
         }
         cleanupBeforeCutover(runId, primary);
+        suppress(primary, () -> flow.activateRebuildRequired(runId));
         store.fail(runId, primary);
     }
 

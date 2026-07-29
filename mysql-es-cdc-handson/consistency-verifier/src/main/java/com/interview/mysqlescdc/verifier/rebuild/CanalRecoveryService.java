@@ -1,6 +1,8 @@
 package com.interview.mysqlescdc.verifier.rebuild;
 
 import java.util.UUID;
+import java.util.List;
+import java.util.Map;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +27,10 @@ public class CanalRecoveryService {
 
     @Transactional public RebuildStatus complete(UUID runId, CanalRecoveryEvidence evidence) {
         evidence.validate();
+        requireObserved(runId,"RESET_ANCHOR",evidence.resetAnchorRunId(),
+                evidence.resetAnchorOffsets(),evidence.resetAnchorEvents());
+        requireObserved(runId,"NORMAL_SENTINEL",evidence.normalSentinelRunId(),
+                evidence.normalSentinelOffsets(),evidence.normalSentinelEvents());
         try {
             int inserted = jdbc.sql("""
                     INSERT INTO canal_position_recovery(
@@ -63,4 +69,28 @@ public class CanalRecoveryService {
         runs.transition(runId, "CANAL_RECOVERING", "CREATED");
         return runs.get(runId);
     }
+
+    void requireObserved(UUID runId,String kind,UUID marker,Map<Integer,Long> offsets,
+            List<CanalRecoveryEvidence.Sentinel> events) {
+        Observation actual=jdbc.sql("""
+                SELECT BIN_TO_UUID(marker_run_id) markerRunId,
+                       CAST(observed_offsets_json AS CHAR) offsetsJson,
+                       CAST(events_json AS CHAR) eventsJson
+                FROM canal_recovery_observation
+                WHERE rebuild_run_id=UUID_TO_BIN(:run) AND kind=:kind
+                """).param("run",runId.toString()).param("kind",kind)
+                .query(Observation.class).optional().orElseThrow(() ->
+                        new IllegalArgumentException("independently observed recovery barrier absent"));
+        try {
+            if(!marker.toString().equals(actual.markerRunId())) throw new IllegalArgumentException("caller recovery marker differs from durable raw observation");
+            var actualOffsets=json.readTree(actual.offsetsJson());
+            if(offsets.size()!=3||offsets.entrySet().stream().anyMatch(e->actualOffsets.path(Integer.toString(e.getKey())).asLong(-1)!=e.getValue())) throw new IllegalArgumentException("caller recovery offsets differ from durable raw observation");
+            var actualEvents=json.readTree(actual.eventsJson());
+            if(!actualEvents.isArray()||actualEvents.size()!=events.size()) throw new IllegalArgumentException("caller recovery events differ from durable raw observation");
+            for(int i=0;i<events.size();i++){var expected=events.get(i);var observed=actualEvents.get(i);if(!expected.eventId().toString().equals(observed.path("eventId").asText())||!expected.runId().toString().equals(observed.path("runId").asText())||expected.partition()!=observed.path("partition").asInt(-1)||expected.nextOffset()!=observed.path("nextOffset").asLong(-1))throw new IllegalArgumentException("caller recovery events differ from durable raw observation");}
+        } catch(IllegalArgumentException mismatch){throw mismatch;}
+        catch(Exception invalid){throw new IllegalArgumentException("invalid durable raw observation",invalid);}
+    }
+
+    private record Observation(String markerRunId,String offsetsJson,String eventsJson) {}
 }

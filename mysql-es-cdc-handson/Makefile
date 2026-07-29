@@ -2,7 +2,7 @@ SHELL := /bin/bash
 COMPOSE := docker compose -f infra/compose.yaml
 COMPOSE_ADAPTER := $(COMPOSE) -f infra/compose.adapter.yaml
 
-.PHONY: assert-java-21 package up up-adapter down reset verify smoke-m0 evidence scenario-m1 verify-m1 gate-m1 bootstrap-products-v2 bootstrap-index verify-products-v2 scenario-m3-after-es scenario-m3-after-dlq scenario-m3 verify-m3 gate-m2-m3 reconcile scenario-m4 verify-m4 rebuild scenario-m5 verify-m5
+.PHONY: assert-java-21 package up up-adapter down reset verify smoke-m0 evidence scenario-m1 verify-m1 gate-m1 bootstrap-products-v2 bootstrap-index verify-products-v2 scenario-m3-after-es scenario-m3-after-dlq scenario-m3 verify-m3 gate-m2-m3 reconcile scenario-m4 verify-m4 rebuild scenario-m5 verify-m5 formal-final-m5
 
 assert-java-21:
 	@java -version 2>&1 | head -n 1 | grep -Eq 'version "21([.]|\")' || { \
@@ -158,6 +158,10 @@ verify-m5: assert-java-21
 	./mvnw -q -pl product-service,search-sync-consumer,consistency-verifier test
 	bash tests/contracts/canal-position-recovery.sh
 	bash tests/contracts/m5-rebuild-completion-assets.sh
+	bash tests/contracts/m5-review-fixes.sh
 	bash tests/end-to-end/m5-rebuild.sh
 	bash tests/contracts/check-verifier-independence.sh
 	git diff --check
+
+formal-final-m5: assert-java-21
+	bash scenarios/scripts/run-m5-formal-final.sh

@@ -198,6 +198,7 @@ services:
       VERIFICATION_CONSUMER_URL: http://search-sync-consumer:8082
       LAB_FAILPOINTS_ENABLED: "true"
       LAB_INTERNAL_API_ALLOW_DOCKER_BRIDGE: "true"
+      LAB_SNAPSHOT_PAGE_DELAY_MS: "2000"
     ports:
       - target: 8083
         published: "8083"
