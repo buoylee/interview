@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "scenario_id": "dlq-replay-fails-then-succeeds",
+  "runner_run_id": "e4972e8f-343d-4047-b212-517dbb51bf80",
+  "rebuild_required_observed_before_rebuild": false,
+  "commands": [
+    {
+      "sequence": 1,
+      "kind": "CONTROL",
+      "target": "m6-real-fault",
+      "method": "DELETE",
+      "path": "/scenario/dlq-replay-fails-then-succeeds/fault",
+      "started_at": "2026-07-29T20:12:31Z",
+      "finished_at": "2026-07-29T20:12:41Z",
+      "exit_code": 0
+    }
+  ],
+  "cleanup_actions": [
+    {
+      "name": "dispatch-owned-m6-real-fault",
+      "success": true,
+      "finished_at": "2026-07-29T20:12:41Z"
+    }
+  ],
+  "cleanup_failures": 0
+}

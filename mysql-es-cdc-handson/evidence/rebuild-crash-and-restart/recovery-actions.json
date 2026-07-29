@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "scenario_id": "rebuild-crash-and-restart",
+  "runner_run_id": "759dc8d7-58fc-466d-aa49-552d0309d483",
+  "rebuild_required_observed_before_rebuild": true,
+  "commands": [
+    {
+      "sequence": 1,
+      "kind": "CONTROL",
+      "target": "m6-real-fault",
+      "method": "DELETE",
+      "path": "/scenario/rebuild-crash-and-restart/fault",
+      "started_at": "2026-07-29T20:09:41Z",
+      "finished_at": "2026-07-29T20:09:51Z",
+      "exit_code": 0
+    }
+  ],
+  "cleanup_actions": [
+    {
+      "name": "dispatch-owned-m6-real-fault",
+      "success": true,
+      "finished_at": "2026-07-29T20:09:51Z"
+    }
+  ],
+  "cleanup_failures": 0
+}

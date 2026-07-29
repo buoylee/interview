@@ -1,0 +1,47 @@
+{
+  "consistency": "REPEATABLE_READ_CONSISTENT_SNAPSHOT",
+  "documents": [
+    {
+      "active": 1,
+      "available_quantity": 0,
+      "category_id": 10,
+      "category_name": "M6 Renamed Category",
+      "description": "fixture",
+      "name": "Crash 7301",
+      "price_cents": 100,
+      "product_id": 7301,
+      "revision": 2,
+      "sku": "LAB-7301",
+      "updated_at": "2026-07-29T20:03:42.315675Z"
+    },
+    {
+      "active": 1,
+      "available_quantity": 0,
+      "category_id": 10,
+      "category_name": "M6 Renamed Category",
+      "description": "fixture",
+      "name": "Crash 7304",
+      "price_cents": 100,
+      "product_id": 7304,
+      "revision": 2,
+      "sku": "LAB-7304",
+      "updated_at": "2026-07-29T20:03:42.315675Z"
+    },
+    {
+      "active": 1,
+      "available_quantity": 0,
+      "category_id": 10,
+      "category_name": "M6 Renamed Category",
+      "description": "fixture",
+      "name": "Crash 7307",
+      "price_cents": 100,
+      "product_id": 7307,
+      "revision": 2,
+      "sku": "LAB-7307",
+      "updated_at": "2026-07-29T20:03:42.315675Z"
+    }
+  ],
+  "schema_version": 1,
+  "scenario_id": "category-rename-multi-product",
+  "runner_run_id": "2c829536-3b4b-45e2-98c6-4f1e7ae928df"
+}

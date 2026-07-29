@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "scenario_id": "duplicate-event",
+  "runner_run_id": "692b4818-d071-41b9-a7f9-380345069afa",
+  "rebuild_required_observed_before_rebuild": false,
+  "commands": [
+    {
+      "sequence": 1,
+      "kind": "CONTROL",
+      "target": "m6-real-fault",
+      "method": "DELETE",
+      "path": "/scenario/duplicate-event/fault",
+      "started_at": "2026-07-29T19:58:29Z",
+      "finished_at": "2026-07-29T19:58:29Z",
+      "exit_code": 0
+    }
+  ],
+  "cleanup_actions": [
+    {
+      "name": "dispatch-owned-m6-real-fault",
+      "success": true,
+      "finished_at": "2026-07-29T19:58:29Z"
+    }
+  ],
+  "cleanup_failures": 0
+}

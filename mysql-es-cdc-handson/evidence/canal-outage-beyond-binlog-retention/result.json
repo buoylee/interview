@@ -1,0 +1,193 @@
+{
+  "applied_offsets": {
+    "0": 6,
+    "1": 4,
+    "2": 3
+  },
+  "canal_position_recovery": {
+    "normal_restart_cursor_sha256": "89b07df86340d2f84feb9835975404066517fc6cdbdac2fa6637539c7603eb9c",
+    "normal_restart_file_index": 0,
+    "normal_restart_journal": "mysql-bin.000004",
+    "normal_restart_offsets_after": {
+      "0": 4,
+      "1": 2,
+      "2": 1
+    },
+    "normal_restart_position": 4467,
+    "normal_restart_preserved": true,
+    "normal_sentinel_events": {
+      "0": {
+        "event_id": "fd066c9e-6712-3c93-8993-635e712949ce",
+        "key_is_null": true,
+        "next_offset": 5,
+        "offset": 4,
+        "partition": 0,
+        "partition_token": "0",
+        "record_value_sha256": "3c25567f1d727acf93c423e3444c7685e5b07ae389f5d3708c6cad5c0070a0ef",
+        "run_id": "86d993fe-946a-4591-83e1-522dfbafd387",
+        "topic": "product-search-revisions"
+      },
+      "1": {
+        "event_id": "578a7a62-f835-3198-b72f-c7da71c97ede",
+        "key_is_null": true,
+        "next_offset": 3,
+        "offset": 2,
+        "partition": 1,
+        "partition_token": "1",
+        "record_value_sha256": "0d46bc9fe2c57cf44bb658b74ee1474d623ebe98254c2528b47c4093ae1222eb",
+        "run_id": "86d993fe-946a-4591-83e1-522dfbafd387",
+        "topic": "product-search-revisions"
+      },
+      "2": {
+        "event_id": "338a0e2b-e0a5-3737-b130-282b94deb1f0",
+        "key_is_null": true,
+        "next_offset": 2,
+        "offset": 1,
+        "partition": 2,
+        "partition_token": "2",
+        "record_value_sha256": "be6e53540db9ddabf85d99d51c0c654dac76a374857a088373fba96d5992a346",
+        "run_id": "86d993fe-946a-4591-83e1-522dfbafd387",
+        "topic": "product-search-revisions"
+      }
+    },
+    "normal_sentinel_next_offsets": {
+      "0": 5,
+      "1": 3,
+      "2": 2
+    },
+    "normal_sentinel_run_id": "86d993fe-946a-4591-83e1-522dfbafd387",
+    "old_cursor_sha256": "0a216e168f9bff85442716a5337271f18cc9a4b0dee9248cde497ed733f59df9",
+    "old_missing_journal": "mysql-bin.000003",
+    "old_missing_position": 25791,
+    "reset_anchor_events": {
+      "0": {
+        "event_id": "58e2feb1-6954-33ce-91f3-022224700abc",
+        "key_is_null": true,
+        "next_offset": 4,
+        "offset": 3,
+        "partition": 0,
+        "partition_token": "0",
+        "record_value_sha256": "06c4bdcec34f580b00021eef44e6396da43661688cdbb7c8dcf5f13108b5076c",
+        "run_id": "3b253749-1972-445b-9416-c0b397ab8c3a",
+        "topic": "product-search-revisions"
+      },
+      "1": {
+        "event_id": "94964f99-afc8-3d8f-ab78-ad0af9d42e72",
+        "key_is_null": true,
+        "next_offset": 2,
+        "offset": 1,
+        "partition": 1,
+        "partition_token": "1",
+        "record_value_sha256": "e1f62c4535356d11b596c4d09d63cb088aa33e9dbbe1c42828d323d241b43b99",
+        "run_id": "3b253749-1972-445b-9416-c0b397ab8c3a",
+        "topic": "product-search-revisions"
+      },
+      "2": {
+        "event_id": "5bf53676-bcdb-3bae-8d35-3dbc5e8b6267",
+        "key_is_null": true,
+        "next_offset": 1,
+        "offset": 0,
+        "partition": 2,
+        "partition_token": "2",
+        "record_value_sha256": "7e6cb2f714a8dfde566fe3350a75320db1493b0b6278a661c34c3aa7400035f9",
+        "run_id": "3b253749-1972-445b-9416-c0b397ab8c3a",
+        "topic": "product-search-revisions"
+      }
+    },
+    "reset_anchor_next_offsets": {
+      "0": 4,
+      "1": 2,
+      "2": 1
+    },
+    "reset_anchor_run_id": "3b253749-1972-445b-9416-c0b397ab8c3a",
+    "reset_cursor_sha256": "89b07df86340d2f84feb9835975404066517fc6cdbdac2fa6637539c7603eb9c",
+    "reset_file_index": 0,
+    "reset_journal": "mysql-bin.000004",
+    "reset_lower_bound_file_index": 0,
+    "reset_lower_bound_journal": "mysql-bin.000004",
+    "reset_lower_bound_position": 3006,
+    "reset_position": 4467,
+    "reset_restart_offsets_before": {
+      "0": 4,
+      "1": 2,
+      "2": 1
+    },
+    "retained_binlog_files": [
+      "mysql-bin.000004"
+    ]
+  },
+  "cleanup_actions": [
+    {
+      "finished_at": "2026-07-29T19:48:44Z",
+      "name": "dispatch-owned-m6-real-fault",
+      "success": true
+    }
+  ],
+  "cleanup_failures": 0,
+  "consistency_preconditions": [
+    {
+      "name": "dedicated-compose-project",
+      "observed_at": "2026-07-29T19:47:14Z",
+      "satisfied": true
+    },
+    {
+      "name": "pinned-stack-ready",
+      "observed_at": "2026-07-29T19:47:14Z",
+      "satisfied": true
+    },
+    {
+      "name": "baseline-lag-zero",
+      "observed_at": "2026-07-29T19:47:14Z",
+      "satisfied": true
+    }
+  ],
+  "dependency_versions": {
+    "canal": "1.1.8",
+    "elasticsearch": "8.17.0",
+    "kafka": "4.1.2",
+    "mysql": "8.4.8",
+    "project_head": "fb1a87733f0dcea5f41d1a0adbd1da2c980cac97"
+  },
+  "exact_diff_count": 0,
+  "expected_intermediate_states": [
+    "REBUILD_REQUIRED"
+  ],
+  "expected_pipeline_state": "HEALTHY",
+  "failed_assertions": [],
+  "finished_at": "2026-07-29T19:49:03Z",
+  "observed_intermediate_states": [
+    "REBUILD_REQUIRED"
+  ],
+  "observed_pipeline_state": "HEALTHY",
+  "product_unresolved_dlq_count": 0,
+  "rebuild_required_before_rebuild": true,
+  "record_unresolved_dlq_count": 0,
+  "recovery_action": "perform evidenced Canal cursor rebootstrap and then the M5 full rebuild",
+  "recovery_action_observed": true,
+  "requires_rebuild": true,
+  "result": "PASS",
+  "runner_run_id": "3075cc0e-29df-437b-8ed8-990eee6856e9",
+  "scenario_id": "canal-outage-beyond-binlog-retention",
+  "scenario_lag_satisfied": true,
+  "schema_version": 1,
+  "source_watermark": 1,
+  "started_at": "2026-07-29T19:46:18Z",
+  "target_watermark_passed": true,
+  "target_watermarks": {
+    "elasticsearch_revision": 1,
+    "mysql_revision": 1,
+    "passed": true
+  },
+  "tombstone_mismatch_count": 0,
+  "unresolved_dlq_count": 0,
+  "verification": {
+    "conclusive": true,
+    "exact_managed_field_diff_count": 0,
+    "observed_at": "2026-07-29T19:48:57Z",
+    "run_id": "34ceebac-56b8-498e-b294-738e632fba9e",
+    "stable": true,
+    "status": "PASS",
+    "version_metadata_diff_count": 0
+  },
+  "watermark_run_id": "34ceebac-56b8-498e-b294-738e632fba9e"
+}

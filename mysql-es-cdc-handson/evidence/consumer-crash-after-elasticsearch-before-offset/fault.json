@@ -1,0 +1,315 @@
+{
+  "schema_version": 1,
+  "scenario_id": "consumer-crash-after-elasticsearch-before-offset",
+  "runner_run_id": "347811b0-4e1d-4c67-bba3-516921f4ca2f",
+  "declared_fault": {
+    "type": "PROCESS",
+    "target": "search-sync-consumer",
+    "action": "arm AFTER_ES_BULK_SUCCESS and process one mutation"
+  },
+  "cleanup_registered_before_fault": true,
+  "observed_intermediate_states": [
+    "CATCHING_UP"
+  ],
+  "case_observations": {
+    "scenario_id": "consumer-crash-after-elasticsearch-before-offset",
+    "artifacts": [
+      {
+        "path": "crashed.json",
+        "sha256": "81800e01616dbac872bed05fa64dce118abc76ecb5f7b0c19a6309b7a4597643",
+        "json": {
+          "id": "11f1f34cc19ae7b88989153b12671b6999160539332a2a8f879d54c56121e531",
+          "started_at": "2026-07-29T19:54:37.704693899Z",
+          "running": false,
+          "exit_code": 86,
+          "finished_at": "2026-07-29T19:54:50.064485007Z"
+        }
+      },
+      {
+        "path": "create-http.json",
+        "sha256": "c83ff89aafd18cd7ab71e8f89c8108fa12e0519ff254c366c139ba8cc9981c50",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":6701,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create.json",
+        "sha256": "57d12c90e08fc796c9831ca4584b34b779f23747b1bc06889dbe3c3105f9a590",
+        "json": {
+          "productId": 6701,
+          "revision": 1
+        }
+      },
+      {
+        "path": "es-after-restart.json",
+        "sha256": "f4fd8ad135912d99ee6edbd69ed162a1ae0b352b2d2f1eff6767a47f4401bd10",
+        "json": {
+          "_index": "products_v2",
+          "_id": "6701",
+          "_version": 2,
+          "_seq_no": 1,
+          "_primary_term": 1,
+          "found": true,
+          "_source": {
+            "product_id": 6701,
+            "sku": "LAB-6701",
+            "name": "Crash 6701",
+            "description": "fixture",
+            "category_id": 10,
+            "category_name": "Accessories",
+            "price_cents": 67101,
+            "available_quantity": 0,
+            "searchable": true,
+            "source_revision": 2,
+            "source_updated_at": "2026-07-29T19:54:49.530691Z"
+          }
+        }
+      },
+      {
+        "path": "es-before-restart.json",
+        "sha256": "f4fd8ad135912d99ee6edbd69ed162a1ae0b352b2d2f1eff6767a47f4401bd10",
+        "json": {
+          "_index": "products_v2",
+          "_id": "6701",
+          "_version": 2,
+          "_seq_no": 1,
+          "_primary_term": 1,
+          "found": true,
+          "_source": {
+            "product_id": 6701,
+            "sku": "LAB-6701",
+            "name": "Crash 6701",
+            "description": "fixture",
+            "category_id": 10,
+            "category_name": "Accessories",
+            "price_cents": 67101,
+            "available_quantity": 0,
+            "searchable": true,
+            "source_revision": 2,
+            "source_updated_at": "2026-07-29T19:54:49.530691Z"
+          }
+        }
+      },
+      {
+        "path": "final-pipeline-status.json",
+        "sha256": "f269e4ea8ad951db5f3eddcf968c6af856dff5336ecfe60ec80af4be08774624",
+        "json": {
+          "state": "HEALTHY",
+          "kafkaLag": 0,
+          "allPartitionsCommitted": true,
+          "partitions": [
+            {
+              "topic": "product-search-revisions",
+              "partition": 0,
+              "committedOffset": 3,
+              "beginningOffset": 0,
+              "endOffset": 3,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 1,
+              "committedOffset": null,
+              "beginningOffset": 0,
+              "endOffset": 0,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 2,
+              "committedOffset": 2,
+              "beginningOffset": 0,
+              "endOffset": 2,
+              "lag": 0,
+              "retentionGap": false
+            }
+          ],
+          "unresolvedDlq": 0,
+          "latestRunId": "e0325186-6319-4d5e-8b23-0265713e73ce",
+          "latestRunStatus": "PASS",
+          "latestDifferenceCount": 0,
+          "latestRunFinishedAt": "2026-07-29T19:55:37.428474Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-29T19:55:37.428474Z",
+          "activeConditions": [],
+          "evaluatedAt": "2026-07-29T19:55:37.501025345Z"
+        }
+      },
+      {
+        "path": "final-product-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-record-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-refresh.json",
+        "sha256": "a0f2dca20b849cd7f450630e46f354a7c8ce627a7fed9374281006b79c555731",
+        "json": {
+          "_shards": {
+            "total": 1,
+            "successful": 1,
+            "failed": 0
+          }
+        }
+      },
+      {
+        "path": "final-verification.json",
+        "sha256": "ea5665811eabb0123df0a47d1ae25e196f7a011cda19354fc9411f501e230553",
+        "json": {
+          "runId": "e0325186-6319-4d5e-8b23-0265713e73ce",
+          "target": "products_write",
+          "status": "PASS",
+          "sourceWatermarkStart": 2,
+          "sourceWatermarkEnd": 2,
+          "expectedCount": 1,
+          "actualCount": 1,
+          "differenceCount": 0,
+          "counts": {},
+          "failureClass": null,
+          "failureMessage": null
+        }
+      },
+      {
+        "path": "group-before.json",
+        "sha256": "b17377b855b7ff2d760c68f17295f9a5ca71c663970db9d6aec30b3a800f19f8",
+        "json": [
+          {
+            "partition": 0,
+            "committed": 3,
+            "end": 3,
+            "lag": 0
+          },
+          {
+            "partition": 1,
+            "committed": 0,
+            "end": 0,
+            "lag": 0
+          },
+          {
+            "partition": 2,
+            "committed": 1,
+            "end": 1,
+            "lag": 0
+          }
+        ]
+      },
+      {
+        "path": "group-crashed.json",
+        "sha256": "3708a5549ea10b2c65230931ec97b05107934425251b59111a140b96e05deb84",
+        "json": [
+          {
+            "partition": 0,
+            "committed": 3,
+            "end": 3,
+            "lag": 0
+          },
+          {
+            "partition": 1,
+            "committed": 0,
+            "end": 0,
+            "lag": 0
+          },
+          {
+            "partition": 2,
+            "committed": 1,
+            "end": 2,
+            "lag": 1
+          }
+        ]
+      },
+      {
+        "path": "mutate.json",
+        "sha256": "bd15a8a16066282607489f818925ec7f02784bd797bcd7f47868c94e730c8351",
+        "json": {
+          "productId": 6701,
+          "revision": 2
+        }
+      },
+      {
+        "path": "process-fault.json",
+        "sha256": "5c2daa78c6856b4f79b6a65c4d8bb02cac94eef494ef2ec0df3fc3b7f5b1d5f5",
+        "json": {
+          "failpoint": "AFTER_ES_BULK_SUCCESS",
+          "remaining": null,
+          "consumer_state": "exited:86",
+          "exact_exit_86": true,
+          "trigger_exit": 0
+        }
+      },
+      {
+        "path": "record.json",
+        "sha256": "01b69bfa2e17739a129a19bc7fac1dd36d227a80026e30f98de6a06d59dc9a84",
+        "json": {
+          "partition": 2,
+          "offset": 1,
+          "baseline_end": 1,
+          "payload": {
+            "data": [
+              {
+                "product_id": "6701",
+                "revision": "2",
+                "active": "1",
+                "updated_at": "2026-07-29 19:54:49.530691"
+              }
+            ],
+            "database": "product_catalog",
+            "es": 1785354889000,
+            "gtid": "",
+            "id": 4,
+            "isDdl": false,
+            "mysqlType": {
+              "product_id": "bigint",
+              "revision": "bigint",
+              "active": "tinyint(1)",
+              "updated_at": "timestamp(6)"
+            },
+            "old": [
+              {
+                "revision": "1",
+                "updated_at": "2026-07-29 19:54:45.503427"
+              }
+            ],
+            "pkNames": [
+              "product_id"
+            ],
+            "sql": "",
+            "sqlType": {
+              "product_id": -5,
+              "revision": -5,
+              "active": -6,
+              "updated_at": 93
+            },
+            "table": "product_search_revision",
+            "ts": 1785354889642,
+            "type": "UPDATE"
+          }
+        }
+      },
+      {
+        "path": "restarted.json",
+        "sha256": "ec40dde4aaae45b98cef761b5d7252302722c682919697f02f0539c50dee2dde",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 200,
+          "json_valid": true,
+          "raw_body": "{\"groups\":[\"liveness\",\"readiness\"],\"status\":\"UP\"}",
+          "consumer_container_id": "11f1f34cc19ae7b88989153b12671b6999160539332a2a8f879d54c56121e531",
+          "container_started_at": "2026-07-29T19:55:07.335693924Z",
+          "observed_at": "2026-07-29T19:55:09Z"
+        }
+      }
+    ]
+  }
+}

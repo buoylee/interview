@@ -1,0 +1,53 @@
+{
+  "beginning": [
+    {
+      "offset": 0,
+      "partition": 0
+    },
+    {
+      "offset": 0,
+      "partition": 1
+    },
+    {
+      "offset": 0,
+      "partition": 2
+    }
+  ],
+  "consistency": "ADMIN_OFFSETS_AT_CAPTURE_TIME",
+  "end": [
+    {
+      "offset": 6,
+      "partition": 0
+    },
+    {
+      "offset": 0,
+      "partition": 1
+    },
+    {
+      "offset": 0,
+      "partition": 2
+    }
+  ],
+  "primary": [
+    {
+      "lag": 0,
+      "offset": 6,
+      "partition": 0
+    },
+    {
+      "lag": null,
+      "offset": null,
+      "partition": 1
+    },
+    {
+      "lag": null,
+      "offset": null,
+      "partition": 2
+    }
+  ],
+  "schema_version": 1,
+  "shadow_and_barrier": [],
+  "topic": "product-search-revisions",
+  "scenario_id": "elasticsearch-bulk-partial-failure",
+  "runner_run_id": "59614613-3002-467f-b0a6-2a72a0d5d153"
+}

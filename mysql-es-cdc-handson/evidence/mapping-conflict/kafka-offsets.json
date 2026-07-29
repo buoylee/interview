@@ -1,0 +1,53 @@
+{
+  "beginning": [
+    {
+      "offset": 0,
+      "partition": 0
+    },
+    {
+      "offset": 0,
+      "partition": 1
+    },
+    {
+      "offset": 0,
+      "partition": 2
+    }
+  ],
+  "consistency": "ADMIN_OFFSETS_AT_CAPTURE_TIME",
+  "end": [
+    {
+      "offset": 5,
+      "partition": 0
+    },
+    {
+      "offset": 0,
+      "partition": 1
+    },
+    {
+      "offset": 0,
+      "partition": 2
+    }
+  ],
+  "primary": [
+    {
+      "lag": 0,
+      "offset": 5,
+      "partition": 0
+    },
+    {
+      "lag": null,
+      "offset": null,
+      "partition": 1
+    },
+    {
+      "lag": null,
+      "offset": null,
+      "partition": 2
+    }
+  ],
+  "schema_version": 1,
+  "shadow_and_barrier": [],
+  "topic": "product-search-revisions",
+  "scenario_id": "mapping-conflict",
+  "runner_run_id": "7e98943c-995a-4c39-94ea-5823fd98b9ae"
+}

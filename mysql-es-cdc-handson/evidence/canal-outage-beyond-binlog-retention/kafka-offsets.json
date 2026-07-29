@@ -1,0 +1,194 @@
+{
+  "beginning": [
+    {
+      "offset": 0,
+      "partition": 0
+    },
+    {
+      "offset": 0,
+      "partition": 1
+    },
+    {
+      "offset": 0,
+      "partition": 2
+    }
+  ],
+  "consistency": "ADMIN_OFFSETS_AT_CAPTURE_TIME",
+  "end": [
+    {
+      "offset": 6,
+      "partition": 0
+    },
+    {
+      "offset": 4,
+      "partition": 1
+    },
+    {
+      "offset": 3,
+      "partition": 2
+    }
+  ],
+  "primary": [
+    {
+      "lag": 0,
+      "offset": 6,
+      "partition": 0
+    },
+    {
+      "lag": 0,
+      "offset": 4,
+      "partition": 1
+    },
+    {
+      "lag": 0,
+      "offset": 3,
+      "partition": 2
+    }
+  ],
+  "schema_version": 1,
+  "shadow_and_barrier": [
+    {
+      "next_offset": 6,
+      "partition_id": 0,
+      "phase": "BARRIER",
+      "run_id": "eccf159f-414e-45a5-83b7-ce43aa915d30"
+    },
+    {
+      "next_offset": 4,
+      "partition_id": 1,
+      "phase": "BARRIER",
+      "run_id": "eccf159f-414e-45a5-83b7-ce43aa915d30"
+    },
+    {
+      "next_offset": 3,
+      "partition_id": 2,
+      "phase": "BARRIER",
+      "run_id": "eccf159f-414e-45a5-83b7-ce43aa915d30"
+    },
+    {
+      "next_offset": 6,
+      "partition_id": 0,
+      "phase": "SHADOW",
+      "run_id": "eccf159f-414e-45a5-83b7-ce43aa915d30"
+    },
+    {
+      "next_offset": 4,
+      "partition_id": 1,
+      "phase": "SHADOW",
+      "run_id": "eccf159f-414e-45a5-83b7-ce43aa915d30"
+    },
+    {
+      "next_offset": 3,
+      "partition_id": 2,
+      "phase": "SHADOW",
+      "run_id": "eccf159f-414e-45a5-83b7-ce43aa915d30"
+    },
+    {
+      "next_offset": 5,
+      "partition_id": 0,
+      "phase": "START",
+      "run_id": "eccf159f-414e-45a5-83b7-ce43aa915d30"
+    },
+    {
+      "next_offset": 3,
+      "partition_id": 1,
+      "phase": "START",
+      "run_id": "eccf159f-414e-45a5-83b7-ce43aa915d30"
+    },
+    {
+      "next_offset": 2,
+      "partition_id": 2,
+      "phase": "START",
+      "run_id": "eccf159f-414e-45a5-83b7-ce43aa915d30"
+    }
+  ],
+  "topic": "product-search-revisions",
+  "scenario_id": "canal-outage-beyond-binlog-retention",
+  "runner_run_id": "3075cc0e-29df-437b-8ed8-990eee6856e9",
+  "raw_recovery_observations": {
+    "reset_anchor": {
+      "events": {
+        "0": {
+          "event_id": "58e2feb1-6954-33ce-91f3-022224700abc",
+          "topic": "product-search-revisions",
+          "partition": 0,
+          "offset": 3,
+          "next_offset": 4,
+          "run_id": "3b253749-1972-445b-9416-c0b397ab8c3a",
+          "partition_token": "0",
+          "key_is_null": true,
+          "record_value_sha256": "06c4bdcec34f580b00021eef44e6396da43661688cdbb7c8dcf5f13108b5076c"
+        },
+        "1": {
+          "event_id": "94964f99-afc8-3d8f-ab78-ad0af9d42e72",
+          "topic": "product-search-revisions",
+          "partition": 1,
+          "offset": 1,
+          "next_offset": 2,
+          "run_id": "3b253749-1972-445b-9416-c0b397ab8c3a",
+          "partition_token": "1",
+          "key_is_null": true,
+          "record_value_sha256": "e1f62c4535356d11b596c4d09d63cb088aa33e9dbbe1c42828d323d241b43b99"
+        },
+        "2": {
+          "event_id": "5bf53676-bcdb-3bae-8d35-3dbc5e8b6267",
+          "topic": "product-search-revisions",
+          "partition": 2,
+          "offset": 0,
+          "next_offset": 1,
+          "run_id": "3b253749-1972-445b-9416-c0b397ab8c3a",
+          "partition_token": "2",
+          "key_is_null": true,
+          "record_value_sha256": "7e6cb2f714a8dfde566fe3350a75320db1493b0b6278a661c34c3aa7400035f9"
+        }
+      },
+      "next_offsets": {
+        "0": 4,
+        "1": 2,
+        "2": 1
+      }
+    },
+    "normal_sentinel": {
+      "events": {
+        "0": {
+          "event_id": "fd066c9e-6712-3c93-8993-635e712949ce",
+          "topic": "product-search-revisions",
+          "partition": 0,
+          "offset": 4,
+          "next_offset": 5,
+          "run_id": "86d993fe-946a-4591-83e1-522dfbafd387",
+          "partition_token": "0",
+          "key_is_null": true,
+          "record_value_sha256": "3c25567f1d727acf93c423e3444c7685e5b07ae389f5d3708c6cad5c0070a0ef"
+        },
+        "1": {
+          "event_id": "578a7a62-f835-3198-b72f-c7da71c97ede",
+          "topic": "product-search-revisions",
+          "partition": 1,
+          "offset": 2,
+          "next_offset": 3,
+          "run_id": "86d993fe-946a-4591-83e1-522dfbafd387",
+          "partition_token": "1",
+          "key_is_null": true,
+          "record_value_sha256": "0d46bc9fe2c57cf44bb658b74ee1474d623ebe98254c2528b47c4093ae1222eb"
+        },
+        "2": {
+          "event_id": "338a0e2b-e0a5-3737-b130-282b94deb1f0",
+          "topic": "product-search-revisions",
+          "partition": 2,
+          "offset": 1,
+          "next_offset": 2,
+          "run_id": "86d993fe-946a-4591-83e1-522dfbafd387",
+          "partition_token": "2",
+          "key_is_null": true,
+          "record_value_sha256": "be6e53540db9ddabf85d99d51c0c654dac76a374857a088373fba96d5992a346"
+        }
+      },
+      "next_offsets": {
+        "0": 5,
+        "1": 3,
+        "2": 2
+      }
+    }
+  }
+}

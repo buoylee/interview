@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "scenario_id": "mapping-conflict",
+  "runner_run_id": "7e98943c-995a-4c39-94ea-5823fd98b9ae",
+  "rebuild_required_observed_before_rebuild": false,
+  "commands": [
+    {
+      "sequence": 1,
+      "kind": "CONTROL",
+      "target": "m6-real-fault",
+      "method": "DELETE",
+      "path": "/scenario/mapping-conflict/fault",
+      "started_at": "2026-07-29T20:01:11Z",
+      "finished_at": "2026-07-29T20:01:11Z",
+      "exit_code": 0
+    }
+  ],
+  "cleanup_actions": [
+    {
+      "name": "dispatch-owned-m6-real-fault",
+      "success": true,
+      "finished_at": "2026-07-29T20:01:11Z"
+    }
+  ],
+  "cleanup_failures": 0
+}

@@ -1,0 +1,264 @@
+{
+  "consistency": "ELASTICSEARCH_PIT",
+  "documents": [
+    {
+      "product_id": 7601,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Accessories",
+        "description": "fixture",
+        "name": "Crash 7601",
+        "price_cents": 100,
+        "product_id": 7601,
+        "searchable": true,
+        "sku": "LAB-7601",
+        "source_revision": 1,
+        "source_updated_at": "2026-07-29T20:08:58.784742Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7602,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Accessories",
+        "description": "fixture",
+        "name": "Crash 7602",
+        "price_cents": 100,
+        "product_id": 7602,
+        "searchable": true,
+        "sku": "LAB-7602",
+        "source_revision": 1,
+        "source_updated_at": "2026-07-29T20:09:01.739345Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7603,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Accessories",
+        "description": "fixture",
+        "name": "Crash 7603",
+        "price_cents": 100,
+        "product_id": 7603,
+        "searchable": true,
+        "sku": "LAB-7603",
+        "source_revision": 1,
+        "source_updated_at": "2026-07-29T20:09:04.307857Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7604,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Accessories",
+        "description": "fixture",
+        "name": "Crash 7604",
+        "price_cents": 100,
+        "product_id": 7604,
+        "searchable": true,
+        "sku": "LAB-7604",
+        "source_revision": 1,
+        "source_updated_at": "2026-07-29T20:09:06.751899Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7605,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Accessories",
+        "description": "fixture",
+        "name": "Crash 7605",
+        "price_cents": 100,
+        "product_id": 7605,
+        "searchable": true,
+        "sku": "LAB-7605",
+        "source_revision": 1,
+        "source_updated_at": "2026-07-29T20:09:09.288939Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7606,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Accessories",
+        "description": "fixture",
+        "name": "Crash 7606",
+        "price_cents": 100,
+        "product_id": 7606,
+        "searchable": true,
+        "sku": "LAB-7606",
+        "source_revision": 1,
+        "source_updated_at": "2026-07-29T20:09:11.697893Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7607,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Accessories",
+        "description": "fixture",
+        "name": "Crash 7607",
+        "price_cents": 100,
+        "product_id": 7607,
+        "searchable": true,
+        "sku": "LAB-7607",
+        "source_revision": 1,
+        "source_updated_at": "2026-07-29T20:09:14.081530Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7608,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Accessories",
+        "description": "fixture",
+        "name": "Crash 7608",
+        "price_cents": 100,
+        "product_id": 7608,
+        "searchable": true,
+        "sku": "LAB-7608",
+        "source_revision": 1,
+        "source_updated_at": "2026-07-29T20:09:16.408164Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7609,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Accessories",
+        "description": "fixture",
+        "name": "Crash 7609",
+        "price_cents": 100,
+        "product_id": 7609,
+        "searchable": true,
+        "sku": "LAB-7609",
+        "source_revision": 1,
+        "source_updated_at": "2026-07-29T20:09:18.726079Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7610,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Accessories",
+        "description": "fixture",
+        "name": "Crash 7610",
+        "price_cents": 100,
+        "product_id": 7610,
+        "searchable": true,
+        "sku": "LAB-7610",
+        "source_revision": 1,
+        "source_updated_at": "2026-07-29T20:09:21.205494Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7611,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Accessories",
+        "description": "fixture",
+        "name": "Crash 7611",
+        "price_cents": 100,
+        "product_id": 7611,
+        "searchable": true,
+        "sku": "LAB-7611",
+        "source_revision": 1,
+        "source_updated_at": "2026-07-29T20:09:23.740046Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7612,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Accessories",
+        "description": "fixture",
+        "name": "Crash 7612",
+        "price_cents": 100,
+        "product_id": 7612,
+        "searchable": true,
+        "sku": "LAB-7612",
+        "source_revision": 1,
+        "source_updated_at": "2026-07-29T20:09:26.064087Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7613,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Accessories",
+        "description": "fixture",
+        "name": "Crash 7613",
+        "price_cents": 100,
+        "product_id": 7613,
+        "searchable": true,
+        "sku": "LAB-7613",
+        "source_revision": 1,
+        "source_updated_at": "2026-07-29T20:09:28.466925Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7614,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Accessories",
+        "description": "fixture",
+        "name": "Crash 7614",
+        "price_cents": 100,
+        "product_id": 7614,
+        "searchable": true,
+        "sku": "LAB-7614",
+        "source_revision": 1,
+        "source_updated_at": "2026-07-29T20:09:30.870479Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7615,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Accessories",
+        "description": "fixture",
+        "name": "Crash 7615",
+        "price_cents": 100,
+        "product_id": 7615,
+        "searchable": true,
+        "sku": "LAB-7615",
+        "source_revision": 1,
+        "source_updated_at": "2026-07-29T20:09:33.222415Z"
+      },
+      "version": null
+    }
+  ],
+  "index": "products_write",
+  "schema_version": 1,
+  "scenario_id": "rebuild-crash-and-restart",
+  "runner_run_id": "759dc8d7-58fc-466d-aa49-552d0309d483"
+}

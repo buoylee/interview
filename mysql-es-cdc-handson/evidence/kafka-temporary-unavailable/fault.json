@@ -1,0 +1,203 @@
+{
+  "schema_version": 1,
+  "scenario_id": "kafka-temporary-unavailable",
+  "runner_run_id": "daf6c1ca-6c20-4c50-866b-f70d9e48bd47",
+  "declared_fault": {
+    "type": "NETWORK",
+    "target": "kafka",
+    "action": "apply and remove the named timeout toxic"
+  },
+  "cleanup_registered_before_fault": true,
+  "observed_intermediate_states": [
+    "CATCHING_UP"
+  ],
+  "case_observations": {
+    "scenario_id": "kafka-temporary-unavailable",
+    "artifacts": [
+      {
+        "path": "create-http.json",
+        "sha256": "04d4a4ff4ef398b0d304f9a8d9e7438e8fc51df28c3901b0756844187db7835b",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":6401,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create.json",
+        "sha256": "8976ffabd6938dc172804d7fc935d5b747588b558fa676e0a8dc75aa7412c989",
+        "json": {
+          "productId": 6401,
+          "revision": 1
+        }
+      },
+      {
+        "path": "end-before.json",
+        "sha256": "7ac28f5baf8d4ce12262c1fcc03adf77a3c0a0c698f21fb742b31d55e277ac64",
+        "json": {
+          "0": 3,
+          "1": 0,
+          "2": 1
+        }
+      },
+      {
+        "path": "end-during.json",
+        "sha256": "7ac28f5baf8d4ce12262c1fcc03adf77a3c0a0c698f21fb742b31d55e277ac64",
+        "json": {
+          "0": 3,
+          "1": 0,
+          "2": 1
+        }
+      },
+      {
+        "path": "es-final.json",
+        "sha256": "9c57c8ae9f540e51dd8ce818ea5d359720d4adf91954af288a9dcfbdee86886a",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 200,
+          "json_valid": true,
+          "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"6401\",\"_version\":2,\"_seq_no\":1,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":6401,\"sku\":\"LAB-6401\",\"name\":\"Crash 6401\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":64401,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-29T19:49:56.087691Z\"}}"
+        }
+      },
+      {
+        "path": "final-pipeline-status.json",
+        "sha256": "8eb397f171545c3014ca4ed83994ca83f18d291c71f03de177068a8acd3444cd",
+        "json": {
+          "state": "HEALTHY",
+          "kafkaLag": 0,
+          "allPartitionsCommitted": true,
+          "partitions": [
+            {
+              "topic": "product-search-revisions",
+              "partition": 0,
+              "committedOffset": 3,
+              "beginningOffset": 0,
+              "endOffset": 3,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 1,
+              "committedOffset": null,
+              "beginningOffset": 0,
+              "endOffset": 0,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 2,
+              "committedOffset": 2,
+              "beginningOffset": 0,
+              "endOffset": 2,
+              "lag": 0,
+              "retentionGap": false
+            }
+          ],
+          "unresolvedDlq": 0,
+          "latestRunId": "41e897b4-8939-4619-8c09-a577e415979e",
+          "latestRunStatus": "PASS",
+          "latestDifferenceCount": 0,
+          "latestRunFinishedAt": "2026-07-29T19:50:02.220088Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-29T19:50:02.220088Z",
+          "activeConditions": [],
+          "evaluatedAt": "2026-07-29T19:50:02.321232951Z"
+        }
+      },
+      {
+        "path": "final-product-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-record-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-refresh.json",
+        "sha256": "a0f2dca20b849cd7f450630e46f354a7c8ce627a7fed9374281006b79c555731",
+        "json": {
+          "_shards": {
+            "total": 1,
+            "successful": 1,
+            "failed": 0
+          }
+        }
+      },
+      {
+        "path": "final-verification.json",
+        "sha256": "c16d73e7931a7efb354bec04460cba9093a9044c10737c92ddc6a75531195029",
+        "json": {
+          "runId": "41e897b4-8939-4619-8c09-a577e415979e",
+          "target": "products_write",
+          "status": "PASS",
+          "sourceWatermarkStart": 2,
+          "sourceWatermarkEnd": 2,
+          "expectedCount": 1,
+          "actualCount": 1,
+          "differenceCount": 0,
+          "counts": {},
+          "failureClass": null,
+          "failureMessage": null
+        }
+      },
+      {
+        "path": "mutate-http.json",
+        "sha256": "52ee37ef6744a448b28d2e4934439cbe5fcc4760769fae6b3764a4ce240a0416",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 200,
+          "json_valid": true,
+          "raw_body": "{\"productId\":6401,\"revision\":2}"
+        }
+      },
+      {
+        "path": "mutate.json",
+        "sha256": "7acbf29fd8f020cf3643a10d1913e5139196f63cbabf66cea6b9ab08e0faad53",
+        "json": {
+          "productId": 6401,
+          "revision": 2
+        }
+      },
+      {
+        "path": "source-during.json",
+        "sha256": "0b7e97dcd90a3eab0a0e712f17a425d888186bd8f6aeba4e6f73217a6d294323",
+        "json": {
+          "active": 1,
+          "revision": 2,
+          "product_id": 6401,
+          "price_cents": 64401
+        }
+      },
+      {
+        "path": "toxic-applied.json",
+        "sha256": "ea16d77c130292d0b1052aa1d1874bae3845bc8c626a1703e2bca95f80eff456",
+        "json": {
+          "active": true,
+          "proxy": "kafka",
+          "toxic": true
+        }
+      },
+      {
+        "path": "toxic-removed.json",
+        "sha256": "2492f8fb4374c88d8b6ffa6d08c2ac6c82349633a8503d76b615ff48be57e7be",
+        "json": {
+          "active": false,
+          "proxy": "kafka"
+        }
+      },
+      {
+        "path": "toxic-status.json",
+        "sha256": "a17fcf0a2f50e2d495e4f90ce263410edc183add6c62699a2facbccf60410f74",
+        "json": true
+      }
+    ]
+  }
+}

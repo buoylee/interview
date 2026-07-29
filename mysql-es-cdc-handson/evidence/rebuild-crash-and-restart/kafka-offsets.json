@@ -1,0 +1,216 @@
+{
+  "beginning": [
+    {
+      "offset": 0,
+      "partition": 0
+    },
+    {
+      "offset": 0,
+      "partition": 1
+    },
+    {
+      "offset": 0,
+      "partition": 2
+    }
+  ],
+  "consistency": "ADMIN_OFFSETS_AT_CAPTURE_TIME",
+  "end": [
+    {
+      "offset": 11,
+      "partition": 0
+    },
+    {
+      "offset": 8,
+      "partition": 1
+    },
+    {
+      "offset": 8,
+      "partition": 2
+    }
+  ],
+  "primary": [
+    {
+      "lag": 0,
+      "offset": 11,
+      "partition": 0
+    },
+    {
+      "lag": 0,
+      "offset": 8,
+      "partition": 1
+    },
+    {
+      "lag": 0,
+      "offset": 8,
+      "partition": 2
+    }
+  ],
+  "schema_version": 1,
+  "shadow_and_barrier": [
+    {
+      "next_offset": 11,
+      "partition_id": 0,
+      "phase": "BARRIER",
+      "run_id": "3a5d2a9f-5356-4905-8c34-14e1aa3ac1d9"
+    },
+    {
+      "next_offset": 8,
+      "partition_id": 1,
+      "phase": "BARRIER",
+      "run_id": "3a5d2a9f-5356-4905-8c34-14e1aa3ac1d9"
+    },
+    {
+      "next_offset": 8,
+      "partition_id": 2,
+      "phase": "BARRIER",
+      "run_id": "3a5d2a9f-5356-4905-8c34-14e1aa3ac1d9"
+    },
+    {
+      "next_offset": 11,
+      "partition_id": 0,
+      "phase": "SHADOW",
+      "run_id": "3a5d2a9f-5356-4905-8c34-14e1aa3ac1d9"
+    },
+    {
+      "next_offset": 8,
+      "partition_id": 1,
+      "phase": "SHADOW",
+      "run_id": "3a5d2a9f-5356-4905-8c34-14e1aa3ac1d9"
+    },
+    {
+      "next_offset": 8,
+      "partition_id": 2,
+      "phase": "SHADOW",
+      "run_id": "3a5d2a9f-5356-4905-8c34-14e1aa3ac1d9"
+    },
+    {
+      "next_offset": 10,
+      "partition_id": 0,
+      "phase": "START",
+      "run_id": "3a5d2a9f-5356-4905-8c34-14e1aa3ac1d9"
+    },
+    {
+      "next_offset": 7,
+      "partition_id": 1,
+      "phase": "START",
+      "run_id": "3a5d2a9f-5356-4905-8c34-14e1aa3ac1d9"
+    },
+    {
+      "next_offset": 7,
+      "partition_id": 2,
+      "phase": "START",
+      "run_id": "3a5d2a9f-5356-4905-8c34-14e1aa3ac1d9"
+    },
+    {
+      "next_offset": 10,
+      "partition_id": 0,
+      "phase": "BARRIER",
+      "run_id": "629c59f1-4d13-4c9d-adbc-35fcc48d99d0"
+    },
+    {
+      "next_offset": 7,
+      "partition_id": 1,
+      "phase": "BARRIER",
+      "run_id": "629c59f1-4d13-4c9d-adbc-35fcc48d99d0"
+    },
+    {
+      "next_offset": 7,
+      "partition_id": 2,
+      "phase": "BARRIER",
+      "run_id": "629c59f1-4d13-4c9d-adbc-35fcc48d99d0"
+    },
+    {
+      "next_offset": 10,
+      "partition_id": 0,
+      "phase": "SHADOW",
+      "run_id": "629c59f1-4d13-4c9d-adbc-35fcc48d99d0"
+    },
+    {
+      "next_offset": 7,
+      "partition_id": 1,
+      "phase": "SHADOW",
+      "run_id": "629c59f1-4d13-4c9d-adbc-35fcc48d99d0"
+    },
+    {
+      "next_offset": 7,
+      "partition_id": 2,
+      "phase": "SHADOW",
+      "run_id": "629c59f1-4d13-4c9d-adbc-35fcc48d99d0"
+    },
+    {
+      "next_offset": 9,
+      "partition_id": 0,
+      "phase": "START",
+      "run_id": "629c59f1-4d13-4c9d-adbc-35fcc48d99d0"
+    },
+    {
+      "next_offset": 6,
+      "partition_id": 1,
+      "phase": "START",
+      "run_id": "629c59f1-4d13-4c9d-adbc-35fcc48d99d0"
+    },
+    {
+      "next_offset": 6,
+      "partition_id": 2,
+      "phase": "START",
+      "run_id": "629c59f1-4d13-4c9d-adbc-35fcc48d99d0"
+    },
+    {
+      "next_offset": 9,
+      "partition_id": 0,
+      "phase": "BARRIER",
+      "run_id": "a585977c-380f-4e9a-9fe3-d8fb999497e5"
+    },
+    {
+      "next_offset": 6,
+      "partition_id": 1,
+      "phase": "BARRIER",
+      "run_id": "a585977c-380f-4e9a-9fe3-d8fb999497e5"
+    },
+    {
+      "next_offset": 6,
+      "partition_id": 2,
+      "phase": "BARRIER",
+      "run_id": "a585977c-380f-4e9a-9fe3-d8fb999497e5"
+    },
+    {
+      "next_offset": 9,
+      "partition_id": 0,
+      "phase": "SHADOW",
+      "run_id": "a585977c-380f-4e9a-9fe3-d8fb999497e5"
+    },
+    {
+      "next_offset": 6,
+      "partition_id": 1,
+      "phase": "SHADOW",
+      "run_id": "a585977c-380f-4e9a-9fe3-d8fb999497e5"
+    },
+    {
+      "next_offset": 6,
+      "partition_id": 2,
+      "phase": "SHADOW",
+      "run_id": "a585977c-380f-4e9a-9fe3-d8fb999497e5"
+    },
+    {
+      "next_offset": 8,
+      "partition_id": 0,
+      "phase": "START",
+      "run_id": "a585977c-380f-4e9a-9fe3-d8fb999497e5"
+    },
+    {
+      "next_offset": 5,
+      "partition_id": 1,
+      "phase": "START",
+      "run_id": "a585977c-380f-4e9a-9fe3-d8fb999497e5"
+    },
+    {
+      "next_offset": 5,
+      "partition_id": 2,
+      "phase": "START",
+      "run_id": "a585977c-380f-4e9a-9fe3-d8fb999497e5"
+    }
+  ],
+  "topic": "product-search-revisions",
+  "scenario_id": "rebuild-crash-and-restart",
+  "runner_run_id": "759dc8d7-58fc-466d-aa49-552d0309d483"
+}

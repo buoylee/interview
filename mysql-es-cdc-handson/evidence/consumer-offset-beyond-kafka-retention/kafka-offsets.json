@@ -1,0 +1,108 @@
+{
+  "beginning": [
+    {
+      "offset": 10,
+      "partition": 0
+    },
+    {
+      "offset": 0,
+      "partition": 1
+    },
+    {
+      "offset": 0,
+      "partition": 2
+    }
+  ],
+  "consistency": "ADMIN_OFFSETS_AT_CAPTURE_TIME",
+  "end": [
+    {
+      "offset": 12,
+      "partition": 0
+    },
+    {
+      "offset": 2,
+      "partition": 1
+    },
+    {
+      "offset": 1,
+      "partition": 2
+    }
+  ],
+  "primary": [
+    {
+      "lag": 0,
+      "offset": 12,
+      "partition": 0
+    },
+    {
+      "lag": 0,
+      "offset": 2,
+      "partition": 1
+    },
+    {
+      "lag": 0,
+      "offset": 1,
+      "partition": 2
+    }
+  ],
+  "schema_version": 1,
+  "shadow_and_barrier": [
+    {
+      "next_offset": 12,
+      "partition_id": 0,
+      "phase": "BARRIER",
+      "run_id": "f9cb308a-78bd-4d53-8397-f7b04e9be446"
+    },
+    {
+      "next_offset": 2,
+      "partition_id": 1,
+      "phase": "BARRIER",
+      "run_id": "f9cb308a-78bd-4d53-8397-f7b04e9be446"
+    },
+    {
+      "next_offset": 1,
+      "partition_id": 2,
+      "phase": "BARRIER",
+      "run_id": "f9cb308a-78bd-4d53-8397-f7b04e9be446"
+    },
+    {
+      "next_offset": 12,
+      "partition_id": 0,
+      "phase": "SHADOW",
+      "run_id": "f9cb308a-78bd-4d53-8397-f7b04e9be446"
+    },
+    {
+      "next_offset": 2,
+      "partition_id": 1,
+      "phase": "SHADOW",
+      "run_id": "f9cb308a-78bd-4d53-8397-f7b04e9be446"
+    },
+    {
+      "next_offset": 1,
+      "partition_id": 2,
+      "phase": "SHADOW",
+      "run_id": "f9cb308a-78bd-4d53-8397-f7b04e9be446"
+    },
+    {
+      "next_offset": 11,
+      "partition_id": 0,
+      "phase": "START",
+      "run_id": "f9cb308a-78bd-4d53-8397-f7b04e9be446"
+    },
+    {
+      "next_offset": 1,
+      "partition_id": 1,
+      "phase": "START",
+      "run_id": "f9cb308a-78bd-4d53-8397-f7b04e9be446"
+    },
+    {
+      "next_offset": 0,
+      "partition_id": 2,
+      "phase": "START",
+      "run_id": "f9cb308a-78bd-4d53-8397-f7b04e9be446"
+    }
+  ],
+  "topic": "product-search-revisions",
+  "scenario_id": "consumer-offset-beyond-kafka-retention",
+  "runner_run_id": "83fd5ec9-8182-4bb7-9d25-f1f567625b0a"
+}

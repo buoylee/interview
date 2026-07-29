@@ -1,0 +1,108 @@
+{
+  "beginning": [
+    {
+      "offset": 0,
+      "partition": 0
+    },
+    {
+      "offset": 0,
+      "partition": 1
+    },
+    {
+      "offset": 0,
+      "partition": 2
+    }
+  ],
+  "consistency": "ADMIN_OFFSETS_AT_CAPTURE_TIME",
+  "end": [
+    {
+      "offset": 17,
+      "partition": 0
+    },
+    {
+      "offset": 14,
+      "partition": 1
+    },
+    {
+      "offset": 13,
+      "partition": 2
+    }
+  ],
+  "primary": [
+    {
+      "lag": 0,
+      "offset": 17,
+      "partition": 0
+    },
+    {
+      "lag": 0,
+      "offset": 14,
+      "partition": 1
+    },
+    {
+      "lag": 0,
+      "offset": 13,
+      "partition": 2
+    }
+  ],
+  "schema_version": 1,
+  "shadow_and_barrier": [
+    {
+      "next_offset": 17,
+      "partition_id": 0,
+      "phase": "BARRIER",
+      "run_id": "a3c30af1-f36f-492c-939c-7df82656cdde"
+    },
+    {
+      "next_offset": 13,
+      "partition_id": 1,
+      "phase": "BARRIER",
+      "run_id": "a3c30af1-f36f-492c-939c-7df82656cdde"
+    },
+    {
+      "next_offset": 13,
+      "partition_id": 2,
+      "phase": "BARRIER",
+      "run_id": "a3c30af1-f36f-492c-939c-7df82656cdde"
+    },
+    {
+      "next_offset": 17,
+      "partition_id": 0,
+      "phase": "SHADOW",
+      "run_id": "a3c30af1-f36f-492c-939c-7df82656cdde"
+    },
+    {
+      "next_offset": 13,
+      "partition_id": 1,
+      "phase": "SHADOW",
+      "run_id": "a3c30af1-f36f-492c-939c-7df82656cdde"
+    },
+    {
+      "next_offset": 13,
+      "partition_id": 2,
+      "phase": "SHADOW",
+      "run_id": "a3c30af1-f36f-492c-939c-7df82656cdde"
+    },
+    {
+      "next_offset": 13,
+      "partition_id": 0,
+      "phase": "START",
+      "run_id": "a3c30af1-f36f-492c-939c-7df82656cdde"
+    },
+    {
+      "next_offset": 11,
+      "partition_id": 1,
+      "phase": "START",
+      "run_id": "a3c30af1-f36f-492c-939c-7df82656cdde"
+    },
+    {
+      "next_offset": 10,
+      "partition_id": 2,
+      "phase": "START",
+      "run_id": "a3c30af1-f36f-492c-939c-7df82656cdde"
+    }
+  ],
+  "topic": "product-search-revisions",
+  "scenario_id": "rebuild-with-concurrent-writes",
+  "runner_run_id": "15f0ef81-6f4f-4733-9399-6c0f3487cda4"
+}

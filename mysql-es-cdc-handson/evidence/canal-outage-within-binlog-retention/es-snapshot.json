@@ -1,0 +1,26 @@
+{
+  "consistency": "ELASTICSEARCH_PIT",
+  "documents": [
+    {
+      "product_id": 6201,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Accessories",
+        "description": "fixture",
+        "name": "Crash 6201",
+        "price_cents": 62201,
+        "product_id": 6201,
+        "searchable": true,
+        "sku": "LAB-6201",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T19:45:53.680351Z"
+      },
+      "version": null
+    }
+  ],
+  "index": "products_write",
+  "schema_version": 1,
+  "scenario_id": "canal-outage-within-binlog-retention",
+  "runner_run_id": "9e2c94c6-5ed6-43e1-9743-8e3d646758e0"
+}

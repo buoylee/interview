@@ -1,0 +1,275 @@
+{
+  "schema_version": 1,
+  "scenario_id": "consumer-crash-before-elasticsearch",
+  "runner_run_id": "b64ad2b2-bcc4-411b-bc38-7d15f072ef4a",
+  "declared_fault": {
+    "type": "PROCESS",
+    "target": "search-sync-consumer",
+    "action": "arm BEFORE_ES_BULK and process one mutation"
+  },
+  "cleanup_registered_before_fault": true,
+  "observed_intermediate_states": [
+    "CATCHING_UP"
+  ],
+  "case_observations": {
+    "scenario_id": "consumer-crash-before-elasticsearch",
+    "artifacts": [
+      {
+        "path": "crashed.json",
+        "sha256": "f3fdb26e6f3d9139f5ca18235ec24ba20ef59a50ff427258030a26be81905061",
+        "json": {
+          "id": "329d5d6c36592b554d563c656c7c8177071b899ee4efc15304eb977308d0c215",
+          "started_at": "2026-07-29T19:52:44.891847285Z",
+          "running": false,
+          "exit_code": 86,
+          "finished_at": "2026-07-29T19:52:59.78443802Z"
+        }
+      },
+      {
+        "path": "create-http.json",
+        "sha256": "d14b20fcbcef79c7478047656fcc1681d409a450aa13d1386219fa9937bdfa53",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":6601,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create.json",
+        "sha256": "ceb6d0fdb8741e49f35b517c2be8b3220c0429e8714dae44fc8ec11f228f4620",
+        "json": {
+          "productId": 6601,
+          "revision": 1
+        }
+      },
+      {
+        "path": "es-final.json",
+        "sha256": "9bb7f804018b424b3dbed30f163b17f7f13c4bae74642806d849a30e53ba4bfe",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 200,
+          "json_valid": true,
+          "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"6601\",\"_version\":2,\"_seq_no\":1,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":6601,\"sku\":\"LAB-6601\",\"name\":\"Crash 6601\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":66101,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-29T19:52:59.298739Z\"}}"
+        }
+      },
+      {
+        "path": "final-pipeline-status.json",
+        "sha256": "40f70b041b2c31d299cd3d8506b0819114f84cc5f4ccb390eda5460f97dd7310",
+        "json": {
+          "state": "HEALTHY",
+          "kafkaLag": 0,
+          "allPartitionsCommitted": true,
+          "partitions": [
+            {
+              "topic": "product-search-revisions",
+              "partition": 0,
+              "committedOffset": 1,
+              "beginningOffset": 0,
+              "endOffset": 1,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 1,
+              "committedOffset": 2,
+              "beginningOffset": 0,
+              "endOffset": 2,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 2,
+              "committedOffset": null,
+              "beginningOffset": 0,
+              "endOffset": 0,
+              "lag": 0,
+              "retentionGap": false
+            }
+          ],
+          "unresolvedDlq": 0,
+          "latestRunId": "35eb6fa5-1ddc-4694-8811-36df6741b114",
+          "latestRunStatus": "PASS",
+          "latestDifferenceCount": 0,
+          "latestRunFinishedAt": "2026-07-29T19:53:48.258665Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-29T19:53:48.258665Z",
+          "activeConditions": [],
+          "evaluatedAt": "2026-07-29T19:53:48.330438858Z"
+        }
+      },
+      {
+        "path": "final-product-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-record-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-refresh.json",
+        "sha256": "a0f2dca20b849cd7f450630e46f354a7c8ce627a7fed9374281006b79c555731",
+        "json": {
+          "_shards": {
+            "total": 1,
+            "successful": 1,
+            "failed": 0
+          }
+        }
+      },
+      {
+        "path": "final-verification.json",
+        "sha256": "509fdfc259bfa7a9d53e1fa798415edd59132bd539208c2ccba7b42d1fddade1",
+        "json": {
+          "runId": "35eb6fa5-1ddc-4694-8811-36df6741b114",
+          "target": "products_write",
+          "status": "PASS",
+          "sourceWatermarkStart": 2,
+          "sourceWatermarkEnd": 2,
+          "expectedCount": 1,
+          "actualCount": 1,
+          "differenceCount": 0,
+          "counts": {},
+          "failureClass": null,
+          "failureMessage": null
+        }
+      },
+      {
+        "path": "group-before.json",
+        "sha256": "4bfcaf006f60dd1daa35547a179fe7d68ce5e38d7ba197846caf634c99ae2c62",
+        "json": [
+          {
+            "partition": 0,
+            "committed": 1,
+            "end": 1,
+            "lag": 0
+          },
+          {
+            "partition": 1,
+            "committed": 1,
+            "end": 1,
+            "lag": 0
+          },
+          {
+            "partition": 2,
+            "committed": 0,
+            "end": 0,
+            "lag": 0
+          }
+        ]
+      },
+      {
+        "path": "group-crashed.json",
+        "sha256": "47727f9224a3392b6dca48f8b2a3c5f30209a3de32856b8e89762a10623d0e47",
+        "json": [
+          {
+            "partition": 0,
+            "committed": 1,
+            "end": 1,
+            "lag": 0
+          },
+          {
+            "partition": 1,
+            "committed": 1,
+            "end": 2,
+            "lag": 1
+          },
+          {
+            "partition": 2,
+            "committed": 0,
+            "end": 0,
+            "lag": 0
+          }
+        ]
+      },
+      {
+        "path": "mutate.json",
+        "sha256": "e6357e415c49eeb94b5989472495573cedc5452e3f6abe6847082c77d4c0f27d",
+        "json": {
+          "productId": 6601,
+          "revision": 2
+        }
+      },
+      {
+        "path": "process-fault.json",
+        "sha256": "44b131fa7b9d75fbb30daec6067372f69affdfff0d93695341452dab75232776",
+        "json": {
+          "failpoint": "BEFORE_ES_BULK",
+          "remaining": null,
+          "consumer_state": "exited:86",
+          "exact_exit_86": true,
+          "trigger_exit": 0
+        }
+      },
+      {
+        "path": "record.json",
+        "sha256": "a996ef65e1e7d4132d485918d584fdff59d08dc50e33aa30c38babd14a33d925",
+        "json": {
+          "partition": 1,
+          "offset": 1,
+          "baseline_end": 1,
+          "payload": {
+            "data": [
+              {
+                "product_id": "6601",
+                "revision": "2",
+                "active": "1",
+                "updated_at": "2026-07-29 19:52:59.298739"
+              }
+            ],
+            "database": "product_catalog",
+            "es": 1785354779000,
+            "gtid": "",
+            "id": 4,
+            "isDdl": false,
+            "mysqlType": {
+              "product_id": "bigint",
+              "revision": "bigint",
+              "active": "tinyint(1)",
+              "updated_at": "timestamp(6)"
+            },
+            "old": [
+              {
+                "revision": "1",
+                "updated_at": "2026-07-29 19:52:55.195638"
+              }
+            ],
+            "pkNames": [
+              "product_id"
+            ],
+            "sql": "",
+            "sqlType": {
+              "product_id": -5,
+              "revision": -5,
+              "active": -6,
+              "updated_at": 93
+            },
+            "table": "product_search_revision",
+            "ts": 1785354779369,
+            "type": "UPDATE"
+          }
+        }
+      },
+      {
+        "path": "restarted.json",
+        "sha256": "f860a1de4b2e2bbfdd76cf3f1afead6ccb5ce0634e5a8d41ea376b8ec05cd02f",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 200,
+          "json_valid": true,
+          "raw_body": "{\"groups\":[\"liveness\",\"readiness\"],\"status\":\"UP\"}",
+          "consumer_container_id": "329d5d6c36592b554d563c656c7c8177071b899ee4efc15304eb977308d0c215",
+          "container_started_at": "2026-07-29T19:53:16.598567529Z",
+          "observed_at": "2026-07-29T19:53:19Z"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "scenario_id": "consumer-crash-after-elasticsearch-before-offset",
+  "runner_run_id": "347811b0-4e1d-4c67-bba3-516921f4ca2f",
+  "intents": [
+    {
+      "sequence": 1,
+      "intent_phase": "business-mutation",
+      "kind": "HTTP",
+      "target": "product-service",
+      "method": "PUT",
+      "path": "/api/products/6701/price",
+      "fixture_path": "scenarios/scripts/cases/07-consumer-crash-after-elasticsearch-before-offset.sh",
+      "fixture_sha256": "b305088738192cbc7e46275568cfcd566b8fa84264dd09c6608752546069b065"
+    },
+    {
+      "sequence": 2,
+      "intent_phase": "fault",
+      "kind": "CONTROL",
+      "target": "search-sync-consumer",
+      "method": "PUT",
+      "path": "/internal/lab/failpoint/AFTER_ES_BULK_SUCCESS",
+      "fixture_path": "scenarios/scripts/cases/07-consumer-crash-after-elasticsearch-before-offset.sh",
+      "fixture_sha256": "b305088738192cbc7e46275568cfcd566b8fa84264dd09c6608752546069b065"
+    },
+    {
+      "sequence": 3,
+      "intent_phase": "recovery",
+      "kind": "CONTROL",
+      "target": "search-sync-consumer",
+      "method": "EXECUTE",
+      "path": "/process/search-sync-consumer/start",
+      "fixture_path": "scenarios/scripts/cases/07-consumer-crash-after-elasticsearch-before-offset.sh",
+      "fixture_sha256": "b305088738192cbc7e46275568cfcd566b8fa84264dd09c6608752546069b065"
+    }
+  ],
+  "executions": [
+    {
+      "sequence": 1,
+      "execution": "mutate",
+      "intent_phases": [
+        "business-mutation",
+        "fault"
+      ],
+      "kind": "CONTROL",
+      "target": "m6-case-runner",
+      "method": "EXECUTE",
+      "path": "/scenario/consumer-crash-after-elasticsearch-before-offset/mutate",
+      "fixture_path": "scenarios/scripts/cases/07-consumer-crash-after-elasticsearch-before-offset.sh",
+      "fixture_sha256": "b305088738192cbc7e46275568cfcd566b8fa84264dd09c6608752546069b065",
+      "started_at": "2026-07-29T19:54:44Z",
+      "finished_at": "2026-07-29T19:55:03Z",
+      "exit_code": 0
+    },
+    {
+      "sequence": 2,
+      "execution": "recovery",
+      "intent_phases": [
+        "recovery"
+      ],
+      "kind": "CONTROL",
+      "target": "m6-case-runner",
+      "method": "EXECUTE",
+      "path": "/scenario/consumer-crash-after-elasticsearch-before-offset/recover",
+      "fixture_path": "scenarios/scripts/cases/07-consumer-crash-after-elasticsearch-before-offset.sh",
+      "fixture_sha256": "b305088738192cbc7e46275568cfcd566b8fa84264dd09c6608752546069b065",
+      "started_at": "2026-07-29T19:55:03Z",
+      "finished_at": "2026-07-29T19:55:35Z",
+      "exit_code": 0
+    },
+    {
+      "sequence": 3,
+      "execution": "verification",
+      "intent_phases": [
+        "verification"
+      ],
+      "kind": "HTTP",
+      "target": "consistency-verifier",
+      "method": "POST",
+      "path": "/internal/reconciliation/runs",
+      "body_sha256": "0926a40491d2b85cf315a8132b1ca26cc5fc21a4fb8235ef3e75d17b3ed676c1",
+      "fixture_path": "scenarios/scripts/collect-m6-observations.sh",
+      "fixture_sha256": "8bcbf975ec8066db234f1c017bd4a6fa0a8b65434ce4ac4a801a93c96d066790",
+      "started_at": "2026-07-29T19:55:37Z",
+      "finished_at": "2026-07-29T19:55:37Z",
+      "exit_code": 0
+    }
+  ]
+}

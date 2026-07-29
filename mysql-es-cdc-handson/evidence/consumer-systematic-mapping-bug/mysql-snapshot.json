@@ -1,0 +1,21 @@
+{
+  "consistency": "REPEATABLE_READ_CONSISTENT_SNAPSHOT",
+  "documents": [
+    {
+      "active": 1,
+      "available_quantity": 0,
+      "category_id": 10,
+      "category_name": "Correct Category Name",
+      "description": "fixture",
+      "name": "Crash 7701",
+      "price_cents": 100,
+      "product_id": 7701,
+      "revision": 2,
+      "sku": "LAB-7701",
+      "updated_at": "2026-07-29T20:11:07.650441Z"
+    }
+  ],
+  "schema_version": 1,
+  "scenario_id": "consumer-systematic-mapping-bug",
+  "runner_run_id": "6b004145-70c4-437f-98d9-2c4ed855816a"
+}

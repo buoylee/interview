@@ -1,0 +1,21 @@
+{
+  "consistency": "REPEATABLE_READ_CONSISTENT_SNAPSHOT",
+  "documents": [
+    {
+      "active": 1,
+      "available_quantity": 0,
+      "category_id": 10,
+      "category_name": "Accessories",
+      "description": "fixture",
+      "name": "Crash 6901",
+      "price_cents": 100,
+      "product_id": 6901,
+      "revision": 1,
+      "sku": "LAB-6901",
+      "updated_at": "2026-07-29T19:58:09.687263Z"
+    }
+  ],
+  "schema_version": 1,
+  "scenario_id": "duplicate-event",
+  "runner_run_id": "692b4818-d071-41b9-a7f9-380345069afa"
+}

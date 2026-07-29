@@ -1,0 +1,21 @@
+{
+  "consistency": "REPEATABLE_READ_CONSISTENT_SNAPSHOT",
+  "documents": [
+    {
+      "active": 0,
+      "available_quantity": null,
+      "category_id": null,
+      "category_name": null,
+      "description": null,
+      "name": null,
+      "price_cents": null,
+      "product_id": 7401,
+      "revision": 2,
+      "sku": null,
+      "updated_at": "2026-07-29T20:05:26.224745Z"
+    }
+  ],
+  "schema_version": 1,
+  "scenario_id": "delete-then-old-event-replay",
+  "runner_run_id": "7245cb65-bda5-48f3-a9d4-06bb6a571ca1"
+}

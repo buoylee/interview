@@ -1,0 +1,26 @@
+{
+  "consistency": "ELASTICSEARCH_PIT",
+  "documents": [
+    {
+      "product_id": 6601,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Accessories",
+        "description": "fixture",
+        "name": "Crash 6601",
+        "price_cents": 66101,
+        "product_id": 6601,
+        "searchable": true,
+        "sku": "LAB-6601",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T19:52:59.298739Z"
+      },
+      "version": null
+    }
+  ],
+  "index": "products_write",
+  "schema_version": 1,
+  "scenario_id": "consumer-crash-before-elasticsearch",
+  "runner_run_id": "b64ad2b2-bcc4-411b-bc38-7d15f072ef4a"
+}

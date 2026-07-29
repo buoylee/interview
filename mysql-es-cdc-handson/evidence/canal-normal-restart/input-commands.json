@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "scenario_id": "canal-normal-restart",
+  "runner_run_id": "10fb080a-26f0-456a-9ba6-2c6bbdf31ec6",
+  "intents": [
+    {
+      "sequence": 1,
+      "intent_phase": "business-mutation",
+      "kind": "HTTP",
+      "target": "product-service",
+      "method": "PUT",
+      "path": "/api/products/6101/price",
+      "fixture_path": "scenarios/scripts/cases/01-canal-normal-restart.sh",
+      "fixture_sha256": "e646d5fc8584f0bb2247c8faf94e26016f4921de3ca75b9efa0453aeb6538d4a"
+    },
+    {
+      "sequence": 2,
+      "intent_phase": "fault",
+      "kind": "CONTROL",
+      "target": "canal",
+      "method": "EXECUTE",
+      "path": "/process/canal/restart",
+      "fixture_path": "scenarios/scripts/cases/01-canal-normal-restart.sh",
+      "fixture_sha256": "e646d5fc8584f0bb2247c8faf94e26016f4921de3ca75b9efa0453aeb6538d4a"
+    },
+    {
+      "sequence": 3,
+      "intent_phase": "recovery",
+      "kind": "CONTROL",
+      "target": "search-sync-consumer",
+      "method": "EXECUTE",
+      "path": "/process/search-sync-consumer/start",
+      "fixture_path": "scenarios/scripts/cases/01-canal-normal-restart.sh",
+      "fixture_sha256": "e646d5fc8584f0bb2247c8faf94e26016f4921de3ca75b9efa0453aeb6538d4a"
+    }
+  ],
+  "executions": [
+    {
+      "sequence": 1,
+      "execution": "mutate",
+      "intent_phases": [
+        "business-mutation",
+        "fault"
+      ],
+      "kind": "CONTROL",
+      "target": "m6-case-runner",
+      "method": "EXECUTE",
+      "path": "/scenario/canal-normal-restart/mutate",
+      "fixture_path": "scenarios/scripts/cases/01-canal-normal-restart.sh",
+      "fixture_sha256": "e646d5fc8584f0bb2247c8faf94e26016f4921de3ca75b9efa0453aeb6538d4a",
+      "started_at": "2026-07-29T19:44:16Z",
+      "finished_at": "2026-07-29T19:44:43Z",
+      "exit_code": 0
+    },
+    {
+      "sequence": 2,
+      "execution": "recovery",
+      "intent_phases": [
+        "recovery"
+      ],
+      "kind": "CONTROL",
+      "target": "m6-case-runner",
+      "method": "EXECUTE",
+      "path": "/scenario/canal-normal-restart/recover",
+      "fixture_path": "scenarios/scripts/cases/01-canal-normal-restart.sh",
+      "fixture_sha256": "e646d5fc8584f0bb2247c8faf94e26016f4921de3ca75b9efa0453aeb6538d4a",
+      "started_at": "2026-07-29T19:44:43Z",
+      "finished_at": "2026-07-29T19:44:50Z",
+      "exit_code": 0
+    },
+    {
+      "sequence": 3,
+      "execution": "verification",
+      "intent_phases": [
+        "verification"
+      ],
+      "kind": "HTTP",
+      "target": "consistency-verifier",
+      "method": "POST",
+      "path": "/internal/reconciliation/runs",
+      "body_sha256": "0926a40491d2b85cf315a8132b1ca26cc5fc21a4fb8235ef3e75d17b3ed676c1",
+      "fixture_path": "scenarios/scripts/collect-m6-observations.sh",
+      "fixture_sha256": "8bcbf975ec8066db234f1c017bd4a6fa0a8b65434ce4ac4a801a93c96d066790",
+      "started_at": "2026-07-29T19:44:52Z",
+      "finished_at": "2026-07-29T19:44:52Z",
+      "exit_code": 0
+    }
+  ]
+}

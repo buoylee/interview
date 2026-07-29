@@ -1,0 +1,156 @@
+{
+  "checked_in_config_hashes": [
+    {
+      "path": "infra/canal/canal.properties",
+      "sha256": "e7ec73745f4b2b605bc6408f8e3289ba3986ca3d303897c537c79509b21b0650"
+    },
+    {
+      "path": "infra/canal/instance.properties",
+      "sha256": "6d269f6894dcb925799288eeaf5184d75ac8942dfb88e8f837fdfcfea7959984"
+    },
+    {
+      "path": "infra/compose.yaml",
+      "sha256": "788d39642541e846702d4da0685a17933b0f6cdba16bbaf7e0d47d4104103f51"
+    },
+    {
+      "path": "infra/toxiproxy/proxies.json",
+      "sha256": "3f325a525bb98a666092dd02ceb258511d340281823ddd002ec636e40621d1d7"
+    },
+    {
+      "path": "scenarios/command-intents.json",
+      "sha256": "b739652fde7503f2b2d9abd8ca452ab5f28230714a7adf0e32c13e74edeb23e6"
+    },
+    {
+      "path": "scenarios/schema/command-intents.schema.json",
+      "sha256": "922f6c047b5e29944102c8ceaa689f747693fdbffa191c3667f3cedf1cb04458"
+    },
+    {
+      "path": "scenarios/schema/differences.schema.json",
+      "sha256": "15225472c66a9d20d3222309b980de30d6ad254d04226552d98987ec85fadb3a"
+    },
+    {
+      "path": "scenarios/schema/es-snapshot.schema.json",
+      "sha256": "a473bf9e4e5274c89bf233c42185c82740b7b3a36678b912f1efc5b7eeb5f3eb"
+    },
+    {
+      "path": "scenarios/schema/fault.schema.json",
+      "sha256": "12ae0554be7604a33027b78b9d90e726419178674d055677410739a8f820f899"
+    },
+    {
+      "path": "scenarios/schema/input-commands.schema.json",
+      "sha256": "3d1a19979fda8a5f23f53f510523d3578217032007512ab23930d64eba7a7d9e"
+    },
+    {
+      "path": "scenarios/schema/kafka-offsets.schema.json",
+      "sha256": "aba92be237203b0be25e9699962186ac5fb09cbdffd36c9c541935d0618550e7"
+    },
+    {
+      "path": "scenarios/schema/manifest.schema.json",
+      "sha256": "6631098e8e6c5ad65f42ec9e7d8b5447b244099785bfad85f4c509123777c4cd"
+    },
+    {
+      "path": "scenarios/schema/mysql-snapshot.schema.json",
+      "sha256": "fc4ff988f775c1bf5247b000902db2e9da3b75f0653efcf114776ab0a7d54e58"
+    },
+    {
+      "path": "scenarios/schema/recovery-actions.schema.json",
+      "sha256": "c90a92b235b841746c2fae55a951ba6908e016fe449f9614f0965069de7995e7"
+    },
+    {
+      "path": "scenarios/schema/result.schema.json",
+      "sha256": "99dca1f622a2e01f5b6c6fcd35c998c2ac285845b688992b1bb5dce1dd3faad9"
+    },
+    {
+      "path": "scenarios/schema/scenario.schema.json",
+      "sha256": "3666da2876d307ab524b9fa268b1ac809884bf9c7407b6db181c467953f75f66"
+    }
+  ],
+  "git": {
+    "commit": "fb1a87733f0dcea5f41d1a0adbd1da2c980cac97",
+    "dirty": false,
+    "excluded_runtime_output": [
+      "mysql-es-cdc-handson/evidence/.attempts/run-fb1a877-v10/.tmp.canal-normal-restart.vOp9PD/manifest-capture.json"
+    ],
+    "tracked_dirty": false,
+    "untracked_count": 0
+  },
+  "images": [
+    {
+      "id": "sha256:a4db706d8dc735574ffd0fe27f1a4b738f5370b93a35c1932139a32e6ee672fa",
+      "repository": "mysql-es-cdc-handson/consistency-verifier",
+      "service": null,
+      "tag": "0.1.0-local"
+    },
+    {
+      "id": "sha256:20301fbff27d32572e4f6c1e39b1e2634267163d2c5245138ebf8b5e3f00d05e",
+      "repository": "apache/kafka",
+      "service": null,
+      "tag": "4.1.2"
+    },
+    {
+      "id": "sha256:20301fbff27d32572e4f6c1e39b1e2634267163d2c5245138ebf8b5e3f00d05e",
+      "repository": "apache/kafka",
+      "service": null,
+      "tag": "4.1.2"
+    },
+    {
+      "id": "sha256:0cfce03a6e646668482eb01bc73c506789a50e6e86c0738f3faebc89a1e90b41",
+      "repository": "mysql-es-cdc-handson/search-sync-consumer",
+      "service": null,
+      "tag": "0.1.0-local"
+    },
+    {
+      "id": "sha256:b119fdac2479dcccf923f54943a355e743d3d5dd068baa4757772055cf9f3b32",
+      "repository": "docker.elastic.co/elasticsearch/elasticsearch",
+      "service": null,
+      "tag": "8.17.0"
+    },
+    {
+      "id": "sha256:b0e75e62fcf0abd5c8aea482fd4aa00ff5052fd24d8d0b4103c94668a95b8c99",
+      "repository": "ghcr.io/shopify/toxiproxy",
+      "service": null,
+      "tag": "2.12.0"
+    },
+    {
+      "id": "sha256:803f229c510e7f1209824a62ec0169d666b7c2a7ff0032c716ac0f77e009cff5",
+      "repository": "mysql-es-cdc-handson/product-service",
+      "service": null,
+      "tag": "0.1.0-local"
+    },
+    {
+      "id": "sha256:20301fbff27d32572e4f6c1e39b1e2634267163d2c5245138ebf8b5e3f00d05e",
+      "repository": "apache/kafka",
+      "service": null,
+      "tag": "4.1.2"
+    },
+    {
+      "id": "sha256:6bcfd5ef06fdf8de754cd4a1f18991f84b2fccd10f26c8b15755597ff690468f",
+      "repository": "mysql",
+      "service": null,
+      "tag": "8.4.8"
+    },
+    {
+      "id": "sha256:1176879f85a13ec1d50753556903d24ba1b644a9ef152197ff26d908a6e3afce",
+      "repository": "canal/canal-server",
+      "service": null,
+      "tag": "v1.1.8"
+    }
+  ],
+  "kafka_runtime": {
+    "configured_user": "1000:1000",
+    "volume_init": "root init service; runtime remains non-root"
+  },
+  "platform": {
+    "architecture": "arm64",
+    "os": "Darwin"
+  },
+  "schema_version": 1,
+  "tools": {
+    "docker_compose": "5.1.2",
+    "java": "openjdk version \"21.0.7\" 2025-04-15 LTS",
+    "maven": "Apache Maven 3.9.11 (3e54c93a704957b63ee3494413a2b544fd3d825b)"
+  },
+  "scenario_id": "canal-normal-restart",
+  "runner_run_id": "10fb080a-26f0-456a-9ba6-2c6bbdf31ec6",
+  "execution_mode": "real"
+}

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "scenario_id": "canal-outage-within-binlog-retention",
+  "runner_run_id": "9e2c94c6-5ed6-43e1-9743-8e3d646758e0",
+  "rebuild_required_observed_before_rebuild": false,
+  "commands": [
+    {
+      "sequence": 1,
+      "kind": "CONTROL",
+      "target": "m6-real-fault",
+      "method": "DELETE",
+      "path": "/scenario/canal-outage-within-binlog-retention/fault",
+      "started_at": "2026-07-29T19:45:53Z",
+      "finished_at": "2026-07-29T19:46:01Z",
+      "exit_code": 0
+    }
+  ],
+  "cleanup_actions": [
+    {
+      "name": "dispatch-owned-m6-real-fault",
+      "success": true,
+      "finished_at": "2026-07-29T19:46:01Z"
+    }
+  ],
+  "cleanup_failures": 0
+}

@@ -1,0 +1,319 @@
+{
+  "schema_version": 1,
+  "scenario_id": "consumer-offset-beyond-kafka-retention",
+  "runner_run_id": "83fd5ec9-8182-4bb7-9d25-f1f567625b0a",
+  "declared_fault": {
+    "type": "RETENTION",
+    "target": "kafka-product-search-revisions",
+    "action": "advance beginning offset beyond the committed consumer offset"
+  },
+  "cleanup_registered_before_fault": true,
+  "observed_intermediate_states": [
+    "REBUILD_REQUIRED"
+  ],
+  "case_observations": {
+    "scenario_id": "consumer-offset-beyond-kafka-retention",
+    "artifacts": [
+      {
+        "path": "consumer-after-gap.json",
+        "sha256": "19ba1271279d276adf2a1d45ba253bf4c01f40aa2dc91a42a53e3407a8dc8490",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 200,
+          "json_valid": true,
+          "raw_body": "{\"groups\":[\"liveness\",\"readiness\"],\"status\":\"UP\"}",
+          "consumer_container_id": "6a092fc90d4b3872044ca7df725988a2d0bd19aa08a24bd839921e64de8d7776",
+          "container_started_at": "2026-07-29T19:51:39.500500397Z",
+          "observed_at": "2026-07-29T19:51:46Z"
+        }
+      },
+      {
+        "path": "create-http.json",
+        "sha256": "c9542184326feb5a223b994332ff21a4a437b586890f944399240fc25da60910",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":900001,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create.json",
+        "sha256": "0b69d4e78776973cd3c49652a0077927fe11cd531efddee80da0af53b3ab476d",
+        "json": {
+          "productId": 900001,
+          "revision": 1
+        }
+      },
+      {
+        "path": "final-pipeline-status.json",
+        "sha256": "97b232d40750c55341283600243528738688d20a41086cac5bb848a016a44f48",
+        "json": {
+          "state": "HEALTHY",
+          "kafkaLag": 0,
+          "allPartitionsCommitted": true,
+          "partitions": [
+            {
+              "topic": "product-search-revisions",
+              "partition": 0,
+              "committedOffset": 12,
+              "beginningOffset": 10,
+              "endOffset": 12,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 1,
+              "committedOffset": 2,
+              "beginningOffset": 0,
+              "endOffset": 2,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 2,
+              "committedOffset": 1,
+              "beginningOffset": 0,
+              "endOffset": 1,
+              "lag": 0,
+              "retentionGap": false
+            }
+          ],
+          "unresolvedDlq": 0,
+          "latestRunId": "621f8ee6-29b4-4aa5-9498-6f91c1498941",
+          "latestRunStatus": "PASS",
+          "latestDifferenceCount": 0,
+          "latestRunFinishedAt": "2026-07-29T19:51:50.895888Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-29T19:51:50.895888Z",
+          "activeConditions": [],
+          "evaluatedAt": "2026-07-29T19:51:50.963516918Z"
+        }
+      },
+      {
+        "path": "final-product-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-record-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-refresh.json",
+        "sha256": "a0f2dca20b849cd7f450630e46f354a7c8ce627a7fed9374281006b79c555731",
+        "json": {
+          "_shards": {
+            "total": 1,
+            "successful": 1,
+            "failed": 0
+          }
+        }
+      },
+      {
+        "path": "final-verification.json",
+        "sha256": "6f0e6a00430da042af80011b14b668eda38fe2e3f5a5785ed68314adb0623120",
+        "json": {
+          "runId": "621f8ee6-29b4-4aa5-9498-6f91c1498941",
+          "target": "products_write",
+          "status": "PASS",
+          "sourceWatermarkStart": 1,
+          "sourceWatermarkEnd": 1,
+          "expectedCount": 1,
+          "actualCount": 1,
+          "differenceCount": 0,
+          "counts": {},
+          "failureClass": null,
+          "failureMessage": null
+        }
+      },
+      {
+        "path": "gap-proof.json",
+        "sha256": "671129e7feaafd9cc525962429f9ae9159d9221d57fe007568504522e04645b0",
+        "json": {
+          "target": "kafka",
+          "topic": "product-search-revisions",
+          "partition": 0,
+          "committed_offset": 3,
+          "beginning_offset": 10
+        }
+      },
+      {
+        "path": "kafka-gap-status.json",
+        "sha256": "c70f3b4eec3936460fd7b855390db2d2163293f6876ffd954cc2da2c69eb09c8",
+        "json": {
+          "target": "kafka",
+          "beginning": {
+            "0": 10,
+            "1": 0,
+            "2": 0
+          },
+          "end": {
+            "0": 11,
+            "1": 1,
+            "2": 0
+          },
+          "committed": {
+            "0": 3,
+            "1": 1
+          },
+          "captured_committed": 3,
+          "selected_partition": 0,
+          "gap": true
+        }
+      },
+      {
+        "path": "rebuild-response.json",
+        "sha256": "04e9e922b6f2e8587763647f35e73a5c443816112c8482f7b6a811d79d497475",
+        "json": {
+          "runId": "f9cb308a-78bd-4d53-8397-f7b04e9be446",
+          "status": "COMPLETED",
+          "generation": "products_v3_20260729195146_f9cb308a",
+          "failureMessage": null,
+          "aliasSwapped": true,
+          "startOffsets": {
+            "0": 11,
+            "1": 1,
+            "2": 0
+          },
+          "shadowOffsets": {
+            "0": 12,
+            "1": 2,
+            "2": 1
+          },
+          "barrierOffsets": {
+            "0": 12,
+            "1": 2,
+            "2": 1
+          },
+          "verificationRunId": "a3e39832-5104-4deb-87a2-b27ee50850b9",
+          "gateOwner": null,
+          "aliasState": "NEW"
+        }
+      },
+      {
+        "path": "rebuild-run-id",
+        "sha256": "5bd2f8040b488c8d44138cff0dfbe93b5d37f313c92adeab24fad35fecaa191b",
+        "text": "f9cb308a-78bd-4d53-8397-f7b04e9be446\n"
+      },
+      {
+        "path": "retention-provenance.json",
+        "sha256": "6bd790322029f05cb2f3a582a047911b768f00516d2a49766bb63b3b7c4825d4",
+        "json": {
+          "purpose": "m6-dedicated-retention",
+          "compose_project": "mysql-es-cdc-handson-m6-task4"
+        }
+      },
+      {
+        "path": "retention-state/kafka-retention.json",
+        "sha256": "199e27437524dfa40f5bc8da364f19c4b49f905608433bc040340e5fc2511a16",
+        "json": {
+          "action": "delete-records-confirmed",
+          "after": {
+            "beginning": {
+              "0": 10,
+              "1": 0,
+              "2": 0
+            },
+            "captured_committed": 3,
+            "committed": {
+              "0": 3,
+              "1": 1
+            },
+            "end": {
+              "0": 11,
+              "1": 1,
+              "2": 0
+            },
+            "gap": true,
+            "selected_partition": 0,
+            "target": "kafka"
+          },
+          "before": {
+            "beginning": {
+              "0": 0,
+              "1": 0,
+              "2": 0
+            },
+            "captured_committed": null,
+            "committed": {
+              "0": 3,
+              "1": 1
+            },
+            "end": {
+              "0": 3,
+              "1": 1,
+              "2": 0
+            },
+            "gap": false,
+            "selected_partition": null,
+            "target": "kafka"
+          },
+          "captured_committed": 3,
+          "config_before": {
+            "retention.ms": "DEFAULT",
+            "segment.bytes": "DEFAULT",
+            "segment.ms": "DEFAULT"
+          },
+          "consumer_stopped": true,
+          "delete_to": 10,
+          "partition": 0
+        }
+      },
+      {
+        "path": "status-gap.json",
+        "sha256": "08b852843ada161f0bc11f0e65f2549070d4d627b027322c4b73b4801b812cf7",
+        "json": {
+          "state": "REBUILD_REQUIRED",
+          "kafkaLag": 0,
+          "allPartitionsCommitted": true,
+          "partitions": [
+            {
+              "topic": "product-search-revisions",
+              "partition": 0,
+              "committedOffset": 11,
+              "beginningOffset": 10,
+              "endOffset": 11,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 1,
+              "committedOffset": 1,
+              "beginningOffset": 0,
+              "endOffset": 1,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 2,
+              "committedOffset": null,
+              "beginningOffset": 0,
+              "endOffset": 0,
+              "lag": 0,
+              "retentionGap": false
+            }
+          ],
+          "unresolvedDlq": 0,
+          "latestRunId": null,
+          "latestRunStatus": null,
+          "latestDifferenceCount": 0,
+          "latestRunFinishedAt": null,
+          "latestSuccessfulPassFinishedAt": null,
+          "activeConditions": [
+            "LOG_GAP"
+          ],
+          "evaluatedAt": "2026-07-29T19:51:46.398567827Z"
+        }
+      }
+    ]
+  }
+}

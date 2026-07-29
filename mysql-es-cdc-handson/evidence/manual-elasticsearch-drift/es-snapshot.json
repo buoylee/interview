@@ -1,0 +1,43 @@
+{
+  "consistency": "ELASTICSEARCH_PIT",
+  "documents": [
+    {
+      "product_id": 7201,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Accessories",
+        "description": "fixture",
+        "name": "Crash 7201",
+        "price_cents": 100,
+        "product_id": 7201,
+        "searchable": true,
+        "sku": "LAB-7201",
+        "source_revision": 1,
+        "source_updated_at": "2026-07-29T20:02:17.605599Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7202,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Accessories",
+        "description": "fixture",
+        "name": "Crash 7202",
+        "price_cents": 100,
+        "product_id": 7202,
+        "searchable": true,
+        "sku": "LAB-7202",
+        "source_revision": 1,
+        "source_updated_at": "2026-07-29T20:02:20.228805Z"
+      },
+      "version": null
+    }
+  ],
+  "index": "products_write",
+  "schema_version": 1,
+  "scenario_id": "manual-elasticsearch-drift",
+  "runner_run_id": "b9c6a0fa-a626-4fe2-8e61-ebdb715deed1"
+}

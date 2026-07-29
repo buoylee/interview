@@ -1,0 +1,806 @@
+{
+  "schema_version": 1,
+  "scenario_id": "rebuild-with-concurrent-writes",
+  "runner_run_id": "15f0ef81-6f4f-4733-9399-6c0f3487cda4",
+  "declared_fault": {
+    "type": "REBUILD",
+    "target": "m5-rebuild",
+    "action": "mutate active inventory delete and create while snapshot pages advance"
+  },
+  "cleanup_registered_before_fault": true,
+  "observed_intermediate_states": [
+    "REBUILDING"
+  ],
+  "case_observations": {
+    "scenario_id": "rebuild-with-concurrent-writes",
+    "artifacts": [
+      {
+        "path": "concurrent-create.json",
+        "sha256": "d7068120823e67bd2ab58191d20bc693613a21db48e7bfeb229c35395f6ef6ca",
+        "json": {
+          "productId": 7599,
+          "revision": 1
+        }
+      },
+      {
+        "path": "concurrent-delete.json",
+        "sha256": "5aa16d17b7405b116d6debe942fca384a4630a896ebb478f864a2605788a6960",
+        "json": {
+          "productId": 7503,
+          "revision": 2
+        }
+      },
+      {
+        "path": "concurrent-inventory.json",
+        "sha256": "e043325fd496d4cbd87f9fe23b2ae3e357e0b5745992d7b690c4c63c5315ea50",
+        "json": {
+          "productId": 7502,
+          "revision": 3
+        }
+      },
+      {
+        "path": "concurrent-rename.json",
+        "sha256": "f4ccd05b3271c386ee55d9876c7450012a3b361e5065c09dc22075e38b3cc35c",
+        "json": 30
+      },
+      {
+        "path": "create-7501-http.json",
+        "sha256": "d7656b8e4dd96e37bfc61cc657fca19ec0c0b59590d7dea7919621beeeb40b48",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7501,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7501.json",
+        "sha256": "c3625c4dd1a5b47b59590afebb840bbb4cad6b577ae225fcee28884f678dc51c",
+        "json": {
+          "productId": 7501,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7502-http.json",
+        "sha256": "b6121a4777611691aaceb17d4e419f20338b805a5e27571b4be1631e811b9ce3",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7502,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7502.json",
+        "sha256": "9a1da984384434e25ce1c12dd44e4a376fe8291aba9ba260eb10f40a431b851d",
+        "json": {
+          "productId": 7502,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7503-http.json",
+        "sha256": "ad5b0e2e978da27d03a134da0de085ab1340d370f90316239a6df5d8b360dab2",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7503,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7503.json",
+        "sha256": "5646ded15ea55c7a43332b35472915c4b094af3e84d08d7aff58c89eeb52a176",
+        "json": {
+          "productId": 7503,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7504-http.json",
+        "sha256": "e5eb6092fd33608707955458184ed73d41df68590feaa76d844fd87f50fb2532",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7504,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7504.json",
+        "sha256": "08337f041759a9e28d6a3086b837edf22f5f1dd9b334ab34563a063a8f825168",
+        "json": {
+          "productId": 7504,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7505-http.json",
+        "sha256": "cf93ceb5442f45a22da3a574670342efb891efd94674407a62cb8844a3fd2443",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7505,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7505.json",
+        "sha256": "8cf4b2b1f85377166956ba6545ead75b9e2293e4a4abb1bee206627ff8b58fb7",
+        "json": {
+          "productId": 7505,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7506-http.json",
+        "sha256": "f82c304df260b80c5a05a9af2f5bbc0af651ffe403cc1822fdf25aae5066fb19",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7506,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7506.json",
+        "sha256": "884ba3e24a28898825ab7a07ab20051a530cf4679fd7f1672533d04f50269682",
+        "json": {
+          "productId": 7506,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7507-http.json",
+        "sha256": "99e293a81c89382c27078c7b691fdf6995f3e2dcad4d7f9013fa303cb2a11d2f",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7507,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7507.json",
+        "sha256": "a1b13cfab8b6e21356eb912edf244ea2fb5d22a991940fbd427b4b4f4d0ce114",
+        "json": {
+          "productId": 7507,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7508-http.json",
+        "sha256": "0558ecd998985b2e7f90da2924de5d80dffd470f1ef462fb836dc7dee382baec",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7508,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7508.json",
+        "sha256": "d043eab1d639be74fef2653f805786fe5cccb0f0555f7c595295730df1aaaa24",
+        "json": {
+          "productId": 7508,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7509-http.json",
+        "sha256": "bae92ee094c13d678398398919023bafd4b6ea2816b33c92108d20cb192e6c37",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7509,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7509.json",
+        "sha256": "18f344d00c6ffc894744e4a05776ef745ed7efa907f92bbc7a424919a615e769",
+        "json": {
+          "productId": 7509,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7510-http.json",
+        "sha256": "177ef611a9dfe77c892502d58e2976de65444ab4d997d604e793fe1d5037d029",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7510,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7510.json",
+        "sha256": "345b7e96a89019e348d76d397c06a21315ec00ab740cc8a6c689e7c5ea962546",
+        "json": {
+          "productId": 7510,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7511-http.json",
+        "sha256": "ac20456c0c315fe4e0b1e9e83687ca6674edc53b6849adf25eeaa7cca07584e2",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7511,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7511.json",
+        "sha256": "cce0e61619c53328ff3f57699f43275aaa3d636889538b1ad462c0827d1607ca",
+        "json": {
+          "productId": 7511,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7512-http.json",
+        "sha256": "b8a8fed4ac224a563374ef0d030dc171976ad8853a1f7a4858ce41e54aacf89f",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7512,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7512.json",
+        "sha256": "ff2783b161770d9a18629f68b82d23923bf60bfcb462f476d310df35541273d0",
+        "json": {
+          "productId": 7512,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7513-http.json",
+        "sha256": "a12890701b5e1bbaf9ea62dc0802fc2b46959440f6a73466e2fb0db220f3e356",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7513,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7513.json",
+        "sha256": "7b0d421f2ab5a8563ada1e8faf384d6cf2e126c9cbdfe6bf3dbb1b383e3ebf13",
+        "json": {
+          "productId": 7513,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7514-http.json",
+        "sha256": "d119fe86eeccc88d8626d2320a6b9fc3d36f7297f6079fc7b7e8ad413554defd",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7514,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7514.json",
+        "sha256": "45406a3c76a204d9a4bc88e8b3d5f6a332555305578cc6e9a17e4be61693ae05",
+        "json": {
+          "productId": 7514,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7515-http.json",
+        "sha256": "5f2d5844d20e52a4954e9a79902a0380338d82aac4e6f852de87dfb0c7ac9a83",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7515,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7515.json",
+        "sha256": "f999147c0afe208d2690bde471367dca0e3789d8411c0a112cc424bec8ad6640",
+        "json": {
+          "productId": 7515,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7516-http.json",
+        "sha256": "00b7de9e263fd488d156e9f9f9f6472ef96b15b3490bc1bfd34184de3131aeaf",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7516,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7516.json",
+        "sha256": "a48c8965ee740371db8c8e0351f7239a9eaf990bc728abfe4cf008685bc64217",
+        "json": {
+          "productId": 7516,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7517-http.json",
+        "sha256": "a9dbbfc191dd566db98f34409d5fc1d2910501dd160210309a71cabd233863e0",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7517,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7517.json",
+        "sha256": "10568fe3be383b6c2bb806c991cea5db43ca432090ae3ab6a75f78c8e811088e",
+        "json": {
+          "productId": 7517,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7518-http.json",
+        "sha256": "87387dbd34b4a7ca4df36341a379f1a60f27bf5e28922e31862e0dafc73ca6ee",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7518,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7518.json",
+        "sha256": "b13ea046e5b8a54da9d3d16de0e1278901d40cea3d2a68da3159d0d7bded4295",
+        "json": {
+          "productId": 7518,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7519-http.json",
+        "sha256": "1f9c1f2159e8c7885662cc9d7697905cd09ed7e82be54ee59c2b5b03ac99e49a",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7519,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7519.json",
+        "sha256": "2ac416aa0e6436ce843ffa0dda8528824c3c41053fbe5cf94cfabe1e75e88d97",
+        "json": {
+          "productId": 7519,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7520-http.json",
+        "sha256": "67fcdd42e2a0fb48f68030804d338e728334665faf2696bf61cb610d0f971f17",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7520,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7520.json",
+        "sha256": "8ee88cfc0b54249e721d3e31e4bb867ce249a50d096b10922f2e56eb81fdf234",
+        "json": {
+          "productId": 7520,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7521-http.json",
+        "sha256": "60c8a526680ba09eb07f0c099a09a2b1fc60d059ca89d82dd7fe7e328c5f135a",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7521,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7521.json",
+        "sha256": "80b878e7e53a2fbbd6dc8853a6f54bb5484a135d810218e518e0b9330017ea19",
+        "json": {
+          "productId": 7521,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7522-http.json",
+        "sha256": "4a774c33c7eb7ce1db53f2cc0873b56093f1ea1a86f9d2e47dab70c7fcc34afc",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7522,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7522.json",
+        "sha256": "09a96f4d12e2e310d0c0e6573b04c7ec27451833c7df1f6e9a07b303c3526f53",
+        "json": {
+          "productId": 7522,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7523-http.json",
+        "sha256": "f97a58dba779e2b355404c82a6798aba729d77a55b19d34ca2fd18cc96a8aa69",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7523,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7523.json",
+        "sha256": "5a882340973eae76761cceb047369b08598a629e9f51d495512bf42579467430",
+        "json": {
+          "productId": 7523,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7524-http.json",
+        "sha256": "e573318da3dd83ce32268606acf8a36b8115339cb7d0c2a263e8b543cedb7f43",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7524,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7524.json",
+        "sha256": "0b77d56c6b1bc3bddb523d8feaad25b75deafec5100ed9da7234a0115aa8bf4f",
+        "json": {
+          "productId": 7524,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7525-http.json",
+        "sha256": "a8b0c7eb0d35a8139c1ccca367578abf06298e3c0ebd9a7bdc421849952bf369",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7525,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7525.json",
+        "sha256": "e910f9b145072e91917ee814b28800321095632697e2c68ad965e0f265ae6085",
+        "json": {
+          "productId": 7525,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7526-http.json",
+        "sha256": "b85e955b1781414afb9787dd5aaeda6834843220146891e90f59f24607d6ec79",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7526,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7526.json",
+        "sha256": "bd4d63244fce4778b069483c09ed410763441cbb829645c4b703a56c4ac5d4a5",
+        "json": {
+          "productId": 7526,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7527-http.json",
+        "sha256": "c98b0b7f1b6c971811dff0f0118554ccedc76c2ff2be30d1a89e37cf2aa5a205",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7527,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7527.json",
+        "sha256": "6ff08143313dc61e228291b1edbbe1e48326e2d7844505c3b9c1c2a98a187ea4",
+        "json": {
+          "productId": 7527,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7528-http.json",
+        "sha256": "67582e8b53a42ed665e5319016c20b8a7fb40886fc7b0e81c8cd2ef81b62cdc0",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7528,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7528.json",
+        "sha256": "993ed093f7a8a39ec46efac3206dccf6a877211e53d921a146fd591822b7a3e1",
+        "json": {
+          "productId": 7528,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7529-http.json",
+        "sha256": "162d15a555439d66398f44dae226020a3f5fd1acffd29b05333b7719abc5eefe",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7529,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7529.json",
+        "sha256": "abf96fc3a663cf5f042b2e5ea3ec720d0493e8cd5ef69fcb64ea9ef9b36cef25",
+        "json": {
+          "productId": 7529,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-7530-http.json",
+        "sha256": "ea7316857ce20cc1167ca04d40ef6dfa74b65cfffe982e228ccee7f6506776c2",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7530,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-7530.json",
+        "sha256": "109e6ac85fe55fdd2ff1785a755980cbd47146c1a52d3ceb4a72b21c15d0a51d",
+        "json": {
+          "productId": 7530,
+          "revision": 1
+        }
+      },
+      {
+        "path": "final-pipeline-status.json",
+        "sha256": "56ade920490583230b8c95b97bc4840542a0aab0ce1e4b01d4137629d8e440cd",
+        "json": {
+          "state": "HEALTHY",
+          "kafkaLag": 0,
+          "allPartitionsCommitted": true,
+          "partitions": [
+            {
+              "topic": "product-search-revisions",
+              "partition": 0,
+              "committedOffset": 17,
+              "beginningOffset": 0,
+              "endOffset": 17,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 1,
+              "committedOffset": 14,
+              "beginningOffset": 0,
+              "endOffset": 14,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 2,
+              "committedOffset": 13,
+              "beginningOffset": 0,
+              "endOffset": 13,
+              "lag": 0,
+              "retentionGap": false
+            }
+          ],
+          "unresolvedDlq": 0,
+          "latestRunId": "2f6ae931-472d-4a7a-9dd9-96b88e87f9da",
+          "latestRunStatus": "PASS",
+          "latestDifferenceCount": 0,
+          "latestRunFinishedAt": "2026-07-29T20:07:50.362283Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-29T20:07:50.362283Z",
+          "activeConditions": [],
+          "evaluatedAt": "2026-07-29T20:07:50.427363592Z"
+        }
+      },
+      {
+        "path": "final-product-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-record-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-refresh.json",
+        "sha256": "a0f2dca20b849cd7f450630e46f354a7c8ce627a7fed9374281006b79c555731",
+        "json": {
+          "_shards": {
+            "total": 1,
+            "successful": 1,
+            "failed": 0
+          }
+        }
+      },
+      {
+        "path": "final-verification.json",
+        "sha256": "3cb93603d1e275cf5579ef6584cf1515b986e727a0b126c96d234abf5a13f955",
+        "json": {
+          "runId": "2f6ae931-472d-4a7a-9dd9-96b88e87f9da",
+          "target": "products_write",
+          "status": "PASS",
+          "sourceWatermarkStart": 36,
+          "sourceWatermarkEnd": 36,
+          "expectedCount": 31,
+          "actualCount": 31,
+          "differenceCount": 0,
+          "counts": {},
+          "failureClass": null,
+          "failureMessage": null
+        }
+      },
+      {
+        "path": "gated-write.json",
+        "sha256": "2b896c54d41a8082716d210993847aa5a7b586d8b9b03c96ff52d8c31b6e914d",
+        "json": {
+          "code": "PRODUCT_WRITES_PAUSED",
+          "retryable": true
+        }
+      },
+      {
+        "path": "http-codes.json",
+        "sha256": "aef88a405003d30d90179234e96c4ec8ad051e9db19c1a9ad6314580276f47f9",
+        "json": {
+          "gated_write": 503,
+          "post_gate_write": 200
+        }
+      },
+      {
+        "path": "page-progress.json",
+        "sha256": "fd00d9b8c77903bf5c7e37e73a582862e96b0fd1be5effcd3abbad581678030b",
+        "json": {
+          "total": 30,
+          "status": "SNAPSHOTTING",
+          "page_size": 10,
+          "source_count": 10
+        }
+      },
+      {
+        "path": "post-gate-write.json",
+        "sha256": "e7e00ab3f9abcc9bd574bd49e02771f0c571c820dd83d3aa60dc92c17bb76e4e",
+        "json": {
+          "productId": 7501,
+          "revision": 4
+        }
+      },
+      {
+        "path": "pre-rebuild-write.json",
+        "sha256": "0b70e90e5e7df751884d03ce02f84d8147d13f8e0f0fdae3d1dcc0c00c1763e2",
+        "json": {
+          "productId": 7501,
+          "revision": 2
+        }
+      },
+      {
+        "path": "rebuild-completed.json",
+        "sha256": "a3e0a8c33fd6e176ab36ec5f2888707902f2f57eaaa6c7c536a513df29a39092",
+        "json": {
+          "runId": "a3c30af1-f36f-492c-939c-7df82656cdde",
+          "status": "COMPLETED",
+          "generation": "products_v3_20260729200741_a3c30af1",
+          "failureMessage": null,
+          "aliasSwapped": true,
+          "startOffsets": {
+            "2": 10,
+            "0": 13,
+            "1": 11
+          },
+          "shadowOffsets": {
+            "2": 13,
+            "0": 17,
+            "1": 13
+          },
+          "barrierOffsets": {
+            "2": 13,
+            "0": 17,
+            "1": 13
+          },
+          "verificationRunId": "27dcc71f-0e09-4301-99a0-1bfcb024fa6e",
+          "gateOwner": null,
+          "aliasState": "NEW"
+        }
+      },
+      {
+        "path": "rebuild-response.json",
+        "sha256": "a3e0a8c33fd6e176ab36ec5f2888707902f2f57eaaa6c7c536a513df29a39092",
+        "json": {
+          "runId": "a3c30af1-f36f-492c-939c-7df82656cdde",
+          "status": "COMPLETED",
+          "generation": "products_v3_20260729200741_a3c30af1",
+          "failureMessage": null,
+          "aliasSwapped": true,
+          "startOffsets": {
+            "2": 10,
+            "0": 13,
+            "1": 11
+          },
+          "shadowOffsets": {
+            "2": 13,
+            "0": 17,
+            "1": 13
+          },
+          "barrierOffsets": {
+            "2": 13,
+            "0": 17,
+            "1": 13
+          },
+          "verificationRunId": "27dcc71f-0e09-4301-99a0-1bfcb024fa6e",
+          "gateOwner": null,
+          "aliasState": "NEW"
+        }
+      },
+      {
+        "path": "rebuild-run-id",
+        "sha256": "af9d0e73279f7e593135879b22cd1463055c438d005e4a6ea769d7915cd00ab1",
+        "text": "a3c30af1-f36f-492c-939c-7df82656cdde\n"
+      },
+      {
+        "path": "status-gating.json",
+        "sha256": "5cd3af849fde3306e77829319cafe3a961697442395b6632662eb1e823f89919",
+        "json": {
+          "runId": "a3c30af1-f36f-492c-939c-7df82656cdde",
+          "status": "GATING",
+          "generation": "products_v3_20260729200741_a3c30af1",
+          "failureMessage": null,
+          "aliasSwapped": false,
+          "startOffsets": {
+            "2": 10,
+            "0": 13,
+            "1": 11
+          },
+          "shadowOffsets": {
+            "2": 13,
+            "0": 17,
+            "1": 13
+          },
+          "barrierOffsets": {},
+          "verificationRunId": null,
+          "gateOwner": "a3c30af1-f36f-492c-939c-7df82656cdde",
+          "aliasState": "OLD"
+        }
+      }
+    ]
+  }
+}

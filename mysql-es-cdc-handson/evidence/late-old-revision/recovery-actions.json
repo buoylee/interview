@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "scenario_id": "late-old-revision",
+  "runner_run_id": "11a8dc4d-fe48-4ff0-8cc2-3c04ae2ac2e7",
+  "rebuild_required_observed_before_rebuild": false,
+  "commands": [
+    {
+      "sequence": 1,
+      "kind": "CONTROL",
+      "target": "m6-real-fault",
+      "method": "DELETE",
+      "path": "/scenario/late-old-revision/fault",
+      "started_at": "2026-07-29T19:59:56Z",
+      "finished_at": "2026-07-29T19:59:56Z",
+      "exit_code": 0
+    }
+  ],
+  "cleanup_actions": [
+    {
+      "name": "dispatch-owned-m6-real-fault",
+      "success": true,
+      "finished_at": "2026-07-29T19:59:56Z"
+    }
+  ],
+  "cleanup_failures": 0
+}

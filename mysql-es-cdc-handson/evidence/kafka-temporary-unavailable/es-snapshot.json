@@ -1,0 +1,26 @@
+{
+  "consistency": "ELASTICSEARCH_PIT",
+  "documents": [
+    {
+      "product_id": 6401,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Accessories",
+        "description": "fixture",
+        "name": "Crash 6401",
+        "price_cents": 64401,
+        "product_id": 6401,
+        "searchable": true,
+        "sku": "LAB-6401",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T19:49:56.087691Z"
+      },
+      "version": null
+    }
+  ],
+  "index": "products_write",
+  "schema_version": 1,
+  "scenario_id": "kafka-temporary-unavailable",
+  "runner_run_id": "daf6c1ca-6c20-4c50-866b-f70d9e48bd47"
+}

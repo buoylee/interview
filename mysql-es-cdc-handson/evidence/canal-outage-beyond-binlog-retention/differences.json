@@ -1,0 +1,209 @@
+{
+  "schema_version": 1,
+  "scenario_id": "canal-outage-beyond-binlog-retention",
+  "runner_run_id": "3075cc0e-29df-437b-8ed8-990eee6856e9",
+  "observations": {
+    "consistency_preconditions": [
+      {
+        "name": "dedicated-compose-project",
+        "satisfied": true,
+        "observed_at": "2026-07-29T19:47:14Z"
+      },
+      {
+        "name": "pinned-stack-ready",
+        "satisfied": true,
+        "observed_at": "2026-07-29T19:47:14Z"
+      },
+      {
+        "name": "baseline-lag-zero",
+        "satisfied": true,
+        "observed_at": "2026-07-29T19:47:14Z"
+      }
+    ],
+    "source_watermark": 1,
+    "target_watermarks": {
+      "mysql_revision": 1,
+      "elasticsearch_revision": 1,
+      "passed": true
+    },
+    "watermark_run_id": "34ceebac-56b8-498e-b294-738e632fba9e",
+    "applied_offsets": {
+      "0": 6,
+      "1": 4,
+      "2": 3
+    },
+    "scenario_lag_satisfied": true,
+    "product_unresolved_dlq_count": 0,
+    "record_unresolved_dlq_count": 0,
+    "verification": {
+      "run_id": "34ceebac-56b8-498e-b294-738e632fba9e",
+      "status": "PASS",
+      "conclusive": true,
+      "stable": true,
+      "exact_managed_field_diff_count": 0,
+      "version_metadata_diff_count": 0,
+      "observed_at": "2026-07-29T19:48:57Z"
+    },
+    "exact_diff_count": 0,
+    "tombstone_mismatch_count": 0,
+    "canal_position_recovery": {
+      "old_cursor_sha256": "0a216e168f9bff85442716a5337271f18cc9a4b0dee9248cde497ed733f59df9",
+      "old_missing_journal": "mysql-bin.000003",
+      "old_missing_position": 25791,
+      "retained_binlog_files": [
+        "mysql-bin.000004"
+      ],
+      "reset_lower_bound_journal": "mysql-bin.000004",
+      "reset_lower_bound_file_index": 0,
+      "reset_lower_bound_position": 3006,
+      "reset_cursor_sha256": "89b07df86340d2f84feb9835975404066517fc6cdbdac2fa6637539c7603eb9c",
+      "reset_journal": "mysql-bin.000004",
+      "reset_file_index": 0,
+      "reset_position": 4467,
+      "reset_anchor_run_id": "3b253749-1972-445b-9416-c0b397ab8c3a",
+      "reset_anchor_next_offsets": {
+        "0": 4,
+        "1": 2,
+        "2": 1
+      },
+      "reset_restart_offsets_before": {
+        "0": 4,
+        "1": 2,
+        "2": 1
+      },
+      "normal_restart_cursor_sha256": "89b07df86340d2f84feb9835975404066517fc6cdbdac2fa6637539c7603eb9c",
+      "normal_restart_journal": "mysql-bin.000004",
+      "normal_restart_file_index": 0,
+      "normal_restart_position": 4467,
+      "normal_restart_offsets_after": {
+        "0": 4,
+        "1": 2,
+        "2": 1
+      },
+      "normal_restart_preserved": true,
+      "normal_sentinel_run_id": "86d993fe-946a-4591-83e1-522dfbafd387",
+      "normal_sentinel_next_offsets": {
+        "0": 5,
+        "1": 3,
+        "2": 2
+      },
+      "reset_anchor_events": {
+        "0": {
+          "event_id": "58e2feb1-6954-33ce-91f3-022224700abc",
+          "topic": "product-search-revisions",
+          "partition": 0,
+          "offset": 3,
+          "next_offset": 4,
+          "run_id": "3b253749-1972-445b-9416-c0b397ab8c3a",
+          "partition_token": "0",
+          "key_is_null": true,
+          "record_value_sha256": "06c4bdcec34f580b00021eef44e6396da43661688cdbb7c8dcf5f13108b5076c"
+        },
+        "1": {
+          "event_id": "94964f99-afc8-3d8f-ab78-ad0af9d42e72",
+          "topic": "product-search-revisions",
+          "partition": 1,
+          "offset": 1,
+          "next_offset": 2,
+          "run_id": "3b253749-1972-445b-9416-c0b397ab8c3a",
+          "partition_token": "1",
+          "key_is_null": true,
+          "record_value_sha256": "e1f62c4535356d11b596c4d09d63cb088aa33e9dbbe1c42828d323d241b43b99"
+        },
+        "2": {
+          "event_id": "5bf53676-bcdb-3bae-8d35-3dbc5e8b6267",
+          "topic": "product-search-revisions",
+          "partition": 2,
+          "offset": 0,
+          "next_offset": 1,
+          "run_id": "3b253749-1972-445b-9416-c0b397ab8c3a",
+          "partition_token": "2",
+          "key_is_null": true,
+          "record_value_sha256": "7e6cb2f714a8dfde566fe3350a75320db1493b0b6278a661c34c3aa7400035f9"
+        }
+      },
+      "normal_sentinel_events": {
+        "0": {
+          "event_id": "fd066c9e-6712-3c93-8993-635e712949ce",
+          "topic": "product-search-revisions",
+          "partition": 0,
+          "offset": 4,
+          "next_offset": 5,
+          "run_id": "86d993fe-946a-4591-83e1-522dfbafd387",
+          "partition_token": "0",
+          "key_is_null": true,
+          "record_value_sha256": "3c25567f1d727acf93c423e3444c7685e5b07ae389f5d3708c6cad5c0070a0ef"
+        },
+        "1": {
+          "event_id": "578a7a62-f835-3198-b72f-c7da71c97ede",
+          "topic": "product-search-revisions",
+          "partition": 1,
+          "offset": 2,
+          "next_offset": 3,
+          "run_id": "86d993fe-946a-4591-83e1-522dfbafd387",
+          "partition_token": "1",
+          "key_is_null": true,
+          "record_value_sha256": "0d46bc9fe2c57cf44bb658b74ee1474d623ebe98254c2528b47c4093ae1222eb"
+        },
+        "2": {
+          "event_id": "338a0e2b-e0a5-3737-b130-282b94deb1f0",
+          "topic": "product-search-revisions",
+          "partition": 2,
+          "offset": 1,
+          "next_offset": 2,
+          "run_id": "86d993fe-946a-4591-83e1-522dfbafd387",
+          "partition_token": "2",
+          "key_is_null": true,
+          "record_value_sha256": "be6e53540db9ddabf85d99d51c0c654dac76a374857a088373fba96d5992a346"
+        }
+      }
+    },
+    "observed_intermediate_states": [
+      "REBUILD_REQUIRED"
+    ],
+    "observed_pipeline_state": "HEALTHY",
+    "recovery_action_observed": true,
+    "rebuild_required_before_rebuild": true,
+    "commands": [
+      {
+        "sequence": 3,
+        "execution": "verification",
+        "intent_phases": [
+          "verification"
+        ],
+        "kind": "HTTP",
+        "target": "consistency-verifier",
+        "method": "POST",
+        "path": "/internal/reconciliation/runs",
+        "body_sha256": "0926a40491d2b85cf315a8132b1ca26cc5fc21a4fb8235ef3e75d17b3ed676c1",
+        "fixture_path": "scenarios/scripts/collect-m6-observations.sh",
+        "fixture_sha256": "8bcbf975ec8066db234f1c017bd4a6fa0a8b65434ce4ac4a801a93c96d066790",
+        "started_at": "2026-07-29T19:48:46Z",
+        "finished_at": "2026-07-29T19:48:46Z",
+        "exit_code": 0
+      }
+    ],
+    "recovery_commands": [],
+    "cleanup_actions": [],
+    "runner_failures": []
+  },
+  "independent_verification": {
+    "runId": "34ceebac-56b8-498e-b294-738e632fba9e",
+    "target": "products_write",
+    "status": "PASS",
+    "sourceWatermarkStart": 1,
+    "sourceWatermarkEnd": 1,
+    "expectedCount": 1,
+    "actualCount": 1,
+    "differenceCount": 0,
+    "counts": {
+      "MISSING": 0,
+      "UNEXPECTED": 0,
+      "MODIFIED": 0,
+      "TOMBSTONE_MISMATCH": 0,
+      "VERSION_METADATA_MISMATCH": 0
+    },
+    "failureClass": null,
+    "failureMessage": null
+  }
+}

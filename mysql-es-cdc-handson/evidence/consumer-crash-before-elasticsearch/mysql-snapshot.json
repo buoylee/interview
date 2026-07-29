@@ -1,0 +1,21 @@
+{
+  "consistency": "REPEATABLE_READ_CONSISTENT_SNAPSHOT",
+  "documents": [
+    {
+      "active": 1,
+      "available_quantity": 0,
+      "category_id": 10,
+      "category_name": "Accessories",
+      "description": "fixture",
+      "name": "Crash 6601",
+      "price_cents": 66101,
+      "product_id": 6601,
+      "revision": 2,
+      "sku": "LAB-6601",
+      "updated_at": "2026-07-29T19:52:59.298739Z"
+    }
+  ],
+  "schema_version": 1,
+  "scenario_id": "consumer-crash-before-elasticsearch",
+  "runner_run_id": "b64ad2b2-bcc4-411b-bc38-7d15f072ef4a"
+}

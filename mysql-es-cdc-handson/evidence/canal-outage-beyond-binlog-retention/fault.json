@@ -1,0 +1,766 @@
+{
+  "schema_version": 1,
+  "scenario_id": "canal-outage-beyond-binlog-retention",
+  "runner_run_id": "3075cc0e-29df-437b-8ed8-990eee6856e9",
+  "declared_fault": {
+    "type": "RETENTION",
+    "target": "mysql-binlog",
+    "action": "purge the Canal acknowledged binlog while Canal is stopped"
+  },
+  "cleanup_registered_before_fault": true,
+  "observed_intermediate_states": [
+    "REBUILD_REQUIRED"
+  ],
+  "case_observations": {
+    "scenario_id": "canal-outage-beyond-binlog-retention",
+    "artifacts": [
+      {
+        "path": "canal-recovery/canal-meta-before.json",
+        "sha256": "694ef7de1f6f7ac1b4cf43b5ba5fa770c6b2e917e2918d8b5964f479f06694d1",
+        "json": {
+          "contract": "canal-1.1.8-file-mixed-meta-ack-cursor",
+          "path": "/home/admin/canal-data/products/meta.dat",
+          "destination": "products",
+          "client": {
+            "destination": "products",
+            "client_id": 1001,
+            "filter": ""
+          },
+          "journal": "mysql-bin.000003",
+          "position": 25791,
+          "timestamp": 1785354435000,
+          "server_id": 1,
+          "gtid": "",
+          "source": {
+            "address": "toxiproxy",
+            "port": 8668
+          },
+          "slave_id": -1
+        }
+      },
+      {
+        "path": "canal-recovery/canal-meta-normal-restart.json",
+        "sha256": "42c364f3bffc7493e9e542426c19d75fa7844769abeeb0e81507b785a02e8ae8",
+        "json": {
+          "contract": "canal-1.1.8-file-mixed-meta-ack-cursor",
+          "path": "/home/admin/canal-data/products/meta.dat",
+          "destination": "products",
+          "client": {
+            "destination": "products",
+            "client_id": 1001,
+            "filter": ""
+          },
+          "journal": "mysql-bin.000004",
+          "position": 4467,
+          "timestamp": 1785354509000,
+          "server_id": 1,
+          "gtid": "",
+          "source": {
+            "address": "toxiproxy",
+            "port": 8668
+          },
+          "slave_id": -1
+        }
+      },
+      {
+        "path": "canal-recovery/canal-meta-reset.json",
+        "sha256": "42c364f3bffc7493e9e542426c19d75fa7844769abeeb0e81507b785a02e8ae8",
+        "json": {
+          "contract": "canal-1.1.8-file-mixed-meta-ack-cursor",
+          "path": "/home/admin/canal-data/products/meta.dat",
+          "destination": "products",
+          "client": {
+            "destination": "products",
+            "client_id": 1001,
+            "filter": ""
+          },
+          "journal": "mysql-bin.000004",
+          "position": 4467,
+          "timestamp": 1785354509000,
+          "server_id": 1,
+          "gtid": "",
+          "source": {
+            "address": "toxiproxy",
+            "port": 8668
+          },
+          "slave_id": -1
+        }
+      },
+      {
+        "path": "canal-recovery/canal-recovery-completion.json",
+        "sha256": "f02187fe902b5673c322a3a246dff418edd89938d94bc397244526ef30f8f70c",
+        "json": {
+          "recoveryId": "8db9f171-f264-4ad6-bf4e-8c5bb6d38142",
+          "cursorPath": "/home/admin/canal-data/products/meta.dat",
+          "cursorBackupPath": "/Users/buoy/Development/gitrepo/interview/.worktrees/mysql-es-cdc-handson/mysql-es-cdc-handson/evidence/.attempts/run-fb1a877-v10/.tmp.canal-outage-beyond-binlog-retention.nHD5Py/raw/canal-recovery/canal-meta-before.dat",
+          "oldCursorSha256": "0a216e168f9bff85442716a5337271f18cc9a4b0dee9248cde497ed733f59df9",
+          "oldJournalName": "mysql-bin.000003",
+          "oldPosition": 25791,
+          "retainedManifest": [
+            {
+              "fileIndex": 0,
+              "journal": "mysql-bin.000004"
+            }
+          ],
+          "resetLowerBoundJournal": "mysql-bin.000004",
+          "resetLowerBoundFileIndex": 0,
+          "resetLowerBoundPosition": 3006,
+          "resetCursorSha256": "89b07df86340d2f84feb9835975404066517fc6cdbdac2fa6637539c7603eb9c",
+          "resetJournalName": "mysql-bin.000004",
+          "resetFileIndex": 0,
+          "resetPosition": 4467,
+          "resetAnchorRunId": "3b253749-1972-445b-9416-c0b397ab8c3a",
+          "resetAnchorOffsets": {
+            "0": 4,
+            "1": 2,
+            "2": 1
+          },
+          "resetAnchorEvents": [
+            {
+              "eventId": "58e2feb1-6954-33ce-91f3-022224700abc",
+              "nextOffset": 4,
+              "partition": 0,
+              "runId": "3b253749-1972-445b-9416-c0b397ab8c3a"
+            },
+            {
+              "eventId": "94964f99-afc8-3d8f-ab78-ad0af9d42e72",
+              "nextOffset": 2,
+              "partition": 1,
+              "runId": "3b253749-1972-445b-9416-c0b397ab8c3a"
+            },
+            {
+              "eventId": "5bf53676-bcdb-3bae-8d35-3dbc5e8b6267",
+              "nextOffset": 1,
+              "partition": 2,
+              "runId": "3b253749-1972-445b-9416-c0b397ab8c3a"
+            }
+          ],
+          "resetRestartOffsetsBefore": {
+            "0": 4,
+            "1": 2,
+            "2": 1
+          },
+          "normalRestartCursorSha256": "89b07df86340d2f84feb9835975404066517fc6cdbdac2fa6637539c7603eb9c",
+          "normalRestartJournalName": "mysql-bin.000004",
+          "normalRestartFileIndex": 0,
+          "normalRestartPosition": 4467,
+          "normalRestartOffsetsAfter": {
+            "0": 4,
+            "1": 2,
+            "2": 1
+          },
+          "normalSentinelRunId": "86d993fe-946a-4591-83e1-522dfbafd387",
+          "normalSentinelOffsets": {
+            "0": 5,
+            "1": 3,
+            "2": 2
+          },
+          "normalSentinelEvents": [
+            {
+              "eventId": "fd066c9e-6712-3c93-8993-635e712949ce",
+              "nextOffset": 5,
+              "partition": 0,
+              "runId": "86d993fe-946a-4591-83e1-522dfbafd387"
+            },
+            {
+              "eventId": "578a7a62-f835-3198-b72f-c7da71c97ede",
+              "nextOffset": 3,
+              "partition": 1,
+              "runId": "86d993fe-946a-4591-83e1-522dfbafd387"
+            },
+            {
+              "eventId": "338a0e2b-e0a5-3737-b130-282b94deb1f0",
+              "nextOffset": 2,
+              "partition": 2,
+              "runId": "86d993fe-946a-4591-83e1-522dfbafd387"
+            }
+          ]
+        }
+      },
+      {
+        "path": "canal-recovery/normal-restart-offsets-after.json",
+        "sha256": "189a74dff5151aa31c5bcf5158d267dfb984ca307c782acb7b4bb6a59c501cf5",
+        "json": {
+          "0": 4,
+          "1": 2,
+          "2": 1
+        }
+      },
+      {
+        "path": "canal-recovery/normal-sentinel-events-normalized.json",
+        "sha256": "b6743a9ed4ce2edc0a9667f5a6041ee910f488ac02d84fb4ffb56a23627a8b76",
+        "json": {
+          "0": {
+            "event_id": "fd066c9e-6712-3c93-8993-635e712949ce",
+            "topic": "product-search-revisions",
+            "partition": 0,
+            "offset": 4,
+            "next_offset": 5,
+            "run_id": "86d993fe-946a-4591-83e1-522dfbafd387",
+            "partition_token": "0",
+            "key_is_null": true,
+            "record_value_sha256": "3c25567f1d727acf93c423e3444c7685e5b07ae389f5d3708c6cad5c0070a0ef"
+          },
+          "1": {
+            "event_id": "578a7a62-f835-3198-b72f-c7da71c97ede",
+            "topic": "product-search-revisions",
+            "partition": 1,
+            "offset": 2,
+            "next_offset": 3,
+            "run_id": "86d993fe-946a-4591-83e1-522dfbafd387",
+            "partition_token": "1",
+            "key_is_null": true,
+            "record_value_sha256": "0d46bc9fe2c57cf44bb658b74ee1474d623ebe98254c2528b47c4093ae1222eb"
+          },
+          "2": {
+            "event_id": "338a0e2b-e0a5-3737-b130-282b94deb1f0",
+            "topic": "product-search-revisions",
+            "partition": 2,
+            "offset": 1,
+            "next_offset": 2,
+            "run_id": "86d993fe-946a-4591-83e1-522dfbafd387",
+            "partition_token": "2",
+            "key_is_null": true,
+            "record_value_sha256": "be6e53540db9ddabf85d99d51c0c654dac76a374857a088373fba96d5992a346"
+          }
+        }
+      },
+      {
+        "path": "canal-recovery/normal-sentinel-events.json",
+        "sha256": "16d73f3e268e8c649f6edfec0819a471a9e970e36d63dc2b3ead3760a0a30150",
+        "json": [
+          {
+            "eventId": "fd066c9e-6712-3c93-8993-635e712949ce",
+            "nextOffset": 5,
+            "partition": 0,
+            "runId": "86d993fe-946a-4591-83e1-522dfbafd387"
+          },
+          {
+            "eventId": "578a7a62-f835-3198-b72f-c7da71c97ede",
+            "nextOffset": 3,
+            "partition": 1,
+            "runId": "86d993fe-946a-4591-83e1-522dfbafd387"
+          },
+          {
+            "eventId": "338a0e2b-e0a5-3737-b130-282b94deb1f0",
+            "nextOffset": 2,
+            "partition": 2,
+            "runId": "86d993fe-946a-4591-83e1-522dfbafd387"
+          }
+        ]
+      },
+      {
+        "path": "canal-recovery/normal-sentinel-offsets.json",
+        "sha256": "043c19abb97c6ac3a307baffc8bf03a095a8376132b8877bd5180887133d25e6",
+        "json": {
+          "0": 5,
+          "1": 3,
+          "2": 2
+        }
+      },
+      {
+        "path": "canal-recovery/normal-sentinel-publication.json",
+        "sha256": "c3aa46574d1f96274153bdf4265105f8dd3c713e17968d62218eff5bd7463b29",
+        "json": {
+          "kind": "NORMAL_SENTINEL",
+          "markerRunId": "86d993fe-946a-4591-83e1-522dfbafd387",
+          "preOffsets": {
+            "0": 4,
+            "1": 2,
+            "2": 1
+          },
+          "offsets": {
+            "0": 5,
+            "1": 3,
+            "2": 2
+          },
+          "events": [
+            {
+              "eventId": "fd066c9e-6712-3c93-8993-635e712949ce",
+              "runId": "86d993fe-946a-4591-83e1-522dfbafd387",
+              "partition": 0,
+              "nextOffset": 5
+            },
+            {
+              "eventId": "578a7a62-f835-3198-b72f-c7da71c97ede",
+              "runId": "86d993fe-946a-4591-83e1-522dfbafd387",
+              "partition": 1,
+              "nextOffset": 3
+            },
+            {
+              "eventId": "338a0e2b-e0a5-3737-b130-282b94deb1f0",
+              "runId": "86d993fe-946a-4591-83e1-522dfbafd387",
+              "partition": 2,
+              "nextOffset": 2
+            }
+          ]
+        }
+      },
+      {
+        "path": "canal-recovery/rebuild-after-canal-recovery.json",
+        "sha256": "a51c7eb0a268772e260c40e2c16427b50f395b8508ae0e2e99bd5b8ce11a0013",
+        "json": {
+          "runId": "eccf159f-414e-45a5-83b7-ce43aa915d30",
+          "status": "COMPLETED",
+          "generation": "products_v3_20260729194725_eccf159f",
+          "failureMessage": null,
+          "aliasSwapped": true,
+          "startOffsets": {
+            "0": 5,
+            "1": 3,
+            "2": 2
+          },
+          "shadowOffsets": {
+            "0": 6,
+            "1": 4,
+            "2": 3
+          },
+          "barrierOffsets": {
+            "0": 6,
+            "1": 4,
+            "2": 3
+          },
+          "verificationRunId": "ddd94677-9acf-4b34-8854-1cb89f0d342e",
+          "gateOwner": null,
+          "aliasState": "NEW"
+        }
+      },
+      {
+        "path": "canal-recovery/reset-anchor-events-normalized.json",
+        "sha256": "f2ce1fea0f1a9caaa17c78dd29b14a548d450aa53d80101ae99440ab76d29b29",
+        "json": {
+          "0": {
+            "event_id": "58e2feb1-6954-33ce-91f3-022224700abc",
+            "topic": "product-search-revisions",
+            "partition": 0,
+            "offset": 3,
+            "next_offset": 4,
+            "run_id": "3b253749-1972-445b-9416-c0b397ab8c3a",
+            "partition_token": "0",
+            "key_is_null": true,
+            "record_value_sha256": "06c4bdcec34f580b00021eef44e6396da43661688cdbb7c8dcf5f13108b5076c"
+          },
+          "1": {
+            "event_id": "94964f99-afc8-3d8f-ab78-ad0af9d42e72",
+            "topic": "product-search-revisions",
+            "partition": 1,
+            "offset": 1,
+            "next_offset": 2,
+            "run_id": "3b253749-1972-445b-9416-c0b397ab8c3a",
+            "partition_token": "1",
+            "key_is_null": true,
+            "record_value_sha256": "e1f62c4535356d11b596c4d09d63cb088aa33e9dbbe1c42828d323d241b43b99"
+          },
+          "2": {
+            "event_id": "5bf53676-bcdb-3bae-8d35-3dbc5e8b6267",
+            "topic": "product-search-revisions",
+            "partition": 2,
+            "offset": 0,
+            "next_offset": 1,
+            "run_id": "3b253749-1972-445b-9416-c0b397ab8c3a",
+            "partition_token": "2",
+            "key_is_null": true,
+            "record_value_sha256": "7e6cb2f714a8dfde566fe3350a75320db1493b0b6278a661c34c3aa7400035f9"
+          }
+        }
+      },
+      {
+        "path": "canal-recovery/reset-anchor-events.json",
+        "sha256": "b5a9ee4f384f3548da8d02eaf58febf207a20b885c7bf98b1d2598f2969317c8",
+        "json": [
+          {
+            "eventId": "58e2feb1-6954-33ce-91f3-022224700abc",
+            "nextOffset": 4,
+            "partition": 0,
+            "runId": "3b253749-1972-445b-9416-c0b397ab8c3a"
+          },
+          {
+            "eventId": "94964f99-afc8-3d8f-ab78-ad0af9d42e72",
+            "nextOffset": 2,
+            "partition": 1,
+            "runId": "3b253749-1972-445b-9416-c0b397ab8c3a"
+          },
+          {
+            "eventId": "5bf53676-bcdb-3bae-8d35-3dbc5e8b6267",
+            "nextOffset": 1,
+            "partition": 2,
+            "runId": "3b253749-1972-445b-9416-c0b397ab8c3a"
+          }
+        ]
+      },
+      {
+        "path": "canal-recovery/reset-anchor-meta-before-publication.json",
+        "sha256": "694ef7de1f6f7ac1b4cf43b5ba5fa770c6b2e917e2918d8b5964f479f06694d1",
+        "json": {
+          "contract": "canal-1.1.8-file-mixed-meta-ack-cursor",
+          "path": "/home/admin/canal-data/products/meta.dat",
+          "destination": "products",
+          "client": {
+            "destination": "products",
+            "client_id": 1001,
+            "filter": ""
+          },
+          "journal": "mysql-bin.000003",
+          "position": 25791,
+          "timestamp": 1785354435000,
+          "server_id": 1,
+          "gtid": "",
+          "source": {
+            "address": "toxiproxy",
+            "port": 8668
+          },
+          "slave_id": -1
+        }
+      },
+      {
+        "path": "canal-recovery/reset-anchor-offsets-before.json",
+        "sha256": "ff7b4cc34e0918eabb51584a87bc73b0289fce3f4fd445f64d485505f6748852",
+        "json": {
+          "0": 3,
+          "1": 1,
+          "2": 0
+        }
+      },
+      {
+        "path": "canal-recovery/reset-anchor-offsets.json",
+        "sha256": "189a74dff5151aa31c5bcf5158d267dfb984ca307c782acb7b4bb6a59c501cf5",
+        "json": {
+          "0": 4,
+          "1": 2,
+          "2": 1
+        }
+      },
+      {
+        "path": "canal-recovery/reset-anchor-publication.json",
+        "sha256": "70b8aff9087726d2d6fa8473ba798f030c4f75955d352feeb934b807220bc46a",
+        "json": {
+          "kind": "RESET_ANCHOR",
+          "markerRunId": "3b253749-1972-445b-9416-c0b397ab8c3a",
+          "preOffsets": {
+            "0": 3,
+            "1": 1,
+            "2": 0
+          },
+          "offsets": {
+            "0": 4,
+            "1": 2,
+            "2": 1
+          },
+          "events": [
+            {
+              "eventId": "58e2feb1-6954-33ce-91f3-022224700abc",
+              "runId": "3b253749-1972-445b-9416-c0b397ab8c3a",
+              "partition": 0,
+              "nextOffset": 4
+            },
+            {
+              "eventId": "94964f99-afc8-3d8f-ab78-ad0af9d42e72",
+              "runId": "3b253749-1972-445b-9416-c0b397ab8c3a",
+              "partition": 1,
+              "nextOffset": 2
+            },
+            {
+              "eventId": "5bf53676-bcdb-3bae-8d35-3dbc5e8b6267",
+              "runId": "3b253749-1972-445b-9416-c0b397ab8c3a",
+              "partition": 2,
+              "nextOffset": 1
+            }
+          ]
+        }
+      },
+      {
+        "path": "canal-recovery/reset-restart-offsets-before.json",
+        "sha256": "189a74dff5151aa31c5bcf5158d267dfb984ca307c782acb7b4bb6a59c501cf5",
+        "json": {
+          "0": 4,
+          "1": 2,
+          "2": 1
+        }
+      },
+      {
+        "path": "canal-recovery/retained-binlog-manifest.json",
+        "sha256": "001743065c83878feea1871c94c1af6b6a7ca4015dc760aa70048fe7e47f8bd2",
+        "json": [
+          {
+            "fileIndex": 0,
+            "journal": "mysql-bin.000004"
+          }
+        ]
+      },
+      {
+        "path": "create-http.json",
+        "sha256": "b5bdadfafcb582aeebe4439587ce1da86bcba3288356c6d0da38bfef56609e26",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":6301,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create.json",
+        "sha256": "2d9fa52203fee6deffe8d330b786066124808e1a9d8eaa454c56f1c62661b5ca",
+        "json": {
+          "productId": 6301,
+          "revision": 1
+        }
+      },
+      {
+        "path": "final-pipeline-status.json",
+        "sha256": "3d23a75944450a4ad1134f93cb78b8d8b032fb80092d3553ea05da06fe8fb6b5",
+        "json": {
+          "state": "HEALTHY",
+          "kafkaLag": 0,
+          "allPartitionsCommitted": true,
+          "partitions": [
+            {
+              "topic": "product-search-revisions",
+              "partition": 0,
+              "committedOffset": 6,
+              "beginningOffset": 0,
+              "endOffset": 6,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 1,
+              "committedOffset": 4,
+              "beginningOffset": 0,
+              "endOffset": 4,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 2,
+              "committedOffset": 3,
+              "beginningOffset": 0,
+              "endOffset": 3,
+              "lag": 0,
+              "retentionGap": false
+            }
+          ],
+          "unresolvedDlq": 0,
+          "latestRunId": "34ceebac-56b8-498e-b294-738e632fba9e",
+          "latestRunStatus": "PASS",
+          "latestDifferenceCount": 0,
+          "latestRunFinishedAt": "2026-07-29T19:48:46.261648Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-29T19:48:46.261648Z",
+          "activeConditions": [],
+          "evaluatedAt": "2026-07-29T19:48:46.309944201Z"
+        }
+      },
+      {
+        "path": "final-product-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-record-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-refresh.json",
+        "sha256": "a0f2dca20b849cd7f450630e46f354a7c8ce627a7fed9374281006b79c555731",
+        "json": {
+          "_shards": {
+            "total": 1,
+            "successful": 1,
+            "failed": 0
+          }
+        }
+      },
+      {
+        "path": "final-verification.json",
+        "sha256": "c5793da2be4fa249facc62fbb2d77b70d96b9930cf5f9710c1cb31cea9dfa55f",
+        "json": {
+          "runId": "34ceebac-56b8-498e-b294-738e632fba9e",
+          "target": "products_write",
+          "status": "PASS",
+          "sourceWatermarkStart": 1,
+          "sourceWatermarkEnd": 1,
+          "expectedCount": 1,
+          "actualCount": 1,
+          "differenceCount": 0,
+          "counts": {},
+          "failureClass": null,
+          "failureMessage": null
+        }
+      },
+      {
+        "path": "gap-proof.json",
+        "sha256": "39b8ee79a7dc6fd8d70efd61e6a8a6c7b9ae1f9b23537ec40e718581ceb526dc",
+        "json": {
+          "target": "mysql-binlog",
+          "journal": "mysql-bin.000003",
+          "position": 25791,
+          "retained_files": [
+            "mysql-bin.000004"
+          ],
+          "recorded_present": false,
+          "canal_missing_position_observed": true
+        }
+      },
+      {
+        "path": "log-gap.json",
+        "sha256": "31a9da7eb5fef72163983e17053bca6fb2ea06539e4a2a00bfb0972ab0052af1",
+        "json": {
+          "active": true,
+          "condition": "LOG_GAP"
+        }
+      },
+      {
+        "path": "mysql-gap-status.json",
+        "sha256": "f212f6647c2942e256b761e2123ef2a180142913b356a3cb8e18be7436c2e36f",
+        "json": {
+          "target": "mysql",
+          "current_file": "mysql-bin.000004",
+          "files": [
+            "mysql-bin.000004"
+          ],
+          "expire_seconds": 86400,
+          "recorded_file": "mysql-bin.000003",
+          "recorded_present": false
+        }
+      },
+      {
+        "path": "old-meta.json",
+        "sha256": "694ef7de1f6f7ac1b4cf43b5ba5fa770c6b2e917e2918d8b5964f479f06694d1",
+        "json": {
+          "contract": "canal-1.1.8-file-mixed-meta-ack-cursor",
+          "path": "/home/admin/canal-data/products/meta.dat",
+          "destination": "products",
+          "client": {
+            "destination": "products",
+            "client_id": 1001,
+            "filter": ""
+          },
+          "journal": "mysql-bin.000003",
+          "position": 25791,
+          "timestamp": 1785354435000,
+          "server_id": 1,
+          "gtid": "",
+          "source": {
+            "address": "toxiproxy",
+            "port": 8668
+          },
+          "slave_id": -1
+        }
+      },
+      {
+        "path": "recovery-required.json",
+        "sha256": "c08680dcda50e2c95dab623f92d998c96046b4aa5bd5038cb552d3aab59383a2",
+        "json": {
+          "runId": "eccf159f-414e-45a5-83b7-ce43aa915d30",
+          "status": "CANAL_RECOVERY_REQUIRED",
+          "generation": "products_v3_20260729194725_eccf159f",
+          "failureMessage": null,
+          "aliasSwapped": false,
+          "startOffsets": {},
+          "shadowOffsets": {},
+          "barrierOffsets": {},
+          "verificationRunId": null,
+          "gateOwner": null,
+          "aliasState": "OLD"
+        }
+      },
+      {
+        "path": "recovery-started.json",
+        "sha256": "90d9fd0828f5e080ed245a385c833a20191f0aec5d95c57f0e7f69ee45c45dda",
+        "json": {
+          "runId": "eccf159f-414e-45a5-83b7-ce43aa915d30",
+          "status": "CANAL_RECOVERING",
+          "generation": "products_v3_20260729194725_eccf159f",
+          "failureMessage": null,
+          "aliasSwapped": false,
+          "startOffsets": {},
+          "shadowOffsets": {},
+          "barrierOffsets": {},
+          "verificationRunId": null,
+          "gateOwner": "eccf159f-414e-45a5-83b7-ce43aa915d30",
+          "aliasState": "OLD"
+        }
+      },
+      {
+        "path": "retention-provenance.json",
+        "sha256": "6bd790322029f05cb2f3a582a047911b768f00516d2a49766bb63b3b7c4825d4",
+        "json": {
+          "purpose": "m6-dedicated-retention",
+          "compose_project": "mysql-es-cdc-handson-m6-task4"
+        }
+      },
+      {
+        "path": "retention-state/mysql-retention.json",
+        "sha256": "05eec662cecc3699d8926e12bdd019c9c380f1b2bda61f23070d6668e23b7154",
+        "json": {
+          "action": "safe-old-file-purge-confirmed",
+          "after_files": [
+            "mysql-bin.000004"
+          ],
+          "before_files": [
+            "mysql-bin.000001",
+            "mysql-bin.000002",
+            "mysql-bin.000003"
+          ],
+          "current_after": "mysql-bin.000004",
+          "expire_before": 86400,
+          "recorded_old": "mysql-bin.000003"
+        }
+      },
+      {
+        "path": "status-gap.json",
+        "sha256": "fd6b0ce0f333b7f6474a4004b448e179f6a53605210a06d28e170d46803af245",
+        "json": {
+          "state": "REBUILD_REQUIRED",
+          "kafkaLag": 0,
+          "allPartitionsCommitted": true,
+          "partitions": [
+            {
+              "topic": "product-search-revisions",
+              "partition": 0,
+              "committedOffset": 3,
+              "beginningOffset": 0,
+              "endOffset": 3,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 1,
+              "committedOffset": 1,
+              "beginningOffset": 0,
+              "endOffset": 1,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 2,
+              "committedOffset": null,
+              "beginningOffset": 0,
+              "endOffset": 0,
+              "lag": 0,
+              "retentionGap": false
+            }
+          ],
+          "unresolvedDlq": 0,
+          "latestRunId": null,
+          "latestRunStatus": null,
+          "latestDifferenceCount": 0,
+          "latestRunFinishedAt": null,
+          "latestSuccessfulPassFinishedAt": null,
+          "activeConditions": [
+            "LOG_GAP"
+          ],
+          "evaluatedAt": "2026-07-29T19:47:25.298709514Z"
+        }
+      }
+    ]
+  }
+}

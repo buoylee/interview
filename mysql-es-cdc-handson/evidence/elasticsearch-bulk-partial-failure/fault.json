@@ -1,0 +1,319 @@
+{
+  "schema_version": 1,
+  "scenario_id": "elasticsearch-bulk-partial-failure",
+  "runner_run_id": "59614613-3002-467f-b0a6-2a72a0d5d153",
+  "declared_fault": {
+    "type": "DATA",
+    "target": "one-elasticsearch-bulk-item",
+    "action": "project one invalid field type without changing the mapping"
+  },
+  "cleanup_registered_before_fault": true,
+  "observed_intermediate_states": [
+    "DEGRADED"
+  ],
+  "case_observations": {
+    "scenario_id": "elasticsearch-bulk-partial-failure",
+    "artifacts": [
+      {
+        "path": "batch-record.json",
+        "sha256": "8dc215367c8f4a9d77af113e1bb94a360d139aa16645cdcc343b32a9195a6b3f",
+        "json": {
+          "partition": 0,
+          "offset": 5,
+          "baseline_end": 5,
+          "payload": {
+            "data": [
+              {
+                "product_id": "6801",
+                "revision": "2",
+                "active": "1",
+                "updated_at": "2026-07-29 19:56:46.350674"
+              },
+              {
+                "product_id": "6804",
+                "revision": "2",
+                "active": "1",
+                "updated_at": "2026-07-29 19:56:46.350674"
+              }
+            ],
+            "database": "product_catalog",
+            "es": 1785355006000,
+            "gtid": "",
+            "id": 6,
+            "isDdl": false,
+            "mysqlType": {
+              "product_id": "bigint",
+              "revision": "bigint",
+              "active": "tinyint(1)",
+              "updated_at": "timestamp(6)"
+            },
+            "old": [
+              {
+                "revision": "1",
+                "updated_at": "2026-07-29 19:56:40.509712"
+              },
+              {
+                "revision": "1",
+                "updated_at": "2026-07-29 19:56:43.204657"
+              }
+            ],
+            "pkNames": [
+              "product_id"
+            ],
+            "sql": "",
+            "sqlType": {
+              "product_id": -5,
+              "revision": -5,
+              "active": -6,
+              "updated_at": 93
+            },
+            "table": "product_search_revision",
+            "ts": 1785355006566,
+            "type": "UPDATE"
+          }
+        }
+      },
+      {
+        "path": "create-invalid-http.json",
+        "sha256": "9a43e2c865fca338ac8d93db293da684cdcf6b3e8911bd8d8caf83e21f8ee6dd",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":6804,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-invalid.json",
+        "sha256": "76dc81e296b613c1e3503b8acc4c352ff13af50654fdf55a55598e7a5a1ad2a0",
+        "json": {
+          "productId": 6804,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-valid-http.json",
+        "sha256": "2fcf81bbde8e0e596337fe9bcbbc9e80fa7806c4a61855d26b3c95368bf01984",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":6801,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-valid.json",
+        "sha256": "23d4286cb03bd89c9015ea2bcd623cd183cb261b02ccc0f1248f82442bb8f84e",
+        "json": {
+          "productId": 6801,
+          "revision": 1
+        }
+      },
+      {
+        "path": "dlq-pending.json",
+        "sha256": "8f6af4593d9eaa036274d5140f514f4a60cc2fd77fe33059864420fe9965b87b",
+        "json": [
+          {
+            "eventId": "product-search-revisions:0:5:6804",
+            "topic": "product-search-revisions",
+            "partition": 0,
+            "offset": 5,
+            "productId": 6804,
+            "sourceRevision": 2,
+            "payload": "{\"sku\": \"LAB-6804\", \"name\": \"Crash 6804\", \"product_id\": 6804, \"searchable\": true, \"category_id\": 10, \"description\": \"fixture\", \"price_cents\": 68040, \"category_name\": \"Accessories\", \"source_revision\": 2, \"source_updated_at\": \"2026-07-29T19:56:46.350674Z\", \"available_quantity\": 0}",
+            "failureClass": "document_parsing_exception",
+            "lastError": "[1:142] failed to parse field [price_cents] of type [long] in document with id '6804'. Preview of field's value: '68040-invalid'",
+            "status": "PENDING",
+            "attempts": 1,
+            "createdAt": "2026-07-29T19:56:46.625639Z",
+            "updatedAt": "2026-07-29T19:56:46.625639Z",
+            "resolvedAt": null,
+            "newPending": false
+          }
+        ]
+      },
+      {
+        "path": "es-replayed.json",
+        "sha256": "ac011204f5c27ed523a61a316f22d39d721ebe2f031f45d98b7fff44b139ec30",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 200,
+          "json_valid": true,
+          "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"6804\",\"_version\":2,\"_seq_no\":3,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":6804,\"sku\":\"LAB-6804\",\"name\":\"Crash 6804\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":68040,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-29T19:56:46.350674Z\"}}"
+        }
+      },
+      {
+        "path": "es-valid.json",
+        "sha256": "c666cbbb7618dfbc81afec39655a2fb439374d875f20392c33607e7d4c553520",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 200,
+          "json_valid": true,
+          "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"6801\",\"_version\":2,\"_seq_no\":2,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":6801,\"sku\":\"LAB-6801\",\"name\":\"Crash 6801\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":68010,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-29T19:56:46.350674Z\"}}"
+        }
+      },
+      {
+        "path": "fault-cleared.json",
+        "sha256": "931fdb79dd6f6f7087c7447c129a1f660ef939b68ce81494be8599e3b2662e62",
+        "json": {
+          "fault": "NONE"
+        }
+      },
+      {
+        "path": "fault.json",
+        "sha256": "7e809b258c0fdcfaf6855a34614a23b5d1505b028489ecbaea796f0f82f9a0ac",
+        "json": {
+          "fault": "PRICE_CENTS_AS_STRING"
+        }
+      },
+      {
+        "path": "final-pipeline-status.json",
+        "sha256": "5aa9e47a517fd60eeccf29902d727601501c5b165f10e4c5e6c8238661b584a2",
+        "json": {
+          "state": "HEALTHY",
+          "kafkaLag": 0,
+          "allPartitionsCommitted": true,
+          "partitions": [
+            {
+              "topic": "product-search-revisions",
+              "partition": 0,
+              "committedOffset": 6,
+              "beginningOffset": 0,
+              "endOffset": 6,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 1,
+              "committedOffset": null,
+              "beginningOffset": 0,
+              "endOffset": 0,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 2,
+              "committedOffset": null,
+              "beginningOffset": 0,
+              "endOffset": 0,
+              "lag": 0,
+              "retentionGap": false
+            }
+          ],
+          "unresolvedDlq": 0,
+          "latestRunId": "0c92a104-7b3e-40b3-a381-bc6a27ed75d3",
+          "latestRunStatus": "PASS",
+          "latestDifferenceCount": 0,
+          "latestRunFinishedAt": "2026-07-29T19:57:03.399481Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-29T19:57:03.399481Z",
+          "activeConditions": [],
+          "evaluatedAt": "2026-07-29T19:57:03.483273824Z"
+        }
+      },
+      {
+        "path": "final-product-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-record-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-refresh.json",
+        "sha256": "a0f2dca20b849cd7f450630e46f354a7c8ce627a7fed9374281006b79c555731",
+        "json": {
+          "_shards": {
+            "total": 1,
+            "successful": 1,
+            "failed": 0
+          }
+        }
+      },
+      {
+        "path": "final-verification.json",
+        "sha256": "545c08c39ab4c21261d1055a70925d57e2db2a9ced1d3fe64a388d872970eca7",
+        "json": {
+          "runId": "0c92a104-7b3e-40b3-a381-bc6a27ed75d3",
+          "target": "products_write",
+          "status": "PASS",
+          "sourceWatermarkStart": 2,
+          "sourceWatermarkEnd": 2,
+          "expectedCount": 2,
+          "actualCount": 2,
+          "differenceCount": 0,
+          "counts": {},
+          "failureClass": null,
+          "failureMessage": null
+        }
+      },
+      {
+        "path": "group-before.json",
+        "sha256": "f8fe2eac0ee7a959fd756f7ac030936f51e53c34ce1b4e2839e476fdfb86f81f",
+        "json": [
+          {
+            "partition": 0,
+            "committed": 5,
+            "end": 5,
+            "lag": 0
+          },
+          {
+            "partition": 1,
+            "committed": 0,
+            "end": 0,
+            "lag": 0
+          },
+          {
+            "partition": 2,
+            "committed": 0,
+            "end": 0,
+            "lag": 0
+          }
+        ]
+      },
+      {
+        "path": "group-settled.json",
+        "sha256": "299cbd87329382e9c19a40a7a98431b274023cf70996d0d637bb3da229320a5f",
+        "json": [
+          {
+            "partition": 0,
+            "committed": 6,
+            "end": 6,
+            "lag": 0
+          },
+          {
+            "partition": 1,
+            "committed": 0,
+            "end": 0,
+            "lag": 0
+          },
+          {
+            "partition": 2,
+            "committed": 0,
+            "end": 0,
+            "lag": 0
+          }
+        ]
+      },
+      {
+        "path": "replay.json",
+        "sha256": "991ddd3d570377500ead6b4bdf053df60befe9bd5c25dc8f80a93ffb5ec76fe2",
+        "json": {
+          "eventId": "product-search-revisions:0:5:6804",
+          "priorRevision": 2,
+          "currentRevision": 2,
+          "outcome": "APPLIED",
+          "resolved": true,
+          "status": "RESOLVED"
+        }
+      }
+    ]
+  }
+}

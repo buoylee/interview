@@ -1,0 +1,21 @@
+{
+  "consistency": "REPEATABLE_READ_CONSISTENT_SNAPSHOT",
+  "documents": [
+    {
+      "active": 1,
+      "available_quantity": 0,
+      "category_id": 10,
+      "category_name": "Accessories",
+      "description": "fixture",
+      "name": "Crash 7101",
+      "price_cents": 71101,
+      "product_id": 7101,
+      "revision": 2,
+      "sku": "LAB-7101",
+      "updated_at": "2026-07-29T20:01:11.013645Z"
+    }
+  ],
+  "schema_version": 1,
+  "scenario_id": "mapping-conflict",
+  "runner_run_id": "7e98943c-995a-4c39-94ea-5823fd98b9ae"
+}

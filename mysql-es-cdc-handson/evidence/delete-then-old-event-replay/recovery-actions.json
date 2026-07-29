@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "scenario_id": "delete-then-old-event-replay",
+  "runner_run_id": "7245cb65-bda5-48f3-a9d4-06bb6a571ca1",
+  "rebuild_required_observed_before_rebuild": false,
+  "commands": [
+    {
+      "sequence": 1,
+      "kind": "CONTROL",
+      "target": "m6-real-fault",
+      "method": "DELETE",
+      "path": "/scenario/delete-then-old-event-replay/fault",
+      "started_at": "2026-07-29T20:05:30Z",
+      "finished_at": "2026-07-29T20:05:30Z",
+      "exit_code": 0
+    }
+  ],
+  "cleanup_actions": [
+    {
+      "name": "dispatch-owned-m6-real-fault",
+      "success": true,
+      "finished_at": "2026-07-29T20:05:30Z"
+    }
+  ],
+  "cleanup_failures": 0
+}

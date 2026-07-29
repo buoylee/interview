@@ -1,0 +1,82 @@
+{
+  "applied_offsets": {
+    "0": 17,
+    "1": 14,
+    "2": 13
+  },
+  "canal_position_recovery": null,
+  "cleanup_actions": [
+    {
+      "finished_at": "2026-07-29T20:07:47Z",
+      "name": "dispatch-owned-m6-real-fault",
+      "success": true
+    }
+  ],
+  "cleanup_failures": 0,
+  "consistency_preconditions": [
+    {
+      "name": "dedicated-compose-project",
+      "observed_at": "2026-07-29T20:06:34Z",
+      "satisfied": true
+    },
+    {
+      "name": "pinned-stack-ready",
+      "observed_at": "2026-07-29T20:06:34Z",
+      "satisfied": true
+    },
+    {
+      "name": "baseline-lag-zero",
+      "observed_at": "2026-07-29T20:06:34Z",
+      "satisfied": true
+    }
+  ],
+  "dependency_versions": {
+    "canal": "1.1.8",
+    "elasticsearch": "8.17.0",
+    "kafka": "4.1.2",
+    "mysql": "8.4.8",
+    "project_head": "fb1a87733f0dcea5f41d1a0adbd1da2c980cac97"
+  },
+  "exact_diff_count": 0,
+  "expected_intermediate_states": [
+    "REBUILDING"
+  ],
+  "expected_pipeline_state": "HEALTHY",
+  "failed_assertions": [],
+  "finished_at": "2026-07-29T20:07:59Z",
+  "observed_intermediate_states": [
+    "REBUILDING"
+  ],
+  "observed_pipeline_state": "HEALTHY",
+  "product_unresolved_dlq_count": 0,
+  "rebuild_required_before_rebuild": true,
+  "record_unresolved_dlq_count": 0,
+  "recovery_action": "complete the M5 shadow barrier gated atomic-alias cutover",
+  "recovery_action_observed": true,
+  "requires_rebuild": true,
+  "result": "PASS",
+  "runner_run_id": "15f0ef81-6f4f-4733-9399-6c0f3487cda4",
+  "scenario_id": "rebuild-with-concurrent-writes",
+  "scenario_lag_satisfied": true,
+  "schema_version": 1,
+  "source_watermark": 4,
+  "started_at": "2026-07-29T20:05:42Z",
+  "target_watermark_passed": true,
+  "target_watermarks": {
+    "elasticsearch_revision": 4,
+    "mysql_revision": 4,
+    "passed": true
+  },
+  "tombstone_mismatch_count": 0,
+  "unresolved_dlq_count": 0,
+  "verification": {
+    "conclusive": true,
+    "exact_managed_field_diff_count": 0,
+    "observed_at": "2026-07-29T20:07:51Z",
+    "run_id": "2f6ae931-472d-4a7a-9dd9-96b88e87f9da",
+    "stable": true,
+    "status": "PASS",
+    "version_metadata_diff_count": 0
+  },
+  "watermark_run_id": "2f6ae931-472d-4a7a-9dd9-96b88e87f9da"
+}

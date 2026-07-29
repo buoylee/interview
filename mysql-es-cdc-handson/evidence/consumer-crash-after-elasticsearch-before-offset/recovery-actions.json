@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "scenario_id": "consumer-crash-after-elasticsearch-before-offset",
+  "runner_run_id": "347811b0-4e1d-4c67-bba3-516921f4ca2f",
+  "rebuild_required_observed_before_rebuild": false,
+  "commands": [
+    {
+      "sequence": 1,
+      "kind": "CONTROL",
+      "target": "m6-real-fault",
+      "method": "DELETE",
+      "path": "/scenario/consumer-crash-after-elasticsearch-before-offset/fault",
+      "started_at": "2026-07-29T19:55:03Z",
+      "finished_at": "2026-07-29T19:55:35Z",
+      "exit_code": 0
+    }
+  ],
+  "cleanup_actions": [
+    {
+      "name": "dispatch-owned-m6-real-fault",
+      "success": true,
+      "finished_at": "2026-07-29T19:55:35Z"
+    }
+  ],
+  "cleanup_failures": 0
+}

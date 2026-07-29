@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "scenario_id": "canal-outage-beyond-binlog-retention",
+  "runner_run_id": "3075cc0e-29df-437b-8ed8-990eee6856e9",
+  "intents": [
+    {
+      "sequence": 1,
+      "intent_phase": "business-mutation",
+      "kind": "HTTP",
+      "target": "product-service",
+      "method": "POST",
+      "path": "/api/products",
+      "fixture_path": "scenarios/scripts/cases/03-canal-outage-beyond-binlog-retention.sh",
+      "fixture_sha256": "3b36b61317eb5ce1b39210d165613ba30231e931b75a50ac66eaa2e188004639"
+    },
+    {
+      "sequence": 2,
+      "intent_phase": "fault",
+      "kind": "CONTROL",
+      "target": "mysql-binlog",
+      "method": "EXECUTE",
+      "path": "/retention/mysql-binlog",
+      "fixture_path": "scenarios/scripts/cases/03-canal-outage-beyond-binlog-retention.sh",
+      "fixture_sha256": "3b36b61317eb5ce1b39210d165613ba30231e931b75a50ac66eaa2e188004639"
+    },
+    {
+      "sequence": 3,
+      "intent_phase": "recovery",
+      "kind": "HTTP",
+      "target": "consistency-verifier",
+      "method": "POST",
+      "path": "/internal/rebuild/runs/{runId}/canal-recovery/start",
+      "fixture_path": "scenarios/scripts/cases/03-canal-outage-beyond-binlog-retention.sh",
+      "fixture_sha256": "3b36b61317eb5ce1b39210d165613ba30231e931b75a50ac66eaa2e188004639"
+    }
+  ],
+  "executions": [
+    {
+      "sequence": 1,
+      "execution": "mutate",
+      "intent_phases": [
+        "business-mutation",
+        "fault"
+      ],
+      "kind": "CONTROL",
+      "target": "m6-case-runner",
+      "method": "EXECUTE",
+      "path": "/scenario/canal-outage-beyond-binlog-retention/mutate",
+      "fixture_path": "scenarios/scripts/cases/03-canal-outage-beyond-binlog-retention.sh",
+      "fixture_sha256": "3b36b61317eb5ce1b39210d165613ba30231e931b75a50ac66eaa2e188004639",
+      "started_at": "2026-07-29T19:47:14Z",
+      "finished_at": "2026-07-29T19:47:25Z",
+      "exit_code": 0
+    },
+    {
+      "sequence": 2,
+      "execution": "recovery",
+      "intent_phases": [
+        "recovery"
+      ],
+      "kind": "CONTROL",
+      "target": "m6-case-runner",
+      "method": "EXECUTE",
+      "path": "/scenario/canal-outage-beyond-binlog-retention/recover",
+      "fixture_path": "scenarios/scripts/cases/03-canal-outage-beyond-binlog-retention.sh",
+      "fixture_sha256": "3b36b61317eb5ce1b39210d165613ba30231e931b75a50ac66eaa2e188004639",
+      "started_at": "2026-07-29T19:47:25Z",
+      "finished_at": "2026-07-29T19:48:44Z",
+      "exit_code": 0
+    },
+    {
+      "sequence": 3,
+      "execution": "verification",
+      "intent_phases": [
+        "verification"
+      ],
+      "kind": "HTTP",
+      "target": "consistency-verifier",
+      "method": "POST",
+      "path": "/internal/reconciliation/runs",
+      "body_sha256": "0926a40491d2b85cf315a8132b1ca26cc5fc21a4fb8235ef3e75d17b3ed676c1",
+      "fixture_path": "scenarios/scripts/collect-m6-observations.sh",
+      "fixture_sha256": "8bcbf975ec8066db234f1c017bd4a6fa0a8b65434ce4ac4a801a93c96d066790",
+      "started_at": "2026-07-29T19:48:46Z",
+      "finished_at": "2026-07-29T19:48:46Z",
+      "exit_code": 0
+    }
+  ]
+}

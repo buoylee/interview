@@ -1,0 +1,529 @@
+{
+  "consistency": "ELASTICSEARCH_PIT",
+  "documents": [
+    {
+      "product_id": 7501,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7501",
+        "price_cents": 75101,
+        "product_id": 7501,
+        "searchable": true,
+        "sku": "LAB-7501",
+        "source_revision": 4,
+        "source_updated_at": "2026-07-29T20:07:47.854039Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7502,
+      "source": {
+        "available_quantity": 77,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7502",
+        "price_cents": 100,
+        "product_id": 7502,
+        "searchable": true,
+        "sku": "LAB-7502",
+        "source_revision": 3,
+        "source_updated_at": "2026-07-29T20:07:42.420888Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7503,
+      "source": {
+        "product_id": 7503,
+        "searchable": false,
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.413108Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7504,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7504",
+        "price_cents": 100,
+        "product_id": 7504,
+        "searchable": true,
+        "sku": "LAB-7504",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7505,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7505",
+        "price_cents": 100,
+        "product_id": 7505,
+        "searchable": true,
+        "sku": "LAB-7505",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7506,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7506",
+        "price_cents": 100,
+        "product_id": 7506,
+        "searchable": true,
+        "sku": "LAB-7506",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7507,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7507",
+        "price_cents": 100,
+        "product_id": 7507,
+        "searchable": true,
+        "sku": "LAB-7507",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7508,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7508",
+        "price_cents": 100,
+        "product_id": 7508,
+        "searchable": true,
+        "sku": "LAB-7508",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7509,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7509",
+        "price_cents": 100,
+        "product_id": 7509,
+        "searchable": true,
+        "sku": "LAB-7509",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7510,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7510",
+        "price_cents": 100,
+        "product_id": 7510,
+        "searchable": true,
+        "sku": "LAB-7510",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7511,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7511",
+        "price_cents": 100,
+        "product_id": 7511,
+        "searchable": true,
+        "sku": "LAB-7511",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7512,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7512",
+        "price_cents": 100,
+        "product_id": 7512,
+        "searchable": true,
+        "sku": "LAB-7512",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7513,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7513",
+        "price_cents": 100,
+        "product_id": 7513,
+        "searchable": true,
+        "sku": "LAB-7513",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7514,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7514",
+        "price_cents": 100,
+        "product_id": 7514,
+        "searchable": true,
+        "sku": "LAB-7514",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7515,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7515",
+        "price_cents": 100,
+        "product_id": 7515,
+        "searchable": true,
+        "sku": "LAB-7515",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7516,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7516",
+        "price_cents": 100,
+        "product_id": 7516,
+        "searchable": true,
+        "sku": "LAB-7516",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7517,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7517",
+        "price_cents": 100,
+        "product_id": 7517,
+        "searchable": true,
+        "sku": "LAB-7517",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7518,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7518",
+        "price_cents": 100,
+        "product_id": 7518,
+        "searchable": true,
+        "sku": "LAB-7518",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7519,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7519",
+        "price_cents": 100,
+        "product_id": 7519,
+        "searchable": true,
+        "sku": "LAB-7519",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7520,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7520",
+        "price_cents": 100,
+        "product_id": 7520,
+        "searchable": true,
+        "sku": "LAB-7520",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7521,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7521",
+        "price_cents": 100,
+        "product_id": 7521,
+        "searchable": true,
+        "sku": "LAB-7521",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7522,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7522",
+        "price_cents": 100,
+        "product_id": 7522,
+        "searchable": true,
+        "sku": "LAB-7522",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7523,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7523",
+        "price_cents": 100,
+        "product_id": 7523,
+        "searchable": true,
+        "sku": "LAB-7523",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7524,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7524",
+        "price_cents": 100,
+        "product_id": 7524,
+        "searchable": true,
+        "sku": "LAB-7524",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7525,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7525",
+        "price_cents": 100,
+        "product_id": 7525,
+        "searchable": true,
+        "sku": "LAB-7525",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7526,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7526",
+        "price_cents": 100,
+        "product_id": 7526,
+        "searchable": true,
+        "sku": "LAB-7526",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7527,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7527",
+        "price_cents": 100,
+        "product_id": 7527,
+        "searchable": true,
+        "sku": "LAB-7527",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7528,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7528",
+        "price_cents": 100,
+        "product_id": 7528,
+        "searchable": true,
+        "sku": "LAB-7528",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7529,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7529",
+        "price_cents": 100,
+        "product_id": 7529,
+        "searchable": true,
+        "sku": "LAB-7529",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7530,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "fixture",
+        "name": "Crash 7530",
+        "price_cents": 100,
+        "product_id": 7530,
+        "searchable": true,
+        "sku": "LAB-7530",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    },
+    {
+      "product_id": 7599,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Concurrent M6",
+        "description": "during scan",
+        "name": "Concurrent Create",
+        "price_cents": 7599,
+        "product_id": 7599,
+        "searchable": true,
+        "sku": "LAB-7599",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+      },
+      "version": null
+    }
+  ],
+  "index": "products_write",
+  "schema_version": 1,
+  "scenario_id": "rebuild-with-concurrent-writes",
+  "runner_run_id": "15f0ef81-6f4f-4733-9399-6c0f3487cda4"
+}

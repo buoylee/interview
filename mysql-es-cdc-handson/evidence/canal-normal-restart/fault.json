@@ -1,0 +1,322 @@
+{
+  "schema_version": 1,
+  "scenario_id": "canal-normal-restart",
+  "runner_run_id": "10fb080a-26f0-456a-9ba6-2c6bbdf31ec6",
+  "declared_fault": {
+    "type": "PROCESS",
+    "target": "canal",
+    "action": "restart after acknowledged cursor capture"
+  },
+  "cleanup_registered_before_fault": true,
+  "observed_intermediate_states": [
+    "CATCHING_UP"
+  ],
+  "case_observations": {
+    "scenario_id": "canal-normal-restart",
+    "artifacts": [
+      {
+        "path": "consumer-restarted.json",
+        "sha256": "1d4190c9f479e0864ed1896deb997eecbf19a8fe9287ddf59da230147d3b0dac",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 200,
+          "json_valid": true,
+          "raw_body": "{\"groups\":[\"liveness\",\"readiness\"],\"status\":\"UP\"}",
+          "consumer_container_id": "3a6e9fe7fb5e7ecb977d80cfc8fb2c1ff811f48166301929dc8fab7dc09c75b3",
+          "container_started_at": "2026-07-29T19:44:46.858401721Z",
+          "observed_at": "2026-07-29T19:44:49Z"
+        }
+      },
+      {
+        "path": "consumer-stopped.json",
+        "sha256": "a17fcf0a2f50e2d495e4f90ce263410edc183add6c62699a2facbccf60410f74",
+        "json": true
+      },
+      {
+        "path": "create-http.json",
+        "sha256": "f81909b1a1522ba573e4a13925926fc1006810303e21d9894639da9afe237e31",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":6101,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create.json",
+        "sha256": "15c97eea74d3169c99f6d7f736074d8ccd55f598ec95d6e70d77478c589bf052",
+        "json": {
+          "productId": 6101,
+          "revision": 1
+        }
+      },
+      {
+        "path": "end-after-restart.json",
+        "sha256": "7ac28f5baf8d4ce12262c1fcc03adf77a3c0a0c698f21fb742b31d55e277ac64",
+        "json": {
+          "0": 3,
+          "1": 0,
+          "2": 1
+        }
+      },
+      {
+        "path": "end-before.json",
+        "sha256": "7ac28f5baf8d4ce12262c1fcc03adf77a3c0a0c698f21fb742b31d55e277ac64",
+        "json": {
+          "0": 3,
+          "1": 0,
+          "2": 1
+        }
+      },
+      {
+        "path": "es-final.json",
+        "sha256": "74641209b3368b2b4c57b7d8512ae4002a479fd4f557d999b793aadb9e14309d",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 200,
+          "json_valid": true,
+          "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"6101\",\"_version\":2,\"_seq_no\":1,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":6101,\"sku\":\"LAB-6101\",\"name\":\"Crash 6101\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":61101,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-29T19:44:29.139842Z\"}}"
+        }
+      },
+      {
+        "path": "final-pipeline-status.json",
+        "sha256": "db20694a68dbc3fa17d2c43ede945366b7108450ec0a3b2f4a2774acaf697210",
+        "json": {
+          "state": "HEALTHY",
+          "kafkaLag": 0,
+          "allPartitionsCommitted": true,
+          "partitions": [
+            {
+              "topic": "product-search-revisions",
+              "partition": 0,
+              "committedOffset": 3,
+              "beginningOffset": 0,
+              "endOffset": 3,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 1,
+              "committedOffset": null,
+              "beginningOffset": 0,
+              "endOffset": 0,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 2,
+              "committedOffset": 2,
+              "beginningOffset": 0,
+              "endOffset": 2,
+              "lag": 0,
+              "retentionGap": false
+            }
+          ],
+          "unresolvedDlq": 0,
+          "latestRunId": "d8905f82-1941-4173-a31a-b75377777a79",
+          "latestRunStatus": "PASS",
+          "latestDifferenceCount": 0,
+          "latestRunFinishedAt": "2026-07-29T19:44:52.813683Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-29T19:44:52.813683Z",
+          "activeConditions": [],
+          "evaluatedAt": "2026-07-29T19:44:52.885807559Z"
+        }
+      },
+      {
+        "path": "final-product-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-record-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-refresh.json",
+        "sha256": "a0f2dca20b849cd7f450630e46f354a7c8ce627a7fed9374281006b79c555731",
+        "json": {
+          "_shards": {
+            "total": 1,
+            "successful": 1,
+            "failed": 0
+          }
+        }
+      },
+      {
+        "path": "final-verification.json",
+        "sha256": "503c4e226a3fd0afb182cc8f3d3a8d91305a80d58809c33a88148fa49712c3d3",
+        "json": {
+          "runId": "d8905f82-1941-4173-a31a-b75377777a79",
+          "target": "products_write",
+          "status": "PASS",
+          "sourceWatermarkStart": 2,
+          "sourceWatermarkEnd": 2,
+          "expectedCount": 1,
+          "actualCount": 1,
+          "differenceCount": 0,
+          "counts": {},
+          "failureClass": null,
+          "failureMessage": null
+        }
+      },
+      {
+        "path": "group-before-mutation.json",
+        "sha256": "918e8d1e40cc0706e285fbffd92b3b4d901a7b41222089cb5674dff10295b4ca",
+        "json": [
+          {
+            "partition": 0,
+            "committed": 3,
+            "end": 3,
+            "lag": 0
+          },
+          {
+            "partition": 2,
+            "committed": 1,
+            "end": 1,
+            "lag": 0
+          }
+        ]
+      },
+      {
+        "path": "group-consumer-stopped.json",
+        "sha256": "813bb7a1d4213e7fcf90c1f33f07a82245952086d3e04bcca1f9c5f7c1d90f91",
+        "json": [
+          {
+            "partition": 0,
+            "committed": 3,
+            "end": 3,
+            "lag": 0
+          },
+          {
+            "partition": 2,
+            "committed": 1,
+            "end": 2,
+            "lag": 1
+          }
+        ]
+      },
+      {
+        "path": "meta-after-restart.json",
+        "sha256": "da836455e98de151c0e4388ebf7dbe2da979bce1209a043a50a43e751f48bc82",
+        "json": {
+          "contract": "canal-1.1.8-file-mixed-meta-ack-cursor",
+          "path": "/home/admin/canal-data/products/meta.dat",
+          "destination": "products",
+          "client": {
+            "destination": "products",
+            "client_id": 1001,
+            "filter": ""
+          },
+          "journal": "mysql-bin.000003",
+          "position": 25814,
+          "timestamp": 1785354256000,
+          "server_id": 1,
+          "gtid": "",
+          "source": {
+            "address": "toxiproxy",
+            "port": 8668
+          },
+          "slave_id": -1
+        }
+      },
+      {
+        "path": "meta-before.json",
+        "sha256": "da836455e98de151c0e4388ebf7dbe2da979bce1209a043a50a43e751f48bc82",
+        "json": {
+          "contract": "canal-1.1.8-file-mixed-meta-ack-cursor",
+          "path": "/home/admin/canal-data/products/meta.dat",
+          "destination": "products",
+          "client": {
+            "destination": "products",
+            "client_id": 1001,
+            "filter": ""
+          },
+          "journal": "mysql-bin.000003",
+          "position": 25814,
+          "timestamp": 1785354256000,
+          "server_id": 1,
+          "gtid": "",
+          "source": {
+            "address": "toxiproxy",
+            "port": 8668
+          },
+          "slave_id": -1
+        }
+      },
+      {
+        "path": "mutate-http.json",
+        "sha256": "8e63e0edca6875ea061d5bf3fe1f31c7d14daad58ef8a97212602e67b3d25806",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 200,
+          "json_valid": true,
+          "raw_body": "{\"productId\":6101,\"revision\":2}"
+        }
+      },
+      {
+        "path": "mutate.json",
+        "sha256": "50695528663a8f38c7c0debabe3a34766b88f70f78c4ad4a2090d547829ad914",
+        "json": {
+          "productId": 6101,
+          "revision": 2
+        }
+      },
+      {
+        "path": "post-restart-record.json",
+        "sha256": "c5c3a34ce909e1349f301f5a3ab9dd05d4e3b9544950fce992a34473f62efe8c",
+        "json": {
+          "partition": 2,
+          "offset": 1,
+          "baseline_end": 1,
+          "payload": {
+            "data": [
+              {
+                "product_id": "6101",
+                "revision": "2",
+                "active": "1",
+                "updated_at": "2026-07-29 19:44:29.139842"
+              }
+            ],
+            "database": "product_catalog",
+            "es": 1785354269000,
+            "gtid": "",
+            "id": 2,
+            "isDdl": false,
+            "mysqlType": {
+              "product_id": "bigint",
+              "revision": "bigint",
+              "active": "tinyint(1)",
+              "updated_at": "timestamp(6)"
+            },
+            "old": [
+              {
+                "revision": "1",
+                "updated_at": "2026-07-29 19:44:16.987234"
+              }
+            ],
+            "pkNames": [
+              "product_id"
+            ],
+            "sql": "",
+            "sqlType": {
+              "product_id": -5,
+              "revision": -5,
+              "active": -6,
+              "updated_at": 93
+            },
+            "table": "product_search_revision",
+            "ts": 1785354269331,
+            "type": "UPDATE"
+          }
+        }
+      }
+    ]
+  }
+}

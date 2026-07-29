@@ -1,0 +1,21 @@
+{
+  "consistency": "REPEATABLE_READ_CONSISTENT_SNAPSHOT",
+  "documents": [
+    {
+      "active": 1,
+      "available_quantity": 0,
+      "category_id": 10,
+      "category_name": "Accessories",
+      "description": "fixture",
+      "name": "Crash 900001",
+      "price_cents": 100,
+      "product_id": 900001,
+      "revision": 1,
+      "sku": "LAB-900001",
+      "updated_at": "2026-07-29T19:51:04.978808Z"
+    }
+  ],
+  "schema_version": 1,
+  "scenario_id": "consumer-offset-beyond-kafka-retention",
+  "runner_run_id": "83fd5ec9-8182-4bb7-9d25-f1f567625b0a"
+}

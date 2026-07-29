@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "scenario_id": "consumer-offset-beyond-kafka-retention",
+  "runner_run_id": "83fd5ec9-8182-4bb7-9d25-f1f567625b0a",
+  "observations": {
+    "consistency_preconditions": [
+      {
+        "name": "dedicated-compose-project",
+        "satisfied": true,
+        "observed_at": "2026-07-29T19:51:04Z"
+      },
+      {
+        "name": "pinned-stack-ready",
+        "satisfied": true,
+        "observed_at": "2026-07-29T19:51:04Z"
+      },
+      {
+        "name": "baseline-lag-zero",
+        "satisfied": true,
+        "observed_at": "2026-07-29T19:51:04Z"
+      }
+    ],
+    "source_watermark": 1,
+    "target_watermarks": {
+      "mysql_revision": 1,
+      "elasticsearch_revision": 1,
+      "passed": true
+    },
+    "watermark_run_id": "621f8ee6-29b4-4aa5-9498-6f91c1498941",
+    "applied_offsets": {
+      "0": 12,
+      "1": 2,
+      "2": 1
+    },
+    "scenario_lag_satisfied": true,
+    "product_unresolved_dlq_count": 0,
+    "record_unresolved_dlq_count": 0,
+    "verification": {
+      "run_id": "621f8ee6-29b4-4aa5-9498-6f91c1498941",
+      "status": "PASS",
+      "conclusive": true,
+      "stable": true,
+      "exact_managed_field_diff_count": 0,
+      "version_metadata_diff_count": 0,
+      "observed_at": "2026-07-29T19:51:52Z"
+    },
+    "exact_diff_count": 0,
+    "tombstone_mismatch_count": 0,
+    "canal_position_recovery": null,
+    "observed_intermediate_states": [
+      "REBUILD_REQUIRED"
+    ],
+    "observed_pipeline_state": "HEALTHY",
+    "recovery_action_observed": true,
+    "rebuild_required_before_rebuild": true,
+    "commands": [
+      {
+        "sequence": 3,
+        "execution": "verification",
+        "intent_phases": [
+          "verification"
+        ],
+        "kind": "HTTP",
+        "target": "consistency-verifier",
+        "method": "POST",
+        "path": "/internal/reconciliation/runs",
+        "body_sha256": "0926a40491d2b85cf315a8132b1ca26cc5fc21a4fb8235ef3e75d17b3ed676c1",
+        "fixture_path": "scenarios/scripts/collect-m6-observations.sh",
+        "fixture_sha256": "8bcbf975ec8066db234f1c017bd4a6fa0a8b65434ce4ac4a801a93c96d066790",
+        "started_at": "2026-07-29T19:51:50Z",
+        "finished_at": "2026-07-29T19:51:50Z",
+        "exit_code": 0
+      }
+    ],
+    "recovery_commands": [],
+    "cleanup_actions": [],
+    "runner_failures": []
+  },
+  "independent_verification": {
+    "runId": "621f8ee6-29b4-4aa5-9498-6f91c1498941",
+    "target": "products_write",
+    "status": "PASS",
+    "sourceWatermarkStart": 1,
+    "sourceWatermarkEnd": 1,
+    "expectedCount": 1,
+    "actualCount": 1,
+    "differenceCount": 0,
+    "counts": {
+      "MISSING": 0,
+      "UNEXPECTED": 0,
+      "MODIFIED": 0,
+      "TOMBSTONE_MISMATCH": 0,
+      "VERSION_METADATA_MISMATCH": 0
+    },
+    "failureClass": null,
+    "failureMessage": null
+  }
+}

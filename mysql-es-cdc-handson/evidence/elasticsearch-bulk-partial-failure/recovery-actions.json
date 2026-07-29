@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "scenario_id": "elasticsearch-bulk-partial-failure",
+  "runner_run_id": "59614613-3002-467f-b0a6-2a72a0d5d153",
+  "rebuild_required_observed_before_rebuild": false,
+  "commands": [
+    {
+      "sequence": 1,
+      "kind": "CONTROL",
+      "target": "m6-real-fault",
+      "method": "DELETE",
+      "path": "/scenario/elasticsearch-bulk-partial-failure/fault",
+      "started_at": "2026-07-29T19:57:00Z",
+      "finished_at": "2026-07-29T19:57:00Z",
+      "exit_code": 0
+    }
+  ],
+  "cleanup_actions": [
+    {
+      "name": "dispatch-owned-m6-real-fault",
+      "success": true,
+      "finished_at": "2026-07-29T19:57:00Z"
+    }
+  ],
+  "cleanup_failures": 0
+}

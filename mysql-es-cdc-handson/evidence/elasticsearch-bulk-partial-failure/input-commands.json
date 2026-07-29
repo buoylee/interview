@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "scenario_id": "elasticsearch-bulk-partial-failure",
+  "runner_run_id": "59614613-3002-467f-b0a6-2a72a0d5d153",
+  "intents": [
+    {
+      "sequence": 1,
+      "intent_phase": "business-mutation",
+      "kind": "SQL_FIXTURE",
+      "target": "mysql",
+      "method": "EXECUTE",
+      "path": "/product_catalog/products/bulk-price",
+      "fixture_path": "scenarios/scripts/cases/08-elasticsearch-bulk-partial-failure.sh",
+      "fixture_sha256": "df0143a769cceac8d9973032ab5a24972d2f90add55c8e878f6c70f58264e5ba"
+    },
+    {
+      "sequence": 2,
+      "intent_phase": "fault",
+      "kind": "HTTP",
+      "target": "search-sync-consumer",
+      "method": "PUT",
+      "path": "/internal/lab/projection-fault/PRICE_CENTS_AS_STRING",
+      "fixture_path": "scenarios/scripts/cases/08-elasticsearch-bulk-partial-failure.sh",
+      "fixture_sha256": "df0143a769cceac8d9973032ab5a24972d2f90add55c8e878f6c70f58264e5ba"
+    },
+    {
+      "sequence": 3,
+      "intent_phase": "recovery",
+      "kind": "HTTP",
+      "target": "search-sync-consumer",
+      "method": "POST",
+      "path": "/internal/dlq/{eventId}/replay",
+      "fixture_path": "scenarios/scripts/cases/08-elasticsearch-bulk-partial-failure.sh",
+      "fixture_sha256": "df0143a769cceac8d9973032ab5a24972d2f90add55c8e878f6c70f58264e5ba"
+    }
+  ],
+  "executions": [
+    {
+      "sequence": 1,
+      "execution": "mutate",
+      "intent_phases": [
+        "business-mutation",
+        "fault"
+      ],
+      "kind": "CONTROL",
+      "target": "m6-case-runner",
+      "method": "EXECUTE",
+      "path": "/scenario/elasticsearch-bulk-partial-failure/mutate",
+      "fixture_path": "scenarios/scripts/cases/08-elasticsearch-bulk-partial-failure.sh",
+      "fixture_sha256": "df0143a769cceac8d9973032ab5a24972d2f90add55c8e878f6c70f58264e5ba",
+      "started_at": "2026-07-29T19:56:40Z",
+      "finished_at": "2026-07-29T19:57:00Z",
+      "exit_code": 0
+    },
+    {
+      "sequence": 2,
+      "execution": "recovery",
+      "intent_phases": [
+        "recovery"
+      ],
+      "kind": "CONTROL",
+      "target": "m6-case-runner",
+      "method": "EXECUTE",
+      "path": "/scenario/elasticsearch-bulk-partial-failure/recover",
+      "fixture_path": "scenarios/scripts/cases/08-elasticsearch-bulk-partial-failure.sh",
+      "fixture_sha256": "df0143a769cceac8d9973032ab5a24972d2f90add55c8e878f6c70f58264e5ba",
+      "started_at": "2026-07-29T19:57:00Z",
+      "finished_at": "2026-07-29T19:57:00Z",
+      "exit_code": 0
+    },
+    {
+      "sequence": 3,
+      "execution": "verification",
+      "intent_phases": [
+        "verification"
+      ],
+      "kind": "HTTP",
+      "target": "consistency-verifier",
+      "method": "POST",
+      "path": "/internal/reconciliation/runs",
+      "body_sha256": "0926a40491d2b85cf315a8132b1ca26cc5fc21a4fb8235ef3e75d17b3ed676c1",
+      "fixture_path": "scenarios/scripts/collect-m6-observations.sh",
+      "fixture_sha256": "8bcbf975ec8066db234f1c017bd4a6fa0a8b65434ce4ac4a801a93c96d066790",
+      "started_at": "2026-07-29T19:57:03Z",
+      "finished_at": "2026-07-29T19:57:03Z",
+      "exit_code": 0
+    }
+  ]
+}

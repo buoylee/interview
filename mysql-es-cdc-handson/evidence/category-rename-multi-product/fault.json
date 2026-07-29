@@ -1,0 +1,255 @@
+{
+  "schema_version": 1,
+  "scenario_id": "category-rename-multi-product",
+  "runner_run_id": "2c829536-3b4b-45e2-98c6-4f1e7ae928df",
+  "declared_fault": {
+    "type": "DATA",
+    "target": "mysql-category",
+    "action": "rename the category in one source transaction"
+  },
+  "cleanup_registered_before_fault": true,
+  "observed_intermediate_states": [
+    "CATCHING_UP"
+  ],
+  "case_observations": {
+    "scenario_id": "category-rename-multi-product",
+    "artifacts": [
+      {
+        "path": "consumer-restarted.json",
+        "sha256": "a82a0232b3ab608de8bb82758e023fc8cd1f313630f88089616037b9a422f2be",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 200,
+          "json_valid": true,
+          "raw_body": "{\"groups\":[\"liveness\",\"readiness\"],\"status\":\"UP\"}",
+          "consumer_container_id": "17459e9e38a6241daeec17bfcf945deace79f997bbf82b8db6cb0bf2723db2bb",
+          "container_started_at": "2026-07-29T20:03:58.049083231Z",
+          "observed_at": "2026-07-29T20:04:00Z"
+        }
+      },
+      {
+        "path": "consumer-stopped.json",
+        "sha256": "a17fcf0a2f50e2d495e4f90ce263410edc183add6c62699a2facbccf60410f74",
+        "json": true
+      },
+      {
+        "path": "create-1-http.json",
+        "sha256": "2d5516123c8710901a4a825a400e9b612fb66e852162eaea4a50b2b2271a8203",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7301,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-1.json",
+        "sha256": "085274775efac841d4c97ae101cd8d00ab276852abfed0ba0950909c734966c7",
+        "json": {
+          "productId": 7301,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-2-http.json",
+        "sha256": "90a80eb10b6acce96e5d40f0a9f9808cf1b64b7fe67c27f575933ce809fdad05",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7304,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-2.json",
+        "sha256": "1a508503860fc1bf96a10dd61a70c58d417e3a6f87e84a09931f2b273dda6fdc",
+        "json": {
+          "productId": 7304,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-3-http.json",
+        "sha256": "d4cb8258b199bdc97864a5f51066a4ce1a7892c40167dda800b13f356d09e11d",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7307,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-3.json",
+        "sha256": "b333b044ff395677a8b81e3b1399a8b7d7945f590ba8646f76aa4c05a37bfb5b",
+        "json": {
+          "productId": 7307,
+          "revision": 1
+        }
+      },
+      {
+        "path": "final-pipeline-status.json",
+        "sha256": "507035923dcb234e34dce19121790dc3dcf94e8148ed489b340a678eb9153fae",
+        "json": {
+          "state": "HEALTHY",
+          "kafkaLag": 0,
+          "allPartitionsCommitted": true,
+          "partitions": [
+            {
+              "topic": "product-search-revisions",
+              "partition": 0,
+              "committedOffset": 3,
+              "beginningOffset": 0,
+              "endOffset": 3,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 1,
+              "committedOffset": null,
+              "beginningOffset": 0,
+              "endOffset": 0,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 2,
+              "committedOffset": 4,
+              "beginningOffset": 0,
+              "endOffset": 4,
+              "lag": 0,
+              "retentionGap": false
+            }
+          ],
+          "unresolvedDlq": 0,
+          "latestRunId": "50da0edb-0e82-4e86-9351-70b461cd9336",
+          "latestRunStatus": "PASS",
+          "latestDifferenceCount": 0,
+          "latestRunFinishedAt": "2026-07-29T20:04:04.875757Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-29T20:04:04.875757Z",
+          "activeConditions": [],
+          "evaluatedAt": "2026-07-29T20:04:04.961679234Z"
+        }
+      },
+      {
+        "path": "final-product-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-record-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-refresh.json",
+        "sha256": "a0f2dca20b849cd7f450630e46f354a7c8ce627a7fed9374281006b79c555731",
+        "json": {
+          "_shards": {
+            "total": 1,
+            "successful": 1,
+            "failed": 0
+          }
+        }
+      },
+      {
+        "path": "final-verification.json",
+        "sha256": "1b1a9eef3b49d423e2b31c3cbbbf098872c8288e48c66f2cb69e606454369721",
+        "json": {
+          "runId": "50da0edb-0e82-4e86-9351-70b461cd9336",
+          "target": "products_write",
+          "status": "PASS",
+          "sourceWatermarkStart": 4,
+          "sourceWatermarkEnd": 4,
+          "expectedCount": 3,
+          "actualCount": 3,
+          "differenceCount": 0,
+          "counts": {},
+          "failureClass": null,
+          "failureMessage": null
+        }
+      },
+      {
+        "path": "group-before.json",
+        "sha256": "6446fba7abbef0d6531edded44871f3040fa5e2c9846cfa86e209ef195fc011d",
+        "json": [
+          {
+            "partition": 0,
+            "committed": 3,
+            "end": 3,
+            "lag": 0
+          },
+          {
+            "partition": 1,
+            "committed": 0,
+            "end": 0,
+            "lag": 0
+          },
+          {
+            "partition": 2,
+            "committed": 3,
+            "end": 3,
+            "lag": 0
+          }
+        ]
+      },
+      {
+        "path": "rename.json",
+        "sha256": "1121cfccd5913f0a63fec40a6ffd44ea64f9dc135c66634ba001d10bcf4302a2",
+        "json": 3
+      },
+      {
+        "path": "source-after.json",
+        "sha256": "6ac0a0e915ad063f68e0ff5a98d849540b6484c987e240f5ad0fb83f9ead4919",
+        "json": [
+          {
+            "revision": 2,
+            "product_id": 7301,
+            "updated_at": "2026-07-29T20:03:42.315675Z"
+          },
+          {
+            "revision": 2,
+            "product_id": 7304,
+            "updated_at": "2026-07-29T20:03:42.315675Z"
+          },
+          {
+            "revision": 2,
+            "product_id": 7307,
+            "updated_at": "2026-07-29T20:03:42.315675Z"
+          }
+        ]
+      },
+      {
+        "path": "source-before.json",
+        "sha256": "b37e010e418d4f19c07410d11e8e4baa76610828fb0092baf8c0ffd75dd15ce6",
+        "json": [
+          {
+            "revision": 1,
+            "product_id": 7301,
+            "updated_at": "2026-07-29T20:03:32.459868Z"
+          },
+          {
+            "revision": 1,
+            "product_id": 7304,
+            "updated_at": "2026-07-29T20:03:35.100306Z"
+          },
+          {
+            "revision": 1,
+            "product_id": 7307,
+            "updated_at": "2026-07-29T20:03:37.420687Z"
+          }
+        ]
+      },
+      {
+        "path": "three-row-record.json",
+        "sha256": "a17fcf0a2f50e2d495e4f90ce263410edc183add6c62699a2facbccf60410f74",
+        "json": true
+      }
+    ]
+  }
+}

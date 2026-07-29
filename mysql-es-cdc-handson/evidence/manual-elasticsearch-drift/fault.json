@@ -1,0 +1,292 @@
+{
+  "schema_version": 1,
+  "scenario_id": "manual-elasticsearch-drift",
+  "runner_run_id": "b9c6a0fa-a626-4fe2-8e61-ebdb715deed1",
+  "declared_fault": {
+    "type": "DATA",
+    "target": "products-write",
+    "action": "delete one document and corrupt one same-revision document"
+  },
+  "cleanup_registered_before_fault": true,
+  "observed_intermediate_states": [
+    "DEGRADED"
+  ],
+  "case_observations": {
+    "scenario_id": "manual-elasticsearch-drift",
+    "artifacts": [
+      {
+        "path": "corrupt-es.json",
+        "sha256": "d87fa0ba9112be3210b740444e59c8b2976c7857da0c4545bb3657e97bb94221",
+        "json": {
+          "_index": "products_v2",
+          "_id": "7202",
+          "_version": 1,
+          "result": "updated",
+          "_shards": {
+            "total": 1,
+            "successful": 1,
+            "failed": 0
+          },
+          "_seq_no": 3,
+          "_primary_term": 1
+        }
+      },
+      {
+        "path": "create-missing-http.json",
+        "sha256": "d903919e53ef6f310dc64d39921c6098a60d48cae4a0099840c0cfeb5b397054",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7201,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-missing.json",
+        "sha256": "6a3276bade41c15390170109621c1f74e88abaeafb9a7dfccc639d81d8896d16",
+        "json": {
+          "productId": 7201,
+          "revision": 1
+        }
+      },
+      {
+        "path": "create-modified-http.json",
+        "sha256": "96990585dcc2d2ea5316e807afe57b304a4d0b6ca5b7e249125df31217888f34",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7202,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create-modified.json",
+        "sha256": "e7a587bd565c726d9ed18f4bc91e82b824e588b2891a6aeb6100984f0238484d",
+        "json": {
+          "productId": 7202,
+          "revision": 1
+        }
+      },
+      {
+        "path": "delete-es.json",
+        "sha256": "a5e11aca793b61223eab30c79bf3a5af84d914cc5d6a5cb16927d6a3dfb675d5",
+        "json": {
+          "_index": "products_v2",
+          "_id": "7201",
+          "_version": 1,
+          "result": "deleted",
+          "_shards": {
+            "total": 1,
+            "successful": 1,
+            "failed": 0
+          },
+          "_seq_no": 2,
+          "_primary_term": 1
+        }
+      },
+      {
+        "path": "diff-run.json",
+        "sha256": "eb6d8f96b5f4017a9e6f308ef431ebe60d306abf7f395b4c489378dad3fc3411",
+        "json": {
+          "runId": "c5c2104f-15a1-45e1-a7c0-4ccbc9017e1a",
+          "target": "products_write",
+          "status": "DIFF",
+          "sourceWatermarkStart": 2,
+          "sourceWatermarkEnd": 2,
+          "expectedCount": 2,
+          "actualCount": 1,
+          "differenceCount": 2,
+          "counts": {
+            "MISSING": 1,
+            "MODIFIED": 1
+          },
+          "failureClass": null,
+          "failureMessage": null
+        }
+      },
+      {
+        "path": "differences.json",
+        "sha256": "b31ca653223784470a318cfbaaf4a6b3a89b5cc85beb45d5954046ca516fdc29",
+        "json": [
+          {
+            "type": "MISSING",
+            "fields": [],
+            "product_id": 7201
+          },
+          {
+            "type": "MODIFIED",
+            "fields": [
+              {
+                "field": "name",
+                "actualValue": "manual-corruption",
+                "expectedValue": "Crash 7202"
+              }
+            ],
+            "product_id": 7202
+          }
+        ]
+      },
+      {
+        "path": "es-original.json",
+        "sha256": "434a954a44a9fb2010cdee64fcf929b6b3af5710083b9e83b6448b49d1982234",
+        "json": {
+          "_index": "products_v2",
+          "_id": "7202",
+          "_version": 1,
+          "_seq_no": 1,
+          "_primary_term": 1,
+          "found": true,
+          "_source": {
+            "product_id": 7202,
+            "sku": "LAB-7202",
+            "name": "Crash 7202",
+            "description": "fixture",
+            "category_id": 10,
+            "category_name": "Accessories",
+            "price_cents": 100,
+            "available_quantity": 0,
+            "searchable": true,
+            "source_revision": 1,
+            "source_updated_at": "2026-07-29T20:02:20.228805Z"
+          }
+        }
+      },
+      {
+        "path": "final-pipeline-status.json",
+        "sha256": "b14dc196948a2ee4d520690e1cfdb04c0bf5ebba2b8fc7beac424cd7ee2c0ca4",
+        "json": {
+          "state": "HEALTHY",
+          "kafkaLag": 0,
+          "allPartitionsCommitted": true,
+          "partitions": [
+            {
+              "topic": "product-search-revisions",
+              "partition": 0,
+              "committedOffset": 3,
+              "beginningOffset": 0,
+              "endOffset": 3,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 1,
+              "committedOffset": 1,
+              "beginningOffset": 0,
+              "endOffset": 1,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 2,
+              "committedOffset": 1,
+              "beginningOffset": 0,
+              "endOffset": 1,
+              "lag": 0,
+              "retentionGap": false
+            }
+          ],
+          "unresolvedDlq": 0,
+          "latestRunId": "bf101ddb-d951-40cb-a063-d346568e192e",
+          "latestRunStatus": "PASS",
+          "latestDifferenceCount": 0,
+          "latestRunFinishedAt": "2026-07-29T20:02:26.074102Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-29T20:02:26.074102Z",
+          "activeConditions": [],
+          "evaluatedAt": "2026-07-29T20:02:26.148419213Z"
+        }
+      },
+      {
+        "path": "final-product-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-record-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-refresh.json",
+        "sha256": "a0f2dca20b849cd7f450630e46f354a7c8ce627a7fed9374281006b79c555731",
+        "json": {
+          "_shards": {
+            "total": 1,
+            "successful": 1,
+            "failed": 0
+          }
+        }
+      },
+      {
+        "path": "final-verification.json",
+        "sha256": "d4afdff0bb379d93dc3277b8f48c82c6dddb5ad6cce6e175d4adeecf4fbc07c7",
+        "json": {
+          "runId": "bf101ddb-d951-40cb-a063-d346568e192e",
+          "target": "products_write",
+          "status": "PASS",
+          "sourceWatermarkStart": 2,
+          "sourceWatermarkEnd": 2,
+          "expectedCount": 2,
+          "actualCount": 2,
+          "differenceCount": 0,
+          "counts": {},
+          "failureClass": null,
+          "failureMessage": null
+        }
+      },
+      {
+        "path": "fresh-pass.json",
+        "sha256": "36bdf34183256f941fdcac30e21283a738e791752f3b84c6fedda9b0386bbea2",
+        "json": {
+          "runId": "189cb07e-d2ec-4a62-acb4-82b3bdbfed04",
+          "target": "products_write",
+          "status": "PASS",
+          "sourceWatermarkStart": 2,
+          "sourceWatermarkEnd": 2,
+          "expectedCount": 2,
+          "actualCount": 2,
+          "differenceCount": 0,
+          "counts": {},
+          "failureClass": null,
+          "failureMessage": null
+        }
+      },
+      {
+        "path": "repair-actions.json",
+        "sha256": "3aae6e7f81c36045bf4b5a9442945d7f783af9c6882ddbf1615485f5db559f68",
+        "json": [
+          {
+            "outcome": "APPLIED",
+            "product_id": 7201,
+            "action_type": "WRITE_EXTERNAL_GTE"
+          },
+          {
+            "outcome": "APPLIED",
+            "product_id": 7202,
+            "action_type": "WRITE_EXTERNAL_GTE"
+          }
+        ]
+      },
+      {
+        "path": "repair.json",
+        "sha256": "f2cf47261f3772fb18d9a2edfef711d723a7e3be46f32674822d55fa36627925",
+        "json": {
+          "runId": "c5c2104f-15a1-45e1-a7c0-4ccbc9017e1a",
+          "sourceWatermarkStart": 2,
+          "sourceWatermarkEnd": 2,
+          "applied": 2,
+          "stale": 0,
+          "skipped": 0,
+          "failed": 0,
+          "sourceStable": true,
+          "repaired": true
+        }
+      }
+    ]
+  }
+}

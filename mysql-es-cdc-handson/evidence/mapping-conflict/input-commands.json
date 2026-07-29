@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "scenario_id": "mapping-conflict",
+  "runner_run_id": "7e98943c-995a-4c39-94ea-5823fd98b9ae",
+  "intents": [
+    {
+      "sequence": 1,
+      "intent_phase": "business-mutation",
+      "kind": "HTTP",
+      "target": "product-service",
+      "method": "PUT",
+      "path": "/api/products/7101/price",
+      "fixture_path": "scenarios/scripts/cases/11-mapping-conflict.sh",
+      "fixture_sha256": "0fdf546f2709c30ce180f0b9142687b95a2cc4db15b8fcd994a5ffea67633cac"
+    },
+    {
+      "sequence": 2,
+      "intent_phase": "fault",
+      "kind": "HTTP",
+      "target": "search-sync-consumer",
+      "method": "PUT",
+      "path": "/internal/lab/projection-fault/PRICE_CENTS_AS_STRING",
+      "fixture_path": "scenarios/scripts/cases/11-mapping-conflict.sh",
+      "fixture_sha256": "0fdf546f2709c30ce180f0b9142687b95a2cc4db15b8fcd994a5ffea67633cac"
+    },
+    {
+      "sequence": 3,
+      "intent_phase": "recovery",
+      "kind": "HTTP",
+      "target": "search-sync-consumer",
+      "method": "POST",
+      "path": "/internal/dlq/{eventId}/replay",
+      "fixture_path": "scenarios/scripts/cases/11-mapping-conflict.sh",
+      "fixture_sha256": "0fdf546f2709c30ce180f0b9142687b95a2cc4db15b8fcd994a5ffea67633cac"
+    }
+  ],
+  "executions": [
+    {
+      "sequence": 1,
+      "execution": "mutate",
+      "intent_phases": [
+        "business-mutation",
+        "fault"
+      ],
+      "kind": "CONTROL",
+      "target": "m6-case-runner",
+      "method": "EXECUTE",
+      "path": "/scenario/mapping-conflict/mutate",
+      "fixture_path": "scenarios/scripts/cases/11-mapping-conflict.sh",
+      "fixture_sha256": "0fdf546f2709c30ce180f0b9142687b95a2cc4db15b8fcd994a5ffea67633cac",
+      "started_at": "2026-07-29T20:01:07Z",
+      "finished_at": "2026-07-29T20:01:11Z",
+      "exit_code": 0
+    },
+    {
+      "sequence": 2,
+      "execution": "recovery",
+      "intent_phases": [
+        "recovery"
+      ],
+      "kind": "CONTROL",
+      "target": "m6-case-runner",
+      "method": "EXECUTE",
+      "path": "/scenario/mapping-conflict/recover",
+      "fixture_path": "scenarios/scripts/cases/11-mapping-conflict.sh",
+      "fixture_sha256": "0fdf546f2709c30ce180f0b9142687b95a2cc4db15b8fcd994a5ffea67633cac",
+      "started_at": "2026-07-29T20:01:11Z",
+      "finished_at": "2026-07-29T20:01:11Z",
+      "exit_code": 0
+    },
+    {
+      "sequence": 3,
+      "execution": "verification",
+      "intent_phases": [
+        "verification"
+      ],
+      "kind": "HTTP",
+      "target": "consistency-verifier",
+      "method": "POST",
+      "path": "/internal/reconciliation/runs",
+      "body_sha256": "0926a40491d2b85cf315a8132b1ca26cc5fc21a4fb8235ef3e75d17b3ed676c1",
+      "fixture_path": "scenarios/scripts/collect-m6-observations.sh",
+      "fixture_sha256": "8bcbf975ec8066db234f1c017bd4a6fa0a8b65434ce4ac4a801a93c96d066790",
+      "started_at": "2026-07-29T20:01:14Z",
+      "finished_at": "2026-07-29T20:01:14Z",
+      "exit_code": 0
+    }
+  ]
+}

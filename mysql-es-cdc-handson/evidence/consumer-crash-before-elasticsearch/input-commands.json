@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "scenario_id": "consumer-crash-before-elasticsearch",
+  "runner_run_id": "b64ad2b2-bcc4-411b-bc38-7d15f072ef4a",
+  "intents": [
+    {
+      "sequence": 1,
+      "intent_phase": "business-mutation",
+      "kind": "HTTP",
+      "target": "product-service",
+      "method": "PUT",
+      "path": "/api/products/6601/price",
+      "fixture_path": "scenarios/scripts/cases/06-consumer-crash-before-elasticsearch.sh",
+      "fixture_sha256": "0d6448d81f5e62088582a3aebdf5aa866f04c940f0b9cecc572968f238736af3"
+    },
+    {
+      "sequence": 2,
+      "intent_phase": "fault",
+      "kind": "CONTROL",
+      "target": "search-sync-consumer",
+      "method": "PUT",
+      "path": "/internal/lab/failpoint/BEFORE_ES_BULK",
+      "fixture_path": "scenarios/scripts/cases/06-consumer-crash-before-elasticsearch.sh",
+      "fixture_sha256": "0d6448d81f5e62088582a3aebdf5aa866f04c940f0b9cecc572968f238736af3"
+    },
+    {
+      "sequence": 3,
+      "intent_phase": "recovery",
+      "kind": "CONTROL",
+      "target": "search-sync-consumer",
+      "method": "EXECUTE",
+      "path": "/process/search-sync-consumer/start",
+      "fixture_path": "scenarios/scripts/cases/06-consumer-crash-before-elasticsearch.sh",
+      "fixture_sha256": "0d6448d81f5e62088582a3aebdf5aa866f04c940f0b9cecc572968f238736af3"
+    }
+  ],
+  "executions": [
+    {
+      "sequence": 1,
+      "execution": "mutate",
+      "intent_phases": [
+        "business-mutation",
+        "fault"
+      ],
+      "kind": "CONTROL",
+      "target": "m6-case-runner",
+      "method": "EXECUTE",
+      "path": "/scenario/consumer-crash-before-elasticsearch/mutate",
+      "fixture_path": "scenarios/scripts/cases/06-consumer-crash-before-elasticsearch.sh",
+      "fixture_sha256": "0d6448d81f5e62088582a3aebdf5aa866f04c940f0b9cecc572968f238736af3",
+      "started_at": "2026-07-29T19:52:54Z",
+      "finished_at": "2026-07-29T19:53:13Z",
+      "exit_code": 0
+    },
+    {
+      "sequence": 2,
+      "execution": "recovery",
+      "intent_phases": [
+        "recovery"
+      ],
+      "kind": "CONTROL",
+      "target": "m6-case-runner",
+      "method": "EXECUTE",
+      "path": "/scenario/consumer-crash-before-elasticsearch/recover",
+      "fixture_path": "scenarios/scripts/cases/06-consumer-crash-before-elasticsearch.sh",
+      "fixture_sha256": "0d6448d81f5e62088582a3aebdf5aa866f04c940f0b9cecc572968f238736af3",
+      "started_at": "2026-07-29T19:53:13Z",
+      "finished_at": "2026-07-29T19:53:45Z",
+      "exit_code": 0
+    },
+    {
+      "sequence": 3,
+      "execution": "verification",
+      "intent_phases": [
+        "verification"
+      ],
+      "kind": "HTTP",
+      "target": "consistency-verifier",
+      "method": "POST",
+      "path": "/internal/reconciliation/runs",
+      "body_sha256": "0926a40491d2b85cf315a8132b1ca26cc5fc21a4fb8235ef3e75d17b3ed676c1",
+      "fixture_path": "scenarios/scripts/collect-m6-observations.sh",
+      "fixture_sha256": "8bcbf975ec8066db234f1c017bd4a6fa0a8b65434ce4ac4a801a93c96d066790",
+      "started_at": "2026-07-29T19:53:48Z",
+      "finished_at": "2026-07-29T19:53:48Z",
+      "exit_code": 0
+    }
+  ]
+}

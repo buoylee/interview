@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "scenario_id": "kafka-temporary-unavailable",
+  "runner_run_id": "daf6c1ca-6c20-4c50-866b-f70d9e48bd47",
+  "intents": [
+    {
+      "sequence": 1,
+      "intent_phase": "business-mutation",
+      "kind": "HTTP",
+      "target": "product-service",
+      "method": "PUT",
+      "path": "/api/products/6401/price",
+      "fixture_path": "scenarios/scripts/cases/04-kafka-temporary-unavailable.sh",
+      "fixture_sha256": "193da4661fb49fdd4bcdabe5e6475f6117cbd89adf1f8489f1758bf0d820f967"
+    },
+    {
+      "sequence": 2,
+      "intent_phase": "fault",
+      "kind": "CONTROL",
+      "target": "toxiproxy",
+      "method": "PUT",
+      "path": "/proxies/kafka/toxics/kafka-timeout",
+      "fixture_path": "scenarios/scripts/cases/04-kafka-temporary-unavailable.sh",
+      "fixture_sha256": "193da4661fb49fdd4bcdabe5e6475f6117cbd89adf1f8489f1758bf0d820f967"
+    },
+    {
+      "sequence": 3,
+      "intent_phase": "recovery",
+      "kind": "CONTROL",
+      "target": "toxiproxy",
+      "method": "DELETE",
+      "path": "/proxies/kafka/toxics/kafka-timeout",
+      "fixture_path": "scenarios/scripts/cases/04-kafka-temporary-unavailable.sh",
+      "fixture_sha256": "193da4661fb49fdd4bcdabe5e6475f6117cbd89adf1f8489f1758bf0d820f967"
+    }
+  ],
+  "executions": [
+    {
+      "sequence": 1,
+      "execution": "mutate",
+      "intent_phases": [
+        "business-mutation",
+        "fault"
+      ],
+      "kind": "CONTROL",
+      "target": "m6-case-runner",
+      "method": "EXECUTE",
+      "path": "/scenario/kafka-temporary-unavailable/mutate",
+      "fixture_path": "scenarios/scripts/cases/04-kafka-temporary-unavailable.sh",
+      "fixture_sha256": "193da4661fb49fdd4bcdabe5e6475f6117cbd89adf1f8489f1758bf0d820f967",
+      "started_at": "2026-07-29T19:49:52Z",
+      "finished_at": "2026-07-29T19:49:57Z",
+      "exit_code": 0
+    },
+    {
+      "sequence": 2,
+      "execution": "recovery",
+      "intent_phases": [
+        "recovery"
+      ],
+      "kind": "CONTROL",
+      "target": "m6-case-runner",
+      "method": "EXECUTE",
+      "path": "/scenario/kafka-temporary-unavailable/recover",
+      "fixture_path": "scenarios/scripts/cases/04-kafka-temporary-unavailable.sh",
+      "fixture_sha256": "193da4661fb49fdd4bcdabe5e6475f6117cbd89adf1f8489f1758bf0d820f967",
+      "started_at": "2026-07-29T19:49:57Z",
+      "finished_at": "2026-07-29T19:49:59Z",
+      "exit_code": 0
+    },
+    {
+      "sequence": 3,
+      "execution": "verification",
+      "intent_phases": [
+        "verification"
+      ],
+      "kind": "HTTP",
+      "target": "consistency-verifier",
+      "method": "POST",
+      "path": "/internal/reconciliation/runs",
+      "body_sha256": "0926a40491d2b85cf315a8132b1ca26cc5fc21a4fb8235ef3e75d17b3ed676c1",
+      "fixture_path": "scenarios/scripts/collect-m6-observations.sh",
+      "fixture_sha256": "8bcbf975ec8066db234f1c017bd4a6fa0a8b65434ce4ac4a801a93c96d066790",
+      "started_at": "2026-07-29T19:50:01Z",
+      "finished_at": "2026-07-29T19:50:02Z",
+      "exit_code": 0
+    }
+  ]
+}

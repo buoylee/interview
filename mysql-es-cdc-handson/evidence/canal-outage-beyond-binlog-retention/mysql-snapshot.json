@@ -1,0 +1,21 @@
+{
+  "consistency": "REPEATABLE_READ_CONSISTENT_SNAPSHOT",
+  "documents": [
+    {
+      "active": 1,
+      "available_quantity": 0,
+      "category_id": 10,
+      "category_name": "Accessories",
+      "description": "fixture",
+      "name": "Crash 6301",
+      "price_cents": 100,
+      "product_id": 6301,
+      "revision": 1,
+      "sku": "LAB-6301",
+      "updated_at": "2026-07-29T19:47:15.463742Z"
+    }
+  ],
+  "schema_version": 1,
+  "scenario_id": "canal-outage-beyond-binlog-retention",
+  "runner_run_id": "3075cc0e-29df-437b-8ed8-990eee6856e9"
+}

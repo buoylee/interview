@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "scenario_id": "kafka-temporary-unavailable",
+  "runner_run_id": "daf6c1ca-6c20-4c50-866b-f70d9e48bd47",
+  "rebuild_required_observed_before_rebuild": false,
+  "commands": [
+    {
+      "sequence": 1,
+      "kind": "CONTROL",
+      "target": "m6-real-fault",
+      "method": "DELETE",
+      "path": "/scenario/kafka-temporary-unavailable/fault",
+      "started_at": "2026-07-29T19:49:57Z",
+      "finished_at": "2026-07-29T19:49:59Z",
+      "exit_code": 0
+    }
+  ],
+  "cleanup_actions": [
+    {
+      "name": "dispatch-owned-m6-real-fault",
+      "success": true,
+      "finished_at": "2026-07-29T19:49:59Z"
+    }
+  ],
+  "cleanup_failures": 0
+}

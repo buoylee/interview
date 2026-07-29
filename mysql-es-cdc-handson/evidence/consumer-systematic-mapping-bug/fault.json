@@ -1,0 +1,241 @@
+{
+  "schema_version": 1,
+  "scenario_id": "consumer-systematic-mapping-bug",
+  "runner_run_id": "6b004145-70c4-437f-98d9-2c4ed855816a",
+  "declared_fault": {
+    "type": "MAPPING",
+    "target": "consumer-category-projector",
+    "action": "emit category ID as the same-revision category name"
+  },
+  "cleanup_registered_before_fault": true,
+  "observed_intermediate_states": [
+    "DEGRADED"
+  ],
+  "case_observations": {
+    "scenario_id": "consumer-systematic-mapping-bug",
+    "artifacts": [
+      {
+        "path": "create-http.json",
+        "sha256": "908488d500bb4d6bc3d057c41a7bc5f0c4b75aaab46456b05246b9cc1333fec7",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7701,\"revision\":1}"
+        }
+      },
+      {
+        "path": "create.json",
+        "sha256": "5bddde3b05d0f7c5c1e5769ba638af89e725f67328a911be7df860aba11ee059",
+        "json": {
+          "productId": 7701,
+          "revision": 1
+        }
+      },
+      {
+        "path": "diff-run.json",
+        "sha256": "2abe6b2f9a289afb4aa540accb67ffd9bae9e8615704dd6a8ac2c81663698743",
+        "json": {
+          "runId": "137bc751-99a7-4189-9dbf-4d35d6c809a0",
+          "target": "products_write",
+          "status": "DIFF",
+          "sourceWatermarkStart": 2,
+          "sourceWatermarkEnd": 2,
+          "expectedCount": 1,
+          "actualCount": 1,
+          "differenceCount": 1,
+          "counts": {
+            "MODIFIED": 1
+          },
+          "failureClass": null,
+          "failureMessage": null
+        }
+      },
+      {
+        "path": "fault-cleared.json",
+        "sha256": "931fdb79dd6f6f7087c7447c129a1f660ef939b68ce81494be8599e3b2662e62",
+        "json": {
+          "fault": "NONE"
+        }
+      },
+      {
+        "path": "fault.json",
+        "sha256": "a26a64a16d748342a5f1fea9668f6e77f506cd3b3488515d8623cd5944501496",
+        "json": {
+          "fault": "CATEGORY_NAME_FROM_ID"
+        }
+      },
+      {
+        "path": "final-pipeline-status.json",
+        "sha256": "e632039e46b8d78da99afc861e601808d52422ca0a9f30ac2e57a206b3f01a54",
+        "json": {
+          "state": "HEALTHY",
+          "kafkaLag": 0,
+          "allPartitionsCommitted": true,
+          "partitions": [
+            {
+              "topic": "product-search-revisions",
+              "partition": 0,
+              "committedOffset": 3,
+              "beginningOffset": 0,
+              "endOffset": 3,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 1,
+              "committedOffset": null,
+              "beginningOffset": 0,
+              "endOffset": 0,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 2,
+              "committedOffset": null,
+              "beginningOffset": 0,
+              "endOffset": 0,
+              "lag": 0,
+              "retentionGap": false
+            }
+          ],
+          "unresolvedDlq": 0,
+          "latestRunId": "003c5200-dec0-46f2-b54c-cbd90a465630",
+          "latestRunStatus": "PASS",
+          "latestDifferenceCount": 0,
+          "latestRunFinishedAt": "2026-07-29T20:11:11.597381Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-29T20:11:11.597381Z",
+          "activeConditions": [],
+          "evaluatedAt": "2026-07-29T20:11:11.648930078Z"
+        }
+      },
+      {
+        "path": "final-product-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-record-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-refresh.json",
+        "sha256": "a0f2dca20b849cd7f450630e46f354a7c8ce627a7fed9374281006b79c555731",
+        "json": {
+          "_shards": {
+            "total": 1,
+            "successful": 1,
+            "failed": 0
+          }
+        }
+      },
+      {
+        "path": "final-verification.json",
+        "sha256": "94e2550ab25a870bc6f7a084418442c1a06affa46e19ed327cdb10fd0e63745f",
+        "json": {
+          "runId": "003c5200-dec0-46f2-b54c-cbd90a465630",
+          "target": "products_write",
+          "status": "PASS",
+          "sourceWatermarkStart": 2,
+          "sourceWatermarkEnd": 2,
+          "expectedCount": 1,
+          "actualCount": 1,
+          "differenceCount": 0,
+          "counts": {},
+          "failureClass": null,
+          "failureMessage": null
+        }
+      },
+      {
+        "path": "fresh-pass.json",
+        "sha256": "8852dd722862f84673085fdd323f110f8ceec8836c24813d301a5f13d4597d94",
+        "json": {
+          "runId": "326fc0f6-f78d-4d05-bf0e-19e61b995885",
+          "target": "products_write",
+          "status": "PASS",
+          "sourceWatermarkStart": 2,
+          "sourceWatermarkEnd": 2,
+          "expectedCount": 1,
+          "actualCount": 1,
+          "differenceCount": 0,
+          "counts": {},
+          "failureClass": null,
+          "failureMessage": null
+        }
+      },
+      {
+        "path": "rename.json",
+        "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+        "json": 1
+      },
+      {
+        "path": "repair.json",
+        "sha256": "d6b21445b6b6e6a230cb7981c89337cd4d61a3d756ac92dfea254a6b88e52f1c",
+        "json": {
+          "runId": "137bc751-99a7-4189-9dbf-4d35d6c809a0",
+          "sourceWatermarkStart": 2,
+          "sourceWatermarkEnd": 2,
+          "applied": 1,
+          "stale": 0,
+          "skipped": 0,
+          "failed": 0,
+          "sourceStable": true,
+          "repaired": true
+        }
+      },
+      {
+        "path": "status-degraded.json",
+        "sha256": "72c07169dc080861c8567753e4000254c695ecead4e40ba465a5cffe6d454352",
+        "json": {
+          "state": "DEGRADED",
+          "kafkaLag": 0,
+          "allPartitionsCommitted": true,
+          "partitions": [
+            {
+              "topic": "product-search-revisions",
+              "partition": 0,
+              "committedOffset": 3,
+              "beginningOffset": 0,
+              "endOffset": 3,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 1,
+              "committedOffset": null,
+              "beginningOffset": 0,
+              "endOffset": 0,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 2,
+              "committedOffset": null,
+              "beginningOffset": 0,
+              "endOffset": 0,
+              "lag": 0,
+              "retentionGap": false
+            }
+          ],
+          "unresolvedDlq": 0,
+          "latestRunId": "137bc751-99a7-4189-9dbf-4d35d6c809a0",
+          "latestRunStatus": "DIFF",
+          "latestDifferenceCount": 1,
+          "latestRunFinishedAt": "2026-07-29T20:11:08.612751Z",
+          "latestSuccessfulPassFinishedAt": null,
+          "activeConditions": [],
+          "evaluatedAt": "2026-07-29T20:11:08.872504542Z"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "scenario_id": "canal-normal-restart",
+  "runner_run_id": "10fb080a-26f0-456a-9ba6-2c6bbdf31ec6",
+  "rebuild_required_observed_before_rebuild": false,
+  "commands": [
+    {
+      "sequence": 1,
+      "kind": "CONTROL",
+      "target": "m6-real-fault",
+      "method": "DELETE",
+      "path": "/scenario/canal-normal-restart/fault",
+      "started_at": "2026-07-29T19:44:43Z",
+      "finished_at": "2026-07-29T19:44:50Z",
+      "exit_code": 0
+    }
+  ],
+  "cleanup_actions": [
+    {
+      "name": "dispatch-owned-m6-real-fault",
+      "success": true,
+      "finished_at": "2026-07-29T19:44:50Z"
+    }
+  ],
+  "cleanup_failures": 0
+}

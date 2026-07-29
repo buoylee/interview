@@ -1,0 +1,404 @@
+{
+  "schema_version": 1,
+  "scenario_id": "late-old-revision",
+  "runner_run_id": "11a8dc4d-fe48-4ff0-8cc2-3c04ae2ac2e7",
+  "declared_fault": {
+    "type": "DATA",
+    "target": "same-kafka-partition",
+    "action": "inject the recorded revision-one signal after revision three"
+  },
+  "cleanup_registered_before_fault": true,
+  "observed_intermediate_states": [
+    "HEALTHY"
+  ],
+  "case_observations": {
+    "scenario_id": "late-old-revision",
+    "artifacts": [
+      {
+        "path": "candidate-7001-baseline.json",
+        "sha256": "663b5ce93ce71b6c6fe5db24b5cce4f5ab8d7264611ae653c61aeb986e3ac174",
+        "json": [
+          {
+            "partition": 0,
+            "committed": 3,
+            "end": 3,
+            "lag": 0
+          },
+          {
+            "partition": 1,
+            "committed": 0,
+            "end": 0,
+            "lag": 0
+          },
+          {
+            "partition": 2,
+            "committed": 0,
+            "end": 0,
+            "lag": 0
+          }
+        ]
+      },
+      {
+        "path": "candidate-7001-create-http.json",
+        "sha256": "86fc012cd82ae15e98856b480a75fa955eba8aba91c344def4e11b2310343a00",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 201,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7001,\"revision\":1}"
+        }
+      },
+      {
+        "path": "candidate-7001-create.json",
+        "sha256": "20cdfaf4ecf75bd5b777188e0e22ea9a2b6f57d5c3ad29aac0626f67a9accd63",
+        "json": {
+          "productId": 7001,
+          "revision": 1
+        }
+      },
+      {
+        "path": "candidate-7001-record.json",
+        "sha256": "9aa8e35930012ea14ee97b308aedcd8dbda35c55a16d84e75007ee2993499fe9",
+        "json": {
+          "partition": 2,
+          "offset": 0,
+          "baseline_end": 0,
+          "payload": {
+            "data": [
+              {
+                "product_id": "7001",
+                "revision": "1",
+                "active": "1",
+                "updated_at": "2026-07-29 19:59:34.754179"
+              }
+            ],
+            "database": "product_catalog",
+            "es": 1785355174000,
+            "gtid": "",
+            "id": 4,
+            "isDdl": false,
+            "mysqlType": {
+              "product_id": "bigint",
+              "revision": "bigint",
+              "active": "tinyint(1)",
+              "updated_at": "timestamp(6)"
+            },
+            "old": null,
+            "pkNames": [
+              "product_id"
+            ],
+            "sql": "",
+            "sqlType": {
+              "product_id": -5,
+              "revision": -5,
+              "active": -6,
+              "updated_at": 93
+            },
+            "table": "product_search_revision",
+            "ts": 1785355174948,
+            "type": "INSERT"
+          }
+        }
+      },
+      {
+        "path": "es-after-old.json",
+        "sha256": "ad03d8b7c98c997d175627fc4956a185a0bdbc3969c3b111bbaea72cdace35cf",
+        "json": {
+          "_index": "products_v2",
+          "_id": "7001",
+          "_version": 3,
+          "_seq_no": 2,
+          "_primary_term": 1,
+          "found": true,
+          "_source": {
+            "product_id": 7001,
+            "sku": "LAB-7001",
+            "name": "Crash 7001",
+            "description": "fixture",
+            "category_id": 10,
+            "category_name": "Accessories",
+            "price_cents": 70030,
+            "available_quantity": 0,
+            "searchable": true,
+            "source_revision": 3,
+            "source_updated_at": "2026-07-29T19:59:51.290264Z"
+          }
+        }
+      },
+      {
+        "path": "es-before-old-ready.json",
+        "sha256": "e83055f6d8d5c7a5efc4f0579649e424617bdcfdf38e938bc0c9d6b34babd090",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 200,
+          "json_valid": true,
+          "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"7001\",\"_version\":3,\"_seq_no\":2,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":7001,\"sku\":\"LAB-7001\",\"name\":\"Crash 7001\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":70030,\"available_quantity\":0,\"searchable\":true,\"source_revision\":3,\"source_updated_at\":\"2026-07-29T19:59:51.290264Z\"}}"
+        }
+      },
+      {
+        "path": "es-before-old.json",
+        "sha256": "ad03d8b7c98c997d175627fc4956a185a0bdbc3969c3b111bbaea72cdace35cf",
+        "json": {
+          "_index": "products_v2",
+          "_id": "7001",
+          "_version": 3,
+          "_seq_no": 2,
+          "_primary_term": 1,
+          "found": true,
+          "_source": {
+            "product_id": 7001,
+            "sku": "LAB-7001",
+            "name": "Crash 7001",
+            "description": "fixture",
+            "category_id": 10,
+            "category_name": "Accessories",
+            "price_cents": 70030,
+            "available_quantity": 0,
+            "searchable": true,
+            "source_revision": 3,
+            "source_updated_at": "2026-07-29T19:59:51.290264Z"
+          }
+        }
+      },
+      {
+        "path": "es-revision-2.json",
+        "sha256": "45058e2f612e62ef3e6d38aa0129a01b1460b47e9e630b72e3ed9499838ec73c",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 200,
+          "json_valid": true,
+          "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"7001\",\"_version\":2,\"_seq_no\":1,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":7001,\"sku\":\"LAB-7001\",\"name\":\"Crash 7001\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":70020,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-29T19:59:49.891531Z\"}}"
+        }
+      },
+      {
+        "path": "final-pipeline-status.json",
+        "sha256": "a603737fb647583849965b8852342f22b9a75ae51e4caed7467712c6bedcab9d",
+        "json": {
+          "state": "HEALTHY",
+          "kafkaLag": 0,
+          "allPartitionsCommitted": true,
+          "partitions": [
+            {
+              "topic": "product-search-revisions",
+              "partition": 0,
+              "committedOffset": 3,
+              "beginningOffset": 0,
+              "endOffset": 3,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 1,
+              "committedOffset": null,
+              "beginningOffset": 0,
+              "endOffset": 0,
+              "lag": 0,
+              "retentionGap": false
+            },
+            {
+              "topic": "product-search-revisions",
+              "partition": 2,
+              "committedOffset": 4,
+              "beginningOffset": 0,
+              "endOffset": 4,
+              "lag": 0,
+              "retentionGap": false
+            }
+          ],
+          "unresolvedDlq": 0,
+          "latestRunId": "7b06ef4e-e49f-4577-859a-22e7e43c2460",
+          "latestRunStatus": "PASS",
+          "latestDifferenceCount": 0,
+          "latestRunFinishedAt": "2026-07-29T19:59:59.096847Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-29T19:59:59.096847Z",
+          "activeConditions": [],
+          "evaluatedAt": "2026-07-29T19:59:59.168677032Z"
+        }
+      },
+      {
+        "path": "final-product-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-record-dlq.json",
+        "sha256": "e8ae26c00979b954051d4b766f15f9a9bb144943e999457558acaa8e39a2d73d",
+        "json": {
+          "unresolved": 0
+        }
+      },
+      {
+        "path": "final-refresh.json",
+        "sha256": "a0f2dca20b849cd7f450630e46f354a7c8ce627a7fed9374281006b79c555731",
+        "json": {
+          "_shards": {
+            "total": 1,
+            "successful": 1,
+            "failed": 0
+          }
+        }
+      },
+      {
+        "path": "final-verification.json",
+        "sha256": "d2eb1edd9bb5c5b3630cbf966dfec76d9cd4c02e48899c29d6cbccbc22a7502d",
+        "json": {
+          "runId": "7b06ef4e-e49f-4577-859a-22e7e43c2460",
+          "target": "products_write",
+          "status": "PASS",
+          "sourceWatermarkStart": 3,
+          "sourceWatermarkEnd": 3,
+          "expectedCount": 1,
+          "actualCount": 1,
+          "differenceCount": 0,
+          "counts": {},
+          "failureClass": null,
+          "failureMessage": null
+        }
+      },
+      {
+        "path": "injected-event.json",
+        "sha256": "0b2434924d21f8d0a90c66f32e8117ae55d1b903f3afe871469cac247c48afa5",
+        "json": {
+          "primitive": "lab-scenario-event-v1",
+          "request_sha256": "f46212488249cff97da7bef587dcf328debbc0fe80566605d545136191c1de13",
+          "payload_sha256": "35325e613b068c5ce77e51d0db05df48860c1a354a8466ba4b81b1acb6e80b46",
+          "normalized_payload": {
+            "data": [
+              {
+                "product_id": "7001",
+                "revision": "1",
+                "active": "1"
+              }
+            ],
+            "database": "product_catalog",
+            "es": 1785355174000,
+            "gtid": "",
+            "id": 4,
+            "isDdl": false,
+            "mysqlType": {
+              "product_id": "bigint",
+              "revision": "bigint",
+              "active": "tinyint(1)",
+              "updated_at": "timestamp(6)"
+            },
+            "old": null,
+            "pkNames": [
+              "product_id"
+            ],
+            "sql": "",
+            "sqlType": {
+              "product_id": -5,
+              "revision": -5,
+              "active": -6,
+              "updated_at": 93
+            },
+            "table": "product_search_revision",
+            "ts": 1785355174948,
+            "type": "INSERT"
+          },
+          "broker_ack": {
+            "topic": "product-search-revisions",
+            "partition": 2,
+            "offset": 3
+          },
+          "key_is_null": true
+        }
+      },
+      {
+        "path": "replay-after.json",
+        "sha256": "24d4b730af09fcc9ea46fcdd58961f9409efe2edf557d0a719e0c6c4abfc88a4",
+        "json": {
+          "0": 3,
+          "1": 0,
+          "2": 4
+        }
+      },
+      {
+        "path": "replay-before.json",
+        "sha256": "6c000a7c0625b5a65adbf9c5af59cb2487768991b390a752c45d6b28b0f25e96",
+        "json": {
+          "0": 3,
+          "1": 0,
+          "2": 3
+        }
+      },
+      {
+        "path": "revision-2-http.json",
+        "sha256": "3517edd07e1d0817dfb22b50c47f2d45a9392c8c560a730d1859ac4a3b34f33f",
+        "json": {
+          "transport_exit": 0,
+          "http_status": 200,
+          "json_valid": true,
+          "raw_body": "{\"productId\":7001,\"revision\":2}"
+        }
+      },
+      {
+        "path": "revision-2.json",
+        "sha256": "b2b08ca86e89d6824106ee184b01895a9413b20edc3ef170a6c5f3974d1e77d2",
+        "json": {
+          "productId": 7001,
+          "revision": 2
+        }
+      },
+      {
+        "path": "revision-3.json",
+        "sha256": "8da13e417cd690476f34c75222817e67695d5a11d0519774ed251ec12feda32c",
+        "json": {
+          "productId": 7001,
+          "revision": 3
+        }
+      },
+      {
+        "path": "selected.json",
+        "sha256": "dc7840c302f5821f7acc7beea0690e72d142f346930740891603b3097b92abda",
+        "json": {
+          "product_id": 7001,
+          "partition": 2,
+          "record": {
+            "partition": 2,
+            "offset": 0,
+            "baseline_end": 0,
+            "payload": {
+              "data": [
+                {
+                  "product_id": "7001",
+                  "revision": "1",
+                  "active": "1",
+                  "updated_at": "2026-07-29 19:59:34.754179"
+                }
+              ],
+              "database": "product_catalog",
+              "es": 1785355174000,
+              "gtid": "",
+              "id": 4,
+              "isDdl": false,
+              "mysqlType": {
+                "product_id": "bigint",
+                "revision": "bigint",
+                "active": "tinyint(1)",
+                "updated_at": "timestamp(6)"
+              },
+              "old": null,
+              "pkNames": [
+                "product_id"
+              ],
+              "sql": "",
+              "sqlType": {
+                "product_id": -5,
+                "revision": -5,
+                "active": -6,
+                "updated_at": 93
+              },
+              "table": "product_search_revision",
+              "ts": 1785355174948,
+              "type": "INSERT"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

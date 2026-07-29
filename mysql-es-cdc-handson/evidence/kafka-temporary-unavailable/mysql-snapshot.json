@@ -1,0 +1,21 @@
+{
+  "consistency": "REPEATABLE_READ_CONSISTENT_SNAPSHOT",
+  "documents": [
+    {
+      "active": 1,
+      "available_quantity": 0,
+      "category_id": 10,
+      "category_name": "Accessories",
+      "description": "fixture",
+      "name": "Crash 6401",
+      "price_cents": 64401,
+      "product_id": 6401,
+      "revision": 2,
+      "sku": "LAB-6401",
+      "updated_at": "2026-07-29T19:49:56.087691Z"
+    }
+  ],
+  "schema_version": 1,
+  "scenario_id": "kafka-temporary-unavailable",
+  "runner_run_id": "daf6c1ca-6c20-4c50-866b-f70d9e48bd47"
+}

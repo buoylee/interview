@@ -1,0 +1,26 @@
+{
+  "consistency": "ELASTICSEARCH_PIT",
+  "documents": [
+    {
+      "product_id": 7801,
+      "source": {
+        "available_quantity": 0,
+        "category_id": 10,
+        "category_name": "Accessories",
+        "description": "fixture",
+        "name": "Crash 7801",
+        "price_cents": 1000,
+        "product_id": 7801,
+        "searchable": true,
+        "sku": "LAB-7801",
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:12:30.729299Z"
+      },
+      "version": null
+    }
+  ],
+  "index": "products_write",
+  "schema_version": 1,
+  "scenario_id": "dlq-replay-fails-then-succeeds",
+  "runner_run_id": "e4972e8f-343d-4047-b212-517dbb51bf80"
+}

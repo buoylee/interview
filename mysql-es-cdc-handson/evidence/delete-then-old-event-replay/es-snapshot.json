@@ -1,0 +1,19 @@
+{
+  "consistency": "ELASTICSEARCH_PIT",
+  "documents": [
+    {
+      "product_id": 7401,
+      "source": {
+        "product_id": 7401,
+        "searchable": false,
+        "source_revision": 2,
+        "source_updated_at": "2026-07-29T20:05:26.224745Z"
+      },
+      "version": null
+    }
+  ],
+  "index": "products_write",
+  "schema_version": 1,
+  "scenario_id": "delete-then-old-event-replay",
+  "runner_run_id": "7245cb65-bda5-48f3-a9d4-06bb6a571ca1"
+}
