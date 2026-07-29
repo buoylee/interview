@@ -1,0 +1,22 @@
+{
+  "schema_version":1,
+  "scenario_id":"canal-outage-beyond-binlog-retention",
+  "raw_recovery_observations":{
+    "reset_anchor":{
+      "next_offsets":{"0":11,"1":21,"2":31},
+      "events":{
+        "0":{"event_id":"10000000-0000-4000-8000-000000000000","topic":"product-search-revisions","partition":0,"offset":10,"next_offset":11,"run_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","partition_token":"0","key_is_null":true,"record_value_sha256":"0000000000000000000000000000000000000000000000000000000000000000"},
+        "1":{"event_id":"10000000-0000-4000-8000-000000000001","topic":"product-search-revisions","partition":1,"offset":20,"next_offset":21,"run_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","partition_token":"1","key_is_null":true,"record_value_sha256":"1111111111111111111111111111111111111111111111111111111111111111"},
+        "2":{"event_id":"10000000-0000-4000-8000-000000000002","topic":"product-search-revisions","partition":2,"offset":30,"next_offset":31,"run_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","partition_token":"2","key_is_null":true,"record_value_sha256":"2222222222222222222222222222222222222222222222222222222222222222"}
+      }
+    },
+    "normal_sentinel":{
+      "next_offsets":{"0":12,"1":22,"2":32},
+      "events":{
+        "0":{"event_id":"20000000-0000-4000-8000-000000000000","topic":"product-search-revisions","partition":0,"offset":11,"next_offset":12,"run_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","partition_token":"0","key_is_null":true,"record_value_sha256":"3333333333333333333333333333333333333333333333333333333333333333"},
+        "1":{"event_id":"20000000-0000-4000-8000-000000000001","topic":"product-search-revisions","partition":1,"offset":21,"next_offset":22,"run_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","partition_token":"1","key_is_null":true,"record_value_sha256":"4444444444444444444444444444444444444444444444444444444444444444"},
+        "2":{"event_id":"20000000-0000-4000-8000-000000000002","topic":"product-search-revisions","partition":2,"offset":31,"next_offset":32,"run_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","partition_token":"2","key_is_null":true,"record_value_sha256":"5555555555555555555555555555555555555555555555555555555555555555"}
+      }
+    }
+  }
+}
