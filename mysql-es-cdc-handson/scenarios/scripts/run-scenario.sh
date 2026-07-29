@@ -342,7 +342,7 @@ if test "${M6_RUNNER_EXECUTION_MODE:-fixture}" = real; then
   if ! bash "$root/scenarios/scripts/build-m6-real-bundle.sh" "$scenario_id" "$run_id" "$started_at" "$private" "$observations" "$recovery_output" "$bundle"; then
     fail_and_finalize 76 runner_real_bundle_failure
   fi
-  bash "$root/tests/contracts/evidence-contract.sh" "$bundle" >/dev/null || fail_and_finalize 76 runner_evidence_contract_failure
+  bash "$root/tests/contracts/evidence-contract.sh" "$bundle" || fail_and_finalize 76 runner_evidence_contract_failure
   bash "$root/tests/contracts/no-evidence-secrets.sh" "$bundle"/*.json >/dev/null || fail_and_finalize 77 runner_secret_gate_failure
   publish_attempt PASS || fail_and_finalize 76 runner_publication_failure
   cleanup_done=true;finalize_state=done;finalize_rc=0

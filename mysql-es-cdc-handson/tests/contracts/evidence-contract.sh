@@ -39,10 +39,10 @@ jq -e --argjson catalog "$catalog_row" '
   .expected_pipeline_state == $catalog.expected_terminal_state and
   .recovery_action == $catalog.recovery_action and
   .requires_rebuild == $catalog.requires_rebuild
-' "$bundle/result.json" >/dev/null
+' "$bundle/result.json" >/dev/null || { echo 'catalog/result semantic binding failed' >&2; exit 1; }
 jq -e --slurpfile recovery "$bundle/recovery-actions.json" '
   .rebuild_required_before_rebuild == $recovery[0].rebuild_required_observed_before_rebuild
-' "$bundle/result.json" >/dev/null
+' "$bundle/result.json" >/dev/null || { echo 'recovery/result binding failed' >&2; exit 1; }
 
 jq -e --slurpfile es "$bundle/es-snapshot.json" '
   def expected_source:
@@ -58,7 +58,7 @@ jq -e --slurpfile es "$bundle/es-snapshot.json" '
   all(.documents[]; . as $mysql |
     [$es[0].documents[]|select(.product_id==$mysql.product_id)] as $matches |
     ($matches|length)==1 and $matches[0].source==($mysql|expected_source))
-' "$bundle/mysql-snapshot.json" >/dev/null
+' "$bundle/mysql-snapshot.json" >/dev/null || { echo 'MySQL/Elasticsearch snapshot binding failed' >&2; exit 1; }
 
 jq -e --slurpfile result "$bundle/result.json" '
   if $result[0].result=="PASS" then
@@ -76,7 +76,7 @@ jq -e --slurpfile result "$bundle/result.json" '
         ["BARRIER:0","BARRIER:1","BARRIER:2","SHADOW:0","SHADOW:1","SHADOW:2","START:0","START:1","START:2"])
      else (.shadow_and_barrier|length)==0 end)
   else true end
-' "$bundle/kafka-offsets.json" >/dev/null
+' "$bundle/kafka-offsets.json" >/dev/null || { echo 'Kafka partition/offset binding failed' >&2; exit 1; }
 
 jq -e --slurpfile manifest "$bundle/manifest.json" --slurpfile commands "$bundle/input-commands.json" \
   --slurpfile differences "$bundle/differences.json" '
@@ -99,7 +99,7 @@ jq -e --slurpfile manifest "$bundle/manifest.json" --slurpfile commands "$bundle
     $differences[0].observations.watermark_run_id==.watermark_run_id and
     (.started_at|fromdateiso8601) <= (.finished_at|fromdateiso8601)
   else true end
-' "$bundle/result.json" >/dev/null
+' "$bundle/result.json" >/dev/null || { echo 'manifest/commands/differences provenance binding failed' >&2; exit 1; }
 
 if test "$(jq -r .result "$bundle/result.json")" = PASS; then
   while IFS=$'\t' read -r fixture_path fixture_sha256; do
@@ -138,7 +138,7 @@ jq -e '
     (.requires_rebuild == false or .rebuild_required_before_rebuild == true) and
     all(.applied_offsets | to_entries[]; .value >= 0)
   else true end
-' "$bundle/result.json" >/dev/null
+' "$bundle/result.json" >/dev/null || { echo 'PASS result terminal semantics failed' >&2; exit 1; }
 
 if test "$scenario_id" = canal-outage-beyond-binlog-retention; then
   jq -e '
