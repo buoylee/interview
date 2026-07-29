@@ -1,5 +1,10 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "additionalProperties": false,
-  "required": ["schema_version", "scenario_id", "runner_run_id", "rebuild_required_observed_before_rebuild", "commands", "cleanup_actions", "cleanup_failures"],
-  "properties": {"schema_version": {"const": 1}, "scenario_id": {"type": "string"}, "runner_run_id": {"type": "string", "format": "uuid"}, "rebuild_required_observed_before_rebuild": {"type": "boolean"}, "commands": {"type": "array"}, "cleanup_actions": {"type": "array"}, "cleanup_failures": {"type": "integer", "minimum": 0}}
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$defs":{
+    "command":{"type":"object","additionalProperties":false,"required":["sequence","kind","target","method","path","started_at","finished_at","exit_code"],"properties":{"sequence":{"type":"integer","minimum":1},"kind":{"enum":["HTTP","SQL_FIXTURE","CONTROL"]},"target":{"type":"string","minLength":1},"method":{"enum":["GET","POST","PUT","PATCH","DELETE","EXECUTE"]},"path":{"type":"string","pattern":"^/(?!.*[.][.])"},"started_at":{"type":"string","format":"date-time"},"finished_at":{"type":"string","format":"date-time"},"exit_code":{"type":"integer","minimum":0,"maximum":255}}},
+    "cleanup":{"type":"object","additionalProperties":false,"required":["name","success","finished_at"],"properties":{"name":{"type":"string","minLength":1},"success":{"type":"boolean"},"finished_at":{"type":"string","format":"date-time"}}}
+  },
+  "type":"object","additionalProperties":false,
+  "required":["schema_version","scenario_id","runner_run_id","rebuild_required_observed_before_rebuild","commands","cleanup_actions","cleanup_failures"],
+  "properties":{"schema_version":{"const":1},"scenario_id":{"type":"string","pattern":"^[a-z0-9]+(-[a-z0-9]+)*$"},"runner_run_id":{"type":"string","format":"uuid"},"rebuild_required_observed_before_rebuild":{"type":"boolean"},"commands":{"type":"array","items":{"$ref":"#/$defs/command"}},"cleanup_actions":{"type":"array","items":{"$ref":"#/$defs/cleanup"}},"cleanup_failures":{"type":"integer","minimum":0}}
 }

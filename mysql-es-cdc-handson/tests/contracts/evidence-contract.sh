@@ -44,6 +44,40 @@ jq -e --slurpfile recovery "$bundle/recovery-actions.json" '
   .rebuild_required_before_rebuild == $recovery[0].rebuild_required_observed_before_rebuild
 ' "$bundle/result.json" >/dev/null
 
+jq -e --slurpfile es "$bundle/es-snapshot.json" '
+  def expected_source:
+    if .active==1 then
+      {product_id,sku,name,description,category_id,category_name,price_cents,available_quantity,
+       searchable:true,source_revision:.revision,source_updated_at:.updated_at}
+    else
+      {product_id,searchable:false,source_revision:.revision,source_updated_at:.updated_at}
+    end;
+  (.documents|map(.product_id)|length)==(.documents|map(.product_id)|unique|length) and
+  ($es[0].documents|map(.product_id)|length)==($es[0].documents|map(.product_id)|unique|length) and
+  (.documents|map(.product_id)|sort)==($es[0].documents|map(.product_id)|sort) and
+  all(.documents[]; . as $mysql |
+    [$es[0].documents[]|select(.product_id==$mysql.product_id)] as $matches |
+    ($matches|length)==1 and $matches[0].source==($mysql|expected_source))
+' "$bundle/mysql-snapshot.json" >/dev/null
+
+jq -e --slurpfile result "$bundle/result.json" '
+  if $result[0].result=="PASS" then
+    ([.beginning[].partition]|sort)==[0,1,2] and
+    ([.end[].partition]|sort)==[0,1,2] and
+    ([.primary[].partition]|sort)==[0,1,2] and
+    all(.primary[]; .offset==$result[0].applied_offsets[(.partition|tostring)] and .lag==0) and
+    all(.beginning[]; . as $row | .offset <= $result[0].applied_offsets[($row.partition|tostring)]) and
+    all(.end[]; . as $row | .offset >= $result[0].applied_offsets[($row.partition|tostring)]) and
+    (if $result[0].requires_rebuild then
+      (.shadow_and_barrier|length)>0 and
+      all(.shadow_and_barrier|group_by([.run_id,.phase,.partition_id])[]; length==1) and
+      any(.shadow_and_barrier|group_by(.run_id)[];
+        ([.[]|(.phase+":"+(.partition_id|tostring))]|sort)==
+        ["BARRIER:0","BARRIER:1","BARRIER:2","SHADOW:0","SHADOW:1","SHADOW:2","START:0","START:1","START:2"])
+     else (.shadow_and_barrier|length)==0 end)
+  else true end
+' "$bundle/kafka-offsets.json" >/dev/null
+
 jq -e --slurpfile manifest "$bundle/manifest.json" --slurpfile commands "$bundle/input-commands.json" \
   --slurpfile differences "$bundle/differences.json" '
   if .result=="PASS" then
@@ -51,8 +85,12 @@ jq -e --slurpfile manifest "$bundle/manifest.json" --slurpfile commands "$bundle
     $manifest[0].git.commit==.dependency_versions.project_head and
     $manifest[0].git.dirty==false and $manifest[0].git.tracked_dirty==false and
     ($manifest[0].checked_in_config_hashes|length)>=6 and
-    ($commands[0].commands|length)>0 and
-    all($commands[0].commands[];
+    [$commands[0].intents[].sequence]==[1,2,3] and
+    [$commands[0].intents[].intent_phase]==["business-mutation","fault","recovery"] and
+    [$commands[0].executions[].sequence]==[1,2,3] and
+    [$commands[0].executions[].execution]==["mutate","recovery","verification"] and
+    [$commands[0].executions[].intent_phases]==[["business-mutation","fault"],["recovery"],["verification"]] and
+    all($commands[0].executions[];
       (.started_at|fromdateiso8601) <= (.finished_at|fromdateiso8601) and .exit_code==0) and
     $differences[0].independent_verification.runId==.verification.run_id and
     $differences[0].independent_verification.status==.verification.status and
@@ -62,6 +100,14 @@ jq -e --slurpfile manifest "$bundle/manifest.json" --slurpfile commands "$bundle
     (.started_at|fromdateiso8601) <= (.finished_at|fromdateiso8601)
   else true end
 ' "$bundle/result.json" >/dev/null
+
+if test "$(jq -r .result "$bundle/result.json")" = PASS; then
+  while IFS=$'\t' read -r fixture_path fixture_sha256; do
+    case "$fixture_path" in /*|*../*) echo "unsafe command fixture path: $fixture_path" >&2; exit 1 ;; esac
+    test -f "$project_root/$fixture_path" && test ! -L "$project_root/$fixture_path" || { echo "missing command fixture: $fixture_path" >&2; exit 1; }
+    test "$(shasum -a 256 "$project_root/$fixture_path" | awk '{print $1}')" = "$fixture_sha256" || { echo "command fixture hash mismatch: $fixture_path" >&2; exit 1; }
+  done < <(jq -r '[.intents[],.executions[]]|.[]|[.fixture_path,.fixture_sha256]|@tsv' "$bundle/input-commands.json")
+fi
 
 jq -e '
   if .result == "PASS" then
@@ -148,36 +194,7 @@ if test "$(jq -r .result "$bundle/result.json")" = PASS; then
     test "$(shasum -a 256 "$facts_tmp/value" | awk '{print $1}')" = "$sha" || { echo "case fact hash mismatch: $path" >&2; exit 1; }
   done < <(jq -r '.case_observations.artifacts[]|[.path,.sha256,(if has("json") then "json" else "text" end)]|@tsv' "$bundle/fault.json")
 
-  jq -e --arg scenario "$scenario_id" '
-    def fact($path): [.case_observations.artifacts[]|select(.path==$path)][0].json;
-    def text($path): [.case_observations.artifacts[]|select(.path==$path)][0].text;
-    if $scenario=="canal-outage-beyond-binlog-retention" then
-      fact("mysql-gap-status.json").target=="mysql" and fact("mysql-gap-status.json").recorded_present==false and
-      fact("gap-proof.json").canal_missing_position_observed==true
-    elif $scenario=="consumer-offset-beyond-kafka-retention" then
-      fact("kafka-gap-status.json").gap==true and
-      fact("gap-proof.json").beginning_offset > fact("gap-proof.json").committed_offset
-    elif $scenario=="elasticsearch-bulk-partial-failure" then
-      (fact("dlq-pending.json")|length)==1 and fact("replay.json").status=="RESOLVED" and
-      (fact("group-settled.json")|type)=="array"
-    elif $scenario=="mapping-conflict" then
-      (fact("dlq-pending.json")|length)==1 and fact("replay.json").status=="RESOLVED" and
-      text("generation-before")==text("generation-after")
-    elif $scenario=="rebuild-with-concurrent-writes" then
-      fact("page-progress.json").status=="SNAPSHOTTING" and
-      fact("status-gating.json").status=="GATING" and fact("http-codes.json").gated_write==503 and
-      fact("http-codes.json").post_gate_write>=200 and fact("http-codes.json").post_gate_write<300 and
-      fact("rebuild-completed.json").status=="COMPLETED"
-    elif $scenario=="rebuild-crash-and-restart" then
-      fact("before-failed.json").status=="FAILED" and fact("before-failed.json").aliasState=="OLD" and
-      fact("rerun-response.json").status=="COMPLETED" and
-      fact("after-cutover-status.json").status=="CUTOVER_COMMITTED" and
-      text("old-alias")==text("alias-after-restart") and text("promoted-before-restart")==text("promoted-after-restart")
-    elif $scenario=="dlq-replay-fails-then-succeeds" then
-      fact("pending-after-failed-replay.json")[0].attempts > fact("pending-before.json")[0].attempts and
-      fact("replay-resolved.json").status=="RESOLVED"
-    else true end
-  ' "$bundle/fault.json" >/dev/null
+  bash "$project_root/scenarios/scripts/assert-m6-case-semantics.sh" "$bundle/fault.json"
 fi
 
 printf 'M6 evidence contract passed: %s\n' "$scenario_id"

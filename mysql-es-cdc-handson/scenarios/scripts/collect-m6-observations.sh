@@ -81,6 +81,7 @@ now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 jq -n --slurpfile setup "$run_dir/setup-observation.json" --slurpfile verifier "$raw/final-verification.json" \
   --arg run "$run_id" --arg now "$now" --arg command_started "$verification_started" --arg command_finished "$verification_finished" \
   --arg body_sha256 "$(printf '%s' "$verification_body" | shasum -a 256 | awk '{print $1}')" \
+  --arg collector_sha256 "$(shasum -a 256 scenarios/scripts/collect-m6-observations.sh | awk '{print $1}')" \
   --argjson source "$source_watermark" --argjson es "$es_watermark" --argjson offsets "$offsets" \
   --argjson intermediate "$intermediate" --argjson product_dlq "$product_dlq" --argjson record_dlq "$record_dlq" \
   --argjson rebuild "$rebuild" --argjson canal "$canal_recovery" '{
@@ -98,8 +99,10 @@ jq -n --slurpfile setup "$run_dir/setup-observation.json" --slurpfile verifier "
     tombstone_mismatch_count:($verifier[0].counts.TOMBSTONE_MISMATCH // 0),canal_position_recovery:$canal,
     observed_intermediate_states:$intermediate,observed_pipeline_state:"HEALTHY",
     recovery_action_observed:true,rebuild_required_before_rebuild:$rebuild,
-    commands:[{sequence:1,kind:"HTTP",target:"consistency-verifier",method:"POST",
+    commands:[{sequence:3,execution:"verification",intent_phases:["verification"],kind:"HTTP",target:"consistency-verifier",method:"POST",
       path:"/internal/reconciliation/runs",body_sha256:$body_sha256,
+      fixture_path:"scenarios/scripts/collect-m6-observations.sh",
+      fixture_sha256:$collector_sha256,
       started_at:$command_started,finished_at:$command_finished,exit_code:0}],
     recovery_commands:[],cleanup_actions:[],runner_failures:[]
   }' >"$output"

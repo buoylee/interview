@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(dirname "$0")/lib/common.sh";target="${1:-}";cd "$project_root"
-hashes="$(for file in infra/compose.yaml infra/toxiproxy/proxies.json infra/canal/canal.properties infra/canal/instance.properties scenarios/schema/*.schema.json;do hash="$(shasum -a 256 "$file"|awk '{print $1}')";jq -cn --arg path "$file" --arg sha256 "$hash" '{path:$path,sha256:$sha256}';done|jq -s 'sort_by(.path)')"
+hashes="$(for file in infra/compose.yaml infra/toxiproxy/proxies.json infra/canal/canal.properties infra/canal/instance.properties scenarios/command-intents.json scenarios/schema/*.schema.json;do hash="$(shasum -a 256 "$file"|awk '{print $1}')";jq -cn --arg path "$file" --arg sha256 "$hash" '{path:$path,sha256:$sha256}';done|jq -s 'sort_by(.path)')"
 if image_raw="$(docker compose -f infra/compose.yaml images --format json 2>/dev/null)";then images="$(jq -c 'if type=="array" then . else [.] end|map({service:.Service,repository:.Repository,tag:.Tag,id:(.ID//"unavailable")})|sort_by(.service)' <<<"$image_raw")";else images='[]';fi
 head="$(git rev-parse HEAD)";git_root="$(git rev-parse --show-toplevel)";git_state="$(python3 "$(dirname "$0")/lib/manifest-git-state.py" "$git_root" "$target")"
 java_version="$(java -version 2>&1|head -1)";maven_version="$(./mvnw -version 2>/dev/null|head -1||printf unavailable)";compose_version="$(docker compose version --short 2>/dev/null||printf unavailable)"

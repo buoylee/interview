@@ -4,6 +4,14 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 runtime=scenarios/scripts/m6-case-runtime.sh
 
+if rg -n 'kafka-console-producer[.]sh' \
+  scenarios/scripts/m6-case-runtime.sh \
+  scenarios/scripts/lib-m3-crash.sh \
+  scenarios/scripts/inject-scenario-event.sh; then
+  echo 'M6 replay dependency closure bypasses the locked injection primitive' >&2
+  exit 1
+fi
+
 section() { sed -n "/^case_$1()/,/^case_$2()/p" "$runtime"; }
 
 case3="$(section 3 4)"
@@ -18,6 +26,8 @@ for pair in '6 7' '7 8'; do
   grep -Fq 'process-fault.json' <<<"$crash_case"
   ! grep -Fq 'arm_failpoint ' <<<"$crash_case"
 done
+
+! grep -Fq 'produce_with_key' "$runtime"
 
 for pair in '9 10' '10 11' '14 15'; do
   set -- $pair

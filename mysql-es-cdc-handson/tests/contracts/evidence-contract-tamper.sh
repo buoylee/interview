@@ -35,6 +35,7 @@ expect_file_rejected() {
 }
 
 files=(manifest.json input-commands.json fault.json mysql-snapshot.json es-snapshot.json kafka-offsets.json differences.json recovery-actions.json result.json)
+bash "$contract" "$valid" >/dev/null
 for file in "${files[@]}"; do
   target="$tmp/missing-${file%.json}"
   cp -R "$valid" "$target"
@@ -78,9 +79,17 @@ expect_rejected malformed-start-time "$valid" '.started_at="not-a-date"'
 expect_file_rejected verifier-run-cross-file "$valid" differences.json '.independent_verification.runId="22222222-2222-4222-8222-222222222222"'
 expect_file_rejected runner-run-cross-file "$valid" fault.json '.runner_run_id="22222222-2222-4222-8222-222222222222"'
 expect_file_rejected missing-manifest-provenance "$valid" manifest.json 'del(.git)'
-expect_file_rejected empty-input-command-proof "$valid" input-commands.json '.commands=[]'
-expect_file_rejected impossible-command-time "$valid" input-commands.json '.commands[0].finished_at="2026-07-28T19:59:59Z"'
+expect_file_rejected empty-input-command-proof "$valid" input-commands.json '.intents=[]'
+expect_file_rejected impossible-command-time "$valid" input-commands.json '.executions[0].finished_at="2026-07-28T19:59:59Z"'
 expect_file_rejected invented-case-fact "$valid" fault.json '.case_observations={kind:"invented"}'
+expect_file_rejected invented-mysql-document "$valid" mysql-snapshot.json '.documents += [{product_id:999999,revision:1,active:1,sku:"INVENTED",name:"invented",description:"invented",category_id:10,category_name:"invented",price_cents:1,available_quantity:0,updated_at:"2026-07-28T20:00:00.000000Z"}]'
+expect_file_rejected extra-kafka-offset-field "$valid" kafka-offsets.json '.primary=[{"partition":0,"offset":0,"lag":0,"invented":true}]'
+expect_file_rejected duplicate-kafka-partition "$valid" kafka-offsets.json '.primary[2].partition=1'
+expect_file_rejected missing-kafka-partition "$valid" kafka-offsets.json '.end|=.[0:2]'
+expect_file_rejected incomplete-observations "$valid" differences.json 'del(.observations.source_watermark)'
+expect_file_rejected missing-verification-count "$valid" differences.json 'del(.independent_verification.counts.MISSING)'
+expect_file_rejected extra-difference-verification-field "$valid" differences.json '.observations.verification.invented=true'
+expect_file_rejected extra-recovery-command-field "$valid" recovery-actions.json '.commands[0].invented=true'
 
 unknown="$tmp/unknown-scenario"
 cp -R "$valid" "$unknown"
@@ -106,5 +115,7 @@ expect_rejected nonnext-sentinel "$canal_valid" '.canal_position_recovery.normal
 expect_rejected reset-identity-not-preserved "$canal_valid" '.canal_position_recovery.normal_restart_cursor_sha256=("f"*64)'
 expect_rejected invalid-manifest-index "$canal_valid" '.canal_position_recovery.reset_file_index=0'
 expect_rejected below-lower-bound "$canal_valid" '.canal_position_recovery.reset_file_index=0 | .canal_position_recovery.normal_restart_file_index=0 | .canal_position_recovery.reset_journal="binlog.000010" | .canal_position_recovery.normal_restart_journal="binlog.000010" | .canal_position_recovery.reset_position=4 | .canal_position_recovery.normal_restart_position=4'
+
+bash "$project_root/tests/contracts/m6-case-semantics-tamper.sh" >/dev/null
 
 printf 'M6 evidence tamper negatives passed\n'

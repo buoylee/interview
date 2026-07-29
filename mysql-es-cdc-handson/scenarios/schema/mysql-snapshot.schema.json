@@ -1,5 +1,8 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "additionalProperties": false,
-  "required": ["schema_version", "scenario_id", "runner_run_id", "consistency", "documents"],
-  "properties": {"schema_version": {"const": 1}, "scenario_id": {"type": "string"}, "runner_run_id": {"type": "string", "format": "uuid"}, "consistency": {"type": "string", "minLength": 1}, "documents": {"type": "array"}}
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$defs":{"document":{"type":"object","additionalProperties":false,"required":["product_id","revision","active","sku","name","description","category_id","category_name","price_cents","available_quantity","updated_at"],"properties":{"product_id":{"type":"integer","minimum":1},"revision":{"type":"integer","minimum":1},"active":{"enum":[0,1]},"sku":{"type":["string","null"]},"name":{"type":["string","null"]},"description":{"type":["string","null"]},"category_id":{"type":["integer","null"]},"category_name":{"type":["string","null"]},"price_cents":{"type":["integer","null"]},"available_quantity":{"type":["integer","null"],"minimum":0},"updated_at":{"type":"string","format":"date-time"}}}},
+  "oneOf":[
+    {"type":"object","additionalProperties":false,"required":["schema_version","scenario_id","runner_run_id","consistency","documents"],"properties":{"schema_version":{"const":1},"scenario_id":{"type":"string","pattern":"^[a-z0-9]+(-[a-z0-9]+)*$"},"runner_run_id":{"type":"string","format":"uuid"},"consistency":{"const":"FAIL_CLOSED_CAPTURE"},"documents":{"type":"array","maxItems":0}}},
+    {"type":"object","additionalProperties":false,"required":["schema_version","scenario_id","runner_run_id","consistency","documents"],"properties":{"schema_version":{"const":1},"scenario_id":{"type":"string","pattern":"^[a-z0-9]+(-[a-z0-9]+)*$"},"runner_run_id":{"type":"string","format":"uuid"},"consistency":{"const":"REPEATABLE_READ_CONSISTENT_SNAPSHOT"},"documents":{"type":"array","items":{"$ref":"#/$defs/document"}}}}
+  ]
 }

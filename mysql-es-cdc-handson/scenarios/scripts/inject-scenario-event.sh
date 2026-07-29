@@ -23,7 +23,9 @@ jq -e --argjson partition "$partition" '
   .topic=="product-search-revisions" and .partition==$partition and
   (.offset|type=="number" and .>=0)
 ' <<<"$ack" >/dev/null
-jq -n --argjson ack "$ack" \
+jq -n --argjson ack "$ack" --argjson normalized_payload "$normalized_payload" \
   --arg request_sha256 "$(printf '%s' "$request" | shasum -a 256 | awk '{print $1}')" \
-  '{primitive:"lab-scenario-event-v1",request_sha256:$request_sha256,
+  --arg payload_sha256 "$(printf '%s' "$normalized_payload" | shasum -a 256 | awk '{print $1}')" \
+  '{primitive:"lab-scenario-event-v1",request_sha256:$request_sha256,payload_sha256:$payload_sha256,
+    normalized_payload:$normalized_payload,
     broker_ack:$ack,key_is_null:true}'

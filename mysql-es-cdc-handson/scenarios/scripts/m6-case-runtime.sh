@@ -52,13 +52,6 @@ metric_value() {
     jq -r '[.measurements[]|select(.statistic=="COUNT" or .statistic=="VALUE")|.value]|first'
 }
 
-produce_with_key() {
-  local key="$1" payload="$2"
-  printf '%s:%s\n' "$key" "$payload" | "${compose[@]}" exec -T kafka /opt/kafka/bin/kafka-console-producer.sh \
-    --bootstrap-server kafka:9092 --topic product-search-revisions \
-    --property parse.key=true --property key.separator=: >/dev/null
-}
-
 inject_scenario_event() {
   local partition="$1" payload="$2" output="$3"
   bash scenarios/scripts/inject-scenario-event.sh "$partition" "$payload" >"$output"
@@ -72,22 +65,16 @@ changed_partition() {
 }
 
 select_same_partition_product() {
-  local first="$1" selected_file="$2" id probe_partition record_partition before after baseline payload
-  for id in $(seq "$first" $((first+11))); do
-    end_vector >"$raw/probe-$id-before.json"
-    produce_with_key "$id" '{"database":"m6_probe","table":"ignored","isDdl":false,"data":[]}'
-    "$waiter" "key partition probe $id" 60 0.2 bash -c 'before=$(jq "to_entries|map(.value)|add" "$1");after=$(docker compose -f "$2" exec -T kafka /opt/kafka/bin/kafka-get-offsets.sh --bootstrap-server kafka:9092 --topic product-search-revisions --time -1 2>/dev/null|awk -F: "{sum+=\$3}END{print sum}");test "$after" -eq $((before+1))' _ "$raw/probe-$id-before.json" "$PWD/infra/compose.yaml"
-    end_vector >"$raw/probe-$id-after.json"; probe_partition="$(changed_partition "$raw/probe-$id-before.json" "$raw/probe-$id-after.json")"
-    wait_group_zero; group_json >"$raw/candidate-$id-baseline.json"; create_product "$id" "$raw/candidate-$id-create.json"
-    capture_matching_record "$id" 1 "$raw/candidate-$id-baseline.json" "$raw/candidate-$id-record.json" "$raw/candidate-$id-topic.txt"
-    record_partition="$(jq -r .partition "$raw/candidate-$id-record.json")"
-    if test "$probe_partition" -eq "$record_partition"; then
-      jq -n --argjson id "$id" --argjson partition "$record_partition" --slurpfile record "$raw/candidate-$id-record.json" \
-        '{product_id:$id,partition:$partition,record:$record[0]}' >"$selected_file"
-      return 0
-    fi
-  done
-  die 'unable to select a product whose keyed replay uses the original partition'
+  local id="$1" selected_file="$2" record_partition
+  wait_group_zero
+  group_json >"$raw/candidate-$id-baseline.json"
+  create_product "$id" "$raw/candidate-$id-create.json"
+  capture_matching_record "$id" 1 "$raw/candidate-$id-baseline.json" \
+    "$raw/candidate-$id-record.json" "$raw/candidate-$id-topic.txt"
+  record_partition="$(jq -r .partition "$raw/candidate-$id-record.json")"
+  jq -n --argjson id "$id" --argjson partition "$record_partition" \
+    --slurpfile record "$raw/candidate-$id-record.json" \
+    '{product_id:$id,partition:$partition,record:$record[0]}' >"$selected_file"
 }
 
 case_1() {

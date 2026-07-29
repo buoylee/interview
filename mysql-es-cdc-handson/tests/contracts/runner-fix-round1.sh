@@ -32,8 +32,10 @@ test "$rc" -ne 0
 assert_failed_attempt "$evidence" fixture_mode_forbids_pass
 attempt="$(latest_attempt "$evidence")"
 jq -e '
-  .verification.run_id=="22222222-2222-4222-8222-222222222222" and
-  .watermark_run_id=="33333333-3333-4333-8333-333333333333" and
+  .verification.run_id==.runner_run_id and
+  .watermark_run_id==.runner_run_id and
+  .verification.run_id!="22222222-2222-4222-8222-222222222222" and
+  .watermark_run_id!="33333333-3333-4333-8333-333333333333" and
   .cleanup_actions[0].name=="dispatch-owned-fixture-fault" and
   ([.cleanup_actions[].name]|index("fixture-owned-cleanup"))==null
 ' "$attempt/result.json" >/dev/null

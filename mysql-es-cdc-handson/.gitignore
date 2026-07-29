@@ -9,6 +9,7 @@ target/
 .DS_Store
 evidence/*
 !evidence/.gitkeep
+!evidence/index.json
 !evidence/canal-normal-restart/
 !evidence/canal-outage-within-binlog-retention/
 !evidence/canal-outage-beyond-binlog-retention/

@@ -6,6 +6,15 @@ intent="$run_dir/cleanup-intent.json"
 jq -e --arg scenario "$scenario_id" --arg token "$token" '
   .scenario_id==$scenario and .owner_token==$token and .registered==true
 ' "$intent" >/dev/null || { echo 'recovery cleanup intent missing or mismatched' >&2;exit 73; }
+command_intent="$run_dir/command-intent.json"
+jq -e --arg scenario "$scenario_id" --arg token "$token" '
+  .scenario_id==$scenario and .owner_token==$token and (.state=="INTENDED" or .state=="EXECUTING") and
+  ([.executions[]|select(.execution=="recovery")]|length)==0
+' "$command_intent" >/dev/null 2>&1 || { echo 'recovery command intent missing or mismatched' >&2;exit 73; }
+jq -e --arg scenario "$scenario_id" --arg token "$token" '
+  .scenario_id==$scenario and .owner_token==$token and .active==true and
+  (.resource=="fixture-fault" or .resource=="m6-real-fault")
+' "$run_dir/fault-status.json" >/dev/null 2>&1 || { echo 'owned active fault dispatch receipt missing' >&2;exit 73; }
 if test -n "${M6_RUNNER_FIXTURE:-}";then
   started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   success=true
@@ -19,6 +28,7 @@ if test -n "${M6_RUNNER_FIXTURE:-}";then
   status_clear=false
   test ! -e "$run_dir/fault-status.json" && status_clear=true
   finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  bash "$(dirname "$0")/complete-m6-command-intent.sh" "$command_intent" recovery "$started_at" "$finished_at" "$exit_code"
   output="$run_dir/recovery-dispatch.json"
   jq -n \
     --arg scenario "$scenario_id" \
@@ -69,6 +79,7 @@ else
   exit_code=$?;success=false
 fi
 finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+bash "$(dirname "$0")/complete-m6-command-intent.sh" "$command_intent" recovery "$started_at" "$finished_at" "$exit_code"
 status_clear=false;test ! -e "$run_dir/fault-status.json" && status_clear=true
 jq -n --arg scenario "$scenario_id" --arg token "$token" --arg started "$started_at" --arg finished "$finished_at" \
   --argjson success "$success" --argjson status_clear "$status_clear" --argjson exit_code "$exit_code" '{

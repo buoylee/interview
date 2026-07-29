@@ -16,8 +16,9 @@ bash scenarios/scripts/capture-manifest.sh "$run_dir/manifest-capture.json"
 jq --arg scenario "$scenario_id" --arg run "$run_id" \
   '.+{scenario_id:$scenario,runner_run_id:$run,execution_mode:"real"}' \
   "$run_dir/manifest-capture.json" >"$bundle/manifest.json"
-jq -n --arg scenario "$scenario_id" --arg run "$run_id" --slurpfile o "$observations" \
-  '{schema_version:1,scenario_id:$scenario,runner_run_id:$run,commands:$o[0].commands}' >"$bundle/input-commands.json"
+jq -e '.state=="COMPLETED" and [.commands[].intent_phase]==["business-mutation","fault","recovery"] and [.executions[].execution]==["mutate","recovery"] and all(.executions[];.exit_code==0)' "$run_dir/command-intent.json" >/dev/null
+jq -n --arg scenario "$scenario_id" --arg run "$run_id" --slurpfile intent "$run_dir/command-intent.json" --slurpfile o "$observations" \
+  '{schema_version:1,scenario_id:$scenario,runner_run_id:$run,intents:$intent[0].commands,executions:($intent[0].executions+$o[0].commands)}' >"$bundle/input-commands.json"
 jq -n --arg scenario "$scenario_id" --arg run "$run_id" --argjson fault "$(jq -c --arg id "$scenario_id" '.scenarios[]|select(.scenario_id==$id)|.fault' scenarios/catalog.json)" \
   --slurpfile facts <(bash scenarios/scripts/collect-m6-case-facts.sh "$scenario_id" "$run_dir/raw") \
   --slurpfile states "$run_dir/intermediate-states.json" \
@@ -45,7 +46,7 @@ fi
 
 jq -n --arg scenario "$scenario_id" --arg run "$run_id" --slurpfile o "$observations" \
   --slurpfile verification "$run_dir/raw/final-verification.json" \
-  '{schema_version:1,scenario_id:$scenario,runner_run_id:$run,observations:$o[0],independent_verification:$verification[0]}' >"$bundle/differences.json"
+  '{schema_version:1,scenario_id:$scenario,runner_run_id:$run,observations:$o[0],independent_verification:($verification[0] | .counts={MISSING:(.counts.MISSING//0),UNEXPECTED:(.counts.UNEXPECTED//0),MODIFIED:(.counts.MODIFIED//0),TOMBSTONE_MISMATCH:(.counts.TOMBSTONE_MISMATCH//0),VERSION_METADATA_MISMATCH:(.counts.VERSION_METADATA_MISMATCH//0)})}' >"$bundle/differences.json"
 jq -n --arg scenario "$scenario_id" --arg run "$run_id" --slurpfile o "$observations" --slurpfile recovery "$recovery_output" \
   '{schema_version:1,scenario_id:$scenario,runner_run_id:$run,rebuild_required_observed_before_rebuild:$o[0].rebuild_required_before_rebuild,commands:$recovery[0].commands,cleanup_actions:$recovery[0].cleanup_actions,cleanup_failures:([$recovery[0].cleanup_actions[]|select(.success!=true)]|length)}' >"$bundle/recovery-actions.json"
 bash scenarios/scripts/write-result.sh "$scenario_id" "$run_id" "$started_at" "$observations" "$bundle/recovery-actions.json" "$bundle/result.json"
