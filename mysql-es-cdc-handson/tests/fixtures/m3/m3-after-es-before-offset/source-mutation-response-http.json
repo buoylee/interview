@@ -1,0 +1,6 @@
+{
+  "transport_exit": 0,
+  "http_status": 200,
+  "json_valid": true,
+  "raw_body": "{\"productId\":2301,\"revision\":2}"
+}

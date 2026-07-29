@@ -1,0 +1,45 @@
+{
+  "partition": 2,
+  "offset": 1,
+  "baseline_end": 1,
+  "payload": {
+    "data": [
+      {
+        "product_id": "2302",
+        "revision": "2",
+        "active": "1",
+        "updated_at": "2026-07-28 16:53:36.035607"
+      }
+    ],
+    "database": "product_catalog",
+    "es": 1785257616000,
+    "gtid": "",
+    "id": 2,
+    "isDdl": false,
+    "mysqlType": {
+      "product_id": "bigint",
+      "revision": "bigint",
+      "active": "tinyint(1)",
+      "updated_at": "timestamp(6)"
+    },
+    "old": [
+      {
+        "revision": "1",
+        "updated_at": "2026-07-28 16:53:23.963027"
+      }
+    ],
+    "pkNames": [
+      "product_id"
+    ],
+    "sql": "",
+    "sqlType": {
+      "product_id": -5,
+      "revision": -5,
+      "active": -6,
+      "updated_at": 93
+    },
+    "table": "product_search_revision",
+    "ts": 1785257616179,
+    "type": "UPDATE"
+  }
+}

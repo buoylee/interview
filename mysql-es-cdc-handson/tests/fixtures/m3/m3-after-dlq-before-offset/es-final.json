@@ -1,0 +1,6 @@
+{
+  "transport_exit": 0,
+  "http_status": 200,
+  "json_valid": true,
+  "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"2302\",\"_version\":2,\"_seq_no\":0,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":2302,\"sku\":\"LAB-2302\",\"name\":\"Crash 2302\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":1000,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-28T16:53:36.035607Z\"}}"
+}

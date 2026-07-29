@@ -1,0 +1,12 @@
+[
+  {
+    "topic": "product-search-revisions",
+    "offset": 1,
+    "status": "PENDING",
+    "attempts": 1,
+    "event_id": "product-search-revisions:2:1:2302",
+    "revision": 2,
+    "partition": 2,
+    "product_id": 2302
+  }
+]

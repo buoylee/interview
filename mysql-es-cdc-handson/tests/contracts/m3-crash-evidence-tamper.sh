@@ -4,6 +4,7 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$root"
 validator=scenarios/scripts/assert-m3-crash-evidence.sh
+fixtures=tests/fixtures/m3
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
@@ -17,7 +18,7 @@ expect_rejected() {
 
 copy_fixture() {
   local scenario="$1" name="$2"
-  cp -R "evidence/m3/$scenario" "$tmp/$name"
+  cp -R "$fixtures/$scenario" "$tmp/$name"
 }
 
 mutate_json() {
@@ -44,29 +45,33 @@ mutate_topic_product_id() {
   mv "$replacement" "$dir/topic-records.txt"
 }
 
-cp -R evidence/m3/m3-after-es-before-offset "$tmp/es-record"
+for scenario in m3-after-es-before-offset m3-after-dlq-before-offset; do
+  bash "$validator" "$fixtures/$scenario"
+done
+
+cp -R "$fixtures/m3-after-es-before-offset" "$tmp/es-record"
 mutate_topic_product_id "$tmp/es-record"
 expect_rejected mismatched-record-payload "$tmp/es-record"
 
-cp -R evidence/m3/m3-after-dlq-before-offset "$tmp/dlq-id"
+cp -R "$fixtures/m3-after-dlq-before-offset" "$tmp/dlq-id"
 jq '.[0].event_id="forged"' "$tmp/dlq-id/dlq-after-crash.json" >"$tmp/row"
 mv "$tmp/row" "$tmp/dlq-id/dlq-after-crash.json"
 expect_rejected mismatched-dlq-event-id "$tmp/dlq-id"
 
-cp -R evidence/m3/m3-after-es-before-offset "$tmp/forged-result"
+cp -R "$fixtures/m3-after-es-before-offset" "$tmp/forged-result"
 rm "$tmp/forged-result/es-before-restart.json"
 expect_rejected missing-raw-with-forged-result "$tmp/forged-result"
 
-cp -R evidence/m3/m3-after-es-before-offset "$tmp/bad-time"
+cp -R "$fixtures/m3-after-es-before-offset" "$tmp/bad-time"
 jq '.finished_at="not-a-timestamp"' "$tmp/bad-time/process-crashed.json" >"$tmp/row"
 mv "$tmp/row" "$tmp/bad-time/process-crashed.json"
 expect_rejected malformed-timestamp "$tmp/bad-time"
 
-cp -R evidence/m3/m3-after-es-before-offset "$tmp/bad-http"
+cp -R "$fixtures/m3-after-es-before-offset" "$tmp/bad-http"
 printf '%s\n' '{"transport_exit":0,"http_status":500,"json_valid":true,"body":{"status":"UP"}}' >"$tmp/bad-http/consumer-ready.json"
 expect_rejected terminal-http-500 "$tmp/bad-http"
 
-cp -R evidence/m3/m3-after-es-before-offset "$tmp/unknown"
+cp -R "$fixtures/m3-after-es-before-offset" "$tmp/unknown"
 jq '.scenario="unknown"' "$tmp/unknown/definition.json" >"$tmp/row"
 mv "$tmp/row" "$tmp/unknown/definition.json"
 expect_rejected unknown-scenario "$tmp/unknown"

@@ -1,0 +1,9 @@
+{
+  "transport_exit": 0,
+  "http_status": 200,
+  "json_valid": true,
+  "raw_body": "{\"groups\":[\"liveness\",\"readiness\"],\"status\":\"UP\"}",
+  "consumer_container_id": "2f1efc44c1f33392d9e1133492e5d2801ae37fce75d0f106f07cc524522d44da",
+  "container_started_at": "2026-07-28T16:53:30.109359326Z",
+  "observed_at": "2026-07-28T16:53:32Z"
+}
