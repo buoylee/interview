@@ -1,0 +1,113 @@
+{
+  "scenario": "m3-bulk-partial",
+  "terminal_state": "HEALTHY",
+  "raw_batch_record": {
+    "partition": 0,
+    "offset": 2,
+    "baseline_end": 0,
+    "payload": {
+      "data": [
+        {
+          "product_id": "2403",
+          "revision": "2",
+          "active": "1",
+          "updated_at": "2026-07-28 16:50:00.902801"
+        },
+        {
+          "product_id": "2413",
+          "revision": "2",
+          "active": "1",
+          "updated_at": "2026-07-28 16:50:00.902801"
+        }
+      ],
+      "database": "product_catalog",
+      "es": 1785257400000,
+      "gtid": "",
+      "id": 3,
+      "isDdl": false,
+      "mysqlType": {
+        "product_id": "bigint",
+        "revision": "bigint",
+        "active": "tinyint(1)",
+        "updated_at": "timestamp(6)"
+      },
+      "old": [
+        {
+          "revision": "1",
+          "updated_at": "2026-07-28 16:49:49.474297"
+        },
+        {
+          "revision": "1",
+          "updated_at": "2026-07-28 16:49:52.223897"
+        }
+      ],
+      "pkNames": [
+        "product_id"
+      ],
+      "sql": "",
+      "sqlType": {
+        "product_id": -5,
+        "revision": -5,
+        "active": -6,
+        "updated_at": 93
+      },
+      "table": "product_search_revision",
+      "ts": 1785257401119,
+      "type": "UPDATE"
+    }
+  },
+  "raw_pending": [
+    {
+      "eventId": "product-search-revisions:0:2:2403",
+      "topic": "product-search-revisions",
+      "partition": 0,
+      "offset": 2,
+      "productId": 2403,
+      "sourceRevision": 2,
+      "payload": "{\"sku\": \"LAB-2403\", \"name\": \"Crash 2403\", \"product_id\": 2403, \"searchable\": true, \"category_id\": 10, \"description\": \"fixture\", \"price_cents\": 1000, \"category_name\": \"Accessories\", \"source_revision\": 2, \"source_updated_at\": \"2026-07-28T16:50:00.902801Z\", \"available_quantity\": 0}",
+      "failureClass": "document_parsing_exception",
+      "lastError": "[1:142] failed to parse field [price_cents] of type [byte] in document with id '2403'. Preview of field's value: '1000'",
+      "status": "PENDING",
+      "attempts": 1,
+      "createdAt": "2026-07-28T16:50:01.207496Z",
+      "updatedAt": "2026-07-28T16:50:01.207496Z",
+      "resolvedAt": null,
+      "newPending": false
+    }
+  ],
+  "raw_valid_before_repair": {
+    "transport_exit": 0,
+    "http_status": 200,
+    "json_valid": true,
+    "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"2413\",\"_version\":2,\"_seq_no\":0,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":2413,\"sku\":\"LAB-2413\",\"name\":\"Crash 2413\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":110,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-28T16:50:00.902801Z\"}}"
+  },
+  "raw_valid_after_migration": {
+    "transport_exit": 0,
+    "http_status": 200,
+    "json_valid": true,
+    "raw_body": "{\"_index\":\"products_v3\",\"_id\":\"2413\",\"_version\":2,\"_seq_no\":0,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":2413,\"sku\":\"LAB-2413\",\"name\":\"Crash 2413\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":110,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-28T16:50:00.902801Z\"}}"
+  },
+  "raw_bad_final": {
+    "transport_exit": 0,
+    "http_status": 200,
+    "json_valid": true,
+    "raw_body": "{\"_index\":\"products_v3\",\"_id\":\"2403\",\"_version\":2,\"_seq_no\":1,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":2403,\"sku\":\"LAB-2403\",\"name\":\"Crash 2403\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":1000,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-28T16:50:00.902801Z\"}}"
+  },
+  "raw_valid_final": {
+    "transport_exit": 0,
+    "http_status": 200,
+    "json_valid": true,
+    "raw_body": "{\"_index\":\"products_v3\",\"_id\":\"2413\",\"_version\":2,\"_seq_no\":0,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":2413,\"sku\":\"LAB-2413\",\"name\":\"Crash 2413\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":110,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-28T16:50:00.902801Z\"}}"
+  },
+  "pre_repair_valid_external_version": 2,
+  "migrated_valid_external_version": 2,
+  "final_valid_external_version": 2,
+  "final_bad_external_version": 2,
+  "pre_repair_valid_seq_no": 0,
+  "migrated_valid_seq_no": 0,
+  "final_valid_seq_no": 0,
+  "final_bad_seq_no": 1,
+  "valid_item_applied_before_repair": true,
+  "recovered_by_current_source_replay": true,
+  "final_consistency_claim": false
+}

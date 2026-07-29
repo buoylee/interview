@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"; cd "$root"
-source_dir=evidence/m3/m3-bulk-partial
+source_dir=tests/fixtures/m3/m3-bulk-partial
 validator=scenarios/scripts/assert-m3-standard-evidence.sh
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+
+bash "$validator" "$source_dir"
 
 expect_rejected() {
   local name="$1" filter="$2" target="$3"
