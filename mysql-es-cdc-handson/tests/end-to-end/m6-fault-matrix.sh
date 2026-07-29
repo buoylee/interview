@@ -2,6 +2,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
+source scenarios/scripts/lib/m6-compose-project.sh
 evidence_root="${M6_EVIDENCE_ROOT:-evidence}"
 runtime_root="${M6_RUNTIME_EVIDENCE_ROOT:-$evidence_root/.attempts}"
 catalog=scenarios/catalog.json
@@ -26,14 +27,14 @@ if test "${M6_MATRIX_VERIFY_ONLY:-false}" = true; then
   exit 0
 fi
 
-test "${COMPOSE_PROJECT_NAME:-}" = mysql-es-cdc-handson-m6-task4 || {
-  echo 'COMPOSE_PROJECT_NAME must be mysql-es-cdc-handson-m6-task4' >&2
+m6_compose_project "${COMPOSE_PROJECT_NAME:-}" >/dev/null || {
+  echo 'COMPOSE_PROJECT_NAME must be a locked dedicated M6 project' >&2
   exit 64
 }
 
 while IFS= read -r scenario <&3; do
   mkdir -p "$runtime_root"
-  M6_EVIDENCE_ROOT="$runtime_root" bash scenarios/scripts/run-scenario.sh "$scenario"
+  M6_RUNNER_EXECUTION_MODE=real M6_EVIDENCE_ROOT="$runtime_root" bash scenarios/scripts/run-scenario.sh "$scenario"
   bash tests/contracts/evidence-contract.sh "$runtime_root/$scenario" >/dev/null
 done 3< <(jq -r '.scenarios[].scenario_id' "$catalog")
 

@@ -3,17 +3,17 @@ set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 run_dir="${1:?private run directory required}"
-project=mysql-es-cdc-handson-m6-task4
-test "${COMPOSE_PROJECT_NAME:-}" = "$project" || { echo "dedicated M6 project required" >&2; exit 64; }
+source "$root/scenarios/scripts/lib/m6-compose-project.sh"
+project="$(m6_compose_project "${COMPOSE_PROJECT_NAME:-}")" || { echo "locked dedicated M6 project required" >&2; exit 64; }
 cd "$root"
 
-marker="$root/evidence/.m6-task4-project.json"
+marker="$root/evidence/$(m6_compose_marker_name "$project")"
 existing="$(docker ps -a -q --filter "label=com.docker.compose.project=$project")"
 if test -n "$existing" && test ! -f "$marker"; then
   echo "refusing to touch unowned Compose project $project" >&2
   exit 74
 fi
-jq -n --arg project "$project" '{purpose:"m6-task4-real-matrix",compose_project:$project}' >"$marker"
+jq -n --arg project "$project" '{purpose:"m6-real-matrix",compose_project:$project}' >"$marker"
 
 compose=(docker compose -f infra/compose.yaml)
 "${compose[@]}" --profile m0-tools down --volumes --remove-orphans >"$run_dir/setup-down.log" 2>&1

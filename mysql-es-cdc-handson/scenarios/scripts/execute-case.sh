@@ -7,7 +7,8 @@ phase="${2:?phase required}"
 run_dir="${3:?run directory required}"
 token="${4:?owner token required}"
 test "$(cat "$run_dir/owner-token")" = "$token" || { echo 'case ownership mismatch' >&2; exit 73; }
-test "${COMPOSE_PROJECT_NAME:-}" = mysql-es-cdc-handson-m6-task4 || { echo 'dedicated M6 project required' >&2; exit 64; }
+source "$root/scenarios/scripts/lib/m6-compose-project.sh"
+m6_compose_project "${COMPOSE_PROJECT_NAME:-}" >/dev/null || { echo 'locked dedicated M6 project required' >&2; exit 64; }
 cd "$root"
 mkdir -p "$run_dir/raw"
 export M6_CASE_RUN_DIR="$run_dir" M6_CASE_TOKEN="$token"
