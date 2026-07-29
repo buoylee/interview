@@ -49,7 +49,9 @@
     "verification", "exact_diff_count", "tombstone_mismatch_count",
     "canal_position_recovery", "expected_intermediate_states", "observed_intermediate_states",
     "expected_pipeline_state", "observed_pipeline_state", "recovery_action", "requires_rebuild",
-    "rebuild_required_before_rebuild", "target_watermark_passed", "result", "started_at", "finished_at"
+    "rebuild_required_before_rebuild", "target_watermark_passed", "runner_run_id", "watermark_run_id",
+    "scenario_lag_satisfied", "recovery_action_observed", "cleanup_failures",
+    "failed_assertions", "cleanup_actions", "result", "started_at", "finished_at"
   ],
   "properties": {
     "schema_version": {"const": 1},
@@ -163,6 +165,24 @@
     "requires_rebuild": {"type": "boolean"},
     "rebuild_required_before_rebuild": {"type": "boolean"},
     "target_watermark_passed": {"type": "boolean"},
+    "runner_run_id": {"type": "string", "format": "uuid"},
+    "watermark_run_id": {"type": "string", "format": "uuid"},
+    "scenario_lag_satisfied": {"type": "boolean"},
+    "recovery_action_observed": {"type": "boolean"},
+    "cleanup_failures": {"type": "integer", "minimum": 0},
+    "failed_assertions": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "cleanup_actions": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "success", "finished_at"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "success": {"type": "boolean"},
+          "finished_at": {"type": "string", "format": "date-time"}
+        }
+      }
+    },
     "result": {"enum": ["PASS", "FAIL"]},
     "started_at": {"type": "string", "format": "date-time"},
     "finished_at": {"type": "string", "format": "date-time"}
@@ -171,6 +191,7 @@
     {
       "if": {"properties": {"result": {"const": "PASS"}}, "required": ["result"]},
       "then": {
+        "required": ["runner_run_id", "scenario_lag_satisfied", "recovery_action_observed", "cleanup_failures", "failed_assertions", "cleanup_actions"],
         "properties": {
           "target_watermark_passed": {"const": true},
           "product_unresolved_dlq_count": {"const": 0},
@@ -178,6 +199,10 @@
           "unresolved_dlq_count": {"const": 0},
           "exact_diff_count": {"const": 0},
           "tombstone_mismatch_count": {"const": 0},
+          "scenario_lag_satisfied": {"const": true},
+          "recovery_action_observed": {"const": true},
+          "cleanup_failures": {"const": 0},
+          "failed_assertions": {"maxItems": 0},
           "verification": {
             "properties": {
               "status": {"const": "PASS"},

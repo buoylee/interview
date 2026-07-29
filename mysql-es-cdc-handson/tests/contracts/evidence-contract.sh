@@ -12,7 +12,7 @@ test -d "$bundle" || { echo "missing evidence bundle: $bundle" >&2; exit 1; }
 for name in "${files[@]}"; do
   test -f "$bundle/$name" || { echo "missing locked evidence file: $name" >&2; exit 1; }
 done
-actual_names="$(find "$bundle" -maxdepth 1 -type f -exec basename {} \; | LC_ALL=C sort)"
+actual_names="$(find -H "$bundle" -maxdepth 1 -type f -exec basename {} \; | LC_ALL=C sort)"
 expected_names="$(printf '%s\n' "${files[@]}" | LC_ALL=C sort)"
 test "$actual_names" = "$expected_names" || { echo 'evidence bundle JSON names differ from locked nine-file contract' >&2; exit 1; }
 
@@ -40,6 +40,12 @@ jq -e '
     .target_watermarks.passed == true and
     .target_watermarks.mysql_revision >= .source_watermark and
     .target_watermarks.elasticsearch_revision >= .source_watermark and
+    .watermark_run_id == .runner_run_id and
+    .scenario_lag_satisfied == true and
+    .recovery_action_observed == true and
+    .cleanup_failures == 0 and
+    (.failed_assertions|length) == 0 and
+    all(.cleanup_actions[]; .success == true) and
     all(.consistency_preconditions[]; .satisfied == true) and
     .product_unresolved_dlq_count == 0 and
     .record_unresolved_dlq_count == 0 and

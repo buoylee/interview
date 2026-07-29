@@ -1,0 +1,19 @@
+{
+  "consistency_preconditions": [{"name":"fixture-ready","satisfied":true,"observed_at":"2026-07-29T06:00:00Z"}],
+  "source_watermark": 10,
+  "target_watermarks": {"mysql_revision":10,"elasticsearch_revision":10,"passed":true},
+  "applied_offsets": {"0":1,"1":2,"2":3},
+  "scenario_lag_satisfied": true,
+  "product_unresolved_dlq_count": 0,
+  "record_unresolved_dlq_count": 0,
+  "verification": {"status":"PASS","conclusive":true,"stable":true,"exact_managed_field_diff_count":0,"version_metadata_diff_count":0,"observed_at":"2026-07-29T06:01:00Z"},
+  "exact_diff_count": 0,
+  "tombstone_mismatch_count": 0,
+  "observed_intermediate_states": ["HEALTHY"],
+  "observed_pipeline_state": "DEGRADED",
+  "recovery_action_observed": true,
+  "rebuild_required_before_rebuild": false,
+  "commands": [{"sequence":1,"kind":"HTTP","target":"product-service","method":"PUT","path":"/api/products/1001/price","body_sha256":"f6f4c32f74288b3ef1e189714b6b06b62944390cb9bc079a0e0566f7a37f1af1","started_at":"2026-07-29T06:00:10Z","finished_at":"2026-07-29T06:00:11Z","exit_code":0}],
+  "recovery_commands": [{"sequence":1,"kind":"CONTROL","target":"fixture-fault","method":"DELETE","path":"/owned/fixture-fault","started_at":"2026-07-29T06:01:10Z","finished_at":"2026-07-29T06:01:11Z","exit_code":0}],
+  "cleanup_actions": [{"name":"remove-owned-fixture-fault","success":true,"finished_at":"2026-07-29T06:02:00Z"}]
+}
