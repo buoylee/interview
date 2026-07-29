@@ -14,4 +14,9 @@ if test -n "${M6_RUNNER_FIXTURE:-}";then
   test "${M6_RUNNER_FAULT_MODE:-}" != partial-fail || exit 73
   exit 0
 fi
-echo "Task 3 has no real executor for $scenario_id" >&2;exit 69
+test "${M6_RUNNER_EXECUTION_MODE:-}" = real || { echo "real executor mode required" >&2; exit 69; }
+bash "$(dirname "$0")/execute-case.sh" "$scenario_id" mutate "$run_dir" "$token"
+jq -n --arg scenario "$scenario_id" --arg token "$token" \
+  '{scenario_id:$scenario,owner_token:$token,resource:"m6-real-fault",active:true}' >"$run_dir/fault-status.json"
+jq -n --arg scenario "$scenario_id" --arg token "$token" \
+  '{scenario_id:$scenario,owner_token:$token,dispatched:true,cleanup_required:true}'

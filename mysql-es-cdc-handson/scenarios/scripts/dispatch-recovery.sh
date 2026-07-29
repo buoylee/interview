@@ -60,4 +60,21 @@ if test -n "${M6_RUNNER_FIXTURE:-}";then
   cat "$output"
   exit "$exit_code"
 fi
-echo "Task 3 has no real recovery executor for $scenario_id" >&2;exit 69
+test "${M6_RUNNER_EXECUTION_MODE:-}" = real || { echo "real recovery mode required" >&2; exit 69; }
+started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+success=true;exit_code=0
+if bash "$(dirname "$0")/execute-case.sh" "$scenario_id" recover "$run_dir" "$token"; then
+  rm -f "$run_dir/fault-status.json"
+else
+  exit_code=$?;success=false
+fi
+finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+status_clear=false;test ! -e "$run_dir/fault-status.json" && status_clear=true
+jq -n --arg scenario "$scenario_id" --arg token "$token" --arg started "$started_at" --arg finished "$finished_at" \
+  --argjson success "$success" --argjson status_clear "$status_clear" --argjson exit_code "$exit_code" '{
+    scenario_id:$scenario,owner_token:$token,recovery_action_observed:$status_clear,
+    external_status:{resource:"m6-real-fault",active:($status_clear|not),observed:$status_clear},
+    cleanup_actions:[{name:"dispatch-owned-m6-real-fault",success:$success,finished_at:$finished}],
+    commands:[{sequence:1,kind:"CONTROL",target:"m6-real-fault",method:"DELETE",path:("/scenario/"+$scenario+"/fault"),started_at:$started,finished_at:$finished,exit_code:$exit_code}]
+  }'
+exit "$exit_code"

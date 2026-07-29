@@ -41,20 +41,21 @@ class JdbcPipelineConditionStoreIT {
     void persists_idempotent_gap_counts_both_dlqs_and_refuses_unproven_clearance() {
         store.activate("LOG_GAP", "{\"partition\":1}");
         store.activate("LOG_GAP", "{\"partition\":1}");
+        store.activate("REBUILD_REQUIRED", "{\"reason\":\"failed-rebuild\"}");
         long unresolvedBeforeFixtures = store.unresolvedDlqCount();
         insertDlqFixtures();
 
-        assertThat(store.activeConditions()).contains("LOG_GAP");
+        assertThat(store.activeConditions()).contains("LOG_GAP", "REBUILD_REQUIRED");
         assertThat(fixture.sql("""
                 SELECT COUNT(*) FROM pipeline_condition WHERE condition_key = 'LOG_GAP'
                 """).query(Long.class).single()).isOne();
         assertThat(store.unresolvedDlqCount()).isEqualTo(unresolvedBeforeFixtures + 2);
         assertThat(store.clearLogGap(RUN)).isFalse();
-        assertThat(store.activeConditions()).contains("LOG_GAP");
+        assertThat(store.activeConditions()).contains("LOG_GAP", "REBUILD_REQUIRED");
 
         rebuildEvidence.successful = true;
         assertThat(store.clearLogGap(RUN)).isTrue();
-        assertThat(store.activeConditions()).doesNotContain("LOG_GAP");
+        assertThat(store.activeConditions()).doesNotContain("LOG_GAP", "REBUILD_REQUIRED");
     }
 
     @Test
@@ -107,7 +108,7 @@ class JdbcPipelineConditionStoreIT {
                 .param("runId", RUN.toString()).update();
         fixture.sql("DELETE FROM verification_run WHERE run_id = UUID_TO_BIN(:runId)")
                 .param("runId", NEWER.toString()).update();
-        fixture.sql("DELETE FROM pipeline_condition WHERE condition_key = 'LOG_GAP'").update();
+        fixture.sql("DELETE FROM pipeline_condition WHERE condition_key IN ('LOG_GAP','REBUILD_REQUIRED')").update();
     }
 
     private DataSource dataSource(String user, String password) {

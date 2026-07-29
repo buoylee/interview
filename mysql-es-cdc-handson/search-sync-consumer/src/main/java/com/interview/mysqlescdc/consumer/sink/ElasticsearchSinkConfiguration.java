@@ -7,6 +7,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import tools.jackson.databind.json.JsonMapper;
+import com.interview.mysqlescdc.consumer.lab.ProjectionFaultRegistry;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(PipelineElasticsearchProperties.class)
@@ -19,13 +20,14 @@ public class ElasticsearchSinkConfiguration {
 
     @Bean
     RestElasticsearchGateway elasticsearchGateway(
-            PipelineElasticsearchProperties properties, JsonMapper json) {
+            PipelineElasticsearchProperties properties, JsonMapper json,
+            ProjectionFaultRegistry faults) {
         validate(properties);
         HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(properties.connectTimeout())
                 .build();
         return new RestElasticsearchGateway(
-                client, json, properties.baseUrl(), properties.requestTimeout());
+                client, json, properties.baseUrl(), properties.requestTimeout(), faults);
     }
 
     private static void validate(PipelineElasticsearchProperties properties) {

@@ -22,13 +22,16 @@ CREATE TABLE IF NOT EXISTS cdc_barrier (
 
 CREATE TABLE IF NOT EXISTS rebuild_run (
   run_id BINARY(16) NOT NULL, generation_name VARCHAR(128) NOT NULL,
+  topic_name VARCHAR(128) NOT NULL DEFAULT 'product-search-revisions',
+  page_size INT NOT NULL DEFAULT 200,
   status ENUM('CREATED','CANAL_RECOVERY_REQUIRED','CANAL_RECOVERING','SNAPSHOTTING','REPLAYING','GATING','VERIFYING','CUTTING_OVER','CUTOVER_COMMITTED','COMPLETED','FAILED') NOT NULL,
   source_watermark BIGINT UNSIGNED NULL, source_count BIGINT UNSIGNED NOT NULL DEFAULT 0,
   verification_run_id BINARY(16) NULL, canal_recovery_id BINARY(16) NULL,
   alias_swapped BOOLEAN NOT NULL DEFAULT FALSE,
   started_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), finished_at TIMESTAMP(6) NULL,
   failure_phase VARCHAR(64) NULL, failure_message VARCHAR(512) NULL,
-  PRIMARY KEY (run_id), UNIQUE KEY uk_rebuild_generation (generation_name)
+  PRIMARY KEY (run_id), UNIQUE KEY uk_rebuild_generation (generation_name),
+  CONSTRAINT chk_rebuild_page_size CHECK (page_size BETWEEN 1 AND 1000)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS rebuild_partition_offset (

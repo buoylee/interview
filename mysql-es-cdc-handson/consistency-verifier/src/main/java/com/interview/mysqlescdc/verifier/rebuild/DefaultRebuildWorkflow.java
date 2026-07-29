@@ -164,8 +164,8 @@ public final class DefaultRebuildWorkflow implements RebuildCoordinator.Workflow
     @Override public void stopShadow(UUID runId) { shadow.stop(runId); }
     @Override public void resumePrimary(UUID runId) { primary.resumeAndConfirm(); }
     @Override public void clearLogGap(UUID runId) {
-        if (conditions.activeConditions().contains("LOG_GAP") && !conditions.clearLogGap(runId)) {
-            throw new IllegalStateException("LOG_GAP clear refused");
+        if (!conditions.clearLogGap(runId)) {
+            throw new IllegalStateException("successful rebuild condition clear refused");
         }
     }
     @Override public void openGate(UUID runId) { gate.open(runId); }
@@ -181,9 +181,8 @@ public final class DefaultRebuildWorkflow implements RebuildCoordinator.Workflow
     }
 
     private RebuildRequestData run(UUID runId) {
-        String generation = jdbc.sql("SELECT generation_name FROM rebuild_run WHERE run_id=UUID_TO_BIN(:run)")
-                .param("run", runId.toString()).query(String.class).single();
-        return new RebuildRequestData(generation, RebuildRequest.TOPIC, RebuildRequest.PAGE_SIZE);
+        return jdbc.sql("SELECT generation_name generation,topic_name topic,page_size pageSize FROM rebuild_run WHERE run_id=UUID_TO_BIN(:run)")
+                .param("run", runId.toString()).query(RebuildRequestData.class).single();
     }
 
     private Map<TopicPartition, Long> load(UUID runId, String phase) {

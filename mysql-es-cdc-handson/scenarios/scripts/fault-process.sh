@@ -2,7 +2,7 @@
 set -euo pipefail
 source "$(dirname "$0")/lib/common.sh"
 action="${1:-}";point="${2:-}";require_action "$action"
-case "$point" in BEFORE_ES_BULK|BEFORE_KAFKA_OFFSET_COMMIT) ;;*) echo 'unsupported deterministic process failpoint' >&2;exit 64;;esac
+case "$point" in BEFORE_ES_BULK|AFTER_ES_BULK_SUCCESS|BEFORE_KAFKA_OFFSET_COMMIT) ;;*) echo 'unsupported deterministic process failpoint' >&2;exit 64;;esac
 api="${CONSUMER_API:-http://127.0.0.1:8082/internal/failpoints}"
 container_id(){ "${compose[@]}" ps -a -q search-sync-consumer; }
 exit_86(){ local id;id="$(container_id)";test -n "$id" && test "$(docker inspect -f '{{.State.Status}}:{{.State.ExitCode}}' "$id")" = exited:86; }

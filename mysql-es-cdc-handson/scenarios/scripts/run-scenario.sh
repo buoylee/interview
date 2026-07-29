@@ -126,7 +126,7 @@ safe_commands() {
 }
 
 publish_attempt() {
-  local result="$1" canonical_status gate_rc
+  local result="$1" canonical_status gate_rc previous_token= previous_target=
   owned_dir "$runs_dir" "$evidence_root/.runs"
   python3 "$root/scenarios/scripts/publish-evidence.py" version \
     "$evidence_root" "$bundle" "$runs_dir" "$token" || return $?
@@ -135,8 +135,15 @@ publish_attempt() {
     "$root/tests/contracts/evidence-contract.sh" \
     "$root/tests/contracts/no-evidence-secrets.sh" || return $?
   test "${M6_RUNNER_FAIL_STAGE:-}" != before-replace || return 86
-  canonical_status="$(python3 "$root/scenarios/scripts/publish-evidence.py" canonical \
-    "$evidence_root" "$scenario_id" "$token")" || return $?
+  if test "$result" = PASS && test -L "$canonical"; then
+    previous_target="$(readlink "$canonical")"
+    previous_token="${previous_target##*/}"
+    canonical_status="$(python3 "$root/scenarios/scripts/publish-evidence.py" replace \
+      "$evidence_root" "$scenario_id" "$token" "$previous_token")" || return $?
+  else
+    canonical_status="$(python3 "$root/scenarios/scripts/publish-evidence.py" canonical \
+      "$evidence_root" "$scenario_id" "$token")" || return $?
+  fi
   if python3 "$root/scenarios/scripts/publish-evidence.py" gate \
     "$evidence_root" "$scenario_id" "$token" canonical \
     "$root/tests/contracts/evidence-contract.sh" \
@@ -146,8 +153,13 @@ publish_attempt() {
     gate_rc=$?
   fi
   if test "$gate_rc" -ne 0; then
-    test "$canonical_status" != published || python3 "$root/scenarios/scripts/publish-evidence.py" remove \
-      "$evidence_root" "$scenario_id" "$token" >/dev/null 2>&1 || true
+    if test "$canonical_status" = published; then
+      python3 "$root/scenarios/scripts/publish-evidence.py" remove \
+        "$evidence_root" "$scenario_id" "$token" >/dev/null 2>&1 || true
+    elif test "$canonical_status" = replaced; then
+      python3 "$root/scenarios/scripts/publish-evidence.py" replace \
+        "$evidence_root" "$scenario_id" "$previous_token" "$token" >/dev/null 2>&1 || true
+    fi
     return "$gate_rc"
   fi
 }
@@ -289,6 +301,36 @@ if test -e "$version" || test -L "$version"; then
   done
   printf '%s\n' "$token" >"$private/owner-token"
   fail_and_finalize 74 runner_version_exists
+fi
+
+if test "${M6_RUNNER_EXECUTION_MODE:-fixture}" = real; then
+  test -z "${M6_RUNNER_FIXTURE:-}" || fail_and_finalize 64 runner_real_mode_rejects_fixture
+  jq -n --arg scenario "$scenario_id" --arg token "$token" \
+    '{scenario_id:$scenario,owner_token:$token,registered:true}' >"$private/cleanup-intent.json"
+  if ! bash "$root/scenarios/scripts/prepare-m6-run.sh" "$private"; then fail_and_finalize 69 runner_real_setup_failure; fi
+  recovery_required=true
+  if ! bash "$root/scenarios/scripts/dispatch-fault.sh" "$scenario_id" "$private" "$token" >"$private/fault-dispatch-output.json"; then
+    fail_and_finalize 73 runner_dispatch_failure
+  fi
+  if ! bash "$root/scenarios/scripts/execute-case.sh" "$scenario_id" intermediate "$private" "$token"; then
+    fail_and_finalize 73 runner_intermediate_failure
+  fi
+  recovery_output="$private/recovery-output.json"
+  if ! bash "$root/scenarios/scripts/dispatch-recovery.sh" "$scenario_id" "$private" "$token" >"$recovery_output"; then
+    fail_and_finalize 73 runner_recovery_failure
+  fi
+  recovery_required=false
+  if ! bash "$root/scenarios/scripts/collect-m6-observations.sh" "$scenario_id" "$run_id" "$private" "$observations"; then
+    fail_and_finalize 76 runner_terminal_observation_failure
+  fi
+  if ! bash "$root/scenarios/scripts/build-m6-real-bundle.sh" "$scenario_id" "$run_id" "$started_at" "$private" "$observations" "$recovery_output" "$bundle"; then
+    fail_and_finalize 76 runner_real_bundle_failure
+  fi
+  bash "$root/tests/contracts/evidence-contract.sh" "$bundle" >/dev/null || fail_and_finalize 76 runner_evidence_contract_failure
+  bash "$root/tests/contracts/no-evidence-secrets.sh" "$bundle"/*.json >/dev/null || fail_and_finalize 77 runner_secret_gate_failure
+  publish_attempt PASS || fail_and_finalize 76 runner_publication_failure
+  cleanup_done=true;finalize_state=done;finalize_rc=0
+  exit 0
 fi
 
 fixture="${M6_RUNNER_FIXTURE:-}"

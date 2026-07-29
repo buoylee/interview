@@ -52,7 +52,7 @@ public class JdbcPipelineConditionStore implements PipelineConditionStore {
         jdbc.sql("""
                 UPDATE pipeline_condition
                 SET active = FALSE, cleared_at = CURRENT_TIMESTAMP(6)
-                WHERE condition_key = 'LOG_GAP' AND active = TRUE
+                WHERE condition_key IN ('LOG_GAP', 'REBUILD_REQUIRED') AND active = TRUE
                 """).update();
         return true;
     }

@@ -7,11 +7,14 @@ import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
+import com.interview.mysqlescdc.consumer.lab.ProjectionFaultRegistry;
+
 class ElasticsearchSinkConfigurationTest {
     @Test
     void wires_gateway_and_consumes_base_url_and_timeout_overrides() {
         new ApplicationContextRunner()
                 .withUserConfiguration(ElasticsearchSinkConfiguration.class)
+                .withBean(ProjectionFaultRegistry.class)
                 .withPropertyValues(
                         "pipeline.elasticsearch-base-url=http://example.test:19200/",
                         "pipeline.elasticsearch-connect-timeout=PT3S",

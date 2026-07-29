@@ -38,6 +38,19 @@ class ProjectionFaultTest {
         assertThat(document.sourceRevision()).isEqualTo(7L);
     }
 
+    @Test
+    void invalid_price_type_fault_is_scoped_to_one_product() {
+        ProjectionFaultRegistry registry = new ProjectionFaultRegistry();
+
+        registry.arm(ProjectionFaultMode.PRICE_CENTS_AS_STRING, 1002L);
+
+        assertThat(registry.matches(ProjectionFaultMode.PRICE_CENTS_AS_STRING, 1001L)).isFalse();
+        assertThat(registry.matches(ProjectionFaultMode.PRICE_CENTS_AS_STRING, 1002L)).isTrue();
+        assertThat(registry.targetProductId()).hasValue(1002L);
+        registry.clear();
+        assertThat(registry.targetProductId()).isEmpty();
+    }
+
     private SourceProductSnapshot activeSourceWithCategory(long categoryId, String categoryName) {
         return SourceProductSnapshot.active(
                 1001L, "SKU-1001", "Monitor", "4K display",

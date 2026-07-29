@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -20,9 +21,13 @@ public final class ProjectionFaultController {
     }
 
     @PutMapping("/{mode}")
-    public Map<String, String> arm(@PathVariable ProjectionFaultMode mode) {
-        return response(registry.arm(mode));
+    public Map<String, String> arm(@PathVariable ProjectionFaultMode mode,
+            @RequestParam(required = false) Long productId) {
+        ProjectionFaultMode armed = productId == null ? registry.arm(mode) : registry.arm(mode, productId);
+        return response(armed);
     }
+
+    Map<String, String> arm(ProjectionFaultMode mode) { return arm(mode, null); }
 
     @DeleteMapping
     public Map<String, String> clear() {

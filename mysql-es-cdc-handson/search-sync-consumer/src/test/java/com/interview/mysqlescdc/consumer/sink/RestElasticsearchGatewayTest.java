@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import com.interview.mysqlescdc.consumer.projection.SearchDocument;
+import com.interview.mysqlescdc.consumer.lab.ProjectionFaultMode;
+import com.interview.mysqlescdc.consumer.lab.ProjectionFaultRegistry;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -189,6 +191,35 @@ class RestElasticsearchGatewayTest {
 
         assertThat(captured.get().uri().toString())
                 .isEqualTo("http://localhost:9200/_bulk");
+    }
+
+    @Test
+    void lab_fault_emits_invalid_price_type_for_only_the_target_product() {
+        response.set(new Response(200, "{\"items\":[{\"index\":{\"status\":201}},{\"index\":{\"status\":201}}]}"));
+        ProjectionFaultRegistry faults = new ProjectionFaultRegistry();
+        faults.arm(ProjectionFaultMode.PRICE_CENTS_AS_STRING, 2L);
+        RestElasticsearchGateway gateway = new RestElasticsearchGateway(
+                HttpClient.newHttpClient(), JsonMapper.builder().build(), baseUrl,
+                Duration.ofSeconds(1), faults);
+
+        gateway.write("products_write", List.of(document(1, 1), document(2, 1)));
+
+        String[] lines = requestBody.get().split("\n", -1);
+        assertThat(JsonMapper.builder().build().readTree(lines[1]).get("price_cents").isIntegralNumber()).isTrue();
+        assertThat(JsonMapper.builder().build().readTree(lines[3]).get("price_cents").textValue()).isEqualTo("12999-invalid");
+    }
+
+    @Test
+    void tombstone_bulk_source_omits_all_business_fields() throws Exception {
+        response.set(new Response(200, "{\"items\":[{\"index\":{\"status\":201}}]}"));
+
+        gateway(baseUrl).write("products_write", List.of(SearchDocument.tombstone(
+                14L, 2L, Instant.parse("2026-07-22T01:02:03Z"))));
+
+        String[] lines = requestBody.get().split("\n", -1);
+        assertThat(JsonMapper.builder().build().readTree(lines[1]).propertyNames())
+                .containsExactlyInAnyOrder(
+                        "product_id", "searchable", "source_revision", "source_updated_at");
     }
 
     private void assertProtocol(String payload) {

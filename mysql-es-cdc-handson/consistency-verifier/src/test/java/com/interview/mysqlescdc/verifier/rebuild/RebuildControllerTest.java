@@ -23,6 +23,17 @@ class RebuildControllerTest {
         assertThat(store.request).isEqualTo(new RebuildRequest(run,"MYSQL_BINLOG_GAP","product-search-revisions",200));
     }
 
+    @Test void loopback_start_preserves_a_small_page_size_for_fault_evidence() {
+        FakeStore store=new FakeStore();
+        var coordinator=new RebuildCoordinator(store,new NoopWorkflow(),new RebuildFailpointRegistry(true));
+        var controller=new RebuildController(coordinator,new RebuildFailpointRegistry(true),null,null,false);
+        UUID run=UUID.randomUUID();
+
+        controller.start(new RebuildController.Start(run,"NORMAL","product-search-revisions",10),loopback("127.0.0.1"));
+
+        assertThat(store.request.pageSize()).isEqualTo(10);
+    }
+
     @Test void non_loopback_cannot_operate_internal_rebuild_api() {
         var controller=new RebuildController(null,new RebuildFailpointRegistry(true),null,null,false);
         assertThatThrownBy(()->controller.status(UUID.randomUUID(),loopback("192.0.2.10")))
@@ -69,7 +80,6 @@ class RebuildControllerTest {
             new RebuildController.Start(run,"NORMAL","other-topic",200),
             new RebuildController.Start(run,"NORMAL","product-search-revisions",0),
             new RebuildController.Start(run,"NORMAL","product-search-revisions",-1),
-            new RebuildController.Start(run,"NORMAL","product-search-revisions",201),
             new RebuildController.Start(run,"NORMAL","product-search-revisions",1001));}
 
     private static MockHttpServletRequest loopback(String address){var request=new MockHttpServletRequest();request.setRemoteAddr(address);return request;}

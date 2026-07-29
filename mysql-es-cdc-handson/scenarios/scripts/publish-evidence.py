@@ -112,6 +112,26 @@ def rename_exclusive(source_fd: int, source: str, target_fd: int, target: str) -
         raise OSError(error, os.strerror(error))
 
 
+def rename_exchange(source_fd: int, source: str, target_fd: int, target: str) -> None:
+    libc = ctypes.CDLL(None, use_errno=True)
+    system = platform.system()
+    if system == "Darwin" and hasattr(libc, "renameatx_np"):
+        operation = libc.renameatx_np
+        operation.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+        operation.restype = ctypes.c_int
+        rc = operation(source_fd, os.fsencode(source), target_fd, os.fsencode(target), 0x00000002)
+    elif system == "Linux" and hasattr(libc, "renameat2"):
+        operation = libc.renameat2
+        operation.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+        operation.restype = ctypes.c_int
+        rc = operation(source_fd, os.fsencode(source), target_fd, os.fsencode(target), 0x00000002)
+    else:
+        fail("atomic symlink exchange is unavailable")
+    if rc != 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+
+
 def entry_exists(parent_fd: int, name: str) -> bool:
     try:
         os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
@@ -471,6 +491,71 @@ def publish_canonical(root_path: str, scenario: str, token: str) -> str:
         root.close()
 
 
+def replace_canonical(root_path: str, scenario: str, token: str, previous_token: str) -> str:
+    if (
+        not UUID4.fullmatch(token)
+        or not UUID4.fullmatch(previous_token)
+        or token == previous_token
+        or not scenario
+        or "/" in scenario
+        or scenario in {".", ".."}
+    ):
+        fail("unsafe canonical replacement identity")
+    root = PinnedDirectory(root_path)
+    expected = f".runs/{scenario}/{token}"
+    previous = f".runs/{scenario}/{previous_token}"
+    temporary = f".link.{scenario}.{token}"
+    created = False
+    exchanged = False
+    new_fd = old_fd = -1
+    try:
+        root.verify()
+        current, actual_previous, old_fd = canonical_target(root, scenario)
+        if current != previous or actual_previous != previous_token:
+            fail("canonical replacement predecessor changed")
+        new_fd = open_version(root, scenario, token, False)
+        if entry_exists(root.fd, temporary):
+            fail("canonical replacement staging name already exists")
+        os.symlink(expected, temporary, dir_fd=root.fd)
+        created = True
+        root.verify()
+        controlled_hold("canonical-replace-staged")
+        root.verify()
+        rename_exchange(root.fd, temporary, root.fd, scenario)
+        exchanged = True
+        if os.readlink(scenario, dir_fd=root.fd) != expected:
+            fail("canonical replacement target changed")
+        if os.readlink(temporary, dir_fd=root.fd) != previous:
+            fail("canonical replacement predecessor raced")
+        root.verify()
+        os.unlink(temporary, dir_fd=root.fd)
+        created = False
+        exchanged = False
+        root.verify()
+        return "replaced"
+    except (OSError, UnsafePublication) as exc:
+        if exchanged:
+            try:
+                rename_exchange(root.fd, temporary, root.fd, scenario)
+                exchanged = False
+            except OSError:
+                pass
+        if created:
+            try:
+                os.unlink(temporary, dir_fd=root.fd)
+            except OSError:
+                pass
+        if isinstance(exc, UnsafePublication):
+            raise
+        fail(f"atomic canonical replacement failed: {exc.strerror}")
+    finally:
+        if new_fd >= 0:
+            os.close(new_fd)
+        if old_fd >= 0:
+            os.close(old_fd)
+        root.close()
+
+
 def verify_canonical(root_path: str, scenario: str) -> str:
     root = PinnedDirectory(root_path)
     try:
@@ -508,6 +593,11 @@ def parser() -> argparse.ArgumentParser:
     canonical.add_argument("root")
     canonical.add_argument("scenario")
     canonical.add_argument("token")
+    replace = commands.add_parser("replace")
+    replace.add_argument("root")
+    replace.add_argument("scenario")
+    replace.add_argument("token")
+    replace.add_argument("previous_token")
     verify = commands.add_parser("verify")
     verify.add_argument("root")
     verify.add_argument("scenario")
@@ -532,6 +622,8 @@ def main() -> int:
             publish_version(args.root, args.bundle, args.runs, args.token)
         elif args.command == "canonical":
             print(publish_canonical(args.root, args.scenario, args.token))
+        elif args.command == "replace":
+            print(replace_canonical(args.root, args.scenario, args.token, args.previous_token))
         elif args.command == "verify":
             print(verify_canonical(args.root, args.scenario))
         elif args.command == "gate":

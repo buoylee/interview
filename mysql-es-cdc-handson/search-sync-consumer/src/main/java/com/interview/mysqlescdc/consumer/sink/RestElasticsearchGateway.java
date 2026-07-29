@@ -11,6 +11,8 @@ import java.util.List;
 import java.util.Objects;
 
 import com.interview.mysqlescdc.consumer.projection.SearchDocument;
+import com.interview.mysqlescdc.consumer.lab.ProjectionFaultMode;
+import com.interview.mysqlescdc.consumer.lab.ProjectionFaultRegistry;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -21,6 +23,7 @@ public class RestElasticsearchGateway implements ElasticsearchGateway {
     private final JsonMapper json;
     private final URI bulkUri;
     private final Duration requestTimeout;
+    private final ProjectionFaultRegistry faults;
 
     public RestElasticsearchGateway(HttpClient client, JsonMapper json, String baseUrl) {
         this(client, json, baseUrl, Duration.ofSeconds(5));
@@ -28,18 +31,31 @@ public class RestElasticsearchGateway implements ElasticsearchGateway {
 
     public RestElasticsearchGateway(
             HttpClient client, JsonMapper json, String baseUrl, Duration requestTimeout) {
+        this(client, json, baseUrl, requestTimeout, new ProjectionFaultRegistry());
+    }
+
+    public RestElasticsearchGateway(
+            HttpClient client, JsonMapper json, String baseUrl, Duration requestTimeout,
+            ProjectionFaultRegistry faults) {
         this(request -> {
             HttpResponse<String> response = Objects.requireNonNull(client, "client")
                     .send(request, HttpResponse.BodyHandlers.ofString());
             return new BulkHttpResponse(response.statusCode(), response.body());
-        }, json, baseUrl, requestTimeout);
+        }, json, baseUrl, requestTimeout, faults);
     }
 
     RestElasticsearchGateway(
             BulkHttpSender sender, JsonMapper json, String baseUrl, Duration requestTimeout) {
+        this(sender, json, baseUrl, requestTimeout, new ProjectionFaultRegistry());
+    }
+
+    RestElasticsearchGateway(
+            BulkHttpSender sender, JsonMapper json, String baseUrl, Duration requestTimeout,
+            ProjectionFaultRegistry faults) {
         this.sender = Objects.requireNonNull(sender, "sender");
         this.json = Objects.requireNonNull(json, "json");
         this.requestTimeout = requirePositive(requestTimeout);
+        this.faults = Objects.requireNonNull(faults, "faults");
         String normalizedBaseUrl = Objects.requireNonNull(baseUrl, "baseUrl").replaceAll("/+$", "");
         this.bulkUri = URI.create(normalizedBaseUrl + "/_bulk");
     }
@@ -96,7 +112,18 @@ public class RestElasticsearchGateway implements ElasticsearchGateway {
             index.put("version_type", "external");
             try {
                 body.append(json.writeValueAsString(action)).append('\n');
-                body.append(json.writeValueAsString(document)).append('\n');
+                ObjectNode source = json.valueToTree(document);
+                if (!document.searchable()) {
+                    for (String field : List.of("sku", "name", "description", "category_id",
+                            "category_name", "price_cents", "available_quantity")) {
+                        source.remove(field);
+                    }
+                }
+                if (document.searchable()
+                        && faults.matches(ProjectionFaultMode.PRICE_CENTS_AS_STRING, document.productId())) {
+                    source.put("price_cents", document.priceCents() + "-invalid");
+                }
+                body.append(json.writeValueAsString(source)).append('\n');
             } catch (JacksonException exception) {
                 throw new IllegalArgumentException("cannot serialize Bulk document", exception);
             }
