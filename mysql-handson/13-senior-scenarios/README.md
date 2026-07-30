@@ -32,7 +32,7 @@
 
 | # | 问题族 | 唯一 scenario owner | `13` 的处理 |
 |---|---|---|---|
-| 1 | 从 access pattern 设计表、主键、型别、约束与索引 | `mysql-handson/13-senior-scenarios/01-schema-from-access-patterns.md` | 新增缺口，`READY_UNRUN` |
+| 1 | 从 access pattern 设计表、主键、型别、约束与索引 | [从 access patterns 设计 schema](01-schema-from-access-patterns.md) | 新增缺口，`READY_UNRUN` |
 | 2 | 高效且安全地汇入 1,000 万行 | `mysql-handson/13-senior-scenarios/02-bulk-load-10m.md` | 新增缺口，`READY_UNRUN` |
 | 3 | 线上 schema 变更与资料 backfill | `python-data/07-migrations.md` | 路由；MySQL DDL 机制连到 ch11 |
 | 4 | 历史资料归档、大量删除与空间回收 | `mysql-handson/13-senior-scenarios/03-archive-delete-reclaim.md` | 新增缺口，`READY_UNRUN` |
@@ -52,7 +52,7 @@
 | 18 | 分片键、热点、扩容与 reshard | `mysql-handson/10-sharding-and-scaling/README.md` | 路由 |
 | 19 | 线上分片迁移、双写与 CDC 校验 | `mysql-handson/10-sharding-and-scaling/README.md` Case C | 路由；CDC 故障闭环连到 `mysql-es-cdc-handson` |
 
-四个新增场景文件尚未建立：`mysql-handson/13-senior-scenarios/01-schema-from-access-patterns.md`、`mysql-handson/13-senior-scenarios/02-bulk-load-10m.md`、`mysql-handson/13-senior-scenarios/03-archive-delete-reclaim.md`、`mysql-handson/13-senior-scenarios/04-report-export-isolation.md`，均为 `READY_UNRUN`；在文件建立前不使用 Markdown link。
+[从 access patterns 设计 schema](01-schema-from-access-patterns.md) 已建立，状态为 `READY_UNRUN`；其余三个新增场景文件尚未建立：`mysql-handson/13-senior-scenarios/02-bulk-load-10m.md`、`mysql-handson/13-senior-scenarios/03-archive-delete-reclaim.md`、`mysql-handson/13-senior-scenarios/04-report-export-isolation.md`，均为 `READY_UNRUN`；在文件建立前不使用 Markdown link。
 
 ## 四个新增场景
 
