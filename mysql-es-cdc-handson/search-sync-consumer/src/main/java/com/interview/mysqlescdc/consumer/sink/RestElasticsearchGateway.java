@@ -57,15 +57,18 @@ public class RestElasticsearchGateway implements ElasticsearchGateway {
         this.requestTimeout = requirePositive(requestTimeout);
         this.faults = Objects.requireNonNull(faults, "faults");
         String normalizedBaseUrl = Objects.requireNonNull(baseUrl, "baseUrl").replaceAll("/+$", "");
-        this.bulkUri = URI.create(normalizedBaseUrl + "/_bulk?require_alias=true");
+        this.bulkUri = URI.create(normalizedBaseUrl + "/_bulk");
     }
 
     @Override
     public BulkWriteResult write(String targetAlias, List<SearchDocument> documents) {
         ElasticsearchTargets.requireSafe(targetAlias);
+        URI requestUri = "products_write".equals(targetAlias)
+                ? URI.create(bulkUri + "?require_alias=true")
+                : bulkUri;
         List<SearchDocument> orderedDocuments = List.copyOf(documents);
         String ndjson = buildNdjson(targetAlias, orderedDocuments);
-        HttpRequest request = HttpRequest.newBuilder(bulkUri)
+        HttpRequest request = HttpRequest.newBuilder(requestUri)
                 .header("Content-Type", "application/x-ndjson")
                 .timeout(requestTimeout)
                 .POST(HttpRequest.BodyPublishers.ofString(ndjson))

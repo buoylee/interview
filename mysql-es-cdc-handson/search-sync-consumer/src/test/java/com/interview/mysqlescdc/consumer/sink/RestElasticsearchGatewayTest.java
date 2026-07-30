@@ -99,6 +99,15 @@ class RestElasticsearchGatewayTest {
     }
 
     @Test
+    void allowlisted_rebuild_generation_does_not_require_an_alias() {
+        response.set(new Response(200, "{\"items\":[{\"index\":{\"status\":201}}]}"));
+
+        gateway(baseUrl).write("products_v3_20260728123456_deadbeef", List.of(document(1, 1)));
+
+        assertThat(requestQuery.get()).isNull();
+    }
+
+    @Test
     void classifies_every_retryable_status_boundary() {
         response.set(new Response(200, """
                 {"items":[
