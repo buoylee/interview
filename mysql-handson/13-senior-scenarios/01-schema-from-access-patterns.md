@@ -3,7 +3,7 @@
 | 结论／证据 | 等级 | 当前含义 |
 |---|---|---|
 | 由 access pattern、B+ 树与索引维护成本导出的 baseline 设计 | `REASONED` | 已说明推导，未声称本机测量。 |
-| baseline 与 over-indexed 的同源资料比较 | `READY_UNRUN` | Task 4 才执行并填入 `EXPLAIN ANALYZE`、大小与写入证据；本文件的假设不改写。 |
+| baseline 与 over-indexed 的同源资料比较 | `REPRODUCED (S=100000)` | run ID `20260730T214437Z` 在 owned isolated MySQL 8.0.36 lab 完成六次交错写入、plan、大小与正确性核验；只证明本节的 S 级比较。 |
 
 ## 陌生题目
 
@@ -44,7 +44,7 @@
 - retention 不删除 `legal_hold` 记录；
 - 没有命名 access pattern 的索引没有正当性。
 
-完成不只是 DDL 能创建：两表必须保留相同业务不变式、同一输入资料返回相同行；代表列表查询满足定义的顺序与 limit。S 级比较仍是 `READY_UNRUN`，Task 4 将把实际 SQL、版本、资料量、`EXPLAIN ANALYZE`、`INDEX_LENGTH`、写入耗时与 redo 观察填为证据。
+完成不只是 DDL 能创建：两表必须保留相同业务不变式、同一输入资料返回相同行；代表列表查询满足定义的顺序与 limit。run ID `20260730T214437Z` 已完成 S=100000 的 `EXPLAIN ANALYZE`、`INDEX_LENGTH`、写入耗时、redo 与正确性核验；生产负载含义仍是 `REASONED`。
 
 ## 跨章执行链
 
@@ -148,7 +148,7 @@ ALTER TABLE tenant_record_overindexed
     (tenant_id, status, created_at, id, amount, currency);
 ```
 
-实验状态：`READY_UNRUN`。在任何运行前，明确假设如下，Task 4 只能填 evidence／结论，不能伪造精确比例：
+运行前由 commit `8abd5c6` 冻结的假设如下；以下假设原文不因实际结果而改写：
 
 - 两表保持相同业务不变式，且返回相同行；
 - 代表列表查询不应需要冗余单列索引；
@@ -156,7 +156,132 @@ ALTER TABLE tenant_record_overindexed
 - 插入相同 source rows 不应写更少 redo 或更快完成，因为每棵额外 B+ tree 都必须维护；
 - 精确比率在 Task 4 前未知，绝不编造。
 
-最小 S 级证据包应保存：MySQL 版本与参数、生成资料与 row count、两张 `SHOW CREATE TABLE`、两条 `EXPLAIN ANALYZE`、分页结果／约束验证、`INDEX_LENGTH`，以及同 source rows 下的写入计时与 redo 前后值。缩小资料量的成功只能标为 `SCALED_REPRODUCED`，不能外推为生产峰值已经证明。
+### S=100000 实际环境
+
+本节证据等级为 `REPRODUCED (S=100000)`，只覆盖这个确定性 source、两张指定表、六次交错 insert 与当时的单机 lab。它不是生产峰值、并发或长期 cache 行为的证明；这些生产 schema 含义仍标为 `REASONED`。
+
+| 环境项 | 实际值 |
+|---|---|
+| run ID（UTC） | `20260730T214437Z` |
+| owned container | `6d45c34b2c5c`，`Up 33 seconds (healthy)`，label `com.openai.codex.scope=mysql-senior-scenarios` |
+| isolation | image `mysql:8.0.36`；volume `mysql-senior-scenarios-data` 同 ownership label；`127.0.0.1:33306 -> 3306`；restart `no`；memory `4 GiB`；CPU `4` |
+| MySQL | `8.0.36`，`MySQL Community Server - GPL` |
+| durability／binlog | `innodb_flush_log_at_trx_commit=1`、`sync_binlog=1`、`binlog_format=ROW` |
+| host | Darwin 25.5.0, arm64，memory `17179869184` bytes |
+| run 前 container snapshot | CPU `1.14%`，memory `361MiB / 4GiB`，PIDs `39` |
+| `/private/tmp` 所在磁盘 | available `24563436` KiB（约 23.43 GiB）；高于保守估算 S peak 1 GiB + 5 GiB reserve |
+
+source 由更正后的普通 namespaced setup helper `seed_digit` 产生；同一十个 digit 经六组 cross join 后取前 100000 笔，完成后先 `DROP TABLE seed_digit` 才开始计时。计时前核验为：
+
+```text
+COUNT(*)  MIN(id)  MAX(id)  COUNT(DISTINCT id)  seed_digit_tables_remaining
+100000    1        100000   100000              0
+```
+
+`SHOW CREATE TABLE` 也在 reuse 前核验：source 与 baseline columns／CHECK 相同但只保留 `PRIMARY KEY (id)`；baseline 有 `uk_tenant_request` 与 `idx_tenant_status_created`；over-indexed 在 baseline keys 外只多出本节列出的五个冗余 keys。
+
+### 六次交错 insert 与 redo
+
+执行顺序固定为 baseline、over-indexed、over-indexed、baseline、baseline、over-indexed。每次先 truncate literal allowlisted target；不执行 `FLUSH STATUS`，而是在 statement 前后读取 `performance_schema.global_status.Innodb_os_log_written` 并取 delta。这个 counter 是 server-global，因此这里只把 delta 视为受控 lab 的观察，不声称每个 byte 都能归因给该 insert，更不外推生产。
+
+baseline 的完整执行 block：
+
+```sql
+TRUNCATE TABLE tenant_record_baseline;
+SET @redo_before = (
+  SELECT CAST(VARIABLE_VALUE AS UNSIGNED)
+  FROM performance_schema.global_status
+  WHERE VARIABLE_NAME = 'Innodb_os_log_written'
+);
+SET @started = NOW(6);
+INSERT INTO tenant_record_baseline SELECT * FROM tenant_record_source;
+SET @elapsed_us = TIMESTAMPDIFF(MICROSECOND, @started, NOW(6));
+SET @redo_after = (
+  SELECT CAST(VARIABLE_VALUE AS UNSIGNED)
+  FROM performance_schema.global_status
+  WHERE VARIABLE_NAME = 'Innodb_os_log_written'
+);
+SELECT @elapsed_us / 1000000 AS seconds,
+       @redo_after - @redo_before AS redo_bytes,
+       (SELECT COUNT(*) FROM tenant_record_baseline) AS rows_loaded;
+```
+
+over-indexed 的完整执行 block：
+
+```sql
+TRUNCATE TABLE tenant_record_overindexed;
+SET @redo_before = (
+  SELECT CAST(VARIABLE_VALUE AS UNSIGNED)
+  FROM performance_schema.global_status
+  WHERE VARIABLE_NAME = 'Innodb_os_log_written'
+);
+SET @started = NOW(6);
+INSERT INTO tenant_record_overindexed SELECT * FROM tenant_record_source;
+SET @elapsed_us = TIMESTAMPDIFF(MICROSECOND, @started, NOW(6));
+SET @redo_after = (
+  SELECT CAST(VARIABLE_VALUE AS UNSIGNED)
+  FROM performance_schema.global_status
+  WHERE VARIABLE_NAME = 'Innodb_os_log_written'
+);
+SELECT @elapsed_us / 1000000 AS seconds,
+       @redo_after - @redo_before AS redo_bytes,
+       (SELECT COUNT(*) FROM tenant_record_overindexed) AS rows_loaded;
+```
+
+| trial | target | seconds | redo bytes delta | rows loaded |
+|---:|---|---:|---:|---:|
+| 1 | baseline | 0.7212 | 35,288,064 | 100000 |
+| 2 | over-indexed | 1.1813 | 63,314,944 | 100000 |
+| 3 | over-indexed | 1.3636 | 63,163,392 | 100000 |
+| 4 | baseline | 0.9333 | 35,250,176 | 100000 |
+| 5 | baseline | 0.7947 | 35,316,736 | 100000 |
+| 6 | over-indexed | 1.0058 | 63,296,512 | 100000 |
+
+| target | seconds median | seconds min–max | redo bytes median | redo bytes min–max |
+|---|---:|---:|---:|---:|
+| baseline | 0.7947 | 0.7212–0.9333 | 35,288,064 | 35,250,176–35,316,736 |
+| over-indexed | 1.1813 | 1.0058–1.3636 | 63,296,512 | 63,163,392–63,314,944 |
+
+这次 S 观察中，over-indexed median wall time 是 baseline 的 1.486473 倍（+48.65%），median redo delta 是 1.793709 倍（+79.37%）。这是三次样本的 median／min–max，不是置信区间或生产吞吐承诺。
+
+### `EXPLAIN ANALYZE` 与大小
+
+两表 `ANALYZE TABLE` 都返回 `status OK`。同一代表查询的 actual plan 摘要：
+
+| target | selected access | actual observation |
+|---|---|---|
+| baseline | `Index range scan ... using idx_tenant_status_created`，再做 tuple filter；没有 sort node | limit actual `0.097..0.317 ms`，range scan actual rows `63`，输出 `50` |
+| over-indexed | `Covering index lookup ... using idx_wide_listing (tenant_id=42, status=1) (reverse)`；没有 sort node | limit actual `0.0365..0.041 ms`，lookup actual rows `63`，输出 `50` |
+
+这两条 actual plan 证明两表都能按索引方向满足顺序；over-indexed 在这一条 warm、单次、单并发查询中选择宽 covering index。它不证明该 index 在生产 read/write mix 下值得保留。
+
+| table | `TABLE_ROWS` estimate | `DATA_LENGTH` | `INDEX_LENGTH` | `DATA_FREE` |
+|---|---:|---:|---:|---:|
+| `tenant_record_baseline` | 99,264 | 14,172,160 | 11,567,104 | 4,194,304 |
+| `tenant_record_overindexed` | 99,304 | 14,172,160 | 31,047,680 | 5,242,880 |
+
+over-indexed 的 `INDEX_LENGTH` 多 19,480,576 bytes（约 18.58 MiB），为 baseline 的 2.684136 倍（+168.41%）。`TABLE_ROWS` 是 information schema estimate；正确 row count 使用下面的 `COUNT(*)`。
+
+### 正确性、分页与约束
+
+CRC 聚合只标为 lab fingerprint，不是 cryptographic proof：
+
+| target | count | min／max id | distinct id | distinct `(tenant_id, external_request_id)` | legal hold | lab fingerprint |
+|---|---:|---:|---:|---:|---:|---:|
+| baseline | 100000 | 1／100000 | 100000 | 100000 | 10 | 2502842110 |
+| over-indexed | 100000 | 1／100000 | 100000 | 100000 | 10 | 2502842110 |
+
+两表第一 keyset page 都是 50 rows、id 范围 `86041..37041`、lab fingerprint `3213856703`，first／last cursor 分别为 `(2026-01-01 23:54:01.000000,86041)` 与 `(2026-01-01 10:17:21.000000,37041)`。再以 last cursor 取第二页，两表都得到 `50 + 37` rows、page intersection `0`、distinct union `87`，第二页 id 范围 `36041..41`；因此本资料集没有重复或漏行。对 source 逐 column 比较时，两张 target 的 mismatch count 也都是 `0`。
+
+在 transaction 内以 `INSERT IGNORE` 测试非法值，再 rollback：非法 `status=4`、负金额、两字符 currency 与同 tenant 重复 request 的 `ROW_COUNT()` 和残留 row count 都是 `0`；rollback 后 baseline 仍为 `100000` rows。两表来自同一 constrained DDL，完整 invariants 与 fingerprint 也一致。
+
+### 预期与实际的 gap
+
+- **我以为：**over-indexed 会占更多 index 空间；同源 insert 不会更快或产生更少 redo；代表列表不需要冗余单列 index，但精确比例未知。
+- **实际：**三次交错观察都支持写入与 redo 方向，median wall time／redo 分别增至 1.486473／1.793709 倍，`INDEX_LENGTH` 也增至 2.684136 倍；四个冗余单列／非覆盖组合没有被代表查询选中，但 optimizer 选择了额外的 `idx_wide_listing` covering index，单次 actual time 也较短。
+- **我学到：**「额外 index 有成本」不是「额外 index 永远没有读收益」。本 S 资料同时量到宽 covering index 的局部读收益与明显 write／redo／storage 放大；是否值得只能把真实 QPS、投影、cache、写峰值与 DDL 风险放进 workload benchmark。这个生产取舍是 `REASONED`，不是本次 `REPRODUCED` 的外推。
+
+最小 S 级证据包已保存 owned resource identity、MySQL 版本与参数、生成资料与 row count、三表 schema／keys 核验、两条 `EXPLAIN ANALYZE`、分页结果／约束验证、`INDEX_LENGTH`，以及同 source rows 下六次写入计时与 redo delta。`REPRODUCED` 只指 run ID `20260730T214437Z` 的 exact S=100000 comparison。
 
 ## 生产边界、恢复与回滚
 
