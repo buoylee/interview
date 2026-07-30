@@ -9,7 +9,8 @@
 1. **第一次来**：`cd 00-lab && make up`，等镜像下完。`make mysql` 进 cli，看到 `sbtest>` 提示符就 OK。想看面板再 `make up-obs`，浏览器开 http://localhost:3000。
 2. **想答某个面试题**：去 `99-interview-cards/` 找卡，每张卡链回 scenario 作为证据。
 3. **想学某个主题**：从章节 README 开始，每章固定 7 段（核心问题 / 直觉理解 / 原理深入 / 日常开发应用 / 调优实战 / 面试高频考点 / 一句话总结）。
-4. **想加新 scenario**：复制 `templates/scenario-template.md` 到对应章节 `scenarios/`，**先写「预期」、commit 一次**，再跑、再 commit 观察结果。预期/实机分两次 commit 是刻意的纪律。
+4. **想练资深陌生题**：先走 [13-senior-scenarios](13-senior-scenarios/README.md) 组装约束、执行链、取舍、证据与恢复，再压缩成面试答案。
+5. **想加新 scenario**：复制 `templates/scenario-template.md` 到对应章节 `scenarios/`，**先写「预期」、commit 一次**，再跑、再 commit 观察结果。预期/实机分两次 commit 是刻意的纪律。
 
 ## 章节地图
 
@@ -24,7 +25,11 @@
 - `09-replication-and-ha/` — 主从 + 半同步 + MGR（MySQL Group Replication，MySQL 组复制）+ 读写分离 ← **含 3 个传统复制 scenario（需从库；实机待跑）+ 8 个已实测 InnoDB Cluster HA scenario**
 - `10-sharding-and-scaling/` — 分库分表 + 全局 ID + 在线迁移
 - `11-ops-and-troubleshooting/` — Online DDL + pt-osc + 备份 + 参数调优 ← **含 1 个架构师整合 scenario（写风暴跨章拖垮链）**
+- `12-interview-cheatsheet/` — 章节知识的快速压缩，不承载长场景推导
+- `13-senior-scenarios/` — 跨章陌生场景推理：约束、执行链、取舍、证据、恢复与口述
 - `99-interview-cards/` — 反向产出的面试题答案卡（已覆盖 ch01-09 + ch11）
+
+资深面试阅读路径：`01–11 → 13 → 12 → 99`。
 
 ## Lab 速查
 
