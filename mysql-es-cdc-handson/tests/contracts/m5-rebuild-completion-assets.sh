@@ -30,6 +30,10 @@ grep -Fq 'failure-status.json' "$runner"
 grep -Fq 'failure-aliases.json' "$runner"
 grep -Fq 'failure-offsets.json' "$runner"
 grep -Fq 'failure-shadow.json' "$runner"
+jq -e '.rebuild_reason == "KAFKA_OFFSET_GAP"' \
+  scenarios/definitions/m5-kafka-gap-rebuild.json >/dev/null
+grep -Fq 'start_rebuild "$run" "$reason"' "$runner"
+grep -Fq 'curl -fsS -X POST http://127.0.0.1:8083/internal/rebuild/runs' "$runner"
 
 grep -Fq 'CANAL_AUTO_RESET_LATEST_POS_MODE=true' "$reset"
 grep -Fq 'CANAL_AUTO_RESET_LATEST_POS_MODE=false' "$reset"
