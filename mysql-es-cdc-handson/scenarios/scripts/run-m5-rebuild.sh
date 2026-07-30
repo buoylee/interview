@@ -9,7 +9,7 @@ evidence_root="${M5_EVIDENCE_DIR:-evidence/m5/manual}"
 case_dir=;active_request_pid=;retention_changed=false;mutation_pids=()
 mkdir -p "$evidence_root"
 
-mysql(){ MYSQL_PWD="${MYSQL_PWD:?MYSQL_PWD required}" command mysql --protocol=TCP -h127.0.0.1 -P3308 -N -B -uroot product_catalog -e "$1"; }
+mysql(){ MYSQL_PWD="${MYSQL_PWD:?MYSQL_PWD required}" command mysql --protocol=TCP -h127.0.0.1 -P3308 -N -B -u"${MYSQL_USER:?MYSQL_USER required}" product_catalog -e "$1"; }
 poll(){ local label="$1" timeout="$2" command="$3" start=$SECONDS;until eval "$command";do if ((SECONDS-start>=timeout));then die "timeout waiting for $label";fi;sleep 0.02;done; }
 die(){ echo "ERROR: $*" >&2;collect_diagnostics;exit 1; }
 uuid(){ uuidgen | tr '[:upper:]' '[:lower:]'; }

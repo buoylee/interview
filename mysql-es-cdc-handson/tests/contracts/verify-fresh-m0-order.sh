@@ -33,4 +33,12 @@ test "$live_line" -lt "$m4_line"
 test "$m4_line" -lt "$m5_line"
 test "$m5_line" -lt "$projection_live_line"
 
+test "$(grep -Fc 'tests/end-to-end/m5-rebuild.sh' <<<"$block")" -eq 1
+grep -Fq 'mysql_id="$$($(COMPOSE) ps -q mysql)"' <<<"$block"
+grep -Fq 'MYSQL_ROOT_PASSWORD=' <<<"$block"
+grep -Fq 'mysql_user=root' <<<"$block"
+grep -Fq 'MYSQL_USER="$$mysql_user" MYSQL_PWD="$$mysql_pwd" bash tests/end-to-end/m5-rebuild.sh' <<<"$block"
+! grep -Eq 'MYSQL_PWD=(rootpass|productpass)' <<<"$block"
+grep -Eq '^[[:space:]]+@set -e; \\$' <<<"$block"
+
 echo 'Fresh M0 verify ordering contract passed'

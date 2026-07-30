@@ -43,7 +43,12 @@ verify: verify-fast
 	bash tests/end-to-end/m0-smoke.sh
 	$(MAKE) verify-live-contracts
 	bash tests/end-to-end/m4-reconciliation.sh
-	bash tests/end-to-end/m5-rebuild.sh
+	@set -e; \
+	mysql_id="$$($(COMPOSE) ps -q mysql)"; \
+	mysql_env="$$(docker inspect "$$mysql_id" | jq -cer '.[0].Config.Env')"; \
+	mysql_user=root; \
+	mysql_pwd="$$(jq -er '.[] | select(startswith("MYSQL_ROOT_PASSWORD=")) | split("=")[1]' <<<"$$mysql_env")"; \
+	MYSQL_USER="$$mysql_user" MYSQL_PWD="$$mysql_pwd" bash tests/end-to-end/m5-rebuild.sh
 	$(MAKE) verify-projection-live-contracts
 
 verify-live-contracts:
