@@ -10,7 +10,7 @@ m4-reconciliation-control-negative.sh|requires running MySQL and runs in make ve
 m5-rebuild-repeat-apply.sh|requires running MySQL and runs in make verify-live-contracts
 m5-rebuild-schema-drift.sh|requires running MySQL and runs in make verify-live-contracts
 m6-condition-ownership-migration.sh|requires running MySQL and runs in make verify-live-contracts
-m6-collectors-retention.sh|requires running MySQL, Elasticsearch, and Kafka and runs in make verify-live-contracts
+m6-collectors-retention.sh|requires a completed projection stack and runs in make verify-projection-live-contracts
 m6-primitives.sh|requires running Toxiproxy and runs in make verify-live-contracts
-m6-retention-gap.sh|requires a dedicated live Compose stack and runs in make verify-live-contracts
+m6-retention-gap.sh|requires a dedicated live Compose stack and runs in make verify-projection-live-contracts
 normalized-evidence.sh|parameterized validator covered by normalized-evidence-tamper.sh and the evidence acceptance gate

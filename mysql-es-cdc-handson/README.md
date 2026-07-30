@@ -64,7 +64,7 @@ make evidence
 
 `make evidence` 是昂贵的 18 场景真实故障矩阵；它生成/替换证据，通常只在专门的证据验收中运行。`make verify` 是正常的组件测试与代表性端到端门禁，不会替代或重跑完整 18 场景矩阵。
 
-`verify-fast` 只运行显式列入 allowlist 的、可在 clean checkout 自包含执行的 contract；参数化 validator/helper 由对应 tamper 或端到端 gate 调用。runner 在执行前检查全部 `tests/contracts/*.sh` 都已明确列入 allowlist 或带理由排除，并在首个入选 contract nonzero 时立即失败。需要 MySQL/Toxiproxy 的 contract 在 fresh M0 之后由 `verify-live-contracts` 显式运行，同样在首个 nonzero 时停止。
+`verify-fast` 只运行显式列入 allowlist 的、可在 clean checkout 自包含执行的 contract；参数化 validator/helper 由对应 tamper 或端到端 gate 调用。runner 在执行前检查全部 `tests/contracts/*.sh` 都已明确列入 allowlist 或带理由排除，并在首个入选 contract nonzero 时立即失败。只需要 MySQL/Toxiproxy 的 contract 在 fresh M0 之后由 `verify-live-contracts` 显式运行；需要 serving alias 与完整 projection stack 的 collector/retention contract 则在 M5 后由 `verify-projection-live-contracts` 运行，两者都在首个 nonzero 时停止。
 
 最终证据已在 commit `bb75ab0c19b3f64090faec9d281d56ff43087a55` 上完成两次独立 clean-reset 运行：每轮均为 18/18 PASS，合计 36 个互不重复的 runner ID；显式 normalization 后 18/18 相等。原始 Canal `meta.dat` SHA 仍保留并在每轮内约束 reset 与 normal restart 相等；跨轮只允许这三个 SHA 和解码 cursor 的 `timestamp` 变化，其他解码位点字段必须完全相等。详细保留与证明边界见 [evidence/README.md](evidence/README.md)。这是受控 lab 的两次观测结果，不是生产 SLO 或任意环境保证。
 
