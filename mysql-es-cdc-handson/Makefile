@@ -38,6 +38,8 @@ verify-fast:
 	for test_script in tests/contracts/*.sh; do bash "$$test_script"; done
 
 verify: verify-fast
+	$(MAKE) reset
+	$(MAKE) up
 	bash tests/end-to-end/m0-smoke.sh
 	bash tests/end-to-end/m4-reconciliation.sh
 	bash tests/end-to-end/m5-rebuild.sh
