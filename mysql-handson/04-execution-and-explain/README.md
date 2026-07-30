@@ -218,20 +218,60 @@ IndexLookup Cost = RangeScan Cost
 Executor 拿到 Plan 后，按以下步骤逐行执行：
 
 ```
-1. 调用 Handler::index_first / index_next / rnd_next
-   （Handler 是 Server 层与存储引擎的统一接口）
-2. 引擎返回一行数据（从 Buffer Pool 或磁盘页）
-3. Executor 应用「残余 WHERE 条件」
-   （不能在索引层过滤的条件，比如函数条件、跨列条件）
-4. 如果有 GROUP BY / ORDER BY，写入排序缓冲区或临时表
-5. 满足 LIMIT 后停止迭代
-6. 汇总结果，返回给 Client
+1. Plan 已经选好 access path，并安排各部分 WHERE 条件的执行位置
+2. 有 ICP 时，Server 先通过 idx_cond_push 把可下推的 Item 条件树交给 Handler
+3. Executor 通过 Handler 调用 index_read / index_next / rnd_next 请求一行
+4. InnoDB 按 access path 扫描索引或表
+5. 有 ICP 时，InnoDB 在自己的索引扫描循环里先准备索引列并触发下推条件求值
+6. 条件失败：InnoDB 内部继续扫下一条；成功：需要时回表，再把完整行返回 Executor
+7. Executor 应用 residual condition（残余 WHERE 条件）
+8. 继续处理 JOIN / GROUP BY / ORDER BY / LIMIT，并返回结果
 ```
+
+Handler 是 Server 层与存储引擎的统一接口。Server 层和 InnoDB 通常在同一个 `mysqld` 进程里；这里说的“跨层”是模块边界，不是两台机器之间的网络调用。
+
+**一个 `WHERE` 在 Plan 中可以同时包含三种角色：**
+
+```text
+Plan
+├─ access path / access condition
+│  └─ 用来定位索引起止范围，交给 InnoDB 执行
+├─ pushed index condition
+│  └─ ICP：只依赖当前索引列，交给 InnoDB 在回表前判断
+└─ residual condition
+   └─ 完整行返回后，由 Server 层 Executor 继续判断
+```
+
+“下推”指条件的执行位置从 Server 层移到存储引擎层，不是说二级索引在聚簇索引的“下面”。两种索引都在 InnoDB 内部；InnoDB 的 ICP 使用二级索引，是因为它能在读取聚簇索引完整行之前淘汰候选项。完整例子见 [ch03 §3.5](../03-indexing/README.md)。
+
+> **关键认知：** 索引访问条件利用 B+ 树顺序定位“从哪里开始、到哪里结束”；ICP 条件读取扫描到的索引条目值，判断“这一条值不值得回表”。因此 ICP 条件可以“使用了索引”，同时又“没有缩小索引扫描范围”。
+
+**“InnoDB 判断条件”在实现上到底是什么意思：**
+
+```text
+准备阶段：Server 把可下推的 Item 条件树交给 idx_cond_push()
+
+执行阶段：Executor 调一次 index_next(...)
+              │
+              ▼
+          InnoDB 进入索引扫描循环
+              │
+              ├─ 读当前二级索引记录
+              ├─ 把 ICP 所需索引列写入 MySQL record buffer
+              ├─ 在循环内调用 pushed_idx_cond->val_int()
+              │    └─ false：继续下一索引记录，Handler 还没有返回
+              └─ true：需要时查聚簇索引，组装完整行，Handler 才返回
+
+返回之后：Server Executor 判断没有下推的 residual condition
+```
+
+这里没有第二套 SQL 解析器：`Item` 条件树由 Server 生成，`LIKE` / 比较表达式的求值能力也来自 Server 代码；但求值的**触发点和循环控制权**在 InnoDB 内部。换句话说，`index_next()` 有 ICP 时可以在一次调用内部跳过许多二级索引条目；无 ICP 时，它通常先把下一候选项回表成完整行并返回，Server 再决定是否丢弃。
 
 **Handler API 关键方法：**
 
 | 方法 | 作用 |
 |---|---|
+| `idx_cond_push` | 执行前把可下推的索引条件交给引擎；引擎可返回自己不负责的剩余部分 |
 | `index_read` | 用索引定位第一条满足条件的行 |
 | `index_next` | 沿索引顺序读下一行 |
 | `rnd_next` | 全表扫描读下一行 |
@@ -239,10 +279,12 @@ Executor 拿到 Plan 后，按以下步骤逐行执行：
 
 **Server 层 vs 引擎层的边界：**
 
-- **引擎层做**：索引定位、页读取、MVCC 可见性判断（undo log 回溯版本）、行锁
-- **Server 层做**：残余 WHERE 过滤、JOIN 拼接、GROUP BY 聚合、ORDER BY 排序、LIMIT 截断
+- **Server 层做**：理解 SQL、生成 `Item` 条件树和 Plan、选择可下推部分；Handler 返回完整行后，Executor 应用残余 WHERE，并处理 JOIN、GROUP BY、ORDER BY、LIMIT
+- **引擎层做**：索引定位、页读取、回表、MVCC 可见性判断（undo log 回溯版本）、行锁；有 ICP 时，在索引扫描循环里准备字段、触发下推条件并跳过不匹配条目
 
-> Explain 的 `Using where` 就表示「有一部分 WHERE 条件没法在引擎层完成，由 Server 层接手」，不是坏事，但说明索引没有完全覆盖过滤条件。
+> `Using where` 表示 `WHERE` 条件还用来限制候选行，不表示“没有走索引”，也不等于“不是覆盖索引”。它可以和 `Using index condition` 同时出现：部分条件已由 ICP 下推，其他残余条件继续过滤。
+
+实现细节可对照 [Handler `idx_cond_push()` 接口注释](https://dev.mysql.com/doc/dev/mysql-server/latest/sql_2handler_8h_source.html)、[InnoDB Handler 源码](https://github.com/mysql/mysql-server/blob/8.0/storage/innobase/handler/ha_innodb.cc) 与 [`row_search_idx_cond_check()` 所在源码](https://github.com/mysql/mysql-server/blob/8.0/storage/innobase/row/row0sel.cc)。
 
 ---
 
@@ -404,9 +446,12 @@ key_len = (50×4 + 2) + (4) = 202 + 4 = 206 字节（均 NOT NULL）
 #### `filtered` — 经 WHERE 过滤后留下行的百分比
 
 - 范围 0-100（百分比）
-- `rows × filtered / 100` = 优化器预估最终返回给上层的行数
-- `filtered=100` 表示引擎层已完全过滤，Server 层不需要再做额外过滤
-- `filtered=10` 表示 Server 层还要过滤掉 90% 的行 → 可能有优化空间（加索引列覆盖过滤条件）
+- `rows × filtered / 100` = 优化器预估通过该表条件、继续交给下一张表或查询块上层的行数
+- `filtered=100` 表示优化器估计访问方法取到的行全部通过该表条件，也就是预计**没有行被过滤掉**
+- `filtered=10` 表示预计只有 10% 的候选行通过该表条件
+- `filtered` 本身不表示条件是在 Server 层还是 InnoDB 执行；需要结合 `key/key_len`、`Using index condition`、`Using where` 和 JSON 中的 `attached_condition` 判断
+
+官方定义见 [MySQL 8.0 EXPLAIN Output Format](https://dev.mysql.com/doc/refman/8.0/en/explain-output.html)。
 
 ---
 
@@ -420,9 +465,9 @@ key_len = (50×4 + 2) + (4) = 202 + 4 = 206 字节（均 NOT NULL）
 
 | Extra | 含义 | 性能信号 |
 |---|---|---|
-| `Using where` | Server 层用 WHERE 过滤行（部分 WHERE 没在引擎层过滤） | 中性；如果 rows 很大但 filtered 很低则有优化空间 |
-| `Using index` | 覆盖索引，SELECT 列全在索引里，免回表 | 好，越多越好 |
-| `Using index condition` | 索引下推（ICP），引擎层用索引中的列做 WHERE 过滤，减少回表 | 好 |
+| `Using where` | `WHERE` 条件还用来限制候选行；查看 `attached_condition` 与其他 Extra 判断具体分工 | 中性；不等于没走索引 |
+| `Using index` | 覆盖索引，查询所需列都从同一索引取得，免回表 | 通常能省回表；仍要结合 `type/rows` 看扫描量 |
+| `Using index condition` | 索引下推（ICP）：Server 把可仅靠当前索引列判断的条件交给引擎，通过才读完整行 | 减少回表，但不缩小已确定的索引扫描区间 |
 | `Using temporary` | 用了临时表（GROUP BY、DISTINCT、UNION 常见） | 警觉；若是磁盘临时表代价更高 |
 | `Using filesort` | 排序不走索引顺序，需要在内存/磁盘做额外排序 | 警觉；尝试让 ORDER BY 列包含在索引里 |
 | `Using join buffer (Block Nested Loop)` | JOIN 没有用到被驱动表的索引，把驱动表数据放 join_buffer 批量比较 | 警觉；为被驱动表 JOIN 条件列加索引 |
@@ -498,10 +543,10 @@ JSON 格式额外暴露：
 - `cost_info.query_cost`：总估算成本（直接和 §3.4 的公式对应）
 - `cost_info.read_cost`：IO 成本部分
 - `cost_info.eval_cost`：CPU 成本部分
-- `attached_condition`：Server 层实际应用的 WHERE 条件（残余条件）
+- `attached_condition`：附着在这张表上的 `WHERE` 条件；常包含访问后仍需判断的条件，但不能只凭字段名断言全部由 Server 层执行，需结合 `using_index_condition` / Extra 与执行计划一起看
 - 嵌套结构清晰展示 JOIN 树
 
-**何时用 JSON**：想知道成本数字、想看残余条件被附在哪里、分析复杂 JOIN 的计划树时。
+**何时用 JSON**：想知道成本数字、想看条件附着在哪张表、区分 `using_index_condition` 等执行属性，或分析复杂 JOIN 的计划树时。
 
 ---
 
@@ -893,7 +938,7 @@ ALTER TABLE user_profile ADD INDEX idx_city (city);
 |---|---|---|
 | Parser | 词法/语法分析 + 语义验证（表/列/权限） | 「Parser 只做语法？」—— 还有语义（表是否存在、权限） |
 | Optimizer | 逻辑重写 + 成本估算 + 选索引/JOIN 顺序 | 「优化器选的一定是最优的？」—— 是基于统计的估算，可能错 |
-| Executor | 驱动引擎读行 + 残余过滤 + 排序聚合 + 返回 | 「WHERE 条件都在引擎层处理？」—— 部分在 Server 层（Using where） |
+| Executor | 驱动引擎读行 + 残余过滤 + 排序聚合 + 返回 | 「WHERE 条件都在引擎层处理？」—— 访问条件、ICP 条件、残余条件可能分层执行 |
 
 ---
 
@@ -933,7 +978,7 @@ ALTER TABLE user_profile ADD INDEX idx_city (city);
 
 **Q: Using index 和 Using index condition 有什么区别？**
 
-A: `Using index` = 覆盖索引，SELECT 的所有列都在索引里，完全不需要回表。`Using index condition` = 索引下推（ICP），WHERE 中涉及索引列的条件被推到引擎层过滤，但 SELECT 列超出了索引范围，最终还是要回表，只是回表次数减少了。
+A: `Using index` = 覆盖索引，查询需要的列都在索引里，完全不需要回表。`Using index condition` = 索引下推（ICP），Server 层把可仅靠当前索引列判断的部分 WHERE 条件交给存储引擎，引擎在读完整行之前过滤；条件通过后仍要回表，只是回表次数减少。“下推”说的是 `Server 层 → 存储引擎层`，不是“聚簇索引 → 二级索引”。
 
 **Q: EXPLAIN 为什么有时候 key=NULL 但 type=index？**
 

@@ -97,12 +97,20 @@
 
 ### Q: 什么是 ICP（Index Condition Pushdown）？
 
-**一句话**: 把 WHERE 过滤下推到存储引擎层，在扫索引时就过滤，减少回表次数。
+**一句话**: Server 层把可仅靠当前索引列判断的部分 WHERE 条件交给 InnoDB，让 InnoDB 扫描二级索引时先过滤，通过才回表。
 
 **90 秒**:
-- **Without ICP**: 存储引擎把符合最左前缀的所有行返回给 Server 层，Server 层再过滤其他 WHERE 条件
-- **With ICP**: 存储引擎在遍历索引时，把能用索引字段的 WHERE 条件也在引擎层判断；不满足就不回表
-- **Explain 标志**: Extra 显示 `Using index condition`
+- **下推方向**: `Server 层 → Handler API → InnoDB`；不是“聚簇索引 → 二级索引”，二级索引并不在更“下”的软件层
+- **索引有两种用法**: 访问条件利用 B+ 树顺序定位、减少扫描条目；ICP 条件读取已扫描索引条目中的列值、减少回表
+- **复杂度心智模型**: 前导列可先做约 `O(log N)` 的 B+ 树定位；ICP 条件不是再次跳转查找，而是逐条检查扫描范围内的索引值，把最多 `M` 次回表减少为过滤后的 `K` 次
+- **条件从哪里来**: Server 把 `WHERE` 解析成内部条件树并选择可下推部分；InnoDB 不重新解析 SQL 字符串
+- **Without ICP**: InnoDB 读二级索引条目后先回表取完整行，Handler 返回后由 Server Executor 判断条件
+- **With ICP**: InnoDB 在 `index_next()` 的内部把所需索引列放入 record buffer 并触发下推条件；不满足就内部跳到下一个条目，满足才回表并返回 Server
+- **“谁执行”的精确答法**: 条件表达式由 Server 生成；过滤时机和索引扫描循环由 InnoDB 控制；残余条件仍由 Server 判断
+- **为什么是二级索引**: 它的叶子只有索引列 + 主键，提前过滤才能省掉读完整行；聚簇索引叶子已经是完整行
+- **不改变**: ICP 不缩小最左前缀已确定的索引扫描区间，只减少读完整行的次数
+- **不等于覆盖索引**: ICP 是“过滤后再回表”；覆盖索引是“根本不回表”
+- **Explain 证据**: `key_len` 主要看哪些 key part 参与定位；Extra 的 `Using index condition` 表示其他索引列仍用于 ICP，不能因 `key_len` 没包含它们就说“完全没用索引”
 - **适用**: 联合索引中非最左前缀的列，仍可在引擎层过滤（例：索引 (a,b)，WHERE a>10 AND b=5）
 - **默认开启**: `optimizer_switch='index_condition_pushdown=on'`（MySQL 5.6+）
 
@@ -473,9 +481,9 @@ Client
   ↓
 [优化器] 选择索引、JOIN 顺序、等价变换 → 生成执行计划
   ↓
-[执行器] 调用引擎 API，逐行/批量读取，做 Server 层过滤
+[执行器] 调用 Handler 取行，处理残余 WHERE、JOIN、聚合与排序
   ↓
-[存储引擎] InnoDB: Buffer Pool 读写、索引查找、锁、MVCC
+[存储引擎] InnoDB: 索引扫描、回表、Buffer Pool、锁、MVCC；有 ICP 时提前筛选
 ```
 
 - 权限检查: 连接时检查全局权限；SQL 执行时检查表/列权限
@@ -518,7 +526,7 @@ Client
 |------------|------|-------|
 | Using index | 覆盖索引，无回表 | 好 |
 | Using index condition | ICP 下推过滤 | 好 |
-| Using where | Server 层过滤（索引后再过滤）| 中性 |
+| Using where | WHERE 仍用于限制候选行；不等于没走索引，具体分工结合 ICP / JSON 看 | 中性 |
 | Using filesort | 排序无法用索引，需额外排序 | 需优化 |
 | Using temporary | 用临时表（GROUP BY/DISTINCT/子查询）| 需优化 |
 | Using join buffer | JOIN 无索引，用 Block Nested Loop | 需优化 |
@@ -575,13 +583,15 @@ SET optimizer_trace = 'enabled=off';
 | Server 层 | 连接器 | 认证、权限、连接池 |
 | | 分析器 | 词法+语法分析，生成 AST |
 | | 优化器 | 选执行计划（索引、JOIN 顺序）|
-| | 执行器 | 调用引擎 API，结果组装 |
+| | 执行器 | 调用 Handler；判断残余 WHERE，处理 JOIN / 聚合 / 排序 |
 | | binlog | 逻辑日志，复制/备份 |
 | 引擎层（InnoDB）| Buffer Pool | 内存页缓存 |
 | | Change Buffer | 非唯一索引写缓存 |
 | | redo log | 崩溃恢复 WAL |
 | | undo log | 事务回滚、MVCC 版本链 |
 | | 锁管理 | 行锁/表锁/间隙锁 |
+
+边界速记：Server 负责理解 SQL 和生成条件树；InnoDB 负责真正移动 B+ 树游标、读页和回表。有 ICP 时，Server 把可下推条件交给 Handler，InnoDB 在索引扫描循环里触发判断；完整行返回以后，Server 再判断残余条件。
 
 → 详见 [ch01](../01-architecture/README.md)
 
@@ -634,8 +644,8 @@ SET GLOBAL log_queries_not_using_indexes = ON;  -- 记录未用索引的查询
 SHOW VARIABLES LIKE 'slow_query_log_file';      -- 日志文件路径
 ```
 - **分析工具**: `pt-query-digest slow.log` → 按 Query_time 汇总，找 top N 慢 SQL
-- **关键指标**: `Query_time`（总耗时）、`Lock_time`（等锁时间）、`Rows_examined`（扫描行数 vs `Rows_sent` 发送行数）
-- **Rows_examined / Rows_sent 比值高** → 索引选择性差，需优化
+- **关键指标**: `Query_time`（总耗时）、`Lock_time`（等锁时间）、`Rows_examined`（Server 层检查行数）与 `Rows_sent`（发送行数）
+- **Rows_examined / Rows_sent 比值高** → 候选行与结果行差距大，是继续检查执行计划、索引选择性与残余条件的信号，不等于必然要加索引
 
 → 详见 [ch08](../08-sql-tuning/README.md)
 
@@ -651,10 +661,11 @@ SHOW VARIABLES LIKE 'slow_query_log_file';      -- 日志文件路径
   - ORDER BY 列顺序与索引列顺序不匹配
   - ORDER BY 方向与索引方向不一致（混合 ASC/DESC，8.0 前）
   - WHERE 条件索引列与 ORDER BY 索引列不同
-- **filesort 两种方式**:
-  - **单路排序**: 取所有需要列放 sort_buffer，一次排序（`max_length_for_sort_data` 限制）
-  - **双路排序（rowid 排序）**: 只取排序键+rowid，排完再回表取数据，两次 IO
-- **优化**: 建复合索引满足 WHERE + ORDER BY；增大 `sort_buffer_size`
+- **filesort 两种常见载荷**:
+  - **additional_fields**: sort buffer 保存排序键与所需额外列，排序后通常不必按 rowid 回表
+  - **rowid**: 只保存排序键与 rowid，排完再按 rowid 取行
+  - `max_length_for_sort_data` 只影响旧版本；MySQL 8.0.20+ 已 deprecated 且不再生效，以 optimizer trace 的 `filesort_summary.sort_mode` 为准
+- **优化**: 优先让复合索引满足过滤与排序；确认确有内存排序瓶颈后，再评估当前 session 的 `sort_buffer_size`，不要直接全局调大
 
 → 详见 [ch08](../08-sql-tuning/README.md)
 

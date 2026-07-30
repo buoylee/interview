@@ -143,17 +143,42 @@ EXPLAIN FORMAT=JSON SELECT name FROM users WHERE age = 25;
 
 #### 执行器（Executor）
 
-执行器按优化器给的 plan，循环调存储引擎 API 拿数据。伪代码：
+执行器按优化器给的 plan，通过 Handler API 驱动存储引擎读数据。下面是仅用来表达分工的概念伪代码：
 
 ```
 plan = optimizer.plan()
 engine = get_handler("InnoDB")
-while row = engine.next_row(plan):
-    if row matches WHERE:
+
+rows = engine.read(
+    access_path=plan.access_path,
+    pushed_index_condition=plan.pushed_index_condition
+)
+for row in rows:
+    if row matches plan.residual_condition:
         send_to_client(row)
 ```
 
-慢查询日志里的 `rows_examined` 就是执行器调引擎 API 的次数——每次调用可能是一次 B+ 树查找或一次链表推进。`rows_examined` 远大于 `rows_sent` 说明过滤效率低，通常是索引不对。
+##### `WHERE` 不是取到完整行后才统一执行
+
+`WHERE` 是查询的逻辑条件，优化器会根据选中的访问路径，把各部分条件安排到不同位置：
+
+| 角色 | 作用 | 在哪里执行 |
+|---|---|---|
+| 索引访问条件（access condition） | 确定走哪个索引、从 B+ 树哪里开始读到哪里 | InnoDB 按 Server 层生成的访问路径定位 |
+| 下推索引条件（pushed index condition） | 不能继续缩小扫描区间，但可仅靠当前索引列判断 | 开启 ICP 时交给 InnoDB，在读取完整行前判断 |
+| 残余条件（residual condition） | 无法只靠当前索引条目判断的其他条件 | InnoDB 返回完整行后，由 Server 层 Executor 判断 |
+
+这里的“交给 InnoDB 判断”是执行时机的简称，不是 InnoDB 再解析一遍 SQL：Server 先生成内部条件表达式；InnoDB 在 Handler 取行调用尚未返回时，把当前索引条目所需字段写入 record buffer 并触发该条件。条件失败就由 InnoDB 的索引循环继续下一条，不回表、不返回候选行；完整机制见 [ch03 §3.5](../03-indexing/README.md)。
+
+因此，常见的三种情况是：
+
+- 没有可用索引：Plan 选全表扫描，InnoDB 读取完整行，Server 层再应用剩余 `WHERE`。
+- `WHERE id=42` 走主键：`id=42` 成为访问条件，InnoDB 直接定位；不是先扫完所有行再逐行过滤。
+- 一条 `WHERE` 有多个条件：它们可以同时分属访问条件、ICP 条件和残余条件，并非整个 `WHERE` 只能交给某一层。
+
+Server 层和 InnoDB 通常都在同一个 `mysqld` 进程中，这里的“上层 / 下层”是软件调用层级：`Server 层 → Handler API → 存储引擎层`。聚簇索引和二级索引都由 InnoDB 管理，并不是二级索引在软件层级上更“下”。ICP 的完整机制见 [ch03 §3.5](../03-indexing/README.md)。
+
+慢查询日志和 Performance Schema 中的 `rows_examined` 是 **Server 层检查的行数**，不包含存储引擎内部的处理；不能把它直接等同于“InnoDB 检查了多少索引条目”或“调用了多少次引擎 API”。`rows_examined` 远大于 `rows_sent` 只能说明 Server 层看到的候选行和最终返回行差距较大，需要结合执行计划、ICP 和引擎指标继续定位。官方字段定义见 [Slow Query Log `Rows_examined`](https://dev.mysql.com/doc/refman/8.0/en/slow-query-log.html) 和 [Performance Schema `ROWS_EXAMINED`](https://dev.mysql.com/doc/refman/8.0/en/performance-schema-events-statements-current-table.html)。
 
 执行器在调引擎前还会验证权限（再确认一次，第一次在连接器，这是第二次）。
 

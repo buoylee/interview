@@ -139,71 +139,227 @@ LIMIT 10;
 
 ---
 
-### 3.3 JOIN 算法演进（BNL / Hash Join）+ 驱动表
+### 3.3 JOIN 怎么找到匹配行：NLJ / BNL / INL / Hash Join
 
-#### MySQL JOIN 的三代算法
+先不要背“第一代、第二代、第三代”。JOIN 从头到尾只是在解决一个问题：
 
-**第一代：Simple Nested-Loop（已淘汰）**
+> 已经拿到一边的一行后，怎样从另一边找到 JOIN 条件匹配的行？
 
-伪代码：
-```
-for each row r1 in outer_table:
-    for each row r2 in inner_table:
-        if r1.col = r2.col: output(r1, r2)
-```
-内表 N 行，外表 M 行 → M × N 次比较。没有任何缓冲，是最朴素的实现。
+旧版把 SNL → BNL → Hash Join 写成“三代”，容易让人误以为后者会依次淘汰前者。更准确的地图是：
 
-**第二代：Block Nested-Loop（BNL，8.0.20 前的无索引 JOIN）**
-
-MySQL 8.0.20 前，**当 JOIN 条件列没有索引时**，用 BNL：
-
-```
-for each block of rows from outer_table (join_buffer_size, default 256KB):
-    load block into join_buffer
-    scan inner_table once, match against entire buffer
+```text
+JOIN 找匹配行
+├─ Nested Loop：从外表取行，再去内表找
+│  ├─ 内表全表扫描：SNL（用于理解成本的基础模型）
+│  ├─ 外表攒成一批、内表全扫：BNL（MySQL 8.0.20 前）
+│  └─ 内表走索引：INL（有可用索引时的常见方案）
+└─ Hash Join：一边建哈希表，另一边扫描并探测
 ```
 
-关键参数：`join_buffer_size`（默认 256KB，会话级可调）。内表扫描次数 = `ceil(outer_rows / join_buffer_rows)`，远比 SNL 少，但内表依然全扫。
+这里其实有两个互相独立的问题：
 
-EXPLAIN Extra 出现 `Using join buffer (Block Nested Loop)` 即走 BNL，**说明 JOIN 列没有索引，要加**。
+1. **先处理哪一边**：Nested Loop 里叫外表/驱动表，Hash Join 里叫 build side。
+2. **怎样找匹配行**：全表扫描、索引查找，还是哈希查找。
 
-**第三代：Hash Join（8.0.18+，8.0.20 完全替换 BNL）**
+#### 用同一组数据理解所有算法
 
-```
--- Build phase：把小表（build side）的 JOIN 列 hash 到 hash_table（在 join_buffer 里）
--- Probe phase：扫大表（probe side），每行用 hash 函数查 hash_table
-```
+假设 `WHERE` 过滤后只剩两个用户：
 
-Hash Join 的条件：
-1. 等值 JOIN（`=`，不支持 `>` / `<` / `BETWEEN`）
-2. JOIN 列无索引（有索引时优化器优先选 Index Nested-Loop）
-3. 8.0.18+（`optimizer_switch='block_nested_loop=on'` 被 Hash Join 替代）
+| users.id | users.name |
+|---:|---|
+| 2 | Alice |
+| 4 | Bob |
 
-EXPLAIN Extra：`Using join buffer (hash join)`
+订单表有 5 行：
 
-性能对比（经验数字，具体看数据分布）：
-- BNL vs Hash Join：对无索引等值 JOIN，Hash Join 通常快 **2-10 倍**（把 O(M×N) 变成近似 O(M+N)）
-- 内存不够时 Hash Join 会 spill 到磁盘（`open_files_limit` 相关），性能下降
+| orders.id | orders.user_id |
+|---:|---:|
+| 101 | 1 |
+| 102 | 2 |
+| 103 | 2 |
+| 104 | 3 |
+| 105 | 4 |
 
-#### Index Nested-Loop（INL，有索引时的正常路径）
-
-```
-for each row r1 in outer_table:
-    index_lookup(inner_table, r1.join_col)  -- 走索引，O(log N)
-```
-
-只有内表 JOIN 列有索引时才走 INL。这是生产中期望的路径，EXPLAIN 里内表的 `type` 会是 `ref` 或 `eq_ref`。
-
-#### 驱动表选择：小表驱动大表
-
-"小表驱动大表"的具体含义是：**把行数更少（经过 WHERE 过滤后）的表放外层**。
-
-原因：INL 中，外表每一行都要对内表做一次索引查找。外表 1000 行 = 1000 次索引查找；外表 100000 行 = 100000 次索引查找。外层越小越好。
-
-优化器一般自动选择，但可以用 `STRAIGHT_JOIN` 强制顺序：
+执行：
 
 ```sql
--- 强制 users 先扫（作为驱动表），orders 后扫
+SELECT u.name, o.id
+FROM users u
+JOIN orders o ON o.user_id = u.id
+WHERE u.id IN (2, 4);
+```
+
+结果是：
+
+```text
+Alice  102
+Alice  103
+Bob    105
+```
+
+下面只改变“怎样找到这 3 个匹配”，SQL 语义和结果都不变。
+
+#### SNL：外表一行，内表完整扫描一次
+
+Simple Nested-Loop（SNL）的思路最直接：
+
+```text
+拿 users.id = 2
+  扫完整个 orders：[1, 2, 2, 3, 4] → 找到 102、103
+
+拿 users.id = 4
+  再扫完整个 orders：[1, 2, 2, 3, 4] → 找到 105
+```
+
+伪代码：
+
+```text
+for each user in filtered_users:          -- 外表 M 行
+    for each order in all_orders:         -- 内表 N 行
+        if order.user_id = user.id:
+            output(user, order)
+```
+
+例子中 `orders` 被完整扫描 2 次，进行 `2 × 5 = 10` 次条件比较。一般情况下是：
+
+```text
+内表扫描次数：M 次
+条件比较次数：M × N
+```
+
+SNL 在这里是帮助理解成本的基础模型，不要把“Simple Nested-Loop 已淘汰”理解成 Nested Loop 已经消失。MySQL 现在仍大量使用 Nested Loop，尤其是下面的 INL；问题只是“每个外表行都让内表全扫”通常太贵。
+
+#### BNL：外表攒一批，内表再完整扫描
+
+Block Nested-Loop（BNL）改进的是“内表被反复读取”，不是彻底消除 `M × N` 次比较。
+
+如果 `join_buffer` 能一次装下用户 2 和用户 4：
+
+```text
+join_buffer = [users.id=2, users.id=4]
+
+orders 只扫描一次：
+  order.user_id=1 → 和 buffer 中的 2、4 比
+  order.user_id=2 → 和 buffer 中的 2、4 比，匹配 2
+  order.user_id=2 → 和 buffer 中的 2、4 比，匹配 2
+  order.user_id=3 → 和 buffer 中的 2、4 比
+  order.user_id=4 → 和 buffer 中的 2、4 比，匹配 4
+```
+
+假设 buffer 一次能装 K 个外表行：
+
+```text
+内表扫描次数：ceil(M / K)
+条件比较次数：仍接近 M × N
+```
+
+所以 BNL 的核心是：
+
+> 从“一行带着内表全扫”，改成“一批行带着内表全扫”，主要减少重复读表和 I/O。
+
+MySQL 8.0.20 已移除 BNL；旧版本执行 BNL 时，传统 `EXPLAIN` 的 `Extra` 会显示 `Using join buffer (Block Nested Loop)`。
+
+#### Hash Join：一边建字典，另一边查字典
+
+对这个等值 JOIN，可以先把过滤后的 `users` 建成哈希表，这一步叫 build：
+
+```text
+hash_table = {
+    2 → Alice,
+    4 → Bob
+}
+```
+
+再扫描 `orders`，每行根据 `user_id` 查哈希表，这一步叫 probe：
+
+```text
+order 101, user_id=1 → hash_table[1] → 没有
+order 102, user_id=2 → hash_table[2] → Alice
+order 103, user_id=2 → hash_table[2] → Alice
+order 104, user_id=3 → hash_table[3] → 没有
+order 105, user_id=4 → hash_table[4] → Bob
+```
+
+它不再让每个订单和所有用户逐个比较。等值 JOIN 的平均成本可以理解为：
+
+```text
+建立哈希表：M
+扫描并探测：N
+输出结果：R
+总成本：接近 O(M + N + R)
+```
+
+`R` 是最终匹配行数；如果 JOIN 本身会产生海量结果，任何算法都无法省掉输出这些结果的成本。
+
+版本边界要分清：
+
+- MySQL 8.0.18 引入 Hash Join，当时只支持包含等值条件的 JOIN。
+- MySQL 8.0.20 移除 BNL，原本会用 BNL 的位置改用 Hash Join，并开始支持纯非等值 JOIN、半连接、反连接和外连接。
+- 对 `a.x < b.x` 这类纯非等值条件，执行树可能是 `Inner hash join (no condition)` 后再做 `Filter`。它不能像等值 key 那样直接定位，仍可能检查大量组合，不能套用 `O(M+N)`。
+
+Hash Join 使用 `join_buffer_size` 控制内存上限；放不下时会使用磁盘文件，性能会下降。详细版本行为见 [MySQL 8.0 Hash Join Optimization](https://dev.mysql.com/doc/refman/8.0/en/hash-joins.html)。
+
+#### INL：外表一行，内表走一次索引
+
+如果给 `orders.user_id` 建索引：
+
+```sql
+CREATE INDEX idx_orders_user_id ON orders(user_id);
+```
+
+Index Nested-Loop（INL）可以这样执行：
+
+```text
+拿 users.id=2 → 用 idx_orders_user_id 直接定位订单 102、103
+拿 users.id=4 → 用 idx_orders_user_id 直接定位订单 105
+```
+
+伪代码：
+
+```text
+for each user in filtered_users:
+    index_lookup(orders.user_id, user.id)
+```
+
+它仍然是 Nested Loop，只是内层动作从“全表扫描”变成“索引查找”。简化后的成本是 `O(M × log N + R)`，实际还取决于索引高度、缓存命中、回表次数和数据是否集中。
+
+这也是为什么“让过滤后较小的结果集做驱动表”经常有用：外表 M 越小，内表索引查找次数越少。但不能推导成“有索引一定走 INL”或“INL 永远比 Hash Join 快”；优化器会根据行数、选择性和 I/O 成本选择计划。大量数据需要 JOIN 时，一次顺序扫描加 Hash Join 可能比大量随机索引查找更便宜。
+
+#### 驱动表只适合解释 Nested Loop
+
+Nested Loop 中：
+
+```text
+for each row in outer_table:     -- 外表，也叫驱动表
+    find matches in inner_table  -- 内表，也叫被驱动表
+```
+
+“小表驱动大表”里的小，指的是 **经过 `WHERE` 过滤后预计进入 JOIN 的行数少**，不是磁盘上的原始表行数少：
+
+```text
+users  原表 100 行，过滤后仍是 100 行
+orders 原表 1,000 万行，过滤后只剩 10 行
+
+如果走 INL：
+orders 做驱动表 → 只需对 users 做 10 次索引查找
+users 做驱动表  → 需要对 orders 做 100 次索引查找
+```
+
+对于 `INNER JOIN`，SQL 中谁写在前面不保证谁先执行，优化器可以重排。对于 Hash Join，也不要硬套“驱动表”。下表只是对照两套算法各自如何称呼两边，不是一对一的术语翻译：
+
+| Nested Loop 术语 | Hash Join 术语 | 含义 |
+|---|---|---|
+| outer / 驱动表 | build side | 先提供行；Hash Join 通常希望 build 结果较小、能放入内存 |
+| inner / 被驱动表 | probe side | Nested Loop 被重复查找；Hash Join 扫描后查询哈希表 |
+
+实际哪一边是 build、哪一边是 probe，要看执行计划，不要只看 SQL 书写顺序。
+
+#### 不要一上来就用 STRAIGHT_JOIN
+
+`STRAIGHT_JOIN` 会强制优化器按 SQL 中的表顺序执行：
+
+```sql
+-- 强制 users 先处理，作为 Nested Loop 的外表
 SELECT STRAIGHT_JOIN u.name, COUNT(o.id)
 FROM users u
 JOIN orders o ON o.user_id = u.id
@@ -211,22 +367,57 @@ WHERE u.country = 'CN'
 GROUP BY u.id;
 ```
 
-**使用场景**：优化器选错了驱动表（通常因为统计信息不准），且 ANALYZE TABLE 后依然如此，才用 `STRAIGHT_JOIN`。不要滥用——它绕过了优化器。
+它适合“`EXPLAIN ANALYZE` 已证明优化器选错顺序，更新统计信息和调整索引后仍然选错”的场景。不要仅凭“小表驱动大表”就强制顺序；数据分布变化后，今天正确的提示可能变成明天的坏计划。
 
-#### 诊断 JOIN 问题的检查清单
+#### 怎样看执行计划
+
+优先使用树形计划，它能直接显示 JOIN 算法和两边的动作：
 
 ```sql
--- 1. EXPLAIN 看内表有没有走索引
-EXPLAIN SELECT ...;
--- type = ALL / index on inner table → BNL/Hash Join → 要加索引
+EXPLAIN FORMAT=TREE
+SELECT ...;
 
--- 2. 看 join_buffer_size
+-- 会真正执行 SELECT，并显示 actual rows / loops / time
+EXPLAIN ANALYZE
+SELECT ...;
+```
+
+重点识别：
+
+```text
+Index lookup on orders ...       → INL 的内表正在做索引查找
+Inner hash join (...)            → Hash Join
+  -> Table scan ...              → probe side
+  -> Hash
+      -> Table scan ...          → build side
+
+Using join buffer (Block Nested Loop) → 8.0.20 前的 BNL
+Using join buffer (hash join)         → Hash Join
+```
+
+不要把 `type=ALL` 直接翻译成“必须加索引”。要继续问：
+
+1. 过滤后实际进入 JOIN 的行数是多少？
+2. JOIN 条件有没有可用、选择性合适的索引？
+3. `EXPLAIN ANALYZE` 的 `actual rows` 和 `loops` 是否导致大量重复工作？
+4. Hash Join 是否只需顺序扫描两边，反而比大量随机索引查找便宜？
+
+在本实验使用的 MySQL 8.0.36 中：
+
+```sql
 SHOW SESSION VARIABLES LIKE 'join_buffer_size';
--- 如果一定走 BNL，可调大（但是 per-connection，影响内存）
-
--- 3. 8.0 查是否启用 Hash Join
 SELECT @@optimizer_switch\G
--- 看 block_nested_loop=on/off 和 hash_join=on/off
+```
+
+`block_nested_loop=on/off` 控制的是 Hash Join，尽管名字仍然保留 BNL。`hash_join=on/off` 只在 8.0.18 有效，从 8.0.19 起已经不再起作用。
+
+最后用四句话记忆：
+
+```text
+SNL  = 一行 + 内表全扫
+BNL  = 一批 + 内表全扫
+INL  = 一行 + 内表索引查找
+Hash = 一边建哈希表 + 另一边扫描探测
 ```
 
 ---
@@ -276,9 +467,17 @@ EXPLAIN Extra 出现 `Using filesort` = 触发了 Server 层排序，**不等于
 优点：省去回表的随机 IO。
 缺点：sort_buffer 里每行更宽，`sort_buffer_size` 容纳的行数更少。
 
-MySQL 选择哪种算法取决于 `max_length_for_sort_data`（默认 4096 字节）：
-- 需要的列总长度 ≤ `max_length_for_sort_data` → full sort（单次传递）
-- 超出 → 回退到 rowid sort
+旧版本中，`max_length_for_sort_data` 曾用于影响是否把额外列放进 sort buffer。但本实验使用 MySQL 8.0.36，而该变量从 8.0.20 起已经 deprecated 且不再生效，不能再用“行宽是否超过 4096 字节”判断算法。
+
+MySQL 8.0.20+ 应通过 optimizer trace 的 `filesort_summary.sort_mode` 看实际模式：
+
+```text
+<sort_key, rowid>                     → sort buffer 保存排序键 + rowid，排序后回表
+<sort_key, additional_fields>         → 保存排序键 + 查询需要的列
+<sort_key, packed_additional_fields>  → 同上，但额外列使用紧凑格式
+```
+
+版本依据见 [MySQL 8.0 ORDER BY Optimization](https://dev.mysql.com/doc/refman/8.0/en/order-by-optimization.html)。
 
 #### sort_buffer 和磁盘合并
 
@@ -289,16 +488,80 @@ MySQL 选择哪种算法取决于 `max_length_for_sort_data`（默认 4096 字�
 2. 再填充 sort_buffer，排序，写第二个 run
 3. 最后做磁盘上的 merge sort（归并合并）
 
-**诊断是否用了磁盘合并**：
+#### `SHOW STATUS` 到底统计哪些 SQL
+
+`SHOW STATUS` 不是“上一条 SQL 的执行结果”，而是状态计数器。没有写 `GLOBAL` 或 `SESSION` 时，默认等价于 `SHOW SESSION STATUS`：
+
+| 写法 | 统计范围 | 适合做什么 |
+|---|---|---|
+| `SHOW SESSION STATUS` / `SHOW STATUS` | 当前物理连接建立以来，或当前连接上次 `FLUSH STATUS` 以来的累计值 | 在同一连接中比较单条 SQL 前后增量 |
+| `SHOW GLOBAL STATUS` | 整个 MySQL 实例所有连接的汇总值 | 观察实例级趋势，不能直接归因到某条 SQL |
+
+`LIKE 'Sort_merge_passes'` 只是在返回结果中匹配状态变量名称，不是在筛选 SQL 文本或 SQL 历史。
+
+`Sort_merge_passes` 的含义是“排序算法执行了多少次临时文件归并轮次”，不是 SQL 数量，也不是 filesort 次数。一条 SQL 可能包含多个排序操作，一次大排序也可能产生多轮 merge pass。
+
+要判断目标 SQL 造成了多少 merge pass，应该在 **同一个物理连接** 中比较前后差值：
 
 ```sql
--- 执行 SQL 前后对比
-SHOW STATUS LIKE 'Sort_merge_passes';
--- Sort_merge_passes > 0 → 用了磁盘归并，sort_buffer_size 太小
-SHOW STATUS LIKE 'Sort_rows';         -- 总排序行数
-SHOW STATUS LIKE 'Sort_range';        -- 用索引范围排序次数
-SHOW STATUS LIKE 'Sort_scan';         -- 全扫后排序次数
+-- 1. 记录 before，例如 Sort_merge_passes = 3
+SHOW SESSION STATUS LIKE 'Sort_merge_passes';
+
+-- 2. 只执行目标 SQL
+SELECT ...
+ORDER BY ...;
+
+-- 3. 记录 after，例如 Sort_merge_passes = 5
+SHOW SESSION STATUS LIKE 'Sort_merge_passes';
+
+-- 目标 SQL 的增量 = after - before = 2
 ```
+
+如果两次查询之间还执行了别的 SQL，差值就属于这些 SQL 的合计。连接池或 GUI 如果中途更换物理连接，前后值也不能比较。
+
+实验环境还可以先清零当前连接：
+
+```sql
+-- 仅建议在个人实验环境使用
+FLUSH STATUS;
+
+SELECT ...
+ORDER BY ...;
+
+SHOW SESSION STATUS LIKE 'Sort%';
+```
+
+`FLUSH STATUS` 会把当前线程的 session status 加入 global status，然后把当前 session 计数清零；它需要 `FLUSH_STATUS` 或 `RELOAD` 权限，并会写入 binary log，不要为了测一条生产 SQL 随意执行。生产环境更适合比较前后差值。
+
+常用 `Sort_*` 指标：
+
+```text
+Sort_merge_passes  → 临时文件归并轮次
+Sort_rows          → 被排序的累计行数
+Sort_range         → 使用 range 访问后执行的排序次数
+Sort_scan          → 扫描表后执行的排序次数
+```
+
+`Sort_merge_passes` 的增量大于 0，证明观察窗口内发生了外部归并；等于 0 只表示没有 merge pass，不能在没有“清零或前后快照”的情况下推断上一条 SQL。若要确认某次 filesort 创建了多少临时文件，可查看 optimizer trace 的 `filesort_summary.number_of_tmp_files`。
+
+要直接定位具体 SQL，可查 Performance Schema 的逐语句字段：
+
+```sql
+SELECT
+    THREAD_ID,
+    EVENT_ID,
+    LEFT(SQL_TEXT, 200) AS sql_text,
+    SORT_MERGE_PASSES,
+    SORT_ROWS,
+    SORT_SCAN,
+    SORT_RANGE
+FROM performance_schema.events_statements_history_long
+WHERE SORT_MERGE_PASSES > 0
+ORDER BY TIMER_START DESC
+LIMIT 20;
+```
+
+`events_statements_history_long` 保存全实例最近结束的有限条语句，并非持久日志；需要 `events_statements_history_long` consumer 已启用，开启方式见上文“3.2 performance_schema top SQL 法”。其中 `SORT_MERGE_PASSES` 是具体到单条语句的值。
 
 调整策略：
 
@@ -629,7 +892,8 @@ SELECT cnt FROM table_counts WHERE table_name = 'orders';
 
 ```
 □ 1. EXPLAIN 的 type 列有没有 ALL？
-      ALL = 全表扫，几乎肯定要加索引（除非表很小）
+      ALL = 全表扫，是继续分析的信号，不是“必须加索引”的结论
+      小表、低选择性查询或 Hash Join 中，全表扫可能就是更便宜的计划
 
 □ 2. EXPLAIN Extra 有没有 Using filesort / Using temporary？
       有 = ORDER BY 或 GROUP BY 没走索引序，review 索引设计
@@ -638,8 +902,9 @@ SELECT cnt FROM table_counts WHERE table_name = 'orders';
       EXPLAIN 的 rows 是估算，实际看慢查日志的 Rows_examined
       比值 > 1000 是危险信号
 
-□ 4. JOIN 的内表（被驱动表）有没有走索引（type = ref / eq_ref）？
-      内表 type = ALL → Using join buffer → 要在 JOIN 列上加索引
+□ 4. JOIN 采用哪种算法，actual rows × loops 是否过大？
+      INL：看内表索引查找次数；Hash Join：看 build/probe 两边实际扫描行数
+      不能仅凭 type = ALL 判断要加索引，要比较重复查找和一次顺序扫描的成本
 
 □ 5. 有没有 LIMIT 大 offset？（LIMIT 10000+, N）
       有 = 改延迟关联或改游标分页
@@ -837,12 +1102,12 @@ SELECT cnt FROM order_count WHERE id = 1;
 
 ---
 
-### Case E：大 JOIN 慢 → 改驱动表 / 加索引
+### Case E：大 JOIN 慢 → 减少驱动行 / 加过滤索引
 
 **现象**：
 
 ```sql
--- 3s，分析后发现走了 BNL
+-- 3s，分析后发现 users 做外表，触发大量 orders 索引查找
 SELECT u.name, SUM(o.amount) AS total
 FROM orders o
 JOIN users u ON u.id = o.user_id
@@ -858,9 +1123,9 @@ id  table  type   key           rows    Extra
 1   o      ref    idx_user_id   12      Using where
 ```
 
-users 被选为外表，全表扫 50 万行。
+users 被选为外表，全表扫 50 万行；随后每个用户都通过 `idx_user_id` 查一次 orders，形成约 50 万次索引查找。
 
-**分析**：优化器把 users（50 万行）选为驱动表，orders 走 idx_user_id 作为内表。看起来合理，但 `o.created_at >= '2026-04-01'` 如果能过滤 orders 到很少的行，驱动表应该是过滤后的 orders。
+**分析**：这是 INL，不是 BNL。优化器把 users（50 万行）选为驱动表，orders 走 `idx_user_id` 作为内表。看起来有索引，但 `o.created_at >= '2026-04-01'` 如果能把 orders 过滤到很少的行，更便宜的路径是先读过滤后的 orders，再按 users 主键查用户。
 
 **解法**：
 
@@ -908,21 +1173,22 @@ GROUP BY u.id, u.name\G
 | 性能 | 慢 | 快 |
 | 何时用 | 结果集可能重叠且要去重 | 结果集不重叠或不在乎重复 |
 
-| 维度 | BNL | Hash Join | Index Nested-Loop |
-|---|---|---|---|
-| 适用版本 | < 8.0.20 | 8.0.18+ | 所有版本 |
-| 要求 | 无 | 等值 JOIN，无索引 | JOIN 列有索引 |
-| 内存 | join_buffer_size | join_buffer_size | 不需要额外缓冲 |
-| 性能 | O(M*N/join_buf) | 近似 O(M+N) | O(M*log N) |
-| EXPLAIN Extra | Using join buffer (BNL) | Using join buffer (hash join) | 无额外标记 |
+| 方式 | 核心动作 | 典型场景 | 版本边界 | 简化成本 |
+|---|---|---|---|---|
+| SNL | 外表一行 + 内表全扫 | 用于理解最朴素成本 | 基础模型，不用于判断版本 | `O(M×N)` |
+| BNL | 外表一批 + 内表全扫 | 无可用 JOIN 索引的旧路径 | MySQL 8.0.20 起移除 | 比较仍近似 `O(M×N)`，但减少内表重复扫描 |
+| INL | 外表一行 + 内表索引查找 | 有可用且成本合适的 JOIN 索引 | 所有版本 | `O(M×log N+R)` |
+| Hash Join | build side 建哈希表 + probe side 扫描探测 | 常见于无可用 JOIN 索引 | 8.0.18 引入；8.0.20 完全替代 BNL | 等值 JOIN 平均接近 `O(M+N+R)` |
+
+`EXPLAIN` 识别信号：BNL 是 `Using join buffer (Block Nested Loop)`，Hash Join 是 `Using join buffer (hash join)` 或树形计划中的 `Hash`，INL 通常在树形计划中显示 `Index lookup`，传统 `EXPLAIN` 的内表常见 `type=ref/eq_ref`。
 
 ### filesort 两种算法快速答法
 
-> MySQL filesort 有两种算法：**rowid sort**（两次传递）先提取排序列 + rowid 排序，再回表；**full sort**（单次传递）把排序列 + 所需列全带走，排序后直接输出不回表。选择依据是 `max_length_for_sort_data`（默认 4096 字节），行宽超过就用 rowid sort。`sort_buffer_size`（默认 256KB）不够时做磁盘 merge sort，`Sort_merge_passes` > 0 是信号。
+> MySQL filesort 的 sort buffer 可能保存 `<sort_key,rowid>`，排序后按 rowid 回表；也可能保存 `<sort_key,additional_fields>`，排序后直接输出额外列。`max_length_for_sort_data` 只适用于旧版本，MySQL 8.0.20+ 已 deprecated 且无效，实际模式看 optimizer trace 的 `filesort_summary.sort_mode`。`Sort_merge_passes` 是 SESSION/GLOBAL 累计计数器；判断单条 SQL 要在同一连接中比较前后增量。
 
 ### "GROUP BY 8.0 有什么变化" 答法
 
-> MySQL 8.0 取消了 GROUP BY 的隐式排序（5.7 里 GROUP BY col 会隐式 ORDER BY col）。8.0 起不加 ORDER BY 的 GROUP BY 结果顺序不确定，需要显式写 ORDER BY。另外，8.0.18+ 引入 Hash Join 替代 BNL，GROUP BY 不走索引时触发临时表的行为不变，但 8.0 的 TempTable 引擎（替代 MEMORY）溢出到磁盘时用 mmap 而非 MyISAM，性能更好。
+> MySQL 8.0 取消了 GROUP BY 的隐式排序（5.7 里 GROUP BY col 会隐式 ORDER BY col）。8.0 起不加 ORDER BY 的 GROUP BY 结果顺序不确定，需要显式写 ORDER BY。另外，8.0.18 引入 Hash Join，8.0.20 移除 BNL 并在原本使用 BNL 的位置改用 Hash Join；GROUP BY 不走索引时触发临时表的行为不变，但 8.0 的 TempTable 引擎（替代 MEMORY）溢出到磁盘时用 mmap 而非 MyISAM，性能更好。
 
 ### 深翻页的经典问法
 
@@ -935,18 +1201,18 @@ A：MySQL 的 LIMIT offset, count 要扫 offset+count 行才丢弃前 offset 行
 
 ### 易错点
 
-- **Using filesort 不等于走了磁盘排序**：filesort 是 Server 层排序的统称，数据量小时完全在 sort_buffer（内存）里完成，`Sort_merge_passes=0` 就是纯内存排序
-- **小表驱动大表是结果集小的表，不是原始行数小的表**：经过 WHERE 过滤后剩 10 行的大表，比没有 WHERE 的 100 行小表更适合当驱动表
+- **Using filesort 不等于走了磁盘排序，`Sort_merge_passes` 也不代表上一条 SQL**：它默认是当前 SESSION 累计值；同一连接中的增量大于 0 才能说明观察窗口发生了磁盘归并，具体临时文件数看 optimizer trace 的 `number_of_tmp_files`
+- **“小表驱动大表”只是 Nested Loop 的经验规则，不是所有 JOIN 的定律**：这里的小指过滤后进入 JOIN 的行数少；Hash Join 应该讨论较小的 build side 和被扫描的 probe side，而不是驱动表
 - **count(*) 和 count(1) 性能一样**：面试中不要说"count(1) 比 count(*) 快"，这是误解。官方文档明确说两者等价
-- **8.0 的 Hash Join 不是万能的**：只支持等值 JOIN，非等值（`>`/`<`/`!=`）还是 BNL（或 NLJ）
+- **MySQL 8.0.20+ 的 Hash Join 也能执行非等值 JOIN，但不代表非等值条件变成 `O(M+N)`**：纯 `>`/`<` 条件可能显示 `Inner hash join (no condition)` 后再过滤，仍可能检查大量行组合
 
 ---
 
 ## 7. 一句话总结
 
 调优 SQL 的入口是慢查日志（`long_query_time` + `pt-query-digest`）或 `performance_schema.events_statements_summary_by_digest`；
-核心诊断工具是 `EXPLAIN`——看 `type=ALL`、`Using filesort`、`Using temporary`、`Using join buffer` 四个危险信号；
-常见根因是 ORDER BY / GROUP BY / JOIN 列缺索引（分别触发 filesort、临时表、BNL/Hash Join）；
+核心诊断工具是 `EXPLAIN` / `EXPLAIN ANALYZE`——把 `type=ALL`、`Using filesort`、`Using temporary`、`Using join buffer` 当作继续分析的信号，而不是直接判错；
+常见根因是 ORDER BY / GROUP BY 的访问顺序不合适，或 JOIN 两边过滤行数、索引查找次数、Hash/full scan 成本失衡；
 两个高频大坑是 `LIMIT 大 offset`（改延迟关联或游标分页）和 `COUNT(*) 大表`（改估值或维护计数表）；
 写完 SQL 先 EXPLAIN，上线前过一遍 5 条 checklist。
 
@@ -956,7 +1222,7 @@ A：MySQL 的 LIMIT offset, count 要扫 offset+count 行才丢弃前 offset 行
 
 > 本机实测（MySQL 8.0.36），每个都跑过「预期 → 实机 → 落差」。
 
-- [01 - filesort 触发与从 status 确认](scenarios/01-filesort-trigger-and-status.md) — `Using filesort` ≠ 落磁盘，要看 `Sort_merge_passes` 才知道有没有真的写盘
+- [01 - filesort 触发与从 status 确认](scenarios/01-filesort-trigger-and-status.md) — `SHOW STATUS` 默认是当前 SESSION 累计值；用清零或前后差值把 `Sort_merge_passes` 归因到目标 SQL
 - [02 - `Using temporary` 触发与索引消除](scenarios/02-using-temporary-trigger.md) — 同样 GROUP BY，无索引列 → 临时表+filesort，有索引列 → `Using index`
 - [03 - 深翻页 `LIMIT 40000,20` 与延迟关联](scenarios/03-deep-pagination-deferred-join.md) — EXPLAIN 看延迟关联只回表 20 次（含「微基准为何骗人」的诚实记录）
 
