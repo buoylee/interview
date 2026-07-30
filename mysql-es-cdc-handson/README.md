@@ -50,6 +50,8 @@ make gate-m1
 
 `gate-m1` assumes `scenario-m1` has already generated the ignored runtime evidence and rendered boundary. It first verifies all four M1 scenarios and the documentation, then removes only the two Adapter comparison services and proves their containers are absent before resetting named project volumes and running the fresh M0 smoke gate. It does not rerun the dynamic M1 scenarios.
 
+The official Adapter archive is a 278 MiB ignored local artifact and is never committed. `make scenario-m1` enters through `up-adapter`, which downloads and verifies the pinned archive before building; a direct `make verify-m1` therefore requires that archive to have already been prepared by `make up-adapter` or `bash infra/canal-adapter/fetch-release.sh`. The artifact-dependent M1 Bulk evidence contract remains in `verify-m1`; it is intentionally outside `verify-fast`.
+
 ## 运行
 
 前置：Docker Compose v2、Java 21、`jq`、`curl`。Maven Wrapper 已固定构建工具；只有重新生成 Wrapper 时才需要本机 Maven。请将 `JAVA_HOME` 指向本机的 Temurin 21；项目不硬编码机器路径。
@@ -61,6 +63,8 @@ make evidence
 ```
 
 `make evidence` 是昂贵的 18 场景真实故障矩阵；它生成/替换证据，通常只在专门的证据验收中运行。`make verify` 是正常的组件测试与代表性端到端门禁，不会替代或重跑完整 18 场景矩阵。
+
+`verify-fast` 只运行显式列入 allowlist 的、可在 clean checkout 自包含执行的 contract；参数化 validator/helper 由对应 tamper 或端到端 gate 调用。runner 在执行前检查全部 `tests/contracts/*.sh` 都已明确列入 allowlist 或带理由排除，并在首个入选 contract nonzero 时立即失败。
 
 最终证据已在 commit `bb75ab0c19b3f64090faec9d281d56ff43087a55` 上完成两次独立 clean-reset 运行：每轮均为 18/18 PASS，合计 36 个互不重复的 runner ID；显式 normalization 后 18/18 相等。原始 Canal `meta.dat` SHA 仍保留并在每轮内约束 reset 与 normal restart 相等；跨轮只允许这三个 SHA 和解码 cursor 的 `timestamp` 变化，其他解码位点字段必须完全相等。详细保留与证明边界见 [evidence/README.md](evidence/README.md)。这是受控 lab 的两次观测结果，不是生产 SLO 或任意环境保证。
 

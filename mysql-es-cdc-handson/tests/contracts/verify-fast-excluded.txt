@@ -1,0 +1,7 @@
+# basename|reason and explicit gate
+assert-m4-dlq.sh|parameterized validator covered by m4-dlq-evidence-tamper.sh and M4 end-to-end gates
+assert-m4-metrics.sh|parameterized validator covered by M4 end-to-end gates
+evidence-contract.sh|parameterized validator covered by evidence-contract-tamper.sh and make evidence
+lib-m1-task3-fixtures.sh|sourced fixture library covered by the M1 evidence contracts
+m1-bulk-partial-evidence.sh|requires the ignored local Adapter archive and remains in make verify-m1
+normalized-evidence.sh|parameterized validator covered by normalized-evidence-tamper.sh and the evidence acceptance gate

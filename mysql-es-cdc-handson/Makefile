@@ -35,7 +35,7 @@ evidence:
 
 verify-fast:
 	./mvnw -q test
-	for test_script in tests/contracts/*.sh; do bash "$$test_script"; done
+	bash tests/run-verify-fast-contracts.sh
 
 verify: verify-fast
 	$(MAKE) reset
