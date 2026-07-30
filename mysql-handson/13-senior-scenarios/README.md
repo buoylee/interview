@@ -33,7 +33,7 @@
 | # | 问题族 | 唯一 scenario owner | `13` 的处理 |
 |---|---|---|---|
 | 1 | 从 access pattern 设计表、主键、型别、约束与索引 | [从 access patterns 设计 schema](01-schema-from-access-patterns.md) | `REPRODUCED (S=100000)` |
-| 2 | 高效且安全地汇入 1,000 万行 | `mysql-handson/13-senior-scenarios/02-bulk-load-10m.md` | 新增缺口，`READY_UNRUN` |
+| 2 | 高效且安全地汇入 1,000 万行 | [高效安全地导入 1,000 万行](02-bulk-load-10m.md) | `READY_UNRUN` |
 | 3 | 线上 schema 变更与资料 backfill | `python-data/07-migrations.md` | 路由；MySQL DDL 机制连到 ch11 |
 | 4 | 历史资料归档、大量删除与空间回收 | `mysql-handson/13-senior-scenarios/03-archive-delete-reclaim.md` | 新增缺口，`READY_UNRUN` |
 | 5 | 资料分布改变造成执行计划退化 | `mysql-handson/04-execution-and-explain/scenarios/01-plan-flips-by-selectivity.md` | 路由 |
@@ -52,14 +52,14 @@
 | 18 | 分片键、热点、扩容与 reshard | `mysql-handson/10-sharding-and-scaling/README.md` | 路由 |
 | 19 | 线上分片迁移、双写与 CDC 校验 | `mysql-handson/10-sharding-and-scaling/README.md` Case C | 路由；CDC 故障闭环连到 `mysql-es-cdc-handson` |
 
-[从 access patterns 设计 schema](01-schema-from-access-patterns.md) 已完成 run ID `20260730T214437Z` 的 `REPRODUCED (S=100000)`；其余三个新增场景文件尚未建立：`mysql-handson/13-senior-scenarios/02-bulk-load-10m.md`、`mysql-handson/13-senior-scenarios/03-archive-delete-reclaim.md`、`mysql-handson/13-senior-scenarios/04-report-export-isolation.md`，均为 `READY_UNRUN`；在文件建立前不使用 Markdown link。
+[从 access patterns 设计 schema](01-schema-from-access-patterns.md) 已完成 run ID `20260730T214437Z` 的 `REPRODUCED (S=100000)`；[高效安全地导入 1,000 万行](02-bulk-load-10m.md) 已建立并为 `READY_UNRUN`。其余两个新增场景文件尚未建立：`mysql-handson/13-senior-scenarios/03-archive-delete-reclaim.md`、`mysql-handson/13-senior-scenarios/04-report-export-isolation.md`，均为 `READY_UNRUN`；在文件建立前不使用 Markdown link。
 
 ## 四个新增场景
 
 | 场景 | 状态 | 负责的问题 |
 |---|---|---|
 | `01-schema-from-access-patterns.md` | `REPRODUCED (S=100000)` | 从 access pattern 推导 schema |
-| `02-bulk-load-10m.md` | `READY_UNRUN` | 1,000 万行安全、高吞吐、可恢复汇入 |
+| [高效安全地导入 1,000 万行](02-bulk-load-10m.md) | `READY_UNRUN` | 1,000 万行安全、高吞吐、可恢复汇入 |
 | `03-archive-delete-reclaim.md` | `READY_UNRUN` | retention、archive、delete、purge 与 reclaim |
 | `04-report-export-isolation.md` | `READY_UNRUN` | 报表／汇出与 OLTP 隔离，含深分页到汇出 |
 
