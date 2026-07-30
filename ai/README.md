@@ -12,7 +12,8 @@ ai/
 │
 ├── coding-agent/              # Coding Agent 构建
 │   ├── build-guide.md         # 学习版: 从零手撸，理解原理 (Phase 1-6)
-│   └── production-guide.md    # 生产版: 多模型、可靠、安全、可持续使用
+│   ├── production-guide.md    # 生产版: 多模型、可靠、安全、可持续使用
+│   └── agent-skills/          # 两库 workflow、AI Code Review、Production Profile
 │
 ├── agent-platform/             # 企业 Agent 平台工程方案
 │   ├── agent-local-vs-cloud-selection.md # 本地/云上选型与主流工具调研
@@ -42,6 +43,7 @@ ai/
 ### 路线 B: 构建 Coding Agent
 1. `coding-agent/build-guide.md` — 先动手搭原型，理解 agent 原理
 2. `coding-agent/production-guide.md` — 再升级为生产级架构
+3. [`coding-agent/agent-skills/README.md`](coding-agent/agent-skills/README.md) — 再建立 Coding Agent 的规范化工作流、AI Code Review gate 与 Production Engineering Profile
 
 ### 路线 C: 企业 Agent 平台落地
 1. `agent-platform/agent-local-vs-cloud-selection.md` — 先做本地/云上/混合方案和工具选型

@@ -1,0 +1,17 @@
+[mysqld]
+bind_address=0.0.0.0
+report_port=3306
+default_storage_engine=InnoDB
+gtid_mode=ON
+enforce_gtid_consistency=ON
+log_bin=binlog
+binlog_format=ROW
+binlog_row_image=FULL
+skip_replica_start=ON
+plugin_load_add=group_replication.so
+loose-group_replication_start_on_boot=OFF
+innodb_flush_log_at_trx_commit=1
+sync_binlog=1
+loose-group_replication_consistency=BEFORE_ON_PRIMARY_FAILOVER
+loose-group_replication_unreachable_majority_timeout=5
+binlog_expire_logs_seconds=604800

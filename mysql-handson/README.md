@@ -21,7 +21,7 @@
 - `06-locking/` — 行/表/间隙/Next-Key/插入意向 + 死锁案例 ← **含 3 个实机 scenario**
 - `07-logs-and-crashsafe/` — Redo Log（重做日志）/ Undo Log（回滚日志）/ Binlog（二进制日志）+ WAL（Write-Ahead Logging，预写日志）+ 两阶段提交 ← **含 2 个实机 scenario**
 - `08-sql-tuning/` — 慢查日志 + 索引设计 + JOIN + ORDER BY + filesort + 临时表 ← **含 3 个实机 scenario**
-- `09-replication-and-ha/` — 主从 + 半同步 + MGR（MySQL Group Replication，MySQL 组复制）+ 读写分离 ← **含 3 个复制 scenario（需从库；实机待跑）**
+- `09-replication-and-ha/` — 主从 + 半同步 + MGR（MySQL Group Replication，MySQL 组复制）+ 读写分离 ← **含 3 个传统复制 scenario（需从库；实机待跑）+ 8 个已实测 InnoDB Cluster HA scenario**
 - `10-sharding-and-scaling/` — 分库分表 + 全局 ID + 在线迁移
 - `11-ops-and-troubleshooting/` — Online DDL + pt-osc + 备份 + 参数调优 ← **含 1 个架构师整合 scenario（写风暴跨章拖垮链）**
 - `99-interview-cards/` — 反向产出的面试题答案卡（已覆盖 ch01-09 + ch11）
@@ -49,6 +49,11 @@ make processlist
 make chaos-replica-lag MS=500                 # 注入主从延迟
 make chaos-replica-cut                        # 切断主从
 make chaos-restore
+
+make ha-up                                    # 独立 MySQL 8.4 三成员 Cluster＋双 Router
+make ha-status / make ha-verify               # 拓扑状态／客户端与成员数据对账
+make ha-scenario SCENARIO=primary-crash       # 独立 reset 后运行一个 HA Scenario
+make ha-reset                                 # 只删除 mysql-ha project 的容器与 volumes
 ```
 
 | 服务 | URL |
