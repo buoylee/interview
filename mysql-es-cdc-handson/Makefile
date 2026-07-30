@@ -52,6 +52,11 @@ verify-live-contracts:
 	bash tests/contracts/m5-rebuild-schema-drift.sh
 	bash tests/contracts/m6-condition-ownership-migration.sh
 	bash tests/contracts/m6-primitives.sh
+	@set -e; \
+	mysql_id="$$($(COMPOSE) ps -q mysql)"; \
+	mysql_pwd="$$(docker inspect "$$mysql_id" | jq -er '.[0].Config.Env[] | select(startswith("MYSQL_ROOT_PASSWORD=")) | split("=")[1]')"; \
+	MYSQL_PWD="$$mysql_pwd" bash tests/contracts/m6-collectors-retention.sh; \
+	MYSQL_PWD="$$mysql_pwd" bash tests/contracts/m6-retention-gap.sh
 
 smoke-m0: up
 	bash scenarios/scripts/smoke-m0.sh

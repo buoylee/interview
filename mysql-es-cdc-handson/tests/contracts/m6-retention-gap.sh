@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
+if test -z "${MYSQL_PWD:-}"; then
+  echo 'MYSQL_PWD required' >&2
+  exit 64
+fi
 root="$(cd "$(dirname "$0")/../.." && pwd)";tmp="$(mktemp -d)";project="mysql-es-cdc-handson-m6-retention-$$"
 case "$project" in mysql-es-cdc-handson-m6-?*) ;;*) exit 64;;esac
 override="$tmp/no-host-ports.yaml";marker="$tmp/provenance.json";cleanup="$tmp/cleanup"
@@ -17,7 +21,7 @@ YAML
 compose=(docker compose -p "$project" -f "$root/infra/compose.yaml" -f "$override")
 cleanup_project(){ "${compose[@]}" --profile m0-tools down --volumes --remove-orphans >/dev/null 2>&1||true;rm -rf "$tmp"; }
 trap cleanup_project EXIT INT TERM
-export COMPOSE_PROJECT_NAME="$project" MYSQL_PWD="${MYSQL_PWD:?MYSQL_PWD required}" MYSQL_USER=root
+export COMPOSE_PROJECT_NAME="$project" MYSQL_PWD MYSQL_USER=root
 export M6_RETENTION_DESTRUCTIVE_ACK=I_UNDERSTAND_M6_DEDICATED_RETENTION_DESTROYS_LOGS SCENARIO_PROVENANCE_FILE="$marker" SCENARIO_CLEANUP_FILE="$cleanup"
 jq -n --arg project "$project" '{purpose:"m6-dedicated-retention",compose_project:$project}' >"$marker"
 "${compose[@]}" --profile m0-tools up -d --build

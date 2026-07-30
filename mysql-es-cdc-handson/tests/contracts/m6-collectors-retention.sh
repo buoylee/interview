@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
+if test -z "${MYSQL_PWD:-}"; then
+  echo 'MYSQL_PWD required' >&2
+  exit 64
+fi
 root="$(cd "$(dirname "$0")/../.." && pwd)";tmp="$(mktemp -d)";trap 'rm -rf "$tmp"' EXIT
-export MYSQL_PWD="${MYSQL_PWD:?MYSQL_PWD required}" MYSQL_USER=root SCENARIO_STATE_DIR="$tmp/state" SCENARIO_CLEANUP_FILE="$tmp/cleanup"
+export MYSQL_PWD MYSQL_USER=root SCENARIO_STATE_DIR="$tmp/state" SCENARIO_CLEANUP_FILE="$tmp/cleanup"
 
 bash "$root/scenarios/scripts/capture-mysql.sh" "$tmp/mysql.json"
 jq -e '.consistency=="REPEATABLE_READ_CONSISTENT_SNAPSHOT" and (.documents|length)>0 and ([.documents[].product_id]==([.documents[].product_id]|sort)) and all(.documents[];has("revision") and has("active") and has("updated_at"))' "$tmp/mysql.json" >/dev/null
