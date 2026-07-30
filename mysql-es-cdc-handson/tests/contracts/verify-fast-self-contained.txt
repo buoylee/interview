@@ -6,7 +6,6 @@ m0-compose.sh
 m0-evidence.sh
 m0-layout.sh
 m1-adapter.sh
-m1-boundary-doc.sh
 m1-evidence.sh
 m1-hard-delete-evidence.sh
 m1-log-window.sh
