@@ -462,6 +462,8 @@ Save the UTC value as the document's run ID. Record exact outputs in a compact e
 
 Use the DDL already committed in Task 3. Add a source table with the same columns but only a primary key, then seed exactly 100,000 deterministic rows through six cross-joined digit sets:
 
+The helper is an ordinary namespaced table because MySQL cannot reopen one temporary table through multiple aliases in the same statement. It is removed before timing so it does not affect the experiment.
+
 ```sql
 USE mysql_senior_scenarios;
 
@@ -470,8 +472,9 @@ ALTER TABLE tenant_record_source
   DROP INDEX uk_tenant_request,
   DROP INDEX idx_tenant_status_created;
 
-CREATE TEMPORARY TABLE digit (d TINYINT UNSIGNED PRIMARY KEY);
-INSERT INTO digit VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+DROP TABLE IF EXISTS seed_digit;
+CREATE TABLE seed_digit (d TINYINT UNSIGNED PRIMARY KEY);
+INSERT INTO seed_digit VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
 
 INSERT INTO tenant_record_source
   (id, tenant_id, external_request_id, status, amount, currency,
@@ -489,15 +492,17 @@ SELECT n,
 FROM (
   SELECT 1 + d0.d + 10*d1.d + 100*d2.d + 1000*d3.d
            + 10000*d4.d + 100000*d5.d AS n
-  FROM digit AS d0
-  CROSS JOIN digit AS d1
-  CROSS JOIN digit AS d2
-  CROSS JOIN digit AS d3
-  CROSS JOIN digit AS d4
-  CROSS JOIN digit AS d5
+  FROM seed_digit AS d0
+  CROSS JOIN seed_digit AS d1
+  CROSS JOIN seed_digit AS d2
+  CROSS JOIN seed_digit AS d3
+  CROSS JOIN seed_digit AS d4
+  CROSS JOIN seed_digit AS d5
   ORDER BY n
   LIMIT 100000
 ) AS seq;
+
+DROP TABLE seed_digit;
 ```
 
 The generated values are fixed:
@@ -1304,8 +1309,9 @@ PARTITION BY RANGE COLUMNS(created_at) (
   PARTITION pmax VALUES LESS THAN (MAXVALUE)
 );
 
-CREATE TEMPORARY TABLE digit (d TINYINT UNSIGNED PRIMARY KEY);
-INSERT INTO digit VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+DROP TABLE IF EXISTS seed_digit;
+CREATE TABLE seed_digit (d TINYINT UNSIGNED PRIMARY KEY);
+INSERT INTO seed_digit VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
 
 INSERT INTO archive_source (id, created_at, payload, legal_hold)
 SELECT n,
@@ -1319,12 +1325,12 @@ SELECT n,
 FROM (
   SELECT 1 + d0.d + 10*d1.d + 100*d2.d + 1000*d3.d
            + 10000*d4.d + 100000*d5.d AS n
-  FROM digit AS d0
-  CROSS JOIN digit AS d1
-  CROSS JOIN digit AS d2
-  CROSS JOIN digit AS d3
-  CROSS JOIN digit AS d4
-  CROSS JOIN digit AS d5
+  FROM seed_digit AS d0
+  CROSS JOIN seed_digit AS d1
+  CROSS JOIN seed_digit AS d2
+  CROSS JOIN seed_digit AS d3
+  CROSS JOIN seed_digit AS d4
+  CROSS JOIN seed_digit AS d5
   ORDER BY n
   LIMIT 100000
 ) AS seq;
@@ -1334,6 +1340,8 @@ INSERT INTO archive_batch_delete SELECT * FROM archive_source;
 INSERT INTO archive_partitioned
 SELECT * FROM archive_source
 WHERE NOT (created_at < '2026-04-01 00:00:00' AND legal_hold = TRUE);
+
+DROP TABLE seed_digit;
 ```
 
 Archive tables use these fixed identities:
@@ -1587,8 +1595,9 @@ Seed `100000` orders, exactly three items per order and `10000` probe rows. Expo
 Use this complete six-digit seed mapping:
 
 ```sql
-CREATE TEMPORARY TABLE digit (d TINYINT UNSIGNED PRIMARY KEY);
-INSERT INTO digit VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+DROP TABLE IF EXISTS seed_digit;
+CREATE TABLE seed_digit (d TINYINT UNSIGNED PRIMARY KEY);
+INSERT INTO seed_digit VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
 
 INSERT INTO report_order (id, tenant_id, status, created_at)
 SELECT n,
@@ -1598,12 +1607,12 @@ SELECT n,
 FROM (
   SELECT 1 + d0.d + 10*d1.d + 100*d2.d + 1000*d3.d
            + 10000*d4.d + 100000*d5.d AS n
-  FROM digit AS d0
-  CROSS JOIN digit AS d1
-  CROSS JOIN digit AS d2
-  CROSS JOIN digit AS d3
-  CROSS JOIN digit AS d4
-  CROSS JOIN digit AS d5
+  FROM seed_digit AS d0
+  CROSS JOIN seed_digit AS d1
+  CROSS JOIN seed_digit AS d2
+  CROSS JOIN seed_digit AS d3
+  CROSS JOIN seed_digit AS d4
+  CROSS JOIN seed_digit AS d5
   ORDER BY n
   LIMIT 100000
 ) AS seq;
@@ -1614,7 +1623,9 @@ SELECT o.id * 10 + d.d,
        d.d,
        (MOD(o.id * d.d, 100000) + 1) / 100
 FROM report_order AS o
-JOIN digit AS d ON d.d IN (1,2,3);
+JOIN seed_digit AS d ON d.d IN (1,2,3);
+
+DROP TABLE seed_digit;
 
 INSERT INTO oltp_probe (id, counter, payload)
 SELECT id, 0, CONCAT('probe-', id)
