@@ -769,6 +769,7 @@ STATUS_NAMES = (
 PHASES = {
     "VALIDATING",
     "BEFORE_SEND",
+    "SESSION_SETTING",
     "GLOBAL_SETTING",
     "EXECUTING",
     "COMMITTING",
@@ -863,7 +864,9 @@ def status_snapshot(cursor) -> dict[str, int]:
 
 
 def load_single(connection, table: str, rows, phase: dict[str, str]) -> int:
+    phase["value"] = "SESSION_SETTING"
     connection.autocommit = True
+    phase["value"] = "BEFORE_SEND"
     cursor = connection.cursor()
     statement = INSERT_SQL.format(table=table)
     accepted = 0
@@ -885,7 +888,9 @@ def load_batches(
     batch_size: int,
     phase: dict[str, str],
 ) -> int:
+    phase["value"] = "SESSION_SETTING"
     connection.autocommit = False
+    phase["value"] = "BEFORE_SEND"
     cursor = connection.cursor()
     statement = INSERT_SQL.format(table=table)
     accepted = 0
@@ -969,7 +974,9 @@ def load_local_file(
 ) -> tuple[int, int, int]:
     if "'" in str(path):
         raise ValueError("input path may not contain a single quote")
+    phase["value"] = "SESSION_SETTING"
     connection.autocommit = False
+    phase["value"] = "BEFORE_SEND"
     cursor = connection.cursor()
     phase["value"] = "EXECUTING"
     cursor.execute(
@@ -1009,7 +1016,12 @@ def classify(
     if failure_phase == "COMMITTING":
         return "UNKNOWN"
     if (
-        failure_phase in ("GLOBAL_SETTING", "EXECUTING", "VERIFYING")
+        failure_phase in {
+            "SESSION_SETTING",
+            "GLOBAL_SETTING",
+            "EXECUTING",
+            "VERIFYING",
+        }
         and (
             isinstance(
                 exc,
@@ -1029,7 +1041,12 @@ def classify(
     if failure_phase in ("VALIDATING", "BEFORE_SEND"):
         return "FAILED"
     if (
-        failure_phase in ("GLOBAL_SETTING", "EXECUTING", "VERIFYING")
+        failure_phase in {
+            "SESSION_SETTING",
+            "GLOBAL_SETTING",
+            "EXECUTING",
+            "VERIFYING",
+        }
         and isinstance(exc, ConnectorError)
         and rollback_confirmed
     ):
@@ -1318,7 +1335,7 @@ Required safety behavior:
 - success requires accepted rows, exact target count, distinct primary IDs, min／max ID and target fingerprint all to equal the source manifest；
 - immediately after `LOAD DATA LOCAL` returns, capture `cursor.warning_count` and `rowcount` before issuing another SQL statement; any warning, reject, accepted-row mismatch or uncommitted target-manifest mismatch is rolled back instead of committed. Driver modes report an exception as `FAILED` or `UNKNOWN`; they never convert it into a successful run with a synthetic reject count；
 - load mode connects with `allow_local_infile=True`, saves `@@GLOBAL.local_infile`, assigns `restore_required=True` before sending the enable statement, and restores plus confirms the original value through a fresh admin connection even if enable acknowledgement is lost；
-- phases distinguish `VALIDATING`、`BEFORE_SEND`、`GLOBAL_SETTING`、`EXECUTING`、`COMMITTING`、`VERIFYING`、`ROLLING_BACK`、`RESTORING`、`CLOSING` and `VERIFIED`; parse／validation and local manifest failures are `FAILED`, a server rejection can be `FAILED` only when the same connection remains usable and rollback is confirmed, lost-connection／read-timeout／write-timeout after a statement and every commit ambiguity remain `UNKNOWN`, and any mandatory cleanup uncertainty is `UNKNOWN`；failure JSON records `operation_phase` and `rollback_confirmed`, and the runner never auto-retries `UNKNOWN`；
+- phases distinguish `VALIDATING`、`BEFORE_SEND`、`SESSION_SETTING`、`GLOBAL_SETTING`、`EXECUTING`、`COMMITTING`、`VERIFYING`、`ROLLING_BACK`、`RESTORING`、`CLOSING` and `VERIFIED`; each mode enters `SESSION_SETTING` before assigning `connection.autocommit`, so a lost acknowledgement／read timeout／write timeout from that session statement is always `UNKNOWN` even if later rollback succeeds. Parse／validation and definite local before-send failures remain `FAILED`; a definite server rejection can be `FAILED` only when the same connection remains usable and rollback is confirmed, every commit ambiguity remains `UNKNOWN`, and any mandatory cleanup uncertainty is `UNKNOWN`；failure JSON records `operation_phase` and `rollback_confirmed`, and the runner never auto-retries `UNKNOWN`；
 - malformed or missing arguments use the same structured failure path; `--help` alone may retain argparse's normal zero-exit text. Parse, validation, execution, verification, rollback, restoration or close failure produces exactly one nonzero JSON outcome after all mandatory cleanup attempts, with the password redacted and no traceback；
 - successful JSON is emitted only after rollback／restoration／close finalization and includes mode, table, rows, warnings, rejected rows, seconds, rows_per_second, status deltas, source manifest and target manifest；
 - Connector/Python `executemany()` is described as a parameterized driver batch whose exact rewrite must be checked for the pinned connector; it is not mislabeled as proof of server-side prepared statements。
