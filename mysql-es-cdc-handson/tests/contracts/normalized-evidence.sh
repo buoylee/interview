@@ -41,6 +41,9 @@ normalize() {
     ) |
     if .canal_position_recovery == null then . else
       del(
+        .canal_position_recovery.old_cursor_sha256,
+        .canal_position_recovery.reset_cursor_sha256,
+        .canal_position_recovery.normal_restart_cursor_sha256,
         .canal_position_recovery.reset_anchor_run_id,
         .canal_position_recovery.normal_sentinel_run_id,
         .canal_position_recovery.reset_anchor_next_offsets,
@@ -60,6 +63,22 @@ normalize() {
       )
     end
   ' "$result" >"$output"
+}
+
+normalize_decoded_cursors() {
+  local fault="$1" output="$2"
+  jq -Se '
+    [
+      .case_observations.artifacts[]
+      | select(.path == "old-meta.json"
+          or .path == "canal-recovery/canal-meta-before.json"
+          or .path == "canal-recovery/reset-anchor-meta-before-publication.json"
+          or .path == "canal-recovery/canal-meta-reset.json"
+          or .path == "canal-recovery/canal-meta-normal-restart.json")
+      | {path, cursor:(.json | del(.timestamp))}
+    ] | sort_by(.path)
+    | if length == 5 then . else error("exact decoded Canal cursor set required") end
+  ' "$fault" >"$output"
 }
 
 compared=0
@@ -92,6 +111,17 @@ while IFS= read -r scenario; do
     echo "normalized evidence mismatch: $scenario" >&2
     diff -u "$tmp/first-$scenario.json" "$tmp/second-$scenario.json" >&2 || true
     exit 1
+  fi
+  if test "$scenario" = canal-outage-beyond-binlog-retention; then
+    first_fault="$first/$scenario/fault.json"
+    second_fault="$second/$scenario/fault.json"
+    normalize_decoded_cursors "$first_fault" "$tmp/first-$scenario-cursors.json"
+    normalize_decoded_cursors "$second_fault" "$tmp/second-$scenario-cursors.json"
+    if ! cmp -s "$tmp/first-$scenario-cursors.json" "$tmp/second-$scenario-cursors.json"; then
+      echo "normalized decoded Canal cursor mismatch: $scenario" >&2
+      diff -u "$tmp/first-$scenario-cursors.json" "$tmp/second-$scenario-cursors.json" >&2 || true
+      exit 1
+    fi
   fi
   compared=$((compared + 1))
 done < <(jq -r '.scenarios[].scenario_id' "$project_root/scenarios/catalog.json")

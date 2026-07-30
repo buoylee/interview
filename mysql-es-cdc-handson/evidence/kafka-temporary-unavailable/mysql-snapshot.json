@@ -12,10 +12,10 @@
       "product_id": 6401,
       "revision": 2,
       "sku": "LAB-6401",
-      "updated_at": "2026-07-29T19:49:56.087691Z"
+      "updated_at": "2026-07-30T03:37:10.551693Z"
     }
   ],
   "schema_version": 1,
   "scenario_id": "kafka-temporary-unavailable",
-  "runner_run_id": "daf6c1ca-6c20-4c50-866b-f70d9e48bd47"
+  "runner_run_id": "c193d60a-9dc7-40da-b588-9935741e6930"
 }

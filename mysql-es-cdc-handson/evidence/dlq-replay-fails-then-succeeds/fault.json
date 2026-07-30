@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "dlq-replay-fails-then-succeeds",
-  "runner_run_id": "e4972e8f-343d-4047-b212-517dbb51bf80",
+  "runner_run_id": "83247e82-8820-4a17-acc4-f4237670e2d7",
   "declared_fault": {
     "type": "MAPPING",
     "target": "durable-dlq-replay",
@@ -16,28 +16,28 @@
     "artifacts": [
       {
         "path": "bad-mapping-ready.json",
-        "sha256": "4c0d3532456508fcd4ac3dc441c64e8189911c80ae21062d3376bb0b2fb10197",
+        "sha256": "b6ecde3867f4b34e235840dcbae7bbca7ab1d915bba054236b7c3f5217081746",
         "json": {
           "transport_exit": 0,
           "http_status": 200,
           "json_valid": true,
           "raw_body": "{\"groups\":[\"liveness\",\"readiness\"],\"status\":\"UP\"}",
-          "consumer_container_id": "4dbcf985734493c3d04a8d6309ac6a8ee908e30952ac07397ce2c084d9d01e46",
-          "container_started_at": "2026-07-29T20:12:25.451234179Z",
-          "observed_at": "2026-07-29T20:12:30Z"
+          "consumer_container_id": "cac702c5e1864bdbf28f16064f8e18d9d3663655c9e40ccea3f5bddb5bc2b392",
+          "container_started_at": "2026-07-30T04:15:05.86005006Z",
+          "observed_at": "2026-07-30T04:15:12Z"
         }
       },
       {
         "path": "correct-mapping-ready.json",
-        "sha256": "04f07bded5c8dc32bcdde82865c229154494bf60da708adf668ff3e15b9240b1",
+        "sha256": "87089416f8efe8c062fd26ca5835f72a422bc2baf5357569ac2feac169609931",
         "json": {
           "transport_exit": 0,
           "http_status": 503,
           "json_valid": true,
           "raw_body": "{\"groups\":[\"liveness\",\"readiness\"],\"status\":\"DOWN\"}",
-          "consumer_container_id": "4dbcf985734493c3d04a8d6309ac6a8ee908e30952ac07397ce2c084d9d01e46",
-          "container_started_at": "2026-07-29T20:12:37.153006124Z",
-          "observed_at": "2026-07-29T20:12:41Z"
+          "consumer_container_id": "cac702c5e1864bdbf28f16064f8e18d9d3663655c9e40ccea3f5bddb5bc2b392",
+          "container_started_at": "2026-07-30T04:15:18.410723263Z",
+          "observed_at": "2026-07-30T04:15:22Z"
         }
       },
       {
@@ -65,17 +65,17 @@
       },
       {
         "path": "es-final.json",
-        "sha256": "cb6594e5a157314d3a9a682c18f144742a8742b63f26abd516885e9a8247f42f",
+        "sha256": "f256536d61ae3fc65693b0e1a07e21bf71f69efcf63ab038e82e6c2d4b6b6d29",
         "json": {
           "transport_exit": 0,
           "http_status": 200,
           "json_valid": true,
-          "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"7801\",\"_version\":2,\"_seq_no\":0,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":7801,\"sku\":\"LAB-7801\",\"name\":\"Crash 7801\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":1000,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-29T20:12:30.729299Z\"}}"
+          "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"7801\",\"_version\":2,\"_seq_no\":0,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":7801,\"sku\":\"LAB-7801\",\"name\":\"Crash 7801\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":1000,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-30T04:15:12.377024Z\"}}"
         }
       },
       {
         "path": "final-pipeline-status.json",
-        "sha256": "b0f6dfe36bbf8938a777ea0456a251d7282940fc259956fe3c17167015c73d97",
+        "sha256": "b6a67d832a95b5c567e487780f1f8b5b5a6b109813271b20ad2e0c88271386e6",
         "json": {
           "state": "HEALTHY",
           "kafkaLag": 0,
@@ -84,9 +84,9 @@
             {
               "topic": "product-search-revisions",
               "partition": 0,
-              "committedOffset": 3,
+              "committedOffset": 1,
               "beginningOffset": 0,
-              "endOffset": 3,
+              "endOffset": 1,
               "lag": 0,
               "retentionGap": false
             },
@@ -110,13 +110,13 @@
             }
           ],
           "unresolvedDlq": 0,
-          "latestRunId": "0e9cbe43-79df-49c2-bf64-8b133f652e28",
+          "latestRunId": "9f0e4acb-2d66-43bf-8404-55a201adcb85",
           "latestRunStatus": "PASS",
           "latestDifferenceCount": 0,
-          "latestRunFinishedAt": "2026-07-29T20:12:44.017481Z",
-          "latestSuccessfulPassFinishedAt": "2026-07-29T20:12:44.017481Z",
+          "latestRunFinishedAt": "2026-07-30T04:15:26.690383Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-30T04:15:26.690383Z",
           "activeConditions": [],
-          "evaluatedAt": "2026-07-29T20:12:44.074152640Z"
+          "evaluatedAt": "2026-07-30T04:15:26.749936925Z"
         }
       },
       {
@@ -146,9 +146,9 @@
       },
       {
         "path": "final-verification.json",
-        "sha256": "de9d9bd7cfcf6047f9df49952259b48f853cd36bb8e940b7e7b2eb5be8765974",
+        "sha256": "d5f9124cf511a29bdac5d5290f6a1c823aac324435b935701613887849cc0e41",
         "json": {
-          "runId": "0e9cbe43-79df-49c2-bf64-8b133f652e28",
+          "runId": "9f0e4acb-2d66-43bf-8404-55a201adcb85",
           "target": "products_write",
           "status": "PASS",
           "sourceWatermarkStart": 2,
@@ -181,7 +181,7 @@
       },
       {
         "path": "pending-after-failed-replay.json",
-        "sha256": "be58bccda55916ffb98ab4be2f118cec77ee33b6156904e25ce69204221175d6",
+        "sha256": "40d334edde44cc90b8cdee5b799dc23ce1c087f62c2defad7378b4f7be481041",
         "json": [
           {
             "eventId": "product-search-revisions:1:1:7801",
@@ -190,13 +190,13 @@
             "offset": 1,
             "productId": 7801,
             "sourceRevision": 2,
-            "payload": "{\"sku\": \"LAB-7801\", \"name\": \"Crash 7801\", \"product_id\": 7801, \"searchable\": true, \"category_id\": 10, \"description\": \"fixture\", \"price_cents\": 1000, \"category_name\": \"Accessories\", \"source_revision\": 2, \"source_updated_at\": \"2026-07-29T20:12:30.729299Z\", \"available_quantity\": 0}",
+            "payload": "{\"sku\": \"LAB-7801\", \"name\": \"Crash 7801\", \"product_id\": 7801, \"searchable\": true, \"category_id\": 10, \"description\": \"fixture\", \"price_cents\": 1000, \"category_name\": \"Accessories\", \"source_revision\": 2, \"source_updated_at\": \"2026-07-30T04:15:12.377024Z\", \"available_quantity\": 0}",
             "failureClass": "document_parsing_exception",
             "lastError": "[1:142] failed to parse field [price_cents] of type [byte] in document with id '7801'. Preview of field's value: '1000'",
             "status": "PENDING",
             "attempts": 2,
-            "createdAt": "2026-07-29T20:12:30.977070Z",
-            "updatedAt": "2026-07-29T20:12:31.530880Z",
+            "createdAt": "2026-07-30T04:15:12.774538Z",
+            "updatedAt": "2026-07-30T04:15:13.126619Z",
             "resolvedAt": null,
             "newPending": false
           }
@@ -204,7 +204,7 @@
       },
       {
         "path": "pending-before.json",
-        "sha256": "de5fd744bc34109f7b19fc3347875238f1f2d383e2c46bbe757e1e251f15df11",
+        "sha256": "844007b683f68734cbcd001f27d7fc9a30695880c6c970637765f01448c7cba8",
         "json": [
           {
             "eventId": "product-search-revisions:1:1:7801",
@@ -213,13 +213,13 @@
             "offset": 1,
             "productId": 7801,
             "sourceRevision": 2,
-            "payload": "{\"sku\": \"LAB-7801\", \"name\": \"Crash 7801\", \"product_id\": 7801, \"searchable\": true, \"category_id\": 10, \"description\": \"fixture\", \"price_cents\": 1000, \"category_name\": \"Accessories\", \"source_revision\": 2, \"source_updated_at\": \"2026-07-29T20:12:30.729299Z\", \"available_quantity\": 0}",
+            "payload": "{\"sku\": \"LAB-7801\", \"name\": \"Crash 7801\", \"product_id\": 7801, \"searchable\": true, \"category_id\": 10, \"description\": \"fixture\", \"price_cents\": 1000, \"category_name\": \"Accessories\", \"source_revision\": 2, \"source_updated_at\": \"2026-07-30T04:15:12.377024Z\", \"available_quantity\": 0}",
             "failureClass": "document_parsing_exception",
             "lastError": "[1:142] failed to parse field [price_cents] of type [byte] in document with id '7801'. Preview of field's value: '1000'",
             "status": "PENDING",
             "attempts": 1,
-            "createdAt": "2026-07-29T20:12:30.977070Z",
-            "updatedAt": "2026-07-29T20:12:30.977070Z",
+            "createdAt": "2026-07-30T04:15:12.774538Z",
+            "updatedAt": "2026-07-30T04:15:12.774538Z",
             "resolvedAt": null,
             "newPending": false
           }
@@ -251,7 +251,7 @@
       },
       {
         "path": "status-degraded.json",
-        "sha256": "fa6e0ddd1a6a2fe851d49b009c6f66f65c8d1fef6fa46941b50cb09481061e45",
+        "sha256": "3e990aa9bc3e3a852c008c3a96ff95132a67283fb93beaaf8a8bc45579576ac8",
         "json": {
           "state": "DEGRADED",
           "kafkaLag": 0,
@@ -260,9 +260,9 @@
             {
               "topic": "product-search-revisions",
               "partition": 0,
-              "committedOffset": 3,
+              "committedOffset": 1,
               "beginningOffset": 0,
-              "endOffset": 3,
+              "endOffset": 1,
               "lag": 0,
               "retentionGap": false
             },
@@ -292,7 +292,7 @@
           "latestRunFinishedAt": null,
           "latestSuccessfulPassFinishedAt": null,
           "activeConditions": [],
-          "evaluatedAt": "2026-07-29T20:12:31.739215357Z"
+          "evaluatedAt": "2026-07-30T04:15:13.373645558Z"
         }
       }
     ]

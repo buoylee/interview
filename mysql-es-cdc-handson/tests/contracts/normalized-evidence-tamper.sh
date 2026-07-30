@@ -31,6 +31,9 @@ while IFS=$'\t' read -r design_case scenario; do
     .applied_offsets|=with_entries(.value+=1000) |
     .dependency_versions.image_digests={mysql:"sha256:fresh"} |
     if .canal_position_recovery == null then . else
+      .canal_position_recovery.old_cursor_sha256=("c"*64) |
+      .canal_position_recovery.reset_cursor_sha256=("d"*64) |
+      .canal_position_recovery.normal_restart_cursor_sha256=("d"*64) |
       .canal_position_recovery.reset_anchor_run_id=$runner_id |
       .canal_position_recovery.normal_sentinel_run_id=$verifier_id |
       .canal_position_recovery.reset_anchor_next_offsets|=with_entries(.value+=1000) |
@@ -45,6 +48,20 @@ while IFS=$'\t' read -r design_case scenario; do
   ' "$right/$scenario/result.json" >"$right/$scenario/result.tmp"
   mv "$right/$scenario/result.tmp" "$right/$scenario/result.json"
 done < <(jq -r '.scenarios[]|[.design_case,.scenario_id]|@tsv' scenarios/catalog.json)
+
+canal_fault="$right/canal-outage-beyond-binlog-retention/fault.json"
+jq '
+  .case_observations.artifacts[]
+  |= if (.path == "old-meta.json"
+      or .path == "canal-recovery/canal-meta-before.json"
+      or .path == "canal-recovery/reset-anchor-meta-before-publication.json"
+      or .path == "canal-recovery/canal-meta-reset.json"
+      or .path == "canal-recovery/canal-meta-normal-restart.json")
+    then (.json.timestamp += 1000)
+    else .
+    end
+' "$canal_fault" >"$canal_fault.tmp"
+mv "$canal_fault.tmp" "$canal_fault"
 
 bash "$comparator" "$left" "$right" >/dev/null
 
@@ -72,6 +89,39 @@ expect_rejected precondition-result "$scenario" '.consistency_preconditions[0].s
 expect_rejected dependency-version "$scenario" '.dependency_versions.mysql="invented"'
 expect_rejected target-watermark-result "$scenario" '.target_watermark_passed=false'
 expect_rejected tombstone-count "$scenario" '.tombstone_mismatch_count=1'
+
+canal=canal-outage-beyond-binlog-retention
+expect_rejected reset-restart-journal "$canal" '.canal_position_recovery.normal_restart_journal="mysql-bin.999999"'
+expect_rejected reset-restart-position "$canal" '.canal_position_recovery.normal_restart_position+=1'
+
+expect_fault_rejected() {
+  local name="$1" filter="$2" candidate fault
+  candidate="$tmp/rejected-$name"
+  cp -R "$right" "$candidate"
+  fault="$candidate/$canal/fault.json"
+  jq "$filter" "$fault" >"$fault.tmp"
+  mv "$fault.tmp" "$fault"
+  if bash "$comparator" "$left" "$candidate" >"$tmp/$name.out" 2>&1; then
+    echo "normalized comparison accepted decoded cursor tamper: $name" >&2
+    exit 1
+  fi
+}
+
+cursor='(.case_observations.artifacts[]|select(.path=="canal-recovery/canal-meta-reset.json").json)'
+expect_fault_rejected decoded-contract "${cursor}.contract=\"invented\""
+expect_fault_rejected decoded-path "${cursor}.path=\"/invented/meta.dat\""
+expect_fault_rejected decoded-destination "${cursor}.destination=\"invented\""
+expect_fault_rejected decoded-client-destination "${cursor}.client.destination=\"invented\""
+expect_fault_rejected decoded-client-id "${cursor}.client.client_id+=1"
+expect_fault_rejected decoded-client-filter "${cursor}.client.filter=\"invented\""
+expect_fault_rejected decoded-journal "${cursor}.journal=\"mysql-bin.999999\""
+expect_fault_rejected decoded-position "${cursor}.position+=1"
+expect_fault_rejected decoded-server-id "${cursor}.server_id+=1"
+expect_fault_rejected decoded-gtid "${cursor}.gtid=\"invented\""
+expect_fault_rejected decoded-source-address "${cursor}.source.address=\"invented\""
+expect_fault_rejected decoded-source-port "${cursor}.source.port+=1"
+expect_fault_rejected decoded-slave-id "${cursor}.slave_id+=1"
+expect_fault_rejected decoded-artifact-missing 'del(.case_observations.artifacts[]|select(.path=="canal-recovery/canal-meta-reset.json"))'
 
 same_ids="$tmp/same-ids"
 cp -R "$left" "$same_ids"

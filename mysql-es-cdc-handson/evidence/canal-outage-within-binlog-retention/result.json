@@ -1,13 +1,13 @@
 {
   "applied_offsets": {
-    "0": 5,
+    "0": 3,
     "1": 0,
     "2": 0
   },
   "canal_position_recovery": null,
   "cleanup_actions": [
     {
-      "finished_at": "2026-07-29T19:46:01Z",
+      "finished_at": "2026-07-30T03:30:26Z",
       "name": "dispatch-owned-m6-real-fault",
       "success": true
     }
@@ -16,17 +16,17 @@
   "consistency_preconditions": [
     {
       "name": "dedicated-compose-project",
-      "observed_at": "2026-07-29T19:45:48Z",
+      "observed_at": "2026-07-30T03:30:06Z",
       "satisfied": true
     },
     {
       "name": "pinned-stack-ready",
-      "observed_at": "2026-07-29T19:45:48Z",
+      "observed_at": "2026-07-30T03:30:06Z",
       "satisfied": true
     },
     {
       "name": "baseline-lag-zero",
-      "observed_at": "2026-07-29T19:45:48Z",
+      "observed_at": "2026-07-30T03:30:06Z",
       "satisfied": true
     }
   ],
@@ -35,7 +35,7 @@
     "elasticsearch": "8.17.0",
     "kafka": "4.1.2",
     "mysql": "8.4.8",
-    "project_head": "fb1a87733f0dcea5f41d1a0adbd1da2c980cac97"
+    "project_head": "bb75ab0c19b3f64090faec9d281d56ff43087a55"
   },
   "exact_diff_count": 0,
   "expected_intermediate_states": [
@@ -43,7 +43,7 @@
   ],
   "expected_pipeline_state": "HEALTHY",
   "failed_assertions": [],
-  "finished_at": "2026-07-29T19:46:14Z",
+  "finished_at": "2026-07-30T03:30:45Z",
   "observed_intermediate_states": [
     "CATCHING_UP"
   ],
@@ -55,12 +55,12 @@
   "recovery_action_observed": true,
   "requires_rebuild": false,
   "result": "PASS",
-  "runner_run_id": "9e2c94c6-5ed6-43e1-9743-8e3d646758e0",
+  "runner_run_id": "ee7ea4ff-5fea-416a-b57a-9347c62a4fb4",
   "scenario_id": "canal-outage-within-binlog-retention",
   "scenario_lag_satisfied": true,
   "schema_version": 1,
   "source_watermark": 2,
-  "started_at": "2026-07-29T19:45:02Z",
+  "started_at": "2026-07-30T03:28:48Z",
   "target_watermark_passed": true,
   "target_watermarks": {
     "elasticsearch_revision": 2,
@@ -72,11 +72,11 @@
   "verification": {
     "conclusive": true,
     "exact_managed_field_diff_count": 0,
-    "observed_at": "2026-07-29T19:46:07Z",
-    "run_id": "1d6b57c0-da13-4b3f-980e-3e26c3185e95",
+    "observed_at": "2026-07-30T03:30:34Z",
+    "run_id": "54633b81-b7de-4770-bd2c-a29ca0549daf",
     "stable": true,
     "status": "PASS",
     "version_metadata_diff_count": 0
   },
-  "watermark_run_id": "1d6b57c0-da13-4b3f-980e-3e26c3185e95"
+  "watermark_run_id": "54633b81-b7de-4770-bd2c-a29ca0549daf"
 }

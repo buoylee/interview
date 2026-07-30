@@ -12,7 +12,7 @@
       "product_id": 6801,
       "revision": 2,
       "sku": "LAB-6801",
-      "updated_at": "2026-07-29T19:56:46.350674Z"
+      "updated_at": "2026-07-30T03:51:48.082437Z"
     },
     {
       "active": 1,
@@ -25,10 +25,10 @@
       "product_id": 6804,
       "revision": 2,
       "sku": "LAB-6804",
-      "updated_at": "2026-07-29T19:56:46.350674Z"
+      "updated_at": "2026-07-30T03:51:48.082437Z"
     }
   ],
   "schema_version": 1,
   "scenario_id": "elasticsearch-bulk-partial-failure",
-  "runner_run_id": "59614613-3002-467f-b0a6-2a72a0d5d153"
+  "runner_run_id": "24a46ada-d4d0-4868-8f16-4ea35b12ef87"
 }

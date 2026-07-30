@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "consumer-crash-before-elasticsearch",
-  "runner_run_id": "b64ad2b2-bcc4-411b-bc38-7d15f072ef4a",
+  "runner_run_id": "f888a171-d079-4464-bab2-f0801d7d165f",
   "intents": [
     {
       "sequence": 1,
@@ -48,8 +48,8 @@
       "path": "/scenario/consumer-crash-before-elasticsearch/mutate",
       "fixture_path": "scenarios/scripts/cases/06-consumer-crash-before-elasticsearch.sh",
       "fixture_sha256": "0d6448d81f5e62088582a3aebdf5aa866f04c940f0b9cecc572968f238736af3",
-      "started_at": "2026-07-29T19:52:54Z",
-      "finished_at": "2026-07-29T19:53:13Z",
+      "started_at": "2026-07-30T03:42:36Z",
+      "finished_at": "2026-07-30T03:42:58Z",
       "exit_code": 0
     },
     {
@@ -64,8 +64,8 @@
       "path": "/scenario/consumer-crash-before-elasticsearch/recover",
       "fixture_path": "scenarios/scripts/cases/06-consumer-crash-before-elasticsearch.sh",
       "fixture_sha256": "0d6448d81f5e62088582a3aebdf5aa866f04c940f0b9cecc572968f238736af3",
-      "started_at": "2026-07-29T19:53:13Z",
-      "finished_at": "2026-07-29T19:53:45Z",
+      "started_at": "2026-07-30T03:42:58Z",
+      "finished_at": "2026-07-30T03:43:30Z",
       "exit_code": 0
     },
     {
@@ -81,8 +81,8 @@
       "body_sha256": "0926a40491d2b85cf315a8132b1ca26cc5fc21a4fb8235ef3e75d17b3ed676c1",
       "fixture_path": "scenarios/scripts/collect-m6-observations.sh",
       "fixture_sha256": "8bcbf975ec8066db234f1c017bd4a6fa0a8b65434ce4ac4a801a93c96d066790",
-      "started_at": "2026-07-29T19:53:48Z",
-      "finished_at": "2026-07-29T19:53:48Z",
+      "started_at": "2026-07-30T03:43:36Z",
+      "finished_at": "2026-07-30T03:43:37Z",
       "exit_code": 0
     }
   ]

@@ -16,7 +16,7 @@
   "consistency": "ADMIN_OFFSETS_AT_CAPTURE_TIME",
   "end": [
     {
-      "offset": 5,
+      "offset": 3,
       "partition": 0
     },
     {
@@ -31,7 +31,7 @@
   "primary": [
     {
       "lag": 0,
-      "offset": 5,
+      "offset": 3,
       "partition": 0
     },
     {
@@ -49,5 +49,5 @@
   "shadow_and_barrier": [],
   "topic": "product-search-revisions",
   "scenario_id": "canal-outage-within-binlog-retention",
-  "runner_run_id": "9e2c94c6-5ed6-43e1-9743-8e3d646758e0"
+  "runner_run_id": "ee7ea4ff-5fea-416a-b57a-9347c62a4fb4"
 }

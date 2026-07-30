@@ -16,7 +16,7 @@
   "consistency": "ADMIN_OFFSETS_AT_CAPTURE_TIME",
   "end": [
     {
-      "offset": 3,
+      "offset": 1,
       "partition": 0
     },
     {
@@ -31,7 +31,7 @@
   "primary": [
     {
       "lag": 0,
-      "offset": 3,
+      "offset": 1,
       "partition": 0
     },
     {
@@ -49,5 +49,5 @@
   "shadow_and_barrier": [],
   "topic": "product-search-revisions",
   "scenario_id": "canal-normal-restart",
-  "runner_run_id": "10fb080a-26f0-456a-9ba6-2c6bbdf31ec6"
+  "runner_run_id": "991c0cbc-559e-4f31-9ea0-9d0dff9694aa"
 }

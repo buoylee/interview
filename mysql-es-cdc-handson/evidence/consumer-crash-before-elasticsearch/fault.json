@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "consumer-crash-before-elasticsearch",
-  "runner_run_id": "b64ad2b2-bcc4-411b-bc38-7d15f072ef4a",
+  "runner_run_id": "f888a171-d079-4464-bab2-f0801d7d165f",
   "declared_fault": {
     "type": "PROCESS",
     "target": "search-sync-consumer",
@@ -16,13 +16,13 @@
     "artifacts": [
       {
         "path": "crashed.json",
-        "sha256": "f3fdb26e6f3d9139f5ca18235ec24ba20ef59a50ff427258030a26be81905061",
+        "sha256": "1c30a9ee6b086b00397e2ba8b5e209922fe1f82b9f1d882dcf5774f292841c5d",
         "json": {
-          "id": "329d5d6c36592b554d563c656c7c8177071b899ee4efc15304eb977308d0c215",
-          "started_at": "2026-07-29T19:52:44.891847285Z",
+          "id": "a34eb5f8035560c5cab3e8777ea3e73dfcfbfc9a293b5f1805c217e83f9d1fa6",
+          "started_at": "2026-07-30T03:42:18.430573153Z",
           "running": false,
           "exit_code": 86,
-          "finished_at": "2026-07-29T19:52:59.78443802Z"
+          "finished_at": "2026-07-30T03:42:43.547767149Z"
         }
       },
       {
@@ -45,17 +45,17 @@
       },
       {
         "path": "es-final.json",
-        "sha256": "9bb7f804018b424b3dbed30f163b17f7f13c4bae74642806d849a30e53ba4bfe",
+        "sha256": "35b2a03f66882db9dac8c9f9b9b12ea54b67f6d8d85396b2f7ab4240fa5cbd0f",
         "json": {
           "transport_exit": 0,
           "http_status": 200,
           "json_valid": true,
-          "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"6601\",\"_version\":2,\"_seq_no\":1,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":6601,\"sku\":\"LAB-6601\",\"name\":\"Crash 6601\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":66101,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-29T19:52:59.298739Z\"}}"
+          "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"6601\",\"_version\":2,\"_seq_no\":1,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":6601,\"sku\":\"LAB-6601\",\"name\":\"Crash 6601\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":66101,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-30T03:42:43.055634Z\"}}"
         }
       },
       {
         "path": "final-pipeline-status.json",
-        "sha256": "40f70b041b2c31d299cd3d8506b0819114f84cc5f4ccb390eda5460f97dd7310",
+        "sha256": "336cf960e89cfd5491449ed48da8835f583c674d81a644436c88a6f47ab33f66",
         "json": {
           "state": "HEALTHY",
           "kafkaLag": 0,
@@ -90,13 +90,13 @@
             }
           ],
           "unresolvedDlq": 0,
-          "latestRunId": "35eb6fa5-1ddc-4694-8811-36df6741b114",
+          "latestRunId": "293f4cc1-ed3a-44ee-80a6-4f4e5388eb2a",
           "latestRunStatus": "PASS",
           "latestDifferenceCount": 0,
-          "latestRunFinishedAt": "2026-07-29T19:53:48.258665Z",
-          "latestSuccessfulPassFinishedAt": "2026-07-29T19:53:48.258665Z",
+          "latestRunFinishedAt": "2026-07-30T03:43:37.301992Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-30T03:43:37.301992Z",
           "activeConditions": [],
-          "evaluatedAt": "2026-07-29T19:53:48.330438858Z"
+          "evaluatedAt": "2026-07-30T03:43:37.445539618Z"
         }
       },
       {
@@ -126,9 +126,9 @@
       },
       {
         "path": "final-verification.json",
-        "sha256": "509fdfc259bfa7a9d53e1fa798415edd59132bd539208c2ccba7b42d1fddade1",
+        "sha256": "71e87e7261d858a29f55ad38bcb82d15446ec2f7aa3fc05cad2d1233af65ed54",
         "json": {
-          "runId": "35eb6fa5-1ddc-4694-8811-36df6741b114",
+          "runId": "293f4cc1-ed3a-44ee-80a6-4f4e5388eb2a",
           "target": "products_write",
           "status": "PASS",
           "sourceWatermarkStart": 2,
@@ -210,7 +210,7 @@
       },
       {
         "path": "record.json",
-        "sha256": "a996ef65e1e7d4132d485918d584fdff59d08dc50e33aa30c38babd14a33d925",
+        "sha256": "b70d65dec621cde348eb051dde4001ac8ab554aa0bf03749a2e03d9aab65b5c8",
         "json": {
           "partition": 1,
           "offset": 1,
@@ -221,13 +221,13 @@
                 "product_id": "6601",
                 "revision": "2",
                 "active": "1",
-                "updated_at": "2026-07-29 19:52:59.298739"
+                "updated_at": "2026-07-30 03:42:43.055634"
               }
             ],
             "database": "product_catalog",
-            "es": 1785354779000,
+            "es": 1785382963000,
             "gtid": "",
-            "id": 4,
+            "id": 3,
             "isDdl": false,
             "mysqlType": {
               "product_id": "bigint",
@@ -238,7 +238,7 @@
             "old": [
               {
                 "revision": "1",
-                "updated_at": "2026-07-29 19:52:55.195638"
+                "updated_at": "2026-07-30 03:42:37.453015"
               }
             ],
             "pkNames": [
@@ -252,22 +252,22 @@
               "updated_at": 93
             },
             "table": "product_search_revision",
-            "ts": 1785354779369,
+            "ts": 1785382963122,
             "type": "UPDATE"
           }
         }
       },
       {
         "path": "restarted.json",
-        "sha256": "f860a1de4b2e2bbfdd76cf3f1afead6ccb5ce0634e5a8d41ea376b8ec05cd02f",
+        "sha256": "fda216b88ea5dc9961d2a1457d714323078a5a96c288555607b89669dcbf001f",
         "json": {
           "transport_exit": 0,
           "http_status": 200,
           "json_valid": true,
           "raw_body": "{\"groups\":[\"liveness\",\"readiness\"],\"status\":\"UP\"}",
-          "consumer_container_id": "329d5d6c36592b554d563c656c7c8177071b899ee4efc15304eb977308d0c215",
-          "container_started_at": "2026-07-29T19:53:16.598567529Z",
-          "observed_at": "2026-07-29T19:53:19Z"
+          "consumer_container_id": "a34eb5f8035560c5cab3e8777ea3e73dfcfbfc9a293b5f1805c217e83f9d1fa6",
+          "container_started_at": "2026-07-30T03:43:06.156915491Z",
+          "observed_at": "2026-07-30T03:43:15Z"
         }
       }
     ]

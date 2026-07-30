@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "rebuild-with-concurrent-writes",
-  "runner_run_id": "15f0ef81-6f4f-4733-9399-6c0f3487cda4",
+  "runner_run_id": "9b004fba-f1b8-401c-9caf-e9c4dc3f9688",
   "declared_fault": {
     "type": "REBUILD",
     "target": "m5-rebuild",
@@ -585,7 +585,7 @@
       },
       {
         "path": "final-pipeline-status.json",
-        "sha256": "56ade920490583230b8c95b97bc4840542a0aab0ce1e4b01d4137629d8e440cd",
+        "sha256": "31a12b14fdd419bb3f3af78fea9206119e5be14ba66328a3ff8dafcde4db2830",
         "json": {
           "state": "HEALTHY",
           "kafkaLag": 0,
@@ -594,9 +594,9 @@
             {
               "topic": "product-search-revisions",
               "partition": 0,
-              "committedOffset": 17,
+              "committedOffset": 15,
               "beginningOffset": 0,
-              "endOffset": 17,
+              "endOffset": 15,
               "lag": 0,
               "retentionGap": false
             },
@@ -620,13 +620,13 @@
             }
           ],
           "unresolvedDlq": 0,
-          "latestRunId": "2f6ae931-472d-4a7a-9dd9-96b88e87f9da",
+          "latestRunId": "ba41c22c-4740-4dbf-b146-cb107051098f",
           "latestRunStatus": "PASS",
           "latestDifferenceCount": 0,
-          "latestRunFinishedAt": "2026-07-29T20:07:50.362283Z",
-          "latestSuccessfulPassFinishedAt": "2026-07-29T20:07:50.362283Z",
+          "latestRunFinishedAt": "2026-07-30T04:08:02.338184Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-30T04:08:02.338184Z",
           "activeConditions": [],
-          "evaluatedAt": "2026-07-29T20:07:50.427363592Z"
+          "evaluatedAt": "2026-07-30T04:08:02.508593117Z"
         }
       },
       {
@@ -656,9 +656,9 @@
       },
       {
         "path": "final-verification.json",
-        "sha256": "3cb93603d1e275cf5579ef6584cf1515b986e727a0b126c96d234abf5a13f955",
+        "sha256": "0069f5e72bff98adbf736bccc32b8cadd3d526bb454540bcf18a907001af7ec6",
         "json": {
-          "runId": "2f6ae931-472d-4a7a-9dd9-96b88e87f9da",
+          "runId": "ba41c22c-4740-4dbf-b146-cb107051098f",
           "target": "products_write",
           "status": "PASS",
           "sourceWatermarkStart": 36,
@@ -675,8 +675,8 @@
         "path": "gated-write.json",
         "sha256": "2b896c54d41a8082716d210993847aa5a7b586d8b9b03c96ff52d8c31b6e914d",
         "json": {
-          "code": "PRODUCT_WRITES_PAUSED",
-          "retryable": true
+          "retryable": true,
+          "code": "PRODUCT_WRITES_PAUSED"
         }
       },
       {
@@ -715,89 +715,89 @@
       },
       {
         "path": "rebuild-completed.json",
-        "sha256": "a3e0a8c33fd6e176ab36ec5f2888707902f2f57eaaa6c7c536a513df29a39092",
+        "sha256": "768d90b271b6612f67394f3441c7af77b77d4e600e0ad655bad9a01e7cd7f12c",
         "json": {
-          "runId": "a3c30af1-f36f-492c-939c-7df82656cdde",
+          "runId": "054c6942-03cb-4a57-b364-053ee92114a4",
           "status": "COMPLETED",
-          "generation": "products_v3_20260729200741_a3c30af1",
+          "generation": "products_v3_20260730040747_054c6942",
           "failureMessage": null,
           "aliasSwapped": true,
           "startOffsets": {
             "2": 10,
-            "0": 13,
-            "1": 11
+            "1": 11,
+            "0": 11
           },
           "shadowOffsets": {
             "2": 13,
-            "0": 17,
-            "1": 13
+            "1": 13,
+            "0": 15
           },
           "barrierOffsets": {
             "2": 13,
-            "0": 17,
-            "1": 13
+            "1": 13,
+            "0": 15
           },
-          "verificationRunId": "27dcc71f-0e09-4301-99a0-1bfcb024fa6e",
+          "verificationRunId": "d66f2c02-6d42-42a8-91c5-4d3f3e1db0f1",
           "gateOwner": null,
           "aliasState": "NEW"
         }
       },
       {
         "path": "rebuild-response.json",
-        "sha256": "a3e0a8c33fd6e176ab36ec5f2888707902f2f57eaaa6c7c536a513df29a39092",
+        "sha256": "768d90b271b6612f67394f3441c7af77b77d4e600e0ad655bad9a01e7cd7f12c",
         "json": {
-          "runId": "a3c30af1-f36f-492c-939c-7df82656cdde",
+          "runId": "054c6942-03cb-4a57-b364-053ee92114a4",
           "status": "COMPLETED",
-          "generation": "products_v3_20260729200741_a3c30af1",
+          "generation": "products_v3_20260730040747_054c6942",
           "failureMessage": null,
           "aliasSwapped": true,
           "startOffsets": {
             "2": 10,
-            "0": 13,
-            "1": 11
+            "1": 11,
+            "0": 11
           },
           "shadowOffsets": {
             "2": 13,
-            "0": 17,
-            "1": 13
+            "1": 13,
+            "0": 15
           },
           "barrierOffsets": {
             "2": 13,
-            "0": 17,
-            "1": 13
+            "1": 13,
+            "0": 15
           },
-          "verificationRunId": "27dcc71f-0e09-4301-99a0-1bfcb024fa6e",
+          "verificationRunId": "d66f2c02-6d42-42a8-91c5-4d3f3e1db0f1",
           "gateOwner": null,
           "aliasState": "NEW"
         }
       },
       {
         "path": "rebuild-run-id",
-        "sha256": "af9d0e73279f7e593135879b22cd1463055c438d005e4a6ea769d7915cd00ab1",
-        "text": "a3c30af1-f36f-492c-939c-7df82656cdde\n"
+        "sha256": "03dc172bc4dcd46bb56c3ce454fb94476287f28b15ea5ecd65fb9eb26905220b",
+        "text": "054c6942-03cb-4a57-b364-053ee92114a4\n"
       },
       {
         "path": "status-gating.json",
-        "sha256": "5cd3af849fde3306e77829319cafe3a961697442395b6632662eb1e823f89919",
+        "sha256": "39e51ca6b9048b4acb49136defdd8994ef375f438cc30f0739965e0c4a36003a",
         "json": {
-          "runId": "a3c30af1-f36f-492c-939c-7df82656cdde",
+          "runId": "054c6942-03cb-4a57-b364-053ee92114a4",
           "status": "GATING",
-          "generation": "products_v3_20260729200741_a3c30af1",
+          "generation": "products_v3_20260730040747_054c6942",
           "failureMessage": null,
           "aliasSwapped": false,
           "startOffsets": {
             "2": 10,
-            "0": 13,
-            "1": 11
+            "1": 11,
+            "0": 11
           },
           "shadowOffsets": {
             "2": 13,
-            "0": 17,
-            "1": 13
+            "1": 13,
+            "0": 15
           },
           "barrierOffsets": {},
           "verificationRunId": null,
-          "gateOwner": "a3c30af1-f36f-492c-939c-7df82656cdde",
+          "gateOwner": "054c6942-03cb-4a57-b364-053ee92114a4",
           "aliasState": "OLD"
         }
       }

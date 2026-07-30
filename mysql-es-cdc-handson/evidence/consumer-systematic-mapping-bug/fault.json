@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "consumer-systematic-mapping-bug",
-  "runner_run_id": "6b004145-70c4-437f-98d9-2c4ed855816a",
+  "runner_run_id": "882940aa-e5a4-43b6-85c3-4fbdec3dd428",
   "declared_fault": {
     "type": "MAPPING",
     "target": "consumer-category-projector",
@@ -34,9 +34,9 @@
       },
       {
         "path": "diff-run.json",
-        "sha256": "2abe6b2f9a289afb4aa540accb67ffd9bae9e8615704dd6a8ac2c81663698743",
+        "sha256": "148fcabf3b7958f2f7ad6a6967b956bb873e76e8ca2ed3a9c6f32be206b2592d",
         "json": {
-          "runId": "137bc751-99a7-4189-9dbf-4d35d6c809a0",
+          "runId": "67cd2fc9-6757-485b-9a26-c9610c01388e",
           "target": "products_write",
           "status": "DIFF",
           "sourceWatermarkStart": 2,
@@ -67,7 +67,7 @@
       },
       {
         "path": "final-pipeline-status.json",
-        "sha256": "e632039e46b8d78da99afc861e601808d52422ca0a9f30ac2e57a206b3f01a54",
+        "sha256": "f44dc19869d60755fd3184ef16378b63d48eb5b60691fe3c5b96dbef015915c1",
         "json": {
           "state": "HEALTHY",
           "kafkaLag": 0,
@@ -102,13 +102,13 @@
             }
           ],
           "unresolvedDlq": 0,
-          "latestRunId": "003c5200-dec0-46f2-b54c-cbd90a465630",
+          "latestRunId": "5d8916e1-f115-4e43-8301-effb4fa8afcf",
           "latestRunStatus": "PASS",
           "latestDifferenceCount": 0,
-          "latestRunFinishedAt": "2026-07-29T20:11:11.597381Z",
-          "latestSuccessfulPassFinishedAt": "2026-07-29T20:11:11.597381Z",
+          "latestRunFinishedAt": "2026-07-30T04:13:22.984647Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-30T04:13:22.984647Z",
           "activeConditions": [],
-          "evaluatedAt": "2026-07-29T20:11:11.648930078Z"
+          "evaluatedAt": "2026-07-30T04:13:23.045803796Z"
         }
       },
       {
@@ -138,9 +138,9 @@
       },
       {
         "path": "final-verification.json",
-        "sha256": "94e2550ab25a870bc6f7a084418442c1a06affa46e19ed327cdb10fd0e63745f",
+        "sha256": "67af29b9ad9b5f2f72388674c1b274a874c79a8c084b24cc3991afa54dcb8f77",
         "json": {
-          "runId": "003c5200-dec0-46f2-b54c-cbd90a465630",
+          "runId": "5d8916e1-f115-4e43-8301-effb4fa8afcf",
           "target": "products_write",
           "status": "PASS",
           "sourceWatermarkStart": 2,
@@ -155,9 +155,9 @@
       },
       {
         "path": "fresh-pass.json",
-        "sha256": "8852dd722862f84673085fdd323f110f8ceec8836c24813d301a5f13d4597d94",
+        "sha256": "6064c063468348079be280c44468488dec44a75b52fed841f0e828012ca7df71",
         "json": {
-          "runId": "326fc0f6-f78d-4d05-bf0e-19e61b995885",
+          "runId": "d49841bc-1b5a-44a3-a567-5c4d189df96d",
           "target": "products_write",
           "status": "PASS",
           "sourceWatermarkStart": 2,
@@ -177,9 +177,9 @@
       },
       {
         "path": "repair.json",
-        "sha256": "d6b21445b6b6e6a230cb7981c89337cd4d61a3d756ac92dfea254a6b88e52f1c",
+        "sha256": "9534481288988254b5327191d90b342ed430bddf0e28152ecfd994b768da722f",
         "json": {
-          "runId": "137bc751-99a7-4189-9dbf-4d35d6c809a0",
+          "runId": "67cd2fc9-6757-485b-9a26-c9610c01388e",
           "sourceWatermarkStart": 2,
           "sourceWatermarkEnd": 2,
           "applied": 1,
@@ -192,7 +192,7 @@
       },
       {
         "path": "status-degraded.json",
-        "sha256": "72c07169dc080861c8567753e4000254c695ecead4e40ba465a5cffe6d454352",
+        "sha256": "873bf7d92e9ac90eb97ae4f7a12ca304044c3ff7a4be8c7d28492153fba8e0d1",
         "json": {
           "state": "DEGRADED",
           "kafkaLag": 0,
@@ -227,13 +227,13 @@
             }
           ],
           "unresolvedDlq": 0,
-          "latestRunId": "137bc751-99a7-4189-9dbf-4d35d6c809a0",
+          "latestRunId": "67cd2fc9-6757-485b-9a26-c9610c01388e",
           "latestRunStatus": "DIFF",
           "latestDifferenceCount": 1,
-          "latestRunFinishedAt": "2026-07-29T20:11:08.612751Z",
+          "latestRunFinishedAt": "2026-07-30T04:13:17.571466Z",
           "latestSuccessfulPassFinishedAt": null,
           "activeConditions": [],
-          "evaluatedAt": "2026-07-29T20:11:08.872504542Z"
+          "evaluatedAt": "2026-07-30T04:13:18.130531300Z"
         }
       }
     ]

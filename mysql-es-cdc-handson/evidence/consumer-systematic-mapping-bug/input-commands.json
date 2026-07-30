@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "consumer-systematic-mapping-bug",
-  "runner_run_id": "6b004145-70c4-437f-98d9-2c4ed855816a",
+  "runner_run_id": "882940aa-e5a4-43b6-85c3-4fbdec3dd428",
   "intents": [
     {
       "sequence": 1,
@@ -48,8 +48,8 @@
       "path": "/scenario/consumer-systematic-mapping-bug/mutate",
       "fixture_path": "scenarios/scripts/cases/17-consumer-systematic-mapping-bug.sh",
       "fixture_sha256": "65afa0d394dd7334eebb3c16dfa4c451bd31425869454c1cb3c7415b568ee821",
-      "started_at": "2026-07-29T20:11:04Z",
-      "finished_at": "2026-07-29T20:11:08Z",
+      "started_at": "2026-07-30T04:13:12Z",
+      "finished_at": "2026-07-30T04:13:17Z",
       "exit_code": 0
     },
     {
@@ -64,8 +64,8 @@
       "path": "/scenario/consumer-systematic-mapping-bug/recover",
       "fixture_path": "scenarios/scripts/cases/17-consumer-systematic-mapping-bug.sh",
       "fixture_sha256": "65afa0d394dd7334eebb3c16dfa4c451bd31425869454c1cb3c7415b568ee821",
-      "started_at": "2026-07-29T20:11:08Z",
-      "finished_at": "2026-07-29T20:11:09Z",
+      "started_at": "2026-07-30T04:13:18Z",
+      "finished_at": "2026-07-30T04:13:18Z",
       "exit_code": 0
     },
     {
@@ -81,8 +81,8 @@
       "body_sha256": "0926a40491d2b85cf315a8132b1ca26cc5fc21a4fb8235ef3e75d17b3ed676c1",
       "fixture_path": "scenarios/scripts/collect-m6-observations.sh",
       "fixture_sha256": "8bcbf975ec8066db234f1c017bd4a6fa0a8b65434ce4ac4a801a93c96d066790",
-      "started_at": "2026-07-29T20:11:11Z",
-      "finished_at": "2026-07-29T20:11:11Z",
+      "started_at": "2026-07-30T04:13:22Z",
+      "finished_at": "2026-07-30T04:13:23Z",
       "exit_code": 0
     }
   ]

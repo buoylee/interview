@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "elasticsearch-bulk-partial-failure",
-  "runner_run_id": "59614613-3002-467f-b0a6-2a72a0d5d153",
+  "runner_run_id": "24a46ada-d4d0-4868-8f16-4ea35b12ef87",
   "declared_fault": {
     "type": "DATA",
     "target": "one-elasticsearch-bulk-item",
@@ -16,7 +16,7 @@
     "artifacts": [
       {
         "path": "batch-record.json",
-        "sha256": "8dc215367c8f4a9d77af113e1bb94a360d139aa16645cdcc343b32a9195a6b3f",
+        "sha256": "06676f0c5711b36e801c1d0000aa209ee89a3fd4f8e087967d31903020b6acd1",
         "json": {
           "partition": 0,
           "offset": 5,
@@ -27,17 +27,17 @@
                 "product_id": "6801",
                 "revision": "2",
                 "active": "1",
-                "updated_at": "2026-07-29 19:56:46.350674"
+                "updated_at": "2026-07-30 03:51:48.082437"
               },
               {
                 "product_id": "6804",
                 "revision": "2",
                 "active": "1",
-                "updated_at": "2026-07-29 19:56:46.350674"
+                "updated_at": "2026-07-30 03:51:48.082437"
               }
             ],
             "database": "product_catalog",
-            "es": 1785355006000,
+            "es": 1785383508000,
             "gtid": "",
             "id": 6,
             "isDdl": false,
@@ -50,11 +50,11 @@
             "old": [
               {
                 "revision": "1",
-                "updated_at": "2026-07-29 19:56:40.509712"
+                "updated_at": "2026-07-30 03:51:39.584140"
               },
               {
                 "revision": "1",
-                "updated_at": "2026-07-29 19:56:43.204657"
+                "updated_at": "2026-07-30 03:51:43.112830"
               }
             ],
             "pkNames": [
@@ -68,7 +68,7 @@
               "updated_at": 93
             },
             "table": "product_search_revision",
-            "ts": 1785355006566,
+            "ts": 1785383508240,
             "type": "UPDATE"
           }
         }
@@ -111,7 +111,7 @@
       },
       {
         "path": "dlq-pending.json",
-        "sha256": "8f6af4593d9eaa036274d5140f514f4a60cc2fd77fe33059864420fe9965b87b",
+        "sha256": "02e6cb1c460b98ca121c99f5a9b4e65c4ecf76c2dc6cf6e41b579aba2678a2d4",
         "json": [
           {
             "eventId": "product-search-revisions:0:5:6804",
@@ -120,13 +120,13 @@
             "offset": 5,
             "productId": 6804,
             "sourceRevision": 2,
-            "payload": "{\"sku\": \"LAB-6804\", \"name\": \"Crash 6804\", \"product_id\": 6804, \"searchable\": true, \"category_id\": 10, \"description\": \"fixture\", \"price_cents\": 68040, \"category_name\": \"Accessories\", \"source_revision\": 2, \"source_updated_at\": \"2026-07-29T19:56:46.350674Z\", \"available_quantity\": 0}",
+            "payload": "{\"sku\": \"LAB-6804\", \"name\": \"Crash 6804\", \"product_id\": 6804, \"searchable\": true, \"category_id\": 10, \"description\": \"fixture\", \"price_cents\": 68040, \"category_name\": \"Accessories\", \"source_revision\": 2, \"source_updated_at\": \"2026-07-30T03:51:48.082437Z\", \"available_quantity\": 0}",
             "failureClass": "document_parsing_exception",
             "lastError": "[1:142] failed to parse field [price_cents] of type [long] in document with id '6804'. Preview of field's value: '68040-invalid'",
             "status": "PENDING",
             "attempts": 1,
-            "createdAt": "2026-07-29T19:56:46.625639Z",
-            "updatedAt": "2026-07-29T19:56:46.625639Z",
+            "createdAt": "2026-07-30T03:51:48.456593Z",
+            "updatedAt": "2026-07-30T03:51:48.456593Z",
             "resolvedAt": null,
             "newPending": false
           }
@@ -134,22 +134,22 @@
       },
       {
         "path": "es-replayed.json",
-        "sha256": "ac011204f5c27ed523a61a316f22d39d721ebe2f031f45d98b7fff44b139ec30",
+        "sha256": "a9d1ee6f6077e54222ae47ca170ed244b2e5ebfbe72c728650c67a52e5f916c3",
         "json": {
           "transport_exit": 0,
           "http_status": 200,
           "json_valid": true,
-          "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"6804\",\"_version\":2,\"_seq_no\":3,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":6804,\"sku\":\"LAB-6804\",\"name\":\"Crash 6804\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":68040,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-29T19:56:46.350674Z\"}}"
+          "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"6804\",\"_version\":2,\"_seq_no\":3,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":6804,\"sku\":\"LAB-6804\",\"name\":\"Crash 6804\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":68040,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-30T03:51:48.082437Z\"}}"
         }
       },
       {
         "path": "es-valid.json",
-        "sha256": "c666cbbb7618dfbc81afec39655a2fb439374d875f20392c33607e7d4c553520",
+        "sha256": "361a3e6626521e907453629abb1b515e539fa22979e257d397fe70bf0c1cfe4c",
         "json": {
           "transport_exit": 0,
           "http_status": 200,
           "json_valid": true,
-          "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"6801\",\"_version\":2,\"_seq_no\":2,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":6801,\"sku\":\"LAB-6801\",\"name\":\"Crash 6801\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":68010,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-29T19:56:46.350674Z\"}}"
+          "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"6801\",\"_version\":2,\"_seq_no\":2,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":6801,\"sku\":\"LAB-6801\",\"name\":\"Crash 6801\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":68010,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-30T03:51:48.082437Z\"}}"
         }
       },
       {
@@ -168,7 +168,7 @@
       },
       {
         "path": "final-pipeline-status.json",
-        "sha256": "5aa9e47a517fd60eeccf29902d727601501c5b165f10e4c5e6c8238661b584a2",
+        "sha256": "d700af148c13beb939b7e44332350e63cb2ef6c16cc930a576d478d2aa279138",
         "json": {
           "state": "HEALTHY",
           "kafkaLag": 0,
@@ -203,13 +203,13 @@
             }
           ],
           "unresolvedDlq": 0,
-          "latestRunId": "0c92a104-7b3e-40b3-a381-bc6a27ed75d3",
+          "latestRunId": "101f4d36-95e9-430a-b1cd-f849654ee987",
           "latestRunStatus": "PASS",
           "latestDifferenceCount": 0,
-          "latestRunFinishedAt": "2026-07-29T19:57:03.399481Z",
-          "latestSuccessfulPassFinishedAt": "2026-07-29T19:57:03.399481Z",
+          "latestRunFinishedAt": "2026-07-30T03:52:08.121426Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-30T03:52:08.121426Z",
           "activeConditions": [],
-          "evaluatedAt": "2026-07-29T19:57:03.483273824Z"
+          "evaluatedAt": "2026-07-30T03:52:08.339310805Z"
         }
       },
       {
@@ -239,9 +239,9 @@
       },
       {
         "path": "final-verification.json",
-        "sha256": "545c08c39ab4c21261d1055a70925d57e2db2a9ced1d3fe64a388d872970eca7",
+        "sha256": "fdb462658e47b0bc19995de6e39b2f9effef745735db3d20df47805d80de1f23",
         "json": {
-          "runId": "0c92a104-7b3e-40b3-a381-bc6a27ed75d3",
+          "runId": "101f4d36-95e9-430a-b1cd-f849654ee987",
           "target": "products_write",
           "status": "PASS",
           "sourceWatermarkStart": 2,

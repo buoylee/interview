@@ -16,7 +16,7 @@
   "consistency": "ADMIN_OFFSETS_AT_CAPTURE_TIME",
   "end": [
     {
-      "offset": 11,
+      "offset": 9,
       "partition": 0
     },
     {
@@ -31,7 +31,7 @@
   "primary": [
     {
       "lag": 0,
-      "offset": 11,
+      "offset": 9,
       "partition": 0
     },
     {
@@ -48,169 +48,169 @@
   "schema_version": 1,
   "shadow_and_barrier": [
     {
-      "next_offset": 11,
-      "partition_id": 0,
-      "phase": "BARRIER",
-      "run_id": "3a5d2a9f-5356-4905-8c34-14e1aa3ac1d9"
-    },
-    {
-      "next_offset": 8,
-      "partition_id": 1,
-      "phase": "BARRIER",
-      "run_id": "3a5d2a9f-5356-4905-8c34-14e1aa3ac1d9"
-    },
-    {
-      "next_offset": 8,
-      "partition_id": 2,
-      "phase": "BARRIER",
-      "run_id": "3a5d2a9f-5356-4905-8c34-14e1aa3ac1d9"
-    },
-    {
-      "next_offset": 11,
-      "partition_id": 0,
-      "phase": "SHADOW",
-      "run_id": "3a5d2a9f-5356-4905-8c34-14e1aa3ac1d9"
-    },
-    {
-      "next_offset": 8,
-      "partition_id": 1,
-      "phase": "SHADOW",
-      "run_id": "3a5d2a9f-5356-4905-8c34-14e1aa3ac1d9"
-    },
-    {
-      "next_offset": 8,
-      "partition_id": 2,
-      "phase": "SHADOW",
-      "run_id": "3a5d2a9f-5356-4905-8c34-14e1aa3ac1d9"
-    },
-    {
-      "next_offset": 10,
-      "partition_id": 0,
-      "phase": "START",
-      "run_id": "3a5d2a9f-5356-4905-8c34-14e1aa3ac1d9"
-    },
-    {
       "next_offset": 7,
-      "partition_id": 1,
-      "phase": "START",
-      "run_id": "3a5d2a9f-5356-4905-8c34-14e1aa3ac1d9"
-    },
-    {
-      "next_offset": 7,
-      "partition_id": 2,
-      "phase": "START",
-      "run_id": "3a5d2a9f-5356-4905-8c34-14e1aa3ac1d9"
-    },
-    {
-      "next_offset": 10,
       "partition_id": 0,
       "phase": "BARRIER",
-      "run_id": "629c59f1-4d13-4c9d-adbc-35fcc48d99d0"
-    },
-    {
-      "next_offset": 7,
-      "partition_id": 1,
-      "phase": "BARRIER",
-      "run_id": "629c59f1-4d13-4c9d-adbc-35fcc48d99d0"
-    },
-    {
-      "next_offset": 7,
-      "partition_id": 2,
-      "phase": "BARRIER",
-      "run_id": "629c59f1-4d13-4c9d-adbc-35fcc48d99d0"
-    },
-    {
-      "next_offset": 10,
-      "partition_id": 0,
-      "phase": "SHADOW",
-      "run_id": "629c59f1-4d13-4c9d-adbc-35fcc48d99d0"
-    },
-    {
-      "next_offset": 7,
-      "partition_id": 1,
-      "phase": "SHADOW",
-      "run_id": "629c59f1-4d13-4c9d-adbc-35fcc48d99d0"
-    },
-    {
-      "next_offset": 7,
-      "partition_id": 2,
-      "phase": "SHADOW",
-      "run_id": "629c59f1-4d13-4c9d-adbc-35fcc48d99d0"
-    },
-    {
-      "next_offset": 9,
-      "partition_id": 0,
-      "phase": "START",
-      "run_id": "629c59f1-4d13-4c9d-adbc-35fcc48d99d0"
-    },
-    {
-      "next_offset": 6,
-      "partition_id": 1,
-      "phase": "START",
-      "run_id": "629c59f1-4d13-4c9d-adbc-35fcc48d99d0"
-    },
-    {
-      "next_offset": 6,
-      "partition_id": 2,
-      "phase": "START",
-      "run_id": "629c59f1-4d13-4c9d-adbc-35fcc48d99d0"
-    },
-    {
-      "next_offset": 9,
-      "partition_id": 0,
-      "phase": "BARRIER",
-      "run_id": "a585977c-380f-4e9a-9fe3-d8fb999497e5"
+      "run_id": "2a989098-560d-4e59-9b17-7b3d4dfca08d"
     },
     {
       "next_offset": 6,
       "partition_id": 1,
       "phase": "BARRIER",
-      "run_id": "a585977c-380f-4e9a-9fe3-d8fb999497e5"
+      "run_id": "2a989098-560d-4e59-9b17-7b3d4dfca08d"
     },
     {
       "next_offset": 6,
       "partition_id": 2,
       "phase": "BARRIER",
-      "run_id": "a585977c-380f-4e9a-9fe3-d8fb999497e5"
+      "run_id": "2a989098-560d-4e59-9b17-7b3d4dfca08d"
     },
     {
-      "next_offset": 9,
+      "next_offset": 7,
       "partition_id": 0,
       "phase": "SHADOW",
-      "run_id": "a585977c-380f-4e9a-9fe3-d8fb999497e5"
+      "run_id": "2a989098-560d-4e59-9b17-7b3d4dfca08d"
     },
     {
       "next_offset": 6,
       "partition_id": 1,
       "phase": "SHADOW",
-      "run_id": "a585977c-380f-4e9a-9fe3-d8fb999497e5"
+      "run_id": "2a989098-560d-4e59-9b17-7b3d4dfca08d"
     },
     {
       "next_offset": 6,
       "partition_id": 2,
       "phase": "SHADOW",
-      "run_id": "a585977c-380f-4e9a-9fe3-d8fb999497e5"
+      "run_id": "2a989098-560d-4e59-9b17-7b3d4dfca08d"
     },
     {
-      "next_offset": 8,
+      "next_offset": 6,
       "partition_id": 0,
       "phase": "START",
-      "run_id": "a585977c-380f-4e9a-9fe3-d8fb999497e5"
+      "run_id": "2a989098-560d-4e59-9b17-7b3d4dfca08d"
     },
     {
       "next_offset": 5,
       "partition_id": 1,
       "phase": "START",
-      "run_id": "a585977c-380f-4e9a-9fe3-d8fb999497e5"
+      "run_id": "2a989098-560d-4e59-9b17-7b3d4dfca08d"
     },
     {
       "next_offset": 5,
       "partition_id": 2,
       "phase": "START",
-      "run_id": "a585977c-380f-4e9a-9fe3-d8fb999497e5"
+      "run_id": "2a989098-560d-4e59-9b17-7b3d4dfca08d"
+    },
+    {
+      "next_offset": 8,
+      "partition_id": 0,
+      "phase": "BARRIER",
+      "run_id": "7d454705-1c49-49d8-8515-4a109d5133be"
+    },
+    {
+      "next_offset": 7,
+      "partition_id": 1,
+      "phase": "BARRIER",
+      "run_id": "7d454705-1c49-49d8-8515-4a109d5133be"
+    },
+    {
+      "next_offset": 7,
+      "partition_id": 2,
+      "phase": "BARRIER",
+      "run_id": "7d454705-1c49-49d8-8515-4a109d5133be"
+    },
+    {
+      "next_offset": 8,
+      "partition_id": 0,
+      "phase": "SHADOW",
+      "run_id": "7d454705-1c49-49d8-8515-4a109d5133be"
+    },
+    {
+      "next_offset": 7,
+      "partition_id": 1,
+      "phase": "SHADOW",
+      "run_id": "7d454705-1c49-49d8-8515-4a109d5133be"
+    },
+    {
+      "next_offset": 7,
+      "partition_id": 2,
+      "phase": "SHADOW",
+      "run_id": "7d454705-1c49-49d8-8515-4a109d5133be"
+    },
+    {
+      "next_offset": 7,
+      "partition_id": 0,
+      "phase": "START",
+      "run_id": "7d454705-1c49-49d8-8515-4a109d5133be"
+    },
+    {
+      "next_offset": 6,
+      "partition_id": 1,
+      "phase": "START",
+      "run_id": "7d454705-1c49-49d8-8515-4a109d5133be"
+    },
+    {
+      "next_offset": 6,
+      "partition_id": 2,
+      "phase": "START",
+      "run_id": "7d454705-1c49-49d8-8515-4a109d5133be"
+    },
+    {
+      "next_offset": 9,
+      "partition_id": 0,
+      "phase": "BARRIER",
+      "run_id": "9ab6ec63-0f7c-4194-b1be-ab9011dd8db0"
+    },
+    {
+      "next_offset": 8,
+      "partition_id": 1,
+      "phase": "BARRIER",
+      "run_id": "9ab6ec63-0f7c-4194-b1be-ab9011dd8db0"
+    },
+    {
+      "next_offset": 8,
+      "partition_id": 2,
+      "phase": "BARRIER",
+      "run_id": "9ab6ec63-0f7c-4194-b1be-ab9011dd8db0"
+    },
+    {
+      "next_offset": 9,
+      "partition_id": 0,
+      "phase": "SHADOW",
+      "run_id": "9ab6ec63-0f7c-4194-b1be-ab9011dd8db0"
+    },
+    {
+      "next_offset": 8,
+      "partition_id": 1,
+      "phase": "SHADOW",
+      "run_id": "9ab6ec63-0f7c-4194-b1be-ab9011dd8db0"
+    },
+    {
+      "next_offset": 8,
+      "partition_id": 2,
+      "phase": "SHADOW",
+      "run_id": "9ab6ec63-0f7c-4194-b1be-ab9011dd8db0"
+    },
+    {
+      "next_offset": 8,
+      "partition_id": 0,
+      "phase": "START",
+      "run_id": "9ab6ec63-0f7c-4194-b1be-ab9011dd8db0"
+    },
+    {
+      "next_offset": 7,
+      "partition_id": 1,
+      "phase": "START",
+      "run_id": "9ab6ec63-0f7c-4194-b1be-ab9011dd8db0"
+    },
+    {
+      "next_offset": 7,
+      "partition_id": 2,
+      "phase": "START",
+      "run_id": "9ab6ec63-0f7c-4194-b1be-ab9011dd8db0"
     }
   ],
   "topic": "product-search-revisions",
   "scenario_id": "rebuild-crash-and-restart",
-  "runner_run_id": "759dc8d7-58fc-466d-aa49-552d0309d483"
+  "runner_run_id": "5feaed30-9f49-47d0-8e50-1a23308f3675"
 }

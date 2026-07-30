@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "duplicate-event",
-  "runner_run_id": "692b4818-d071-41b9-a7f9-380345069afa",
+  "runner_run_id": "69c99ec4-b06c-4c69-9288-3ec0f1ed8cd9",
   "declared_fault": {
     "type": "DATA",
     "target": "same-kafka-partition",
@@ -58,7 +58,7 @@
       },
       {
         "path": "candidate-6901-record.json",
-        "sha256": "d2c16bb46708cad2a562bf97ea3d046b3ab1919d3c8848395599ddc7fed32f41",
+        "sha256": "10ca72773aec07ce2ae4382fadc028a26cc967936b87a3333999490ca5c7cdac",
         "json": {
           "partition": 1,
           "offset": 0,
@@ -69,11 +69,11 @@
                 "product_id": "6901",
                 "revision": "1",
                 "active": "1",
-                "updated_at": "2026-07-29 19:58:09.687263"
+                "updated_at": "2026-07-30 03:53:45.326326"
               }
             ],
             "database": "product_catalog",
-            "es": 1785355089000,
+            "es": 1785383625000,
             "gtid": "",
             "id": 3,
             "isDdl": false,
@@ -95,14 +95,14 @@
               "updated_at": 93
             },
             "table": "product_search_revision",
-            "ts": 1785355089990,
+            "ts": 1785383625492,
             "type": "INSERT"
           }
         }
       },
       {
         "path": "es-after.json",
-        "sha256": "2875567bc2037bcd66f9c5c447cc95a31971e85ceba271234f1e8f3ad7cf3273",
+        "sha256": "06e85c686b22846db3d1a36c8400001674d4a1a4c1589fe7224db4d115aee5e2",
         "json": {
           "_index": "products_v2",
           "_id": "6901",
@@ -121,13 +121,13 @@
             "available_quantity": 0,
             "searchable": true,
             "source_revision": 1,
-            "source_updated_at": "2026-07-29T19:58:09.687263Z"
+            "source_updated_at": "2026-07-30T03:53:45.326326Z"
           }
         }
       },
       {
         "path": "es-before.json",
-        "sha256": "2875567bc2037bcd66f9c5c447cc95a31971e85ceba271234f1e8f3ad7cf3273",
+        "sha256": "06e85c686b22846db3d1a36c8400001674d4a1a4c1589fe7224db4d115aee5e2",
         "json": {
           "_index": "products_v2",
           "_id": "6901",
@@ -146,13 +146,13 @@
             "available_quantity": 0,
             "searchable": true,
             "source_revision": 1,
-            "source_updated_at": "2026-07-29T19:58:09.687263Z"
+            "source_updated_at": "2026-07-30T03:53:45.326326Z"
           }
         }
       },
       {
         "path": "final-pipeline-status.json",
-        "sha256": "9e8ab897ad16ec87d3ed6cb85584c00633db693c62226a99898f0b19797257dc",
+        "sha256": "fb713f19d9b06fbf3248f5a5f8a1408054b9c765e357a49e1b33d9e5684656b0",
         "json": {
           "state": "HEALTHY",
           "kafkaLag": 0,
@@ -187,13 +187,13 @@
             }
           ],
           "unresolvedDlq": 0,
-          "latestRunId": "b8327d1d-b7ea-4935-898c-ee560ce7af3b",
+          "latestRunId": "27f8a74f-6d3f-4f5e-a0a0-e1db6524f5de",
           "latestRunStatus": "PASS",
           "latestDifferenceCount": 0,
-          "latestRunFinishedAt": "2026-07-29T19:58:31.443958Z",
-          "latestSuccessfulPassFinishedAt": "2026-07-29T19:58:31.443958Z",
+          "latestRunFinishedAt": "2026-07-30T03:54:07.942723Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-30T03:54:07.942723Z",
           "activeConditions": [],
-          "evaluatedAt": "2026-07-29T19:58:31.516826868Z"
+          "evaluatedAt": "2026-07-30T03:54:08.005330252Z"
         }
       },
       {
@@ -223,9 +223,9 @@
       },
       {
         "path": "final-verification.json",
-        "sha256": "159578708ced0b3f74c131738ebb3571978b527086fe5a24633304a9909899d1",
+        "sha256": "8b643a35cf21aebbc28c52bafb461109a0830d84f5be79c91f41fc28ed001067",
         "json": {
-          "runId": "b8327d1d-b7ea-4935-898c-ee560ce7af3b",
+          "runId": "27f8a74f-6d3f-4f5e-a0a0-e1db6524f5de",
           "target": "products_write",
           "status": "PASS",
           "sourceWatermarkStart": 1,
@@ -240,11 +240,11 @@
       },
       {
         "path": "injected-event.json",
-        "sha256": "69b9fa324ebc2f57045ed83230021b8f3ba5850c58c97155326d0828b7e8803d",
+        "sha256": "a371221812ad7e2029da0666d37f627cb7dc971ef7f32f76e2ff7c5f2d6beef4",
         "json": {
           "primitive": "lab-scenario-event-v1",
-          "request_sha256": "be09a6895dc42aeb2ebcb4011cc17412ffcb6415b43e8158b032c56f6a30282f",
-          "payload_sha256": "3f4bd39389c2486dfbfb8a243abc27bef7aa5023a4964a23fa24a21c2a47ec2c",
+          "request_sha256": "90ae1f8bea4a85315081a832a298794c8ce10b917676100c3253c6d12505d130",
+          "payload_sha256": "64014f9636a14883215e816d172631b335e5f34276f35a6db4dececfeec456f6",
           "normalized_payload": {
             "data": [
               {
@@ -254,7 +254,7 @@
               }
             ],
             "database": "product_catalog",
-            "es": 1785355089000,
+            "es": 1785383625000,
             "gtid": "",
             "id": 3,
             "isDdl": false,
@@ -276,7 +276,7 @@
               "updated_at": 93
             },
             "table": "product_search_revision",
-            "ts": 1785355089990,
+            "ts": 1785383625492,
             "type": "INSERT"
           },
           "broker_ack": {
@@ -307,7 +307,7 @@
       },
       {
         "path": "selected.json",
-        "sha256": "9a67b0cb9e708add6ad2fd1149746cb5a072194554efddb809b9a065d15b8a23",
+        "sha256": "25d50e5d3c0171f245c9f110041542c8336c20bd9ef4b4a663b8453227269036",
         "json": {
           "product_id": 6901,
           "partition": 1,
@@ -321,11 +321,11 @@
                   "product_id": "6901",
                   "revision": "1",
                   "active": "1",
-                  "updated_at": "2026-07-29 19:58:09.687263"
+                  "updated_at": "2026-07-30 03:53:45.326326"
                 }
               ],
               "database": "product_catalog",
-              "es": 1785355089000,
+              "es": 1785383625000,
               "gtid": "",
               "id": 3,
               "isDdl": false,
@@ -347,7 +347,7 @@
                 "updated_at": 93
               },
               "table": "product_search_revision",
-              "ts": 1785355089990,
+              "ts": 1785383625492,
               "type": "INSERT"
             }
           }

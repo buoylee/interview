@@ -12,10 +12,10 @@
       "product_id": 900001,
       "revision": 1,
       "sku": "LAB-900001",
-      "updated_at": "2026-07-29T19:51:04.978808Z"
+      "updated_at": "2026-07-30T03:39:28.690355Z"
     }
   ],
   "schema_version": 1,
   "scenario_id": "consumer-offset-beyond-kafka-retention",
-  "runner_run_id": "83fd5ec9-8182-4bb7-9d25-f1f567625b0a"
+  "runner_run_id": "0ae85dd4-c740-4e31-aab6-b8c650c95b54"
 }

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "category-rename-multi-product",
-  "runner_run_id": "2c829536-3b4b-45e2-98c6-4f1e7ae928df",
+  "runner_run_id": "828f1f77-56c6-40a9-af00-a5f2a868b198",
   "rebuild_required_observed_before_rebuild": false,
   "commands": [
     {
@@ -10,8 +10,8 @@
       "target": "m6-real-fault",
       "method": "DELETE",
       "path": "/scenario/category-rename-multi-product/fault",
-      "started_at": "2026-07-29T20:03:54Z",
-      "finished_at": "2026-07-29T20:04:02Z",
+      "started_at": "2026-07-30T04:02:14Z",
+      "finished_at": "2026-07-30T04:02:27Z",
       "exit_code": 0
     }
   ],
@@ -19,7 +19,7 @@
     {
       "name": "dispatch-owned-m6-real-fault",
       "success": true,
-      "finished_at": "2026-07-29T20:04:02Z"
+      "finished_at": "2026-07-30T04:02:27Z"
     }
   ],
   "cleanup_failures": 0

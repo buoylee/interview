@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "canal-outage-within-binlog-retention",
-  "runner_run_id": "9e2c94c6-5ed6-43e1-9743-8e3d646758e0",
+  "runner_run_id": "ee7ea4ff-5fea-416a-b57a-9347c62a4fb4",
   "declared_fault": {
     "type": "PROCESS",
     "target": "canal",
@@ -34,7 +34,7 @@
       },
       {
         "path": "es-during.json",
-        "sha256": "466cfa3613f19cd4950512c31ad98cea89c066e3df9c1f47c13f0b5d1b88777b",
+        "sha256": "7bc59cbce6824639c7120203222c04133e1875945570bb7d293cdfdc588f3ef7",
         "json": {
           "_index": "products_v2",
           "_id": "6201",
@@ -53,23 +53,23 @@
             "available_quantity": 0,
             "searchable": true,
             "source_revision": 1,
-            "source_updated_at": "2026-07-29T19:45:49.192381Z"
+            "source_updated_at": "2026-07-30T03:30:08.696355Z"
           }
         }
       },
       {
         "path": "es-final.json",
-        "sha256": "e530358869ca7c639b0d036798da931514f7909085e4a443cd1c589febd70452",
+        "sha256": "269d6e40307a216031330fe67c2106c798a198598891991297e619ecb774a126",
         "json": {
           "transport_exit": 0,
           "http_status": 200,
           "json_valid": true,
-          "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"6201\",\"_version\":2,\"_seq_no\":1,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":6201,\"sku\":\"LAB-6201\",\"name\":\"Crash 6201\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":62201,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-29T19:45:53.680351Z\"}}"
+          "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"6201\",\"_version\":2,\"_seq_no\":1,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":6201,\"sku\":\"LAB-6201\",\"name\":\"Crash 6201\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":62201,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-30T03:30:14.077071Z\"}}"
         }
       },
       {
         "path": "final-pipeline-status.json",
-        "sha256": "feb6386822301e58551dac144d7fbc3f8c2fc0d24195cc30104430d3a606e588",
+        "sha256": "06a72b01f56bdfa853db8194d71c1ea4cc375c33876f4888129f24884e75fe6c",
         "json": {
           "state": "HEALTHY",
           "kafkaLag": 0,
@@ -78,9 +78,9 @@
             {
               "topic": "product-search-revisions",
               "partition": 0,
-              "committedOffset": 5,
+              "committedOffset": 3,
               "beginningOffset": 0,
-              "endOffset": 5,
+              "endOffset": 3,
               "lag": 0,
               "retentionGap": false
             },
@@ -104,13 +104,13 @@
             }
           ],
           "unresolvedDlq": 0,
-          "latestRunId": "1d6b57c0-da13-4b3f-980e-3e26c3185e95",
+          "latestRunId": "54633b81-b7de-4770-bd2c-a29ca0549daf",
           "latestRunStatus": "PASS",
           "latestDifferenceCount": 0,
-          "latestRunFinishedAt": "2026-07-29T19:46:04.787179Z",
-          "latestSuccessfulPassFinishedAt": "2026-07-29T19:46:04.787179Z",
+          "latestRunFinishedAt": "2026-07-30T03:30:32.074623Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-30T03:30:32.074623Z",
           "activeConditions": [],
-          "evaluatedAt": "2026-07-29T19:46:04.946804944Z"
+          "evaluatedAt": "2026-07-30T03:30:32.197330934Z"
         }
       },
       {
@@ -140,9 +140,9 @@
       },
       {
         "path": "final-verification.json",
-        "sha256": "8b756dafa164cd38b9e5af5eb72a68949c5501727eacadd2b812bf0641b5a518",
+        "sha256": "9a233ffb46a2077d644663868d655afdd3c2b6e2ad5cfd9b05b02e7cd939eca0",
         "json": {
-          "runId": "1d6b57c0-da13-4b3f-980e-3e26c3185e95",
+          "runId": "54633b81-b7de-4770-bd2c-a29ca0549daf",
           "target": "products_write",
           "status": "PASS",
           "sourceWatermarkStart": 2,
@@ -157,7 +157,7 @@
       },
       {
         "path": "meta-before.json",
-        "sha256": "3fc4862496286062357bf6009521f8c020af473fb1b0a1f448ff28ca1c517296",
+        "sha256": "e348c73280107fe746132802d695c66eae52f19a7f72681ce0f65ebe7f09caed",
         "json": {
           "contract": "canal-1.1.8-file-mixed-meta-ack-cursor",
           "path": "/home/admin/canal-data/products/meta.dat",
@@ -169,7 +169,7 @@
           },
           "journal": "mysql-bin.000003",
           "position": 25814,
-          "timestamp": 1785354349000,
+          "timestamp": 1785382208000,
           "server_id": 1,
           "gtid": "",
           "source": {

@@ -14,7 +14,7 @@
         "searchable": true,
         "sku": "LAB-7801",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:12:30.729299Z"
+        "source_updated_at": "2026-07-30T04:15:12.377024Z"
       },
       "version": null
     }
@@ -22,5 +22,5 @@
   "index": "products_write",
   "schema_version": 1,
   "scenario_id": "dlq-replay-fails-then-succeeds",
-  "runner_run_id": "e4972e8f-343d-4047-b212-517dbb51bf80"
+  "runner_run_id": "83247e82-8820-4a17-acc4-f4237670e2d7"
 }

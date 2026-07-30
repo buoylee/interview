@@ -66,23 +66,41 @@
     }
   ],
   "git": {
-    "commit": "fb1a87733f0dcea5f41d1a0adbd1da2c980cac97",
+    "commit": "bb75ab0c19b3f64090faec9d281d56ff43087a55",
     "dirty": false,
     "excluded_runtime_output": [
-      "mysql-es-cdc-handson/evidence/.attempts/run-fb1a877-v10/.tmp.rebuild-crash-and-restart.YPHcll/manifest-capture.json"
+      "mysql-es-cdc-handson/evidence/.attempts/.tmp.rebuild-crash-and-restart.ZZvsvO/manifest-capture.json"
     ],
     "tracked_dirty": false,
     "untracked_count": 0
   },
   "images": [
     {
-      "id": "sha256:a4db706d8dc735574ffd0fe27f1a4b738f5370b93a35c1932139a32e6ee672fa",
-      "repository": "mysql-es-cdc-handson/consistency-verifier",
+      "id": "sha256:20301fbff27d32572e4f6c1e39b1e2634267163d2c5245138ebf8b5e3f00d05e",
+      "repository": "apache/kafka",
+      "service": null,
+      "tag": "4.1.2"
+    },
+    {
+      "id": "sha256:2893772ec71b88ab0459fdde777ae62f3375aa9cde34171700520eb4e0b25bcf",
+      "repository": "mysql-es-cdc-handson/product-service",
       "service": null,
       "tag": "0.1.0-local"
     },
     {
-      "id": "sha256:0cfce03a6e646668482eb01bc73c506789a50e6e86c0738f3faebc89a1e90b41",
+      "id": "sha256:b119fdac2479dcccf923f54943a355e743d3d5dd068baa4757772055cf9f3b32",
+      "repository": "docker.elastic.co/elasticsearch/elasticsearch",
+      "service": null,
+      "tag": "8.17.0"
+    },
+    {
+      "id": "sha256:20301fbff27d32572e4f6c1e39b1e2634267163d2c5245138ebf8b5e3f00d05e",
+      "repository": "apache/kafka",
+      "service": null,
+      "tag": "4.1.2"
+    },
+    {
+      "id": "sha256:a408981aa815feba2ce4658f4371de14a3d99498503b28a7ef5a5f85c5f3ab05",
       "repository": "mysql-es-cdc-handson/search-sync-consumer",
       "service": null,
       "tag": "0.1.0-local"
@@ -94,28 +112,10 @@
       "tag": "4.1.2"
     },
     {
-      "id": "sha256:6bcfd5ef06fdf8de754cd4a1f18991f84b2fccd10f26c8b15755597ff690468f",
-      "repository": "mysql",
-      "service": null,
-      "tag": "8.4.8"
-    },
-    {
-      "id": "sha256:803f229c510e7f1209824a62ec0169d666b7c2a7ff0032c716ac0f77e009cff5",
-      "repository": "mysql-es-cdc-handson/product-service",
+      "id": "sha256:fcf23d3c567fc59d009663b36521688d73fbfd503614ead1f2ccb5b2353ac91e",
+      "repository": "mysql-es-cdc-handson/consistency-verifier",
       "service": null,
       "tag": "0.1.0-local"
-    },
-    {
-      "id": "sha256:b0e75e62fcf0abd5c8aea482fd4aa00ff5052fd24d8d0b4103c94668a95b8c99",
-      "repository": "ghcr.io/shopify/toxiproxy",
-      "service": null,
-      "tag": "2.12.0"
-    },
-    {
-      "id": "sha256:20301fbff27d32572e4f6c1e39b1e2634267163d2c5245138ebf8b5e3f00d05e",
-      "repository": "apache/kafka",
-      "service": null,
-      "tag": "4.1.2"
     },
     {
       "id": "sha256:1176879f85a13ec1d50753556903d24ba1b644a9ef152197ff26d908a6e3afce",
@@ -124,16 +124,16 @@
       "tag": "v1.1.8"
     },
     {
-      "id": "sha256:20301fbff27d32572e4f6c1e39b1e2634267163d2c5245138ebf8b5e3f00d05e",
-      "repository": "apache/kafka",
+      "id": "sha256:6bcfd5ef06fdf8de754cd4a1f18991f84b2fccd10f26c8b15755597ff690468f",
+      "repository": "mysql",
       "service": null,
-      "tag": "4.1.2"
+      "tag": "8.4.8"
     },
     {
-      "id": "sha256:b119fdac2479dcccf923f54943a355e743d3d5dd068baa4757772055cf9f3b32",
-      "repository": "docker.elastic.co/elasticsearch/elasticsearch",
+      "id": "sha256:b0e75e62fcf0abd5c8aea482fd4aa00ff5052fd24d8d0b4103c94668a95b8c99",
+      "repository": "ghcr.io/shopify/toxiproxy",
       "service": null,
-      "tag": "8.17.0"
+      "tag": "2.12.0"
     }
   ],
   "kafka_runtime": {
@@ -151,6 +151,6 @@
     "maven": "Apache Maven 3.9.11 (3e54c93a704957b63ee3494413a2b544fd3d825b)"
   },
   "scenario_id": "rebuild-crash-and-restart",
-  "runner_run_id": "759dc8d7-58fc-466d-aa49-552d0309d483",
+  "runner_run_id": "5feaed30-9f49-47d0-8e50-1a23308f3675",
   "execution_mode": "real"
 }

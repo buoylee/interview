@@ -14,7 +14,7 @@
         "searchable": true,
         "sku": "LAB-7301",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:03:42.315675Z"
+        "source_updated_at": "2026-07-30T04:02:02.001434Z"
       },
       "version": null
     },
@@ -31,7 +31,7 @@
         "searchable": true,
         "sku": "LAB-7304",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:03:42.315675Z"
+        "source_updated_at": "2026-07-30T04:02:02.001434Z"
       },
       "version": null
     },
@@ -48,7 +48,7 @@
         "searchable": true,
         "sku": "LAB-7307",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:03:42.315675Z"
+        "source_updated_at": "2026-07-30T04:02:02.001434Z"
       },
       "version": null
     }
@@ -56,5 +56,5 @@
   "index": "products_write",
   "schema_version": 1,
   "scenario_id": "category-rename-multi-product",
-  "runner_run_id": "2c829536-3b4b-45e2-98c6-4f1e7ae928df"
+  "runner_run_id": "828f1f77-56c6-40a9-af00-a5f2a868b198"
 }

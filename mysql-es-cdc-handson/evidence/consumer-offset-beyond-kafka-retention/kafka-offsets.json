@@ -1,7 +1,7 @@
 {
   "beginning": [
     {
-      "offset": 10,
+      "offset": 8,
       "partition": 0
     },
     {
@@ -16,7 +16,7 @@
   "consistency": "ADMIN_OFFSETS_AT_CAPTURE_TIME",
   "end": [
     {
-      "offset": 12,
+      "offset": 10,
       "partition": 0
     },
     {
@@ -31,7 +31,7 @@
   "primary": [
     {
       "lag": 0,
-      "offset": 12,
+      "offset": 10,
       "partition": 0
     },
     {
@@ -48,61 +48,61 @@
   "schema_version": 1,
   "shadow_and_barrier": [
     {
-      "next_offset": 12,
+      "next_offset": 10,
       "partition_id": 0,
       "phase": "BARRIER",
-      "run_id": "f9cb308a-78bd-4d53-8397-f7b04e9be446"
+      "run_id": "210f64a1-6ea1-4301-8f5b-80fec0d175cc"
     },
     {
       "next_offset": 2,
       "partition_id": 1,
       "phase": "BARRIER",
-      "run_id": "f9cb308a-78bd-4d53-8397-f7b04e9be446"
+      "run_id": "210f64a1-6ea1-4301-8f5b-80fec0d175cc"
     },
     {
       "next_offset": 1,
       "partition_id": 2,
       "phase": "BARRIER",
-      "run_id": "f9cb308a-78bd-4d53-8397-f7b04e9be446"
+      "run_id": "210f64a1-6ea1-4301-8f5b-80fec0d175cc"
     },
     {
-      "next_offset": 12,
+      "next_offset": 10,
       "partition_id": 0,
       "phase": "SHADOW",
-      "run_id": "f9cb308a-78bd-4d53-8397-f7b04e9be446"
+      "run_id": "210f64a1-6ea1-4301-8f5b-80fec0d175cc"
     },
     {
       "next_offset": 2,
       "partition_id": 1,
       "phase": "SHADOW",
-      "run_id": "f9cb308a-78bd-4d53-8397-f7b04e9be446"
+      "run_id": "210f64a1-6ea1-4301-8f5b-80fec0d175cc"
     },
     {
       "next_offset": 1,
       "partition_id": 2,
       "phase": "SHADOW",
-      "run_id": "f9cb308a-78bd-4d53-8397-f7b04e9be446"
+      "run_id": "210f64a1-6ea1-4301-8f5b-80fec0d175cc"
     },
     {
-      "next_offset": 11,
+      "next_offset": 9,
       "partition_id": 0,
       "phase": "START",
-      "run_id": "f9cb308a-78bd-4d53-8397-f7b04e9be446"
+      "run_id": "210f64a1-6ea1-4301-8f5b-80fec0d175cc"
     },
     {
       "next_offset": 1,
       "partition_id": 1,
       "phase": "START",
-      "run_id": "f9cb308a-78bd-4d53-8397-f7b04e9be446"
+      "run_id": "210f64a1-6ea1-4301-8f5b-80fec0d175cc"
     },
     {
       "next_offset": 0,
       "partition_id": 2,
       "phase": "START",
-      "run_id": "f9cb308a-78bd-4d53-8397-f7b04e9be446"
+      "run_id": "210f64a1-6ea1-4301-8f5b-80fec0d175cc"
     }
   ],
   "topic": "product-search-revisions",
   "scenario_id": "consumer-offset-beyond-kafka-retention",
-  "runner_run_id": "83fd5ec9-8182-4bb7-9d25-f1f567625b0a"
+  "runner_run_id": "0ae85dd4-c740-4e31-aab6-b8c650c95b54"
 }

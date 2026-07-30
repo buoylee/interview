@@ -12,10 +12,10 @@
       "product_id": 6701,
       "revision": 2,
       "sku": "LAB-6701",
-      "updated_at": "2026-07-29T19:54:49.530691Z"
+      "updated_at": "2026-07-30T03:47:06.158709Z"
     }
   ],
   "schema_version": 1,
   "scenario_id": "consumer-crash-after-elasticsearch-before-offset",
-  "runner_run_id": "347811b0-4e1d-4c67-bba3-516921f4ca2f"
+  "runner_run_id": "b858d800-13d0-457c-bdc4-ee5a732a6202"
 }

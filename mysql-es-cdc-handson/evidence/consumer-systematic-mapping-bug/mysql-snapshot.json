@@ -12,10 +12,10 @@
       "product_id": 7701,
       "revision": 2,
       "sku": "LAB-7701",
-      "updated_at": "2026-07-29T20:11:07.650441Z"
+      "updated_at": "2026-07-30T04:13:16.535467Z"
     }
   ],
   "schema_version": 1,
   "scenario_id": "consumer-systematic-mapping-bug",
-  "runner_run_id": "6b004145-70c4-437f-98d9-2c4ed855816a"
+  "runner_run_id": "882940aa-e5a4-43b6-85c3-4fbdec3dd428"
 }

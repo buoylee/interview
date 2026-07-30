@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "mapping-conflict",
-  "runner_run_id": "7e98943c-995a-4c39-94ea-5823fd98b9ae",
+  "runner_run_id": "ea5cf5f9-37d0-4633-bc9b-1acaa99e8f9e",
   "intents": [
     {
       "sequence": 1,
@@ -48,8 +48,8 @@
       "path": "/scenario/mapping-conflict/mutate",
       "fixture_path": "scenarios/scripts/cases/11-mapping-conflict.sh",
       "fixture_sha256": "0fdf546f2709c30ce180f0b9142687b95a2cc4db15b8fcd994a5ffea67633cac",
-      "started_at": "2026-07-29T20:01:07Z",
-      "finished_at": "2026-07-29T20:01:11Z",
+      "started_at": "2026-07-30T03:57:44Z",
+      "finished_at": "2026-07-30T03:57:49Z",
       "exit_code": 0
     },
     {
@@ -64,8 +64,8 @@
       "path": "/scenario/mapping-conflict/recover",
       "fixture_path": "scenarios/scripts/cases/11-mapping-conflict.sh",
       "fixture_sha256": "0fdf546f2709c30ce180f0b9142687b95a2cc4db15b8fcd994a5ffea67633cac",
-      "started_at": "2026-07-29T20:01:11Z",
-      "finished_at": "2026-07-29T20:01:11Z",
+      "started_at": "2026-07-30T03:57:50Z",
+      "finished_at": "2026-07-30T03:57:50Z",
       "exit_code": 0
     },
     {
@@ -81,8 +81,8 @@
       "body_sha256": "0926a40491d2b85cf315a8132b1ca26cc5fc21a4fb8235ef3e75d17b3ed676c1",
       "fixture_path": "scenarios/scripts/collect-m6-observations.sh",
       "fixture_sha256": "8bcbf975ec8066db234f1c017bd4a6fa0a8b65434ce4ac4a801a93c96d066790",
-      "started_at": "2026-07-29T20:01:14Z",
-      "finished_at": "2026-07-29T20:01:14Z",
+      "started_at": "2026-07-30T03:57:53Z",
+      "finished_at": "2026-07-30T03:57:53Z",
       "exit_code": 0
     }
   ]

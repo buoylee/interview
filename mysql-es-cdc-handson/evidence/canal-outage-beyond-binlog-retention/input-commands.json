@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "canal-outage-beyond-binlog-retention",
-  "runner_run_id": "3075cc0e-29df-437b-8ed8-990eee6856e9",
+  "runner_run_id": "5e2865dc-943e-4c1e-a3f0-40bebf645ddf",
   "intents": [
     {
       "sequence": 1,
@@ -48,8 +48,8 @@
       "path": "/scenario/canal-outage-beyond-binlog-retention/mutate",
       "fixture_path": "scenarios/scripts/cases/03-canal-outage-beyond-binlog-retention.sh",
       "fixture_sha256": "3b36b61317eb5ce1b39210d165613ba30231e931b75a50ac66eaa2e188004639",
-      "started_at": "2026-07-29T19:47:14Z",
-      "finished_at": "2026-07-29T19:47:25Z",
+      "started_at": "2026-07-30T03:32:32Z",
+      "finished_at": "2026-07-30T03:32:47Z",
       "exit_code": 0
     },
     {
@@ -64,8 +64,8 @@
       "path": "/scenario/canal-outage-beyond-binlog-retention/recover",
       "fixture_path": "scenarios/scripts/cases/03-canal-outage-beyond-binlog-retention.sh",
       "fixture_sha256": "3b36b61317eb5ce1b39210d165613ba30231e931b75a50ac66eaa2e188004639",
-      "started_at": "2026-07-29T19:47:25Z",
-      "finished_at": "2026-07-29T19:48:44Z",
+      "started_at": "2026-07-30T03:32:47Z",
+      "finished_at": "2026-07-30T03:34:08Z",
       "exit_code": 0
     },
     {
@@ -81,8 +81,8 @@
       "body_sha256": "0926a40491d2b85cf315a8132b1ca26cc5fc21a4fb8235ef3e75d17b3ed676c1",
       "fixture_path": "scenarios/scripts/collect-m6-observations.sh",
       "fixture_sha256": "8bcbf975ec8066db234f1c017bd4a6fa0a8b65434ce4ac4a801a93c96d066790",
-      "started_at": "2026-07-29T19:48:46Z",
-      "finished_at": "2026-07-29T19:48:46Z",
+      "started_at": "2026-07-30T03:34:10Z",
+      "finished_at": "2026-07-30T03:34:10Z",
       "exit_code": 0
     }
   ]

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "rebuild-crash-and-restart",
-  "runner_run_id": "759dc8d7-58fc-466d-aa49-552d0309d483",
+  "runner_run_id": "5feaed30-9f49-47d0-8e50-1a23308f3675",
   "intents": [
     {
       "sequence": 1,
@@ -48,8 +48,8 @@
       "path": "/scenario/rebuild-crash-and-restart/mutate",
       "fixture_path": "scenarios/scripts/cases/16-rebuild-crash-and-restart.sh",
       "fixture_sha256": "53ae10d72c06201a5b53e56ee8c7039b774197f4c2ed74d3ed7cd555725959fa",
-      "started_at": "2026-07-29T20:08:58Z",
-      "finished_at": "2026-07-29T20:09:41Z",
+      "started_at": "2026-07-30T04:09:49Z",
+      "finished_at": "2026-07-30T04:11:05Z",
       "exit_code": 0
     },
     {
@@ -64,8 +64,8 @@
       "path": "/scenario/rebuild-crash-and-restart/recover",
       "fixture_path": "scenarios/scripts/cases/16-rebuild-crash-and-restart.sh",
       "fixture_sha256": "53ae10d72c06201a5b53e56ee8c7039b774197f4c2ed74d3ed7cd555725959fa",
-      "started_at": "2026-07-29T20:09:41Z",
-      "finished_at": "2026-07-29T20:09:51Z",
+      "started_at": "2026-07-30T04:11:05Z",
+      "finished_at": "2026-07-30T04:11:20Z",
       "exit_code": 0
     },
     {
@@ -81,8 +81,8 @@
       "body_sha256": "0926a40491d2b85cf315a8132b1ca26cc5fc21a4fb8235ef3e75d17b3ed676c1",
       "fixture_path": "scenarios/scripts/collect-m6-observations.sh",
       "fixture_sha256": "8bcbf975ec8066db234f1c017bd4a6fa0a8b65434ce4ac4a801a93c96d066790",
-      "started_at": "2026-07-29T20:09:53Z",
-      "finished_at": "2026-07-29T20:09:53Z",
+      "started_at": "2026-07-30T04:11:25Z",
+      "finished_at": "2026-07-30T04:11:25Z",
       "exit_code": 0
     }
   ]

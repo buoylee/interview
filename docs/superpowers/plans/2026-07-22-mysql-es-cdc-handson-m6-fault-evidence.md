@@ -800,28 +800,59 @@ git commit -m "docs(cdc-lab): tie consistency claims to fault evidence"
 
 **Interfaces:**
 
-- Normalization removes only run-specific identity and timing fields. It may not remove result, states, recovery action, counts, preconditions, or version identities.
+- Normalization removes only the explicit run-specific identity, timing, watermark, offset and image-digest fields below. By explicit user approval after the two real rounds, the three raw Canal `meta.dat` SHA fields are also cross-run volatile because the persisted ACK cursor contains the MySQL binlog event timestamp. Each bundle must still retain those hashes and prove reset-hash equals normal-restart-hash; cross-run comparison additionally compares every decoded cursor field from `fault.json` except `timestamp`.
+- Normalization may not remove result, scenario/state/recovery/count/precondition/dependency-version semantics or decoded cursor identity (`journal`, `position`, `server_id`, client/source identity, GTID and slave ID).
 
-- [ ] **Step 1: Implement normalized comparison**
+- [x] **Step 1: Implement normalized comparison**
 
 For every result file, normalize with:
 
 ~~~bash
 jq -S '
   del(
+    .runner_run_id,
     .started_at,
     .finished_at,
     .source_watermark,
+    .target_watermarks.mysql_revision,
+    .target_watermarks.elasticsearch_revision,
     .applied_offsets,
     .dependency_versions.image_digests,
-    .consistency_preconditions[].observed_at
-  )
+    .consistency_preconditions[].observed_at,
+    .cleanup_actions[].finished_at,
+    .verification.run_id,
+    .verification.observed_at,
+    .watermark_run_id
+  ) |
+  if .canal_position_recovery == null then . else
+    del(
+      .canal_position_recovery.old_cursor_sha256,
+      .canal_position_recovery.reset_cursor_sha256,
+      .canal_position_recovery.normal_restart_cursor_sha256,
+      .canal_position_recovery.reset_anchor_run_id,
+      .canal_position_recovery.normal_sentinel_run_id,
+      .canal_position_recovery.reset_anchor_next_offsets,
+      .canal_position_recovery.reset_restart_offsets_before,
+      .canal_position_recovery.normal_restart_offsets_after,
+      .canal_position_recovery.normal_sentinel_next_offsets,
+      .canal_position_recovery.reset_anchor_events[].event_id,
+      .canal_position_recovery.reset_anchor_events[].run_id,
+      .canal_position_recovery.reset_anchor_events[].offset,
+      .canal_position_recovery.reset_anchor_events[].next_offset,
+      .canal_position_recovery.reset_anchor_events[].record_value_sha256,
+      .canal_position_recovery.normal_sentinel_events[].event_id,
+      .canal_position_recovery.normal_sentinel_events[].run_id,
+      .canal_position_recovery.normal_sentinel_events[].offset,
+      .canal_position_recovery.normal_sentinel_events[].next_offset,
+      .canal_position_recovery.normal_sentinel_events[].record_value_sha256
+    )
+  end
 ' "$result"
 ~~~
 
-Do not delete scenario ID, expected/observed states, recovery action, target-watermark boolean, DLQ/diff/tombstone counts, or PASS/FAIL.
+For `canal-outage-beyond-binlog-retention`, also extract the five decoded cursor artifacts from `fault.json`, delete only decoded `timestamp`, and compare the remaining cursor objects exactly. Do not delete scenario ID, expected/observed states, recovery action, target-watermark boolean, DLQ/diff/tombstone counts, dependency versions, decoded cursor fields, or PASS/FAIL. The three raw hashes are not claimed to be reproducible across independent runtimes.
 
-- [ ] **Step 2: Run the first complete clean-reset pass**
+- [x] **Step 2: Run the first complete clean-reset pass**
 
 ~~~bash
 make reset
@@ -833,7 +864,7 @@ cp -R evidence/. "$first_evidence/"
 
 Expected: 18/18 PASS and no untracked raw logs outside ignored `.raw`.
 
-- [ ] **Step 3: Run the second complete clean-reset pass**
+- [x] **Step 3: Run the second complete clean-reset pass**
 
 ~~~bash
 make reset
@@ -844,7 +875,7 @@ bash tests/contracts/normalized-evidence.sh "$first_evidence" evidence
 
 Expected: normalized outcome equality for all 18 scenarios.
 
-- [ ] **Step 4: Run the full repository-facing gate**
+- [x] **Step 4: Run the full repository-facing gate**
 
 ~~~bash
 make verify
@@ -868,7 +899,7 @@ Expected:
 - no absolute Canal guarantee remains in the linked Elasticsearch chapter;
 - only intended project, plan, cross-link, and evidence files are changed.
 
-- [ ] **Step 5: Explain evidence retention**
+- [x] **Step 5: Explain evidence retention**
 
 `evidence/README.md` states:
 
@@ -880,7 +911,7 @@ Each named directory is produced by one deterministic scenario and must satisfy 
 A PASS means the expected fault and recovery path were both observed under the recorded dependency versions and preconditions. It is lab evidence, not a production SLO or universal proof for every deployment.
 ~~~
 
-- [ ] **Step 6: Commit the final reproducible result**
+- [x] **Step 6: Commit the final reproducible result**
 
 ~~~bash
 git add .

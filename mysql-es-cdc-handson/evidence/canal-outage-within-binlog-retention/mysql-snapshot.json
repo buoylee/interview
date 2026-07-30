@@ -12,10 +12,10 @@
       "product_id": 6201,
       "revision": 2,
       "sku": "LAB-6201",
-      "updated_at": "2026-07-29T19:45:53.680351Z"
+      "updated_at": "2026-07-30T03:30:14.077071Z"
     }
   ],
   "schema_version": 1,
   "scenario_id": "canal-outage-within-binlog-retention",
-  "runner_run_id": "9e2c94c6-5ed6-43e1-9743-8e3d646758e0"
+  "runner_run_id": "ee7ea4ff-5fea-416a-b57a-9347c62a4fb4"
 }

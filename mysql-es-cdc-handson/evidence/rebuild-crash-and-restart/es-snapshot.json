@@ -14,7 +14,7 @@
         "searchable": true,
         "sku": "LAB-7601",
         "source_revision": 1,
-        "source_updated_at": "2026-07-29T20:08:58.784742Z"
+        "source_updated_at": "2026-07-30T04:09:53.466562Z"
       },
       "version": null
     },
@@ -31,7 +31,7 @@
         "searchable": true,
         "sku": "LAB-7602",
         "source_revision": 1,
-        "source_updated_at": "2026-07-29T20:09:01.739345Z"
+        "source_updated_at": "2026-07-30T04:09:57.639101Z"
       },
       "version": null
     },
@@ -48,7 +48,7 @@
         "searchable": true,
         "sku": "LAB-7603",
         "source_revision": 1,
-        "source_updated_at": "2026-07-29T20:09:04.307857Z"
+        "source_updated_at": "2026-07-30T04:10:01.404273Z"
       },
       "version": null
     },
@@ -65,7 +65,7 @@
         "searchable": true,
         "sku": "LAB-7604",
         "source_revision": 1,
-        "source_updated_at": "2026-07-29T20:09:06.751899Z"
+        "source_updated_at": "2026-07-30T04:10:06.195199Z"
       },
       "version": null
     },
@@ -82,7 +82,7 @@
         "searchable": true,
         "sku": "LAB-7605",
         "source_revision": 1,
-        "source_updated_at": "2026-07-29T20:09:09.288939Z"
+        "source_updated_at": "2026-07-30T04:10:08.712917Z"
       },
       "version": null
     },
@@ -99,7 +99,7 @@
         "searchable": true,
         "sku": "LAB-7606",
         "source_revision": 1,
-        "source_updated_at": "2026-07-29T20:09:11.697893Z"
+        "source_updated_at": "2026-07-30T04:10:11.670320Z"
       },
       "version": null
     },
@@ -116,7 +116,7 @@
         "searchable": true,
         "sku": "LAB-7607",
         "source_revision": 1,
-        "source_updated_at": "2026-07-29T20:09:14.081530Z"
+        "source_updated_at": "2026-07-30T04:10:15.373225Z"
       },
       "version": null
     },
@@ -133,7 +133,7 @@
         "searchable": true,
         "sku": "LAB-7608",
         "source_revision": 1,
-        "source_updated_at": "2026-07-29T20:09:16.408164Z"
+        "source_updated_at": "2026-07-30T04:10:21.166187Z"
       },
       "version": null
     },
@@ -150,7 +150,7 @@
         "searchable": true,
         "sku": "LAB-7609",
         "source_revision": 1,
-        "source_updated_at": "2026-07-29T20:09:18.726079Z"
+        "source_updated_at": "2026-07-30T04:10:24.744463Z"
       },
       "version": null
     },
@@ -167,7 +167,7 @@
         "searchable": true,
         "sku": "LAB-7610",
         "source_revision": 1,
-        "source_updated_at": "2026-07-29T20:09:21.205494Z"
+        "source_updated_at": "2026-07-30T04:10:28.544550Z"
       },
       "version": null
     },
@@ -184,7 +184,7 @@
         "searchable": true,
         "sku": "LAB-7611",
         "source_revision": 1,
-        "source_updated_at": "2026-07-29T20:09:23.740046Z"
+        "source_updated_at": "2026-07-30T04:10:31.441800Z"
       },
       "version": null
     },
@@ -201,7 +201,7 @@
         "searchable": true,
         "sku": "LAB-7612",
         "source_revision": 1,
-        "source_updated_at": "2026-07-29T20:09:26.064087Z"
+        "source_updated_at": "2026-07-30T04:10:36.643804Z"
       },
       "version": null
     },
@@ -218,7 +218,7 @@
         "searchable": true,
         "sku": "LAB-7613",
         "source_revision": 1,
-        "source_updated_at": "2026-07-29T20:09:28.466925Z"
+        "source_updated_at": "2026-07-30T04:10:41.990311Z"
       },
       "version": null
     },
@@ -235,7 +235,7 @@
         "searchable": true,
         "sku": "LAB-7614",
         "source_revision": 1,
-        "source_updated_at": "2026-07-29T20:09:30.870479Z"
+        "source_updated_at": "2026-07-30T04:10:45.572070Z"
       },
       "version": null
     },
@@ -252,7 +252,7 @@
         "searchable": true,
         "sku": "LAB-7615",
         "source_revision": 1,
-        "source_updated_at": "2026-07-29T20:09:33.222415Z"
+        "source_updated_at": "2026-07-30T04:10:48.572894Z"
       },
       "version": null
     }
@@ -260,5 +260,5 @@
   "index": "products_write",
   "schema_version": 1,
   "scenario_id": "rebuild-crash-and-restart",
-  "runner_run_id": "759dc8d7-58fc-466d-aa49-552d0309d483"
+  "runner_run_id": "5feaed30-9f49-47d0-8e50-1a23308f3675"
 }

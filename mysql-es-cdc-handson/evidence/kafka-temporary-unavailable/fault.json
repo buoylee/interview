@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "kafka-temporary-unavailable",
-  "runner_run_id": "daf6c1ca-6c20-4c50-866b-f70d9e48bd47",
+  "runner_run_id": "c193d60a-9dc7-40da-b588-9935741e6930",
   "declared_fault": {
     "type": "NETWORK",
     "target": "kafka",
@@ -34,35 +34,35 @@
       },
       {
         "path": "end-before.json",
-        "sha256": "7ac28f5baf8d4ce12262c1fcc03adf77a3c0a0c698f21fb742b31d55e277ac64",
+        "sha256": "36e2b624a9171799e1fa92065f99cfc64e6ad0a64feb871f931849c8d4eb6692",
         "json": {
-          "0": 3,
+          "0": 1,
           "1": 0,
           "2": 1
         }
       },
       {
         "path": "end-during.json",
-        "sha256": "7ac28f5baf8d4ce12262c1fcc03adf77a3c0a0c698f21fb742b31d55e277ac64",
+        "sha256": "36e2b624a9171799e1fa92065f99cfc64e6ad0a64feb871f931849c8d4eb6692",
         "json": {
-          "0": 3,
+          "0": 1,
           "1": 0,
           "2": 1
         }
       },
       {
         "path": "es-final.json",
-        "sha256": "9c57c8ae9f540e51dd8ce818ea5d359720d4adf91954af288a9dcfbdee86886a",
+        "sha256": "3ec0d5be54804572fafe932ba6298e5810d2bf172766ef65cf392d67472acca8",
         "json": {
           "transport_exit": 0,
           "http_status": 200,
           "json_valid": true,
-          "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"6401\",\"_version\":2,\"_seq_no\":1,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":6401,\"sku\":\"LAB-6401\",\"name\":\"Crash 6401\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":64401,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-29T19:49:56.087691Z\"}}"
+          "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"6401\",\"_version\":2,\"_seq_no\":1,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":6401,\"sku\":\"LAB-6401\",\"name\":\"Crash 6401\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":64401,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-30T03:37:10.551693Z\"}}"
         }
       },
       {
         "path": "final-pipeline-status.json",
-        "sha256": "8eb397f171545c3014ca4ed83994ca83f18d291c71f03de177068a8acd3444cd",
+        "sha256": "097c5092b5fe6679cd481b7552be6158bd02472313e6d13c3c13f164d5d5d586",
         "json": {
           "state": "HEALTHY",
           "kafkaLag": 0,
@@ -71,9 +71,9 @@
             {
               "topic": "product-search-revisions",
               "partition": 0,
-              "committedOffset": 3,
+              "committedOffset": 1,
               "beginningOffset": 0,
-              "endOffset": 3,
+              "endOffset": 1,
               "lag": 0,
               "retentionGap": false
             },
@@ -97,13 +97,13 @@
             }
           ],
           "unresolvedDlq": 0,
-          "latestRunId": "41e897b4-8939-4619-8c09-a577e415979e",
+          "latestRunId": "b9ea8d21-220e-4eca-8842-5939d4c76b27",
           "latestRunStatus": "PASS",
           "latestDifferenceCount": 0,
-          "latestRunFinishedAt": "2026-07-29T19:50:02.220088Z",
-          "latestSuccessfulPassFinishedAt": "2026-07-29T19:50:02.220088Z",
+          "latestRunFinishedAt": "2026-07-30T03:37:22.123720Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-30T03:37:22.123720Z",
           "activeConditions": [],
-          "evaluatedAt": "2026-07-29T19:50:02.321232951Z"
+          "evaluatedAt": "2026-07-30T03:37:22.298668810Z"
         }
       },
       {
@@ -133,9 +133,9 @@
       },
       {
         "path": "final-verification.json",
-        "sha256": "c16d73e7931a7efb354bec04460cba9093a9044c10737c92ddc6a75531195029",
+        "sha256": "42aaa460994a77f61a11966c8db6c42ab56cd386411002f2b1104407f5ed6d65",
         "json": {
-          "runId": "41e897b4-8939-4619-8c09-a577e415979e",
+          "runId": "b9ea8d21-220e-4eca-8842-5939d4c76b27",
           "target": "products_write",
           "status": "PASS",
           "sourceWatermarkStart": 2,

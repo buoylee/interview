@@ -14,7 +14,7 @@
         "searchable": true,
         "sku": "LAB-6901",
         "source_revision": 1,
-        "source_updated_at": "2026-07-29T19:58:09.687263Z"
+        "source_updated_at": "2026-07-30T03:53:45.326326Z"
       },
       "version": null
     }
@@ -22,5 +22,5 @@
   "index": "products_write",
   "schema_version": 1,
   "scenario_id": "duplicate-event",
-  "runner_run_id": "692b4818-d071-41b9-a7f9-380345069afa"
+  "runner_run_id": "69c99ec4-b06c-4c69-9288-3ec0f1ed8cd9"
 }

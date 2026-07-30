@@ -12,10 +12,10 @@
       "product_id": 7401,
       "revision": 2,
       "sku": null,
-      "updated_at": "2026-07-29T20:05:26.224745Z"
+      "updated_at": "2026-07-30T04:04:26.712812Z"
     }
   ],
   "schema_version": 1,
   "scenario_id": "delete-then-old-event-replay",
-  "runner_run_id": "7245cb65-bda5-48f3-a9d4-06bb6a571ca1"
+  "runner_run_id": "4b69df44-7fee-465b-86e6-a98d88d5ce84"
 }

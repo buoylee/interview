@@ -12,10 +12,10 @@
       "product_id": 7101,
       "revision": 2,
       "sku": "LAB-7101",
-      "updated_at": "2026-07-29T20:01:11.013645Z"
+      "updated_at": "2026-07-30T03:57:48.778263Z"
     }
   ],
   "schema_version": 1,
   "scenario_id": "mapping-conflict",
-  "runner_run_id": "7e98943c-995a-4c39-94ea-5823fd98b9ae"
+  "runner_run_id": "ea5cf5f9-37d0-4633-bc9b-1acaa99e8f9e"
 }

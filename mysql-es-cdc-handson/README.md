@@ -62,12 +62,7 @@ make evidence
 
 `make evidence` 是昂贵的 18 场景真实故障矩阵；它生成/替换证据，通常只在专门的证据验收中运行。`make verify` 是正常的组件测试与代表性端到端门禁，不会替代或重跑完整 18 场景矩阵。
 
-验收 fresh-run 可重复性是 **not tested / non-goal**（Task 6），本 Task 5 不执行两轮重置或重新生成证据：
-
-```bash
-make reset && make smoke-m0
-make reset && make smoke-m0
-```
+最终证据已在 commit `bb75ab0c19b3f64090faec9d281d56ff43087a55` 上完成两次独立 clean-reset 运行：每轮均为 18/18 PASS，合计 36 个互不重复的 runner ID；显式 normalization 后 18/18 相等。原始 Canal `meta.dat` SHA 仍保留并在每轮内约束 reset 与 normal restart 相等；跨轮只允许这三个 SHA 和解码 cursor 的 `timestamp` 变化，其他解码位点字段必须完全相等。详细保留与证明边界见 [evidence/README.md](evidence/README.md)。这是受控 lab 的两次观测结果，不是生产 SLO 或任意环境保证。
 
 本地端口：product-service 8081、MySQL 3308、Kafka 29092、Canal 11111/11112、Elasticsearch 9200、Toxiproxy API 8474。consumer/verifier 仅在 `m0-tools` profile 下定义，预留 8082/8083，默认不启动。仓库中的账号密码只用于本地实验，不得用于共享或生产环境。
 

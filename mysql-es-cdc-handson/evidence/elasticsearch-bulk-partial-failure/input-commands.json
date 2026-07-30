@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "elasticsearch-bulk-partial-failure",
-  "runner_run_id": "59614613-3002-467f-b0a6-2a72a0d5d153",
+  "runner_run_id": "24a46ada-d4d0-4868-8f16-4ea35b12ef87",
   "intents": [
     {
       "sequence": 1,
@@ -48,8 +48,8 @@
       "path": "/scenario/elasticsearch-bulk-partial-failure/mutate",
       "fixture_path": "scenarios/scripts/cases/08-elasticsearch-bulk-partial-failure.sh",
       "fixture_sha256": "df0143a769cceac8d9973032ab5a24972d2f90add55c8e878f6c70f58264e5ba",
-      "started_at": "2026-07-29T19:56:40Z",
-      "finished_at": "2026-07-29T19:57:00Z",
+      "started_at": "2026-07-30T03:51:37Z",
+      "finished_at": "2026-07-30T03:52:01Z",
       "exit_code": 0
     },
     {
@@ -64,8 +64,8 @@
       "path": "/scenario/elasticsearch-bulk-partial-failure/recover",
       "fixture_path": "scenarios/scripts/cases/08-elasticsearch-bulk-partial-failure.sh",
       "fixture_sha256": "df0143a769cceac8d9973032ab5a24972d2f90add55c8e878f6c70f58264e5ba",
-      "started_at": "2026-07-29T19:57:00Z",
-      "finished_at": "2026-07-29T19:57:00Z",
+      "started_at": "2026-07-30T03:52:01Z",
+      "finished_at": "2026-07-30T03:52:02Z",
       "exit_code": 0
     },
     {
@@ -81,8 +81,8 @@
       "body_sha256": "0926a40491d2b85cf315a8132b1ca26cc5fc21a4fb8235ef3e75d17b3ed676c1",
       "fixture_path": "scenarios/scripts/collect-m6-observations.sh",
       "fixture_sha256": "8bcbf975ec8066db234f1c017bd4a6fa0a8b65434ce4ac4a801a93c96d066790",
-      "started_at": "2026-07-29T19:57:03Z",
-      "finished_at": "2026-07-29T19:57:03Z",
+      "started_at": "2026-07-30T03:52:04Z",
+      "finished_at": "2026-07-30T03:52:08Z",
       "exit_code": 0
     }
   ]

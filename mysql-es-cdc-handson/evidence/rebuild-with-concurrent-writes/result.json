@@ -1,13 +1,13 @@
 {
   "applied_offsets": {
-    "0": 17,
+    "0": 15,
     "1": 14,
     "2": 13
   },
   "canal_position_recovery": null,
   "cleanup_actions": [
     {
-      "finished_at": "2026-07-29T20:07:47Z",
+      "finished_at": "2026-07-30T04:07:57Z",
       "name": "dispatch-owned-m6-real-fault",
       "success": true
     }
@@ -16,17 +16,17 @@
   "consistency_preconditions": [
     {
       "name": "dedicated-compose-project",
-      "observed_at": "2026-07-29T20:06:34Z",
+      "observed_at": "2026-07-30T04:06:07Z",
       "satisfied": true
     },
     {
       "name": "pinned-stack-ready",
-      "observed_at": "2026-07-29T20:06:34Z",
+      "observed_at": "2026-07-30T04:06:07Z",
       "satisfied": true
     },
     {
       "name": "baseline-lag-zero",
-      "observed_at": "2026-07-29T20:06:34Z",
+      "observed_at": "2026-07-30T04:06:07Z",
       "satisfied": true
     }
   ],
@@ -35,7 +35,7 @@
     "elasticsearch": "8.17.0",
     "kafka": "4.1.2",
     "mysql": "8.4.8",
-    "project_head": "fb1a87733f0dcea5f41d1a0adbd1da2c980cac97"
+    "project_head": "bb75ab0c19b3f64090faec9d281d56ff43087a55"
   },
   "exact_diff_count": 0,
   "expected_intermediate_states": [
@@ -43,7 +43,7 @@
   ],
   "expected_pipeline_state": "HEALTHY",
   "failed_assertions": [],
-  "finished_at": "2026-07-29T20:07:59Z",
+  "finished_at": "2026-07-30T04:08:15Z",
   "observed_intermediate_states": [
     "REBUILDING"
   ],
@@ -55,12 +55,12 @@
   "recovery_action_observed": true,
   "requires_rebuild": true,
   "result": "PASS",
-  "runner_run_id": "15f0ef81-6f4f-4733-9399-6c0f3487cda4",
+  "runner_run_id": "9b004fba-f1b8-401c-9caf-e9c4dc3f9688",
   "scenario_id": "rebuild-with-concurrent-writes",
   "scenario_lag_satisfied": true,
   "schema_version": 1,
   "source_watermark": 4,
-  "started_at": "2026-07-29T20:05:42Z",
+  "started_at": "2026-07-30T04:04:53Z",
   "target_watermark_passed": true,
   "target_watermarks": {
     "elasticsearch_revision": 4,
@@ -72,11 +72,11 @@
   "verification": {
     "conclusive": true,
     "exact_managed_field_diff_count": 0,
-    "observed_at": "2026-07-29T20:07:51Z",
-    "run_id": "2f6ae931-472d-4a7a-9dd9-96b88e87f9da",
+    "observed_at": "2026-07-30T04:08:04Z",
+    "run_id": "ba41c22c-4740-4dbf-b146-cb107051098f",
     "stable": true,
     "status": "PASS",
     "version_metadata_diff_count": 0
   },
-  "watermark_run_id": "2f6ae931-472d-4a7a-9dd9-96b88e87f9da"
+  "watermark_run_id": "ba41c22c-4740-4dbf-b146-cb107051098f"
 }

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "consumer-systematic-mapping-bug",
-  "runner_run_id": "6b004145-70c4-437f-98d9-2c4ed855816a",
+  "runner_run_id": "882940aa-e5a4-43b6-85c3-4fbdec3dd428",
   "rebuild_required_observed_before_rebuild": false,
   "commands": [
     {
@@ -10,8 +10,8 @@
       "target": "m6-real-fault",
       "method": "DELETE",
       "path": "/scenario/consumer-systematic-mapping-bug/fault",
-      "started_at": "2026-07-29T20:11:08Z",
-      "finished_at": "2026-07-29T20:11:09Z",
+      "started_at": "2026-07-30T04:13:18Z",
+      "finished_at": "2026-07-30T04:13:18Z",
       "exit_code": 0
     }
   ],
@@ -19,7 +19,7 @@
     {
       "name": "dispatch-owned-m6-real-fault",
       "success": true,
-      "finished_at": "2026-07-29T20:11:09Z"
+      "finished_at": "2026-07-30T04:13:18Z"
     }
   ],
   "cleanup_failures": 0

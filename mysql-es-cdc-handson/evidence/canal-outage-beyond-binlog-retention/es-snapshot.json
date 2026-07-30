@@ -14,7 +14,7 @@
         "searchable": true,
         "sku": "LAB-6301",
         "source_revision": 1,
-        "source_updated_at": "2026-07-29T19:47:15.463742Z"
+        "source_updated_at": "2026-07-30T03:32:33.467860Z"
       },
       "version": null
     }
@@ -22,5 +22,5 @@
   "index": "products_write",
   "schema_version": 1,
   "scenario_id": "canal-outage-beyond-binlog-retention",
-  "runner_run_id": "3075cc0e-29df-437b-8ed8-990eee6856e9"
+  "runner_run_id": "5e2865dc-943e-4c1e-a3f0-40bebf645ddf"
 }

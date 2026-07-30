@@ -12,7 +12,7 @@
       "product_id": 7601,
       "revision": 1,
       "sku": "LAB-7601",
-      "updated_at": "2026-07-29T20:08:58.784742Z"
+      "updated_at": "2026-07-30T04:09:53.466562Z"
     },
     {
       "active": 1,
@@ -25,7 +25,7 @@
       "product_id": 7602,
       "revision": 1,
       "sku": "LAB-7602",
-      "updated_at": "2026-07-29T20:09:01.739345Z"
+      "updated_at": "2026-07-30T04:09:57.639101Z"
     },
     {
       "active": 1,
@@ -38,7 +38,7 @@
       "product_id": 7603,
       "revision": 1,
       "sku": "LAB-7603",
-      "updated_at": "2026-07-29T20:09:04.307857Z"
+      "updated_at": "2026-07-30T04:10:01.404273Z"
     },
     {
       "active": 1,
@@ -51,7 +51,7 @@
       "product_id": 7604,
       "revision": 1,
       "sku": "LAB-7604",
-      "updated_at": "2026-07-29T20:09:06.751899Z"
+      "updated_at": "2026-07-30T04:10:06.195199Z"
     },
     {
       "active": 1,
@@ -64,7 +64,7 @@
       "product_id": 7605,
       "revision": 1,
       "sku": "LAB-7605",
-      "updated_at": "2026-07-29T20:09:09.288939Z"
+      "updated_at": "2026-07-30T04:10:08.712917Z"
     },
     {
       "active": 1,
@@ -77,7 +77,7 @@
       "product_id": 7606,
       "revision": 1,
       "sku": "LAB-7606",
-      "updated_at": "2026-07-29T20:09:11.697893Z"
+      "updated_at": "2026-07-30T04:10:11.670320Z"
     },
     {
       "active": 1,
@@ -90,7 +90,7 @@
       "product_id": 7607,
       "revision": 1,
       "sku": "LAB-7607",
-      "updated_at": "2026-07-29T20:09:14.081530Z"
+      "updated_at": "2026-07-30T04:10:15.373225Z"
     },
     {
       "active": 1,
@@ -103,7 +103,7 @@
       "product_id": 7608,
       "revision": 1,
       "sku": "LAB-7608",
-      "updated_at": "2026-07-29T20:09:16.408164Z"
+      "updated_at": "2026-07-30T04:10:21.166187Z"
     },
     {
       "active": 1,
@@ -116,7 +116,7 @@
       "product_id": 7609,
       "revision": 1,
       "sku": "LAB-7609",
-      "updated_at": "2026-07-29T20:09:18.726079Z"
+      "updated_at": "2026-07-30T04:10:24.744463Z"
     },
     {
       "active": 1,
@@ -129,7 +129,7 @@
       "product_id": 7610,
       "revision": 1,
       "sku": "LAB-7610",
-      "updated_at": "2026-07-29T20:09:21.205494Z"
+      "updated_at": "2026-07-30T04:10:28.544550Z"
     },
     {
       "active": 1,
@@ -142,7 +142,7 @@
       "product_id": 7611,
       "revision": 1,
       "sku": "LAB-7611",
-      "updated_at": "2026-07-29T20:09:23.740046Z"
+      "updated_at": "2026-07-30T04:10:31.441800Z"
     },
     {
       "active": 1,
@@ -155,7 +155,7 @@
       "product_id": 7612,
       "revision": 1,
       "sku": "LAB-7612",
-      "updated_at": "2026-07-29T20:09:26.064087Z"
+      "updated_at": "2026-07-30T04:10:36.643804Z"
     },
     {
       "active": 1,
@@ -168,7 +168,7 @@
       "product_id": 7613,
       "revision": 1,
       "sku": "LAB-7613",
-      "updated_at": "2026-07-29T20:09:28.466925Z"
+      "updated_at": "2026-07-30T04:10:41.990311Z"
     },
     {
       "active": 1,
@@ -181,7 +181,7 @@
       "product_id": 7614,
       "revision": 1,
       "sku": "LAB-7614",
-      "updated_at": "2026-07-29T20:09:30.870479Z"
+      "updated_at": "2026-07-30T04:10:45.572070Z"
     },
     {
       "active": 1,
@@ -194,10 +194,10 @@
       "product_id": 7615,
       "revision": 1,
       "sku": "LAB-7615",
-      "updated_at": "2026-07-29T20:09:33.222415Z"
+      "updated_at": "2026-07-30T04:10:48.572894Z"
     }
   ],
   "schema_version": 1,
   "scenario_id": "rebuild-crash-and-restart",
-  "runner_run_id": "759dc8d7-58fc-466d-aa49-552d0309d483"
+  "runner_run_id": "5feaed30-9f49-47d0-8e50-1a23308f3675"
 }

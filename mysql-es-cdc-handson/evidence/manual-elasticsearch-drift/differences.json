@@ -1,23 +1,23 @@
 {
   "schema_version": 1,
   "scenario_id": "manual-elasticsearch-drift",
-  "runner_run_id": "b9c6a0fa-a626-4fe2-8e61-ebdb715deed1",
+  "runner_run_id": "79acce96-934d-4b14-a7b1-53511fa10240",
   "observations": {
     "consistency_preconditions": [
       {
         "name": "dedicated-compose-project",
         "satisfied": true,
-        "observed_at": "2026-07-29T20:02:17Z"
+        "observed_at": "2026-07-30T03:59:38Z"
       },
       {
         "name": "pinned-stack-ready",
         "satisfied": true,
-        "observed_at": "2026-07-29T20:02:17Z"
+        "observed_at": "2026-07-30T03:59:38Z"
       },
       {
         "name": "baseline-lag-zero",
         "satisfied": true,
-        "observed_at": "2026-07-29T20:02:17Z"
+        "observed_at": "2026-07-30T03:59:38Z"
       }
     ],
     "source_watermark": 1,
@@ -26,9 +26,9 @@
       "elasticsearch_revision": 1,
       "passed": true
     },
-    "watermark_run_id": "bf101ddb-d951-40cb-a063-d346568e192e",
+    "watermark_run_id": "941a6f42-4d7c-4d06-ba3b-4415be0452cb",
     "applied_offsets": {
-      "0": 3,
+      "0": 1,
       "1": 1,
       "2": 1
     },
@@ -36,13 +36,13 @@
     "product_unresolved_dlq_count": 0,
     "record_unresolved_dlq_count": 0,
     "verification": {
-      "run_id": "bf101ddb-d951-40cb-a063-d346568e192e",
+      "run_id": "941a6f42-4d7c-4d06-ba3b-4415be0452cb",
       "status": "PASS",
       "conclusive": true,
       "stable": true,
       "exact_managed_field_diff_count": 0,
       "version_metadata_diff_count": 0,
-      "observed_at": "2026-07-29T20:02:27Z"
+      "observed_at": "2026-07-30T03:59:58Z"
     },
     "exact_diff_count": 0,
     "tombstone_mismatch_count": 0,
@@ -67,8 +67,8 @@
         "body_sha256": "0926a40491d2b85cf315a8132b1ca26cc5fc21a4fb8235ef3e75d17b3ed676c1",
         "fixture_path": "scenarios/scripts/collect-m6-observations.sh",
         "fixture_sha256": "8bcbf975ec8066db234f1c017bd4a6fa0a8b65434ce4ac4a801a93c96d066790",
-        "started_at": "2026-07-29T20:02:26Z",
-        "finished_at": "2026-07-29T20:02:26Z",
+        "started_at": "2026-07-30T03:59:51Z",
+        "finished_at": "2026-07-30T03:59:51Z",
         "exit_code": 0
       }
     ],
@@ -77,7 +77,7 @@
     "runner_failures": []
   },
   "independent_verification": {
-    "runId": "bf101ddb-d951-40cb-a063-d346568e192e",
+    "runId": "941a6f42-4d7c-4d06-ba3b-4415be0452cb",
     "target": "products_write",
     "status": "PASS",
     "sourceWatermarkStart": 2,

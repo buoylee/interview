@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "consumer-crash-before-elasticsearch",
-  "runner_run_id": "b64ad2b2-bcc4-411b-bc38-7d15f072ef4a",
+  "runner_run_id": "f888a171-d079-4464-bab2-f0801d7d165f",
   "rebuild_required_observed_before_rebuild": false,
   "commands": [
     {
@@ -10,8 +10,8 @@
       "target": "m6-real-fault",
       "method": "DELETE",
       "path": "/scenario/consumer-crash-before-elasticsearch/fault",
-      "started_at": "2026-07-29T19:53:13Z",
-      "finished_at": "2026-07-29T19:53:45Z",
+      "started_at": "2026-07-30T03:42:58Z",
+      "finished_at": "2026-07-30T03:43:30Z",
       "exit_code": 0
     }
   ],
@@ -19,7 +19,7 @@
     {
       "name": "dispatch-owned-m6-real-fault",
       "success": true,
-      "finished_at": "2026-07-29T19:53:45Z"
+      "finished_at": "2026-07-30T03:43:30Z"
     }
   ],
   "cleanup_failures": 0

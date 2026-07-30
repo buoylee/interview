@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "manual-elasticsearch-drift",
-  "runner_run_id": "b9c6a0fa-a626-4fe2-8e61-ebdb715deed1",
+  "runner_run_id": "79acce96-934d-4b14-a7b1-53511fa10240",
   "declared_fault": {
     "type": "DATA",
     "target": "products-write",
@@ -86,9 +86,9 @@
       },
       {
         "path": "diff-run.json",
-        "sha256": "eb6d8f96b5f4017a9e6f308ef431ebe60d306abf7f395b4c489378dad3fc3411",
+        "sha256": "c5a92f9ef6cc1a1ecc26334805f56b30d6750ad36b8137d921d732624821ae59",
         "json": {
-          "runId": "c5c2104f-15a1-45e1-a7c0-4ccbc9017e1a",
+          "runId": "42f70d3c-b82c-432d-a352-557050b1dfbd",
           "target": "products_write",
           "status": "DIFF",
           "sourceWatermarkStart": 2,
@@ -128,7 +128,7 @@
       },
       {
         "path": "es-original.json",
-        "sha256": "434a954a44a9fb2010cdee64fcf929b6b3af5710083b9e83b6448b49d1982234",
+        "sha256": "e25fde54475279433c80a6dbaa7e7929f2713045009ae9b3f7ec2a4d302c860d",
         "json": {
           "_index": "products_v2",
           "_id": "7202",
@@ -147,13 +147,13 @@
             "available_quantity": 0,
             "searchable": true,
             "source_revision": 1,
-            "source_updated_at": "2026-07-29T20:02:20.228805Z"
+            "source_updated_at": "2026-07-30T03:59:43.460960Z"
           }
         }
       },
       {
         "path": "final-pipeline-status.json",
-        "sha256": "b14dc196948a2ee4d520690e1cfdb04c0bf5ebba2b8fc7beac424cd7ee2c0ca4",
+        "sha256": "a53abe0245b5442c647b9b97ea8cada7b6fab43b3b55218df87f8d92f408796f",
         "json": {
           "state": "HEALTHY",
           "kafkaLag": 0,
@@ -162,9 +162,9 @@
             {
               "topic": "product-search-revisions",
               "partition": 0,
-              "committedOffset": 3,
+              "committedOffset": 1,
               "beginningOffset": 0,
-              "endOffset": 3,
+              "endOffset": 1,
               "lag": 0,
               "retentionGap": false
             },
@@ -188,13 +188,13 @@
             }
           ],
           "unresolvedDlq": 0,
-          "latestRunId": "bf101ddb-d951-40cb-a063-d346568e192e",
+          "latestRunId": "941a6f42-4d7c-4d06-ba3b-4415be0452cb",
           "latestRunStatus": "PASS",
           "latestDifferenceCount": 0,
-          "latestRunFinishedAt": "2026-07-29T20:02:26.074102Z",
-          "latestSuccessfulPassFinishedAt": "2026-07-29T20:02:26.074102Z",
+          "latestRunFinishedAt": "2026-07-30T03:59:51.757450Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-30T03:59:51.757450Z",
           "activeConditions": [],
-          "evaluatedAt": "2026-07-29T20:02:26.148419213Z"
+          "evaluatedAt": "2026-07-30T03:59:52.403879781Z"
         }
       },
       {
@@ -224,9 +224,9 @@
       },
       {
         "path": "final-verification.json",
-        "sha256": "d4afdff0bb379d93dc3277b8f48c82c6dddb5ad6cce6e175d4adeecf4fbc07c7",
+        "sha256": "7edad4d117a52378d903769ab779cf22cf7082307a24332304af7415f75eb478",
         "json": {
-          "runId": "bf101ddb-d951-40cb-a063-d346568e192e",
+          "runId": "941a6f42-4d7c-4d06-ba3b-4415be0452cb",
           "target": "products_write",
           "status": "PASS",
           "sourceWatermarkStart": 2,
@@ -241,9 +241,9 @@
       },
       {
         "path": "fresh-pass.json",
-        "sha256": "36bdf34183256f941fdcac30e21283a738e791752f3b84c6fedda9b0386bbea2",
+        "sha256": "21c49b99f13147e933e4027b144fd854b3805c1e9dc497989f3d6be3d3fb2875",
         "json": {
-          "runId": "189cb07e-d2ec-4a62-acb4-82b3bdbfed04",
+          "runId": "629ceb7a-a83b-48d8-b276-5cb62546cdbc",
           "target": "products_write",
           "status": "PASS",
           "sourceWatermarkStart": 2,
@@ -274,9 +274,9 @@
       },
       {
         "path": "repair.json",
-        "sha256": "f2cf47261f3772fb18d9a2edfef711d723a7e3be46f32674822d55fa36627925",
+        "sha256": "ad8d98b74823b2dd50da59a305ce650b1dc8ebff261dcff32b6c38969aa75e0c",
         "json": {
-          "runId": "c5c2104f-15a1-45e1-a7c0-4ccbc9017e1a",
+          "runId": "42f70d3c-b82c-432d-a352-557050b1dfbd",
           "sourceWatermarkStart": 2,
           "sourceWatermarkEnd": 2,
           "applied": 2,

@@ -7,7 +7,7 @@
   "canal_position_recovery": null,
   "cleanup_actions": [
     {
-      "finished_at": "2026-07-29T20:05:30Z",
+      "finished_at": "2026-07-30T04:04:32Z",
       "name": "dispatch-owned-m6-real-fault",
       "success": true
     }
@@ -16,17 +16,17 @@
   "consistency_preconditions": [
     {
       "name": "dedicated-compose-project",
-      "observed_at": "2026-07-29T20:05:07Z",
+      "observed_at": "2026-07-30T04:04:06Z",
       "satisfied": true
     },
     {
       "name": "pinned-stack-ready",
-      "observed_at": "2026-07-29T20:05:07Z",
+      "observed_at": "2026-07-30T04:04:06Z",
       "satisfied": true
     },
     {
       "name": "baseline-lag-zero",
-      "observed_at": "2026-07-29T20:05:07Z",
+      "observed_at": "2026-07-30T04:04:06Z",
       "satisfied": true
     }
   ],
@@ -35,7 +35,7 @@
     "elasticsearch": "8.17.0",
     "kafka": "4.1.2",
     "mysql": "8.4.8",
-    "project_head": "fb1a87733f0dcea5f41d1a0adbd1da2c980cac97"
+    "project_head": "bb75ab0c19b3f64090faec9d281d56ff43087a55"
   },
   "exact_diff_count": 0,
   "expected_intermediate_states": [
@@ -43,7 +43,7 @@
   ],
   "expected_pipeline_state": "HEALTHY",
   "failed_assertions": [],
-  "finished_at": "2026-07-29T20:05:39Z",
+  "finished_at": "2026-07-30T04:04:48Z",
   "observed_intermediate_states": [
     "HEALTHY"
   ],
@@ -55,12 +55,12 @@
   "recovery_action_observed": true,
   "requires_rebuild": false,
   "result": "PASS",
-  "runner_run_id": "7245cb65-bda5-48f3-a9d4-06bb6a571ca1",
+  "runner_run_id": "4b69df44-7fee-465b-86e6-a98d88d5ce84",
   "scenario_id": "delete-then-old-event-replay",
   "scenario_lag_satisfied": true,
   "schema_version": 1,
   "source_watermark": 2,
-  "started_at": "2026-07-29T20:04:16Z",
+  "started_at": "2026-07-30T04:02:46Z",
   "target_watermark_passed": true,
   "target_watermarks": {
     "elasticsearch_revision": 2,
@@ -72,11 +72,11 @@
   "verification": {
     "conclusive": true,
     "exact_managed_field_diff_count": 0,
-    "observed_at": "2026-07-29T20:05:33Z",
-    "run_id": "719af7cf-3c14-493e-88f4-202371a1cb33",
+    "observed_at": "2026-07-30T04:04:39Z",
+    "run_id": "5bfc64c6-d6ae-441e-b261-87364b2a0cf3",
     "stable": true,
     "status": "PASS",
     "version_metadata_diff_count": 0
   },
-  "watermark_run_id": "719af7cf-3c14-493e-88f4-202371a1cb33"
+  "watermark_run_id": "5bfc64c6-d6ae-441e-b261-87364b2a0cf3"
 }

@@ -12,10 +12,10 @@
       "product_id": 7801,
       "revision": 2,
       "sku": "LAB-7801",
-      "updated_at": "2026-07-29T20:12:30.729299Z"
+      "updated_at": "2026-07-30T04:15:12.377024Z"
     }
   ],
   "schema_version": 1,
   "scenario_id": "dlq-replay-fails-then-succeeds",
-  "runner_run_id": "e4972e8f-343d-4047-b212-517dbb51bf80"
+  "runner_run_id": "83247e82-8820-4a17-acc4-f4237670e2d7"
 }

@@ -14,7 +14,7 @@
         "searchable": true,
         "sku": "LAB-7501",
         "source_revision": 4,
-        "source_updated_at": "2026-07-29T20:07:47.854039Z"
+        "source_updated_at": "2026-07-30T04:07:57.459135Z"
       },
       "version": null
     },
@@ -31,7 +31,7 @@
         "searchable": true,
         "sku": "LAB-7502",
         "source_revision": 3,
-        "source_updated_at": "2026-07-29T20:07:42.420888Z"
+        "source_updated_at": "2026-07-30T04:07:49.951093Z"
       },
       "version": null
     },
@@ -41,7 +41,7 @@
         "product_id": 7503,
         "searchable": false,
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.413108Z"
+        "source_updated_at": "2026-07-30T04:07:49.936193Z"
       },
       "version": null
     },
@@ -58,7 +58,7 @@
         "searchable": true,
         "sku": "LAB-7504",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -75,7 +75,7 @@
         "searchable": true,
         "sku": "LAB-7505",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -92,7 +92,7 @@
         "searchable": true,
         "sku": "LAB-7506",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -109,7 +109,7 @@
         "searchable": true,
         "sku": "LAB-7507",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -126,7 +126,7 @@
         "searchable": true,
         "sku": "LAB-7508",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -143,7 +143,7 @@
         "searchable": true,
         "sku": "LAB-7509",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -160,7 +160,7 @@
         "searchable": true,
         "sku": "LAB-7510",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -177,7 +177,7 @@
         "searchable": true,
         "sku": "LAB-7511",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -194,7 +194,7 @@
         "searchable": true,
         "sku": "LAB-7512",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -211,7 +211,7 @@
         "searchable": true,
         "sku": "LAB-7513",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -228,7 +228,7 @@
         "searchable": true,
         "sku": "LAB-7514",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -245,7 +245,7 @@
         "searchable": true,
         "sku": "LAB-7515",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -262,7 +262,7 @@
         "searchable": true,
         "sku": "LAB-7516",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -279,7 +279,7 @@
         "searchable": true,
         "sku": "LAB-7517",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -296,7 +296,7 @@
         "searchable": true,
         "sku": "LAB-7518",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -313,7 +313,7 @@
         "searchable": true,
         "sku": "LAB-7519",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -330,7 +330,7 @@
         "searchable": true,
         "sku": "LAB-7520",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -347,7 +347,7 @@
         "searchable": true,
         "sku": "LAB-7521",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -364,7 +364,7 @@
         "searchable": true,
         "sku": "LAB-7522",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -381,7 +381,7 @@
         "searchable": true,
         "sku": "LAB-7523",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -398,7 +398,7 @@
         "searchable": true,
         "sku": "LAB-7524",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -415,7 +415,7 @@
         "searchable": true,
         "sku": "LAB-7525",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -432,7 +432,7 @@
         "searchable": true,
         "sku": "LAB-7526",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -449,7 +449,7 @@
         "searchable": true,
         "sku": "LAB-7527",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -466,7 +466,7 @@
         "searchable": true,
         "sku": "LAB-7528",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -483,7 +483,7 @@
         "searchable": true,
         "sku": "LAB-7529",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -500,7 +500,7 @@
         "searchable": true,
         "sku": "LAB-7530",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     },
@@ -517,7 +517,7 @@
         "searchable": true,
         "sku": "LAB-7599",
         "source_revision": 2,
-        "source_updated_at": "2026-07-29T20:07:42.418897Z"
+        "source_updated_at": "2026-07-30T04:07:49.945321Z"
       },
       "version": null
     }
@@ -525,5 +525,5 @@
   "index": "products_write",
   "schema_version": 1,
   "scenario_id": "rebuild-with-concurrent-writes",
-  "runner_run_id": "15f0ef81-6f4f-4733-9399-6c0f3487cda4"
+  "runner_run_id": "9b004fba-f1b8-401c-9caf-e9c4dc3f9688"
 }

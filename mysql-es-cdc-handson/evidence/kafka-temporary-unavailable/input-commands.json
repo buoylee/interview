@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "kafka-temporary-unavailable",
-  "runner_run_id": "daf6c1ca-6c20-4c50-866b-f70d9e48bd47",
+  "runner_run_id": "c193d60a-9dc7-40da-b588-9935741e6930",
   "intents": [
     {
       "sequence": 1,
@@ -48,8 +48,8 @@
       "path": "/scenario/kafka-temporary-unavailable/mutate",
       "fixture_path": "scenarios/scripts/cases/04-kafka-temporary-unavailable.sh",
       "fixture_sha256": "193da4661fb49fdd4bcdabe5e6475f6117cbd89adf1f8489f1758bf0d820f967",
-      "started_at": "2026-07-29T19:49:52Z",
-      "finished_at": "2026-07-29T19:49:57Z",
+      "started_at": "2026-07-30T03:36:57Z",
+      "finished_at": "2026-07-30T03:37:13Z",
       "exit_code": 0
     },
     {
@@ -64,8 +64,8 @@
       "path": "/scenario/kafka-temporary-unavailable/recover",
       "fixture_path": "scenarios/scripts/cases/04-kafka-temporary-unavailable.sh",
       "fixture_sha256": "193da4661fb49fdd4bcdabe5e6475f6117cbd89adf1f8489f1758bf0d820f967",
-      "started_at": "2026-07-29T19:49:57Z",
-      "finished_at": "2026-07-29T19:49:59Z",
+      "started_at": "2026-07-30T03:37:13Z",
+      "finished_at": "2026-07-30T03:37:17Z",
       "exit_code": 0
     },
     {
@@ -81,8 +81,8 @@
       "body_sha256": "0926a40491d2b85cf315a8132b1ca26cc5fc21a4fb8235ef3e75d17b3ed676c1",
       "fixture_path": "scenarios/scripts/collect-m6-observations.sh",
       "fixture_sha256": "8bcbf975ec8066db234f1c017bd4a6fa0a8b65434ce4ac4a801a93c96d066790",
-      "started_at": "2026-07-29T19:50:01Z",
-      "finished_at": "2026-07-29T19:50:02Z",
+      "started_at": "2026-07-30T03:37:21Z",
+      "finished_at": "2026-07-30T03:37:22Z",
       "exit_code": 0
     }
   ]

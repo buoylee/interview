@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "manual-elasticsearch-drift",
-  "runner_run_id": "b9c6a0fa-a626-4fe2-8e61-ebdb715deed1",
+  "runner_run_id": "79acce96-934d-4b14-a7b1-53511fa10240",
   "intents": [
     {
       "sequence": 1,
@@ -48,8 +48,8 @@
       "path": "/scenario/manual-elasticsearch-drift/mutate",
       "fixture_path": "scenarios/scripts/cases/12-manual-elasticsearch-drift.sh",
       "fixture_sha256": "9f9c5e471f4838686968dc9b03ccb259f4b483951c1d7f28cb44087ecd6f0380",
-      "started_at": "2026-07-29T20:02:17Z",
-      "finished_at": "2026-07-29T20:02:23Z",
+      "started_at": "2026-07-30T03:59:39Z",
+      "finished_at": "2026-07-30T03:59:47Z",
       "exit_code": 0
     },
     {
@@ -64,8 +64,8 @@
       "path": "/scenario/manual-elasticsearch-drift/recover",
       "fixture_path": "scenarios/scripts/cases/12-manual-elasticsearch-drift.sh",
       "fixture_sha256": "9f9c5e471f4838686968dc9b03ccb259f4b483951c1d7f28cb44087ecd6f0380",
-      "started_at": "2026-07-29T20:02:23Z",
-      "finished_at": "2026-07-29T20:02:23Z",
+      "started_at": "2026-07-30T03:59:47Z",
+      "finished_at": "2026-07-30T03:59:47Z",
       "exit_code": 0
     },
     {
@@ -81,8 +81,8 @@
       "body_sha256": "0926a40491d2b85cf315a8132b1ca26cc5fc21a4fb8235ef3e75d17b3ed676c1",
       "fixture_path": "scenarios/scripts/collect-m6-observations.sh",
       "fixture_sha256": "8bcbf975ec8066db234f1c017bd4a6fa0a8b65434ce4ac4a801a93c96d066790",
-      "started_at": "2026-07-29T20:02:26Z",
-      "finished_at": "2026-07-29T20:02:26Z",
+      "started_at": "2026-07-30T03:59:51Z",
+      "finished_at": "2026-07-30T03:59:51Z",
       "exit_code": 0
     }
   ]

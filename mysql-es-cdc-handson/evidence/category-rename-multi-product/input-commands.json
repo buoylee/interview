@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "category-rename-multi-product",
-  "runner_run_id": "2c829536-3b4b-45e2-98c6-4f1e7ae928df",
+  "runner_run_id": "828f1f77-56c6-40a9-af00-a5f2a868b198",
   "intents": [
     {
       "sequence": 1,
@@ -48,8 +48,8 @@
       "path": "/scenario/category-rename-multi-product/mutate",
       "fixture_path": "scenarios/scripts/cases/13-category-rename-multi-product.sh",
       "fixture_sha256": "451aa28d23625d0add516db3bf07810fb13ad0dc738810dc1dfed9068dab6572",
-      "started_at": "2026-07-29T20:03:31Z",
-      "finished_at": "2026-07-29T20:03:42Z",
+      "started_at": "2026-07-30T04:01:48Z",
+      "finished_at": "2026-07-30T04:02:02Z",
       "exit_code": 0
     },
     {
@@ -64,8 +64,8 @@
       "path": "/scenario/category-rename-multi-product/recover",
       "fixture_path": "scenarios/scripts/cases/13-category-rename-multi-product.sh",
       "fixture_sha256": "451aa28d23625d0add516db3bf07810fb13ad0dc738810dc1dfed9068dab6572",
-      "started_at": "2026-07-29T20:03:54Z",
-      "finished_at": "2026-07-29T20:04:02Z",
+      "started_at": "2026-07-30T04:02:14Z",
+      "finished_at": "2026-07-30T04:02:27Z",
       "exit_code": 0
     },
     {
@@ -81,8 +81,8 @@
       "body_sha256": "0926a40491d2b85cf315a8132b1ca26cc5fc21a4fb8235ef3e75d17b3ed676c1",
       "fixture_path": "scenarios/scripts/collect-m6-observations.sh",
       "fixture_sha256": "8bcbf975ec8066db234f1c017bd4a6fa0a8b65434ce4ac4a801a93c96d066790",
-      "started_at": "2026-07-29T20:04:04Z",
-      "finished_at": "2026-07-29T20:04:04Z",
+      "started_at": "2026-07-30T04:02:30Z",
+      "finished_at": "2026-07-30T04:02:30Z",
       "exit_code": 0
     }
   ]

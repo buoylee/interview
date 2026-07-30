@@ -16,7 +16,7 @@
   "consistency": "ADMIN_OFFSETS_AT_CAPTURE_TIME",
   "end": [
     {
-      "offset": 3,
+      "offset": 1,
       "partition": 0
     },
     {
@@ -31,7 +31,7 @@
   "primary": [
     {
       "lag": 0,
-      "offset": 3,
+      "offset": 1,
       "partition": 0
     },
     {
@@ -49,5 +49,5 @@
   "shadow_and_barrier": [],
   "topic": "product-search-revisions",
   "scenario_id": "dlq-replay-fails-then-succeeds",
-  "runner_run_id": "e4972e8f-343d-4047-b212-517dbb51bf80"
+  "runner_run_id": "83247e82-8820-4a17-acc4-f4237670e2d7"
 }

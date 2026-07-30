@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "consumer-offset-beyond-kafka-retention",
-  "runner_run_id": "83fd5ec9-8182-4bb7-9d25-f1f567625b0a",
+  "runner_run_id": "0ae85dd4-c740-4e31-aab6-b8c650c95b54",
   "declared_fault": {
     "type": "RETENTION",
     "target": "kafka-product-search-revisions",
@@ -16,15 +16,15 @@
     "artifacts": [
       {
         "path": "consumer-after-gap.json",
-        "sha256": "19ba1271279d276adf2a1d45ba253bf4c01f40aa2dc91a42a53e3407a8dc8490",
+        "sha256": "b3aed95c95019f6b0dc1ae2993e015000667f2ca78ef4ab0db873b6d5335f7ef",
         "json": {
           "transport_exit": 0,
           "http_status": 200,
           "json_valid": true,
           "raw_body": "{\"groups\":[\"liveness\",\"readiness\"],\"status\":\"UP\"}",
-          "consumer_container_id": "6a092fc90d4b3872044ca7df725988a2d0bd19aa08a24bd839921e64de8d7776",
-          "container_started_at": "2026-07-29T19:51:39.500500397Z",
-          "observed_at": "2026-07-29T19:51:46Z"
+          "consumer_container_id": "5c0445b11e76ef8b14accb1fc676958ece41e7fe0fc337a8a6b1a54708e496c2",
+          "container_started_at": "2026-07-30T03:40:21.661595496Z",
+          "observed_at": "2026-07-30T03:40:30Z"
         }
       },
       {
@@ -47,7 +47,7 @@
       },
       {
         "path": "final-pipeline-status.json",
-        "sha256": "97b232d40750c55341283600243528738688d20a41086cac5bb848a016a44f48",
+        "sha256": "6d1e9bb202eef36b7b33499f798f926ada9d4becdf6eb7f12d007e5845e2d0af",
         "json": {
           "state": "HEALTHY",
           "kafkaLag": 0,
@@ -56,9 +56,9 @@
             {
               "topic": "product-search-revisions",
               "partition": 0,
-              "committedOffset": 12,
-              "beginningOffset": 10,
-              "endOffset": 12,
+              "committedOffset": 10,
+              "beginningOffset": 8,
+              "endOffset": 10,
               "lag": 0,
               "retentionGap": false
             },
@@ -82,13 +82,13 @@
             }
           ],
           "unresolvedDlq": 0,
-          "latestRunId": "621f8ee6-29b4-4aa5-9498-6f91c1498941",
+          "latestRunId": "ce2ad7b0-ea6b-4e0b-a903-73a3bb4d60d3",
           "latestRunStatus": "PASS",
           "latestDifferenceCount": 0,
-          "latestRunFinishedAt": "2026-07-29T19:51:50.895888Z",
-          "latestSuccessfulPassFinishedAt": "2026-07-29T19:51:50.895888Z",
+          "latestRunFinishedAt": "2026-07-30T03:40:39.067267Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-30T03:40:39.067267Z",
           "activeConditions": [],
-          "evaluatedAt": "2026-07-29T19:51:50.963516918Z"
+          "evaluatedAt": "2026-07-30T03:40:39.159802663Z"
         }
       },
       {
@@ -118,9 +118,9 @@
       },
       {
         "path": "final-verification.json",
-        "sha256": "6f0e6a00430da042af80011b14b668eda38fe2e3f5a5785ed68314adb0623120",
+        "sha256": "10c88bbca3927697a32f33c05c2a0fbcf0566b8ba20df266fb47eeccdc654ae2",
         "json": {
-          "runId": "621f8ee6-29b4-4aa5-9498-6f91c1498941",
+          "runId": "ce2ad7b0-ea6b-4e0b-a903-73a3bb4d60d3",
           "target": "products_write",
           "status": "PASS",
           "sourceWatermarkStart": 1,
@@ -135,99 +135,99 @@
       },
       {
         "path": "gap-proof.json",
-        "sha256": "671129e7feaafd9cc525962429f9ae9159d9221d57fe007568504522e04645b0",
+        "sha256": "0fcceabc817a736a0a61541a9a7d22bf662d6650fd1f6c1f3c198b6567af7ab7",
         "json": {
           "target": "kafka",
           "topic": "product-search-revisions",
           "partition": 0,
-          "committed_offset": 3,
-          "beginning_offset": 10
+          "committed_offset": 1,
+          "beginning_offset": 8
         }
       },
       {
         "path": "kafka-gap-status.json",
-        "sha256": "c70f3b4eec3936460fd7b855390db2d2163293f6876ffd954cc2da2c69eb09c8",
+        "sha256": "691a09c090097c4d52bcf49e442baaf9e9b03bcc490ec3d75159ee47ee3b1a27",
         "json": {
           "target": "kafka",
           "beginning": {
-            "0": 10,
+            "0": 8,
             "1": 0,
             "2": 0
           },
           "end": {
-            "0": 11,
+            "0": 9,
             "1": 1,
             "2": 0
           },
           "committed": {
-            "0": 3,
+            "0": 1,
             "1": 1
           },
-          "captured_committed": 3,
+          "captured_committed": 1,
           "selected_partition": 0,
           "gap": true
         }
       },
       {
         "path": "rebuild-response.json",
-        "sha256": "04e9e922b6f2e8587763647f35e73a5c443816112c8482f7b6a811d79d497475",
+        "sha256": "2290042560ed2fc7ce24b87284e8d10533479845d9bea9da72adca7130753d28",
         "json": {
-          "runId": "f9cb308a-78bd-4d53-8397-f7b04e9be446",
+          "runId": "210f64a1-6ea1-4301-8f5b-80fec0d175cc",
           "status": "COMPLETED",
-          "generation": "products_v3_20260729195146_f9cb308a",
+          "generation": "products_v3_20260730034031_210f64a1",
           "failureMessage": null,
           "aliasSwapped": true,
           "startOffsets": {
-            "0": 11,
+            "2": 0,
             "1": 1,
-            "2": 0
+            "0": 9
           },
           "shadowOffsets": {
-            "0": 12,
+            "2": 1,
             "1": 2,
-            "2": 1
+            "0": 10
           },
           "barrierOffsets": {
-            "0": 12,
+            "2": 1,
             "1": 2,
-            "2": 1
+            "0": 10
           },
-          "verificationRunId": "a3e39832-5104-4deb-87a2-b27ee50850b9",
+          "verificationRunId": "ad04311c-5f40-4094-8fdb-070d76459dd2",
           "gateOwner": null,
           "aliasState": "NEW"
         }
       },
       {
         "path": "rebuild-run-id",
-        "sha256": "5bd2f8040b488c8d44138cff0dfbe93b5d37f313c92adeab24fad35fecaa191b",
-        "text": "f9cb308a-78bd-4d53-8397-f7b04e9be446\n"
+        "sha256": "645a69d2b80b2de7d712ffda6377023d82d76935b04e3fb50d1fd21593b55bc3",
+        "text": "210f64a1-6ea1-4301-8f5b-80fec0d175cc\n"
       },
       {
         "path": "retention-provenance.json",
-        "sha256": "6bd790322029f05cb2f3a582a047911b768f00516d2a49766bb63b3b7c4825d4",
+        "sha256": "b8b585f061f5f9ce2c9925a6490817b5d55b21d6de3e15d9d4712379daa75d0e",
         "json": {
           "purpose": "m6-dedicated-retention",
-          "compose_project": "mysql-es-cdc-handson-m6-task4"
+          "compose_project": "mysql-es-cdc-handson-m6-task6"
         }
       },
       {
         "path": "retention-state/kafka-retention.json",
-        "sha256": "199e27437524dfa40f5bc8da364f19c4b49f905608433bc040340e5fc2511a16",
+        "sha256": "e20ed81b667bfa1d40ad6e775112f00a567a1c586409a4c34cf97f09c65ca203",
         "json": {
           "action": "delete-records-confirmed",
           "after": {
             "beginning": {
-              "0": 10,
+              "0": 8,
               "1": 0,
               "2": 0
             },
-            "captured_committed": 3,
+            "captured_committed": 1,
             "committed": {
-              "0": 3,
+              "0": 1,
               "1": 1
             },
             "end": {
-              "0": 11,
+              "0": 9,
               "1": 1,
               "2": 0
             },
@@ -243,11 +243,11 @@
             },
             "captured_committed": null,
             "committed": {
-              "0": 3,
+              "0": 1,
               "1": 1
             },
             "end": {
-              "0": 3,
+              "0": 1,
               "1": 1,
               "2": 0
             },
@@ -255,33 +255,33 @@
             "selected_partition": null,
             "target": "kafka"
           },
-          "captured_committed": 3,
+          "captured_committed": 1,
           "config_before": {
             "retention.ms": "DEFAULT",
             "segment.bytes": "DEFAULT",
             "segment.ms": "DEFAULT"
           },
           "consumer_stopped": true,
-          "delete_to": 10,
+          "delete_to": 8,
           "partition": 0
         }
       },
       {
         "path": "status-gap.json",
-        "sha256": "08b852843ada161f0bc11f0e65f2549070d4d627b027322c4b73b4801b812cf7",
+        "sha256": "c7295141be87bd76a7867aadb4769678ac9e51ddea5947abcef277e7eb54a296",
         "json": {
           "state": "REBUILD_REQUIRED",
-          "kafkaLag": 0,
+          "kafkaLag": 8,
           "allPartitionsCommitted": true,
           "partitions": [
             {
               "topic": "product-search-revisions",
               "partition": 0,
-              "committedOffset": 11,
-              "beginningOffset": 10,
-              "endOffset": 11,
-              "lag": 0,
-              "retentionGap": false
+              "committedOffset": 1,
+              "beginningOffset": 8,
+              "endOffset": 9,
+              "lag": 8,
+              "retentionGap": true
             },
             {
               "topic": "product-search-revisions",
@@ -311,7 +311,7 @@
           "activeConditions": [
             "LOG_GAP"
           ],
-          "evaluatedAt": "2026-07-29T19:51:46.398567827Z"
+          "evaluatedAt": "2026-07-30T03:40:30.515246866Z"
         }
       }
     ]

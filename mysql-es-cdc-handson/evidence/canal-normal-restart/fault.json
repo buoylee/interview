@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scenario_id": "canal-normal-restart",
-  "runner_run_id": "10fb080a-26f0-456a-9ba6-2c6bbdf31ec6",
+  "runner_run_id": "991c0cbc-559e-4f31-9ea0-9d0dff9694aa",
   "declared_fault": {
     "type": "PROCESS",
     "target": "canal",
@@ -16,15 +16,15 @@
     "artifacts": [
       {
         "path": "consumer-restarted.json",
-        "sha256": "1d4190c9f479e0864ed1896deb997eecbf19a8fe9287ddf59da230147d3b0dac",
+        "sha256": "04cc95f8b262603fc41eb6d9b97639ce2e378a2037398e903f712c6ba92c7bed",
         "json": {
           "transport_exit": 0,
           "http_status": 200,
           "json_valid": true,
           "raw_body": "{\"groups\":[\"liveness\",\"readiness\"],\"status\":\"UP\"}",
-          "consumer_container_id": "3a6e9fe7fb5e7ecb977d80cfc8fb2c1ff811f48166301929dc8fab7dc09c75b3",
-          "container_started_at": "2026-07-29T19:44:46.858401721Z",
-          "observed_at": "2026-07-29T19:44:49Z"
+          "consumer_container_id": "117b4164df320ab53f1de2debc2b4cea6ff0fce227292056a1fd55335f085ad1",
+          "container_started_at": "2026-07-30T03:28:21.047943707Z",
+          "observed_at": "2026-07-30T03:28:28Z"
         }
       },
       {
@@ -52,35 +52,35 @@
       },
       {
         "path": "end-after-restart.json",
-        "sha256": "7ac28f5baf8d4ce12262c1fcc03adf77a3c0a0c698f21fb742b31d55e277ac64",
+        "sha256": "36e2b624a9171799e1fa92065f99cfc64e6ad0a64feb871f931849c8d4eb6692",
         "json": {
-          "0": 3,
+          "0": 1,
           "1": 0,
           "2": 1
         }
       },
       {
         "path": "end-before.json",
-        "sha256": "7ac28f5baf8d4ce12262c1fcc03adf77a3c0a0c698f21fb742b31d55e277ac64",
+        "sha256": "36e2b624a9171799e1fa92065f99cfc64e6ad0a64feb871f931849c8d4eb6692",
         "json": {
-          "0": 3,
+          "0": 1,
           "1": 0,
           "2": 1
         }
       },
       {
         "path": "es-final.json",
-        "sha256": "74641209b3368b2b4c57b7d8512ae4002a479fd4f557d999b793aadb9e14309d",
+        "sha256": "c9e7f6f6aa07667e67880df846349217ca29ca2c9218acf7cb20f781d2d568e2",
         "json": {
           "transport_exit": 0,
           "http_status": 200,
           "json_valid": true,
-          "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"6101\",\"_version\":2,\"_seq_no\":1,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":6101,\"sku\":\"LAB-6101\",\"name\":\"Crash 6101\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":61101,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-29T19:44:29.139842Z\"}}"
+          "raw_body": "{\"_index\":\"products_v2\",\"_id\":\"6101\",\"_version\":2,\"_seq_no\":1,\"_primary_term\":1,\"found\":true,\"_source\":{\"product_id\":6101,\"sku\":\"LAB-6101\",\"name\":\"Crash 6101\",\"description\":\"fixture\",\"category_id\":10,\"category_name\":\"Accessories\",\"price_cents\":61101,\"available_quantity\":0,\"searchable\":true,\"source_revision\":2,\"source_updated_at\":\"2026-07-30T03:27:49.925647Z\"}}"
         }
       },
       {
         "path": "final-pipeline-status.json",
-        "sha256": "db20694a68dbc3fa17d2c43ede945366b7108450ec0a3b2f4a2774acaf697210",
+        "sha256": "a6ee519ad3b52586d9bd001e740cb8d66384a93ca96727ee3c5741a2df10cfc6",
         "json": {
           "state": "HEALTHY",
           "kafkaLag": 0,
@@ -89,9 +89,9 @@
             {
               "topic": "product-search-revisions",
               "partition": 0,
-              "committedOffset": 3,
+              "committedOffset": 1,
               "beginningOffset": 0,
-              "endOffset": 3,
+              "endOffset": 1,
               "lag": 0,
               "retentionGap": false
             },
@@ -115,13 +115,13 @@
             }
           ],
           "unresolvedDlq": 0,
-          "latestRunId": "d8905f82-1941-4173-a31a-b75377777a79",
+          "latestRunId": "1797b231-84df-4ade-9337-81f99845c0fd",
           "latestRunStatus": "PASS",
           "latestDifferenceCount": 0,
-          "latestRunFinishedAt": "2026-07-29T19:44:52.813683Z",
-          "latestSuccessfulPassFinishedAt": "2026-07-29T19:44:52.813683Z",
+          "latestRunFinishedAt": "2026-07-30T03:28:34.234034Z",
+          "latestSuccessfulPassFinishedAt": "2026-07-30T03:28:34.234034Z",
           "activeConditions": [],
-          "evaluatedAt": "2026-07-29T19:44:52.885807559Z"
+          "evaluatedAt": "2026-07-30T03:28:34.446889830Z"
         }
       },
       {
@@ -151,9 +151,9 @@
       },
       {
         "path": "final-verification.json",
-        "sha256": "503c4e226a3fd0afb182cc8f3d3a8d91305a80d58809c33a88148fa49712c3d3",
+        "sha256": "140dc658565942fef5620733d00eb4ee27c0da1c52c23f0945047689c0da4012",
         "json": {
-          "runId": "d8905f82-1941-4173-a31a-b75377777a79",
+          "runId": "1797b231-84df-4ade-9337-81f99845c0fd",
           "target": "products_write",
           "status": "PASS",
           "sourceWatermarkStart": 2,
@@ -168,12 +168,12 @@
       },
       {
         "path": "group-before-mutation.json",
-        "sha256": "918e8d1e40cc0706e285fbffd92b3b4d901a7b41222089cb5674dff10295b4ca",
+        "sha256": "4a42a31b5f6a140d93262ad48d463a4e25691702d2aad6d9a1774030552f9cbe",
         "json": [
           {
             "partition": 0,
-            "committed": 3,
-            "end": 3,
+            "committed": 1,
+            "end": 1,
             "lag": 0
           },
           {
@@ -186,12 +186,12 @@
       },
       {
         "path": "group-consumer-stopped.json",
-        "sha256": "813bb7a1d4213e7fcf90c1f33f07a82245952086d3e04bcca1f9c5f7c1d90f91",
+        "sha256": "4de3a1348fdddb567ad13fcd592d20789812a484d4eaa8b1fd3d002d73763cef",
         "json": [
           {
             "partition": 0,
-            "committed": 3,
-            "end": 3,
+            "committed": 1,
+            "end": 1,
             "lag": 0
           },
           {
@@ -204,7 +204,7 @@
       },
       {
         "path": "meta-after-restart.json",
-        "sha256": "da836455e98de151c0e4388ebf7dbe2da979bce1209a043a50a43e751f48bc82",
+        "sha256": "cc70422c266e1044bc232c967e7d221db7657a0f96e053fc3e63db88687e2128",
         "json": {
           "contract": "canal-1.1.8-file-mixed-meta-ack-cursor",
           "path": "/home/admin/canal-data/products/meta.dat",
@@ -216,7 +216,7 @@
           },
           "journal": "mysql-bin.000003",
           "position": 25814,
-          "timestamp": 1785354256000,
+          "timestamp": 1785382046000,
           "server_id": 1,
           "gtid": "",
           "source": {
@@ -228,7 +228,7 @@
       },
       {
         "path": "meta-before.json",
-        "sha256": "da836455e98de151c0e4388ebf7dbe2da979bce1209a043a50a43e751f48bc82",
+        "sha256": "cc70422c266e1044bc232c967e7d221db7657a0f96e053fc3e63db88687e2128",
         "json": {
           "contract": "canal-1.1.8-file-mixed-meta-ack-cursor",
           "path": "/home/admin/canal-data/products/meta.dat",
@@ -240,7 +240,7 @@
           },
           "journal": "mysql-bin.000003",
           "position": 25814,
-          "timestamp": 1785354256000,
+          "timestamp": 1785382046000,
           "server_id": 1,
           "gtid": "",
           "source": {
@@ -270,7 +270,7 @@
       },
       {
         "path": "post-restart-record.json",
-        "sha256": "c5c3a34ce909e1349f301f5a3ab9dd05d4e3b9544950fce992a34473f62efe8c",
+        "sha256": "167b70dbb211c91597f511d4d6edd8e6e05c5191a5abca9e22bde95ee514cf73",
         "json": {
           "partition": 2,
           "offset": 1,
@@ -281,11 +281,11 @@
                 "product_id": "6101",
                 "revision": "2",
                 "active": "1",
-                "updated_at": "2026-07-29 19:44:29.139842"
+                "updated_at": "2026-07-30 03:27:49.925647"
               }
             ],
             "database": "product_catalog",
-            "es": 1785354269000,
+            "es": 1785382069000,
             "gtid": "",
             "id": 2,
             "isDdl": false,
@@ -298,7 +298,7 @@
             "old": [
               {
                 "revision": "1",
-                "updated_at": "2026-07-29 19:44:16.987234"
+                "updated_at": "2026-07-30 03:27:26.517195"
               }
             ],
             "pkNames": [
@@ -312,7 +312,7 @@
               "updated_at": 93
             },
             "table": "product_search_revision",
-            "ts": 1785354269331,
+            "ts": 1785382070636,
             "type": "UPDATE"
           }
         }

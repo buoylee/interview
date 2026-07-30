@@ -16,7 +16,7 @@
   "consistency": "ADMIN_OFFSETS_AT_CAPTURE_TIME",
   "end": [
     {
-      "offset": 3,
+      "offset": 1,
       "partition": 0
     },
     {
@@ -31,7 +31,7 @@
   "primary": [
     {
       "lag": 0,
-      "offset": 3,
+      "offset": 1,
       "partition": 0
     },
     {
@@ -49,5 +49,5 @@
   "shadow_and_barrier": [],
   "topic": "product-search-revisions",
   "scenario_id": "consumer-crash-after-elasticsearch-before-offset",
-  "runner_run_id": "347811b0-4e1d-4c67-bba3-516921f4ca2f"
+  "runner_run_id": "b858d800-13d0-457c-bdc4-ee5a732a6202"
 }
