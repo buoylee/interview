@@ -28,7 +28,7 @@
 - 一般 lab 可能由另一個 worktree 啟動。先用 Docker labels 查清 `mysql-primary` 的 owner；健康實例可以重用，未知／不健康實例不得停止、刪除或接管。
 - 禁止執行 `make reset`、`docker compose down -v`、刪除未知 volume／container，或清理不符合 `/private/tmp/mysql-senior-scenarios.*` 的目錄。
 - 所有資料庫物件都限制在精確 schema `mysql_senior_scenarios`；cleanup 只可 `DROP DATABASE mysql_senior_scenarios`，且必須先查證目前 database 名稱。
-- 只有 bulk load scenario 可以暫時切換本機 lab 的 `local_infile`；執行前保存原值，`finally` 恢復，不修改 durability、constraint 或 global buffer 設定。
+- 只有 bulk load scenario 可以暫時切換本機 lab 的 `local_infile`；執行前保存原值，在送出 enable statement 前記錄 restore intent，並在結束前用全新 admin connection 恢復、回讀確認；恢復無法確認時不得回報 `SUCCEEDED`，也不修改 durability、constraint 或 global buffer 設定。
 - 所有 repository 文件修改使用 `apply_patch`；每次 commit 前列出 staged paths，禁止 `git add .`、`git add -A` 或 broad path staging。
 - 任何 MySQL 版本相關主張都以官方 MySQL 8.0 reference manual／Connector 文檔重新核對；不以 blog 或記憶作唯一依據。
 
@@ -722,6 +722,12 @@ The document contains a copyable Python block with this CLI:
 --password root
 ```
 
+CLI/result contract: `--help` is the only normal plaintext zero-exit path. Every
+other invocation emits exactly one final JSON object after cleanup: exit `0`
+only for `status="SUCCEEDED", phase="VERIFIED"`, otherwise exit `2` with
+`status="FAILED"` or `status="UNKNOWN"`, the operation／cleanup phase,
+rollback-confirmation state and a redacted error.
+
 Use this complete implementation in the embedded block:
 
 ```python
@@ -732,11 +738,18 @@ import csv
 import json
 import sys
 import time
+import zlib
+from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
 import mysql.connector
-from mysql.connector import IntegrityError
+from mysql.connector import Error as ConnectorError
+from mysql.connector.errors import (
+    InterfaceError,
+    ReadTimeoutError,
+    WriteTimeoutError,
+)
 
 
 ALLOWED_TABLES = {
@@ -753,6 +766,27 @@ STATUS_NAMES = (
     "Innodb_data_written",
     "Bytes_received",
 )
+PHASES = {
+    "VALIDATING",
+    "BEFORE_SEND",
+    "GLOBAL_SETTING",
+    "EXECUTING",
+    "COMMITTING",
+    "VERIFYING",
+    "ROLLING_BACK",
+    "RESTORING",
+    "CLOSING",
+    "VERIFIED",
+}
+
+
+class ContractError(Exception):
+    pass
+
+
+class JsonArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise ContractError(message)
 
 
 def parse_row(fields: list[str]) -> tuple[int, int, int, str, str]:
@@ -764,7 +798,19 @@ def parse_row(fields: list[str]) -> tuple[int, int, int, str, str]:
         raise ValueError(f"invalid row values: {fields!r}")
     if "\t" in payload or "\n" in payload:
         raise ValueError("payload contains a TSV delimiter")
-    return row_id, tenant_id, status, payload, created_at
+    try:
+        parsed_created_at = datetime.strptime(
+            created_at, "%Y-%m-%d %H:%M:%S.%f"
+        )
+    except ValueError as exc:
+        raise ValueError("created_at must include microseconds") from exc
+    return (
+        row_id,
+        tenant_id,
+        status,
+        payload,
+        parsed_created_at.strftime("%Y-%m-%d %H:%M:%S.%f"),
+    )
 
 
 def iter_rows(path: Path) -> Iterable[tuple[int, int, int, str, str]]:
@@ -775,6 +821,36 @@ def iter_rows(path: Path) -> Iterable[tuple[int, int, int, str, str]]:
                 yield parse_row(fields)
             except Exception as exc:
                 raise ValueError(f"line {line_number}: {exc}") from exc
+
+
+def source_manifest(path: Path) -> dict[str, int]:
+    count = 0
+    min_id = 0
+    max_id = 0
+    previous_id = 0
+    lab_fingerprint = 0
+    for row in iter_rows(path):
+        row_id, tenant_id, status, payload, created_at = row
+        if row_id <= previous_id:
+            raise ContractError(
+                "source ids must be unique and strictly increasing"
+            )
+        previous_id = row_id
+        count += 1
+        if count == 1:
+            min_id = row_id
+        max_id = row_id
+        encoded = "#".join(
+            (str(row_id), str(tenant_id), str(status), payload, created_at)
+        ).encode("utf-8")
+        lab_fingerprint ^= zlib.crc32(encoded) & 0xFFFFFFFF
+    return {
+        "count": count,
+        "min_id": min_id,
+        "max_id": max_id,
+        "distinct_id": count,
+        "lab_fingerprint": lab_fingerprint,
+    }
 
 
 def status_snapshot(cursor) -> dict[str, int]:
@@ -796,7 +872,9 @@ def load_single(connection, table: str, rows, phase: dict[str, str]) -> int:
         cursor.execute(statement, row)
         accepted += 1
         phase["value"] = "BEFORE_SEND"
+    phase["value"] = "CLOSING"
     cursor.close()
+    phase["value"] = "BEFORE_SEND"
     return accepted
 
 
@@ -830,30 +908,7 @@ def load_batches(
         connection.commit()
         accepted += len(batch)
         phase["value"] = "BEFORE_SEND"
-    cursor.close()
-    return accepted
-
-
-def load_local_file(
-    connection,
-    table: str,
-    path: Path,
-    phase: dict[str, str],
-) -> int:
-    if "'" in str(path):
-        raise ValueError("input path may not contain a single quote")
-    connection.autocommit = False
-    cursor = connection.cursor()
-    phase["value"] = "EXECUTING"
-    cursor.execute(
-        "LOAD DATA LOCAL INFILE "
-        f"'{path.as_posix()}' INTO TABLE `{table}` "
-        "FIELDS TERMINATED BY '\\t' LINES TERMINATED BY '\\n' "
-        "(id,tenant_id,status,payload,created_at)"
-    )
-    phase["value"] = "COMMITTING"
-    connection.commit()
-    accepted = cursor.rowcount
+    phase["value"] = "CLOSING"
     cursor.close()
     phase["value"] = "BEFORE_SEND"
     return accepted
@@ -876,70 +931,243 @@ def fingerprint(cursor, table: str) -> dict[str, int]:
     }
 
 
-def classify(exc: Exception, phase: str) -> str:
-    if phase == "BEFORE_SEND" or isinstance(exc, (ValueError, IntegrityError)):
+def require_manifest_match(
+    source: dict[str, int],
+    target: dict[str, int],
+    accepted: int,
+) -> None:
+    mismatches: dict[str, object] = {}
+    if accepted != source["count"]:
+        mismatches["accepted"] = {
+            "expected": source["count"],
+            "actual": accepted,
+        }
+    for name in (
+        "count",
+        "min_id",
+        "max_id",
+        "distinct_id",
+        "lab_fingerprint",
+    ):
+        if target[name] != source[name]:
+            mismatches[name] = {
+                "expected": source[name],
+                "actual": target[name],
+            }
+    if mismatches:
+        raise ContractError(
+            f"source/target manifest mismatch: {json.dumps(mismatches, sort_keys=True)}"
+        )
+
+
+def load_local_file(
+    connection,
+    table: str,
+    path: Path,
+    source: dict[str, int],
+    phase: dict[str, str],
+) -> tuple[int, int, int]:
+    if "'" in str(path):
+        raise ValueError("input path may not contain a single quote")
+    connection.autocommit = False
+    cursor = connection.cursor()
+    phase["value"] = "EXECUTING"
+    cursor.execute(
+        "LOAD DATA LOCAL INFILE "
+        f"'{path.as_posix()}' INTO TABLE `{table}` "
+        "FIELDS TERMINATED BY '\\t' LINES TERMINATED BY '\\n' "
+        "(id,tenant_id,status,payload,created_at)"
+    )
+    warning_count = int(cursor.warning_count or 0)
+    accepted = int(cursor.rowcount)
+    rejected = max(source["count"] - accepted, 0)
+    if warning_count != 0 or rejected != 0 or accepted != source["count"]:
+        raise ContractError(
+            "LOAD DATA warnings/rejects: "
+            f"warnings={warning_count}, rejected={rejected}, "
+            f"accepted={accepted}, expected={source['count']}"
+        )
+    phase["value"] = "VERIFYING"
+    uncommitted_target = fingerprint(cursor, table)
+    require_manifest_match(source, uncommitted_target, accepted)
+    phase["value"] = "COMMITTING"
+    connection.commit()
+    phase["value"] = "CLOSING"
+    cursor.close()
+    phase["value"] = "BEFORE_SEND"
+    return accepted, warning_count, rejected
+
+
+def classify(
+    exc: BaseException,
+    failure_phase: str,
+    rollback_confirmed: bool,
+    cleanup_errors: list[tuple[str, BaseException]],
+) -> str:
+    if cleanup_errors:
+        return "UNKNOWN"
+    if failure_phase == "COMMITTING":
+        return "UNKNOWN"
+    if (
+        failure_phase in ("GLOBAL_SETTING", "EXECUTING", "VERIFYING")
+        and (
+            isinstance(
+                exc,
+                (
+                    InterfaceError,
+                    ReadTimeoutError,
+                    WriteTimeoutError,
+                    TimeoutError,
+                ),
+            )
+            or getattr(exc, "errno", None) in (2006, 2013, 2055)
+        )
+    ):
+        return "UNKNOWN"
+    if isinstance(exc, (ContractError, ValueError)):
+        return "FAILED"
+    if failure_phase in ("VALIDATING", "BEFORE_SEND"):
+        return "FAILED"
+    if (
+        failure_phase in ("GLOBAL_SETTING", "EXECUTING", "VERIFYING")
+        and isinstance(exc, ConnectorError)
+        and rollback_confirmed
+    ):
         return "FAILED"
     return "UNKNOWN"
 
 
 def restore_local_infile(config: dict, original: int) -> None:
-    admin = mysql.connector.connect(**config, allow_local_infile=True)
-    cursor = admin.cursor()
-    cursor.execute(f"SET GLOBAL local_infile={int(original)}")
-    cursor.close()
-    admin.close()
+    admin_config = {
+        name: config[name] for name in ("host", "port", "user", "password")
+    }
+    admin = None
+    cursor = None
+    failure: BaseException | None = None
+    try:
+        admin = mysql.connector.connect(
+            **admin_config,
+            allow_local_infile=True,
+        )
+        cursor = admin.cursor()
+        cursor.execute(f"SET GLOBAL local_infile={int(original)}")
+        cursor.execute("SELECT @@GLOBAL.local_infile")
+        restored = int(cursor.fetchone()[0])
+        if restored != int(original):
+            raise ContractError(
+                f"local_infile restoration mismatch: expected {original}, got {restored}"
+            )
+    except BaseException as exc:
+        failure = exc
+    if cursor is not None:
+        try:
+            cursor.close()
+        except BaseException as exc:
+            if failure is None:
+                failure = exc
+    if admin is not None:
+        try:
+            admin.close()
+        except BaseException as exc:
+            if failure is None:
+                failure = exc
+    if failure is not None:
+        raise failure
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
+def supplied_password(arguments: list[str]) -> str | None:
+    for index, argument in enumerate(arguments):
+        if argument == "--password" and index + 1 < len(arguments):
+            return arguments[index + 1]
+        if argument.startswith("--password="):
+            return argument.split("=", 1)[1]
+    return None
+
+
+def redact(value: object, password: str | None) -> str:
+    text = str(value)
+    return text.replace(password, "***") if password else text
+
+
+def main(argv: list[str] | None = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    password = supplied_password(arguments)
+    help_requested = any(
+        argument in ("-h", "--help") for argument in arguments
+    )
+    parser = JsonArgumentParser()
     parser.add_argument("--mode", choices=sorted(ALLOWED_TABLES), required=True)
-    parser.add_argument("--table", choices=sorted(ALLOWED_TABLES.values()), required=True)
+    parser.add_argument(
+        "--table", choices=sorted(ALLOWED_TABLES.values()), required=True
+    )
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--batch-size", type=int, default=1000)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=3306)
     parser.add_argument("--user", default="root")
     parser.add_argument("--password", required=True)
-    args = parser.parse_args()
 
-    expected_table = ALLOWED_TABLES[args.mode]
-    input_path = args.input.resolve()
-    if args.table != expected_table:
-        raise SystemExit(f"mode {args.mode} requires table {expected_table}")
-    if not input_path.is_file() or not input_path.is_absolute():
-        raise SystemExit("--input must be an existing absolute file")
-    if not 1 <= args.batch_size <= 5000:
-        raise SystemExit("--batch-size must be in 1..5000")
-
-    config = {
-        "host": args.host,
-        "port": args.port,
-        "user": args.user,
-        "password": args.password,
-        "database": "mysql_senior_scenarios",
-    }
     connection = None
     original_local_infile = None
-    changed_local_infile = False
-    phase = {"value": "BEFORE_SEND"}
-    started = time.perf_counter()
+    restore_required = False
+    rollback_confirmed = False
+    phase = {"value": "VALIDATING"}
+    failure: tuple[BaseException, str] | None = None
+    cleanup_errors: list[tuple[str, BaseException]] = []
+    success_payload: dict[str, object] | None = None
+    config: dict[str, object] | None = None
+
     try:
+        args = parser.parse_args(arguments)
+        expected_table = ALLOWED_TABLES[args.mode]
+        if args.table != expected_table:
+            raise ContractError(
+                f"mode {args.mode} requires table {expected_table}"
+            )
+        raw_input_path = args.input
+        if not raw_input_path.is_absolute():
+            raise ContractError("--input must be an existing absolute file")
+        input_path = raw_input_path.resolve(strict=True)
+        if not input_path.is_file():
+            raise ContractError("--input must be an existing regular file")
+        if not 1 <= args.batch_size <= 5000:
+            raise ContractError("--batch-size must be in 1..5000")
+        if args.mode == "load" and "'" in str(input_path):
+            raise ContractError("input path may not contain a single quote")
+
+        expected_source = source_manifest(input_path)
+        config = {
+            "host": args.host,
+            "port": args.port,
+            "user": args.user,
+            "password": args.password,
+            "database": "mysql_senior_scenarios",
+        }
+        phase["value"] = "BEFORE_SEND"
         connection = mysql.connector.connect(
             **config,
             allow_local_infile=True,
         )
         cursor = connection.cursor()
         if args.mode == "load":
+            phase["value"] = "GLOBAL_SETTING"
             cursor.execute("SELECT @@GLOBAL.local_infile")
             original_local_infile = int(cursor.fetchone()[0])
             if original_local_infile == 0:
+                restore_required = True
                 cursor.execute("SET GLOBAL local_infile=1")
-                changed_local_infile = True
+                cursor.execute("SELECT @@GLOBAL.local_infile")
+                if int(cursor.fetchone()[0]) != 1:
+                    raise ContractError("local_infile enable was not confirmed")
+            phase["value"] = "BEFORE_SEND"
         phase["value"] = "EXECUTING"
         cursor.execute(f"TRUNCATE TABLE `{args.table}`")
-        phase["value"] = "BEFORE_SEND"
+        phase["value"] = "VERIFYING"
         before = status_snapshot(cursor)
+        phase["value"] = "CLOSING"
         cursor.close()
+        phase["value"] = "BEFORE_SEND"
+        started = time.perf_counter()
 
         if args.mode == "single":
             accepted = load_single(
@@ -954,56 +1182,126 @@ def main() -> int:
                 phase,
             )
         else:
-            accepted = load_local_file(
-                connection, args.table, input_path, phase
+            accepted, warning_count, rejected = load_local_file(
+                connection,
+                args.table,
+                input_path,
+                expected_source,
+                phase,
             )
+        if args.mode != "load":
+            warning_count = 0
+            rejected = 0
 
+        phase["value"] = "VERIFYING"
         cursor = connection.cursor()
         after = status_snapshot(cursor)
-        result_fingerprint = fingerprint(cursor, args.table)
+        target_manifest = fingerprint(cursor, args.table)
+        phase["value"] = "CLOSING"
         cursor.close()
+        phase["value"] = "VERIFYING"
         seconds = time.perf_counter() - started
+        require_manifest_match(expected_source, target_manifest, accepted)
         phase["value"] = "VERIFIED"
-        result = {
-            "status": "SUCCEEDED",
-            "phase": phase["value"],
+        success_payload = {
             "mode": args.mode,
             "table": args.table,
             "rows": accepted,
+            "warnings": warning_count,
+            "rejected": rejected,
             "seconds": seconds,
             "rows_per_second": accepted / seconds,
             "status_delta": {
                 name: after[name] - before[name] for name in STATUS_NAMES
             },
-            "fingerprint": result_fingerprint,
+            "source_manifest": expected_source,
+            "target_manifest": target_manifest,
         }
-        print(json.dumps(result, sort_keys=True))
-        return 0
-    except Exception as exc:
-        status = classify(exc, phase["value"])
-        if connection is not None and connection.is_connected():
+    except SystemExit as exc:
+        if exc.code == 0 and help_requested:
+            raise
+        failure = (exc, phase["value"])
+    except BaseException as exc:
+        failure = (exc, phase["value"])
+    finally:
+        if failure is not None and connection is not None:
+            phase["value"] = "ROLLING_BACK"
             try:
+                if not connection.is_connected():
+                    raise RuntimeError("rollback could not be confirmed")
                 connection.rollback()
-            except Exception:
-                pass
+                rollback_confirmed = True
+            except BaseException as exc:
+                cleanup_errors.append((phase["value"], exc))
+        if restore_required:
+            phase["value"] = "RESTORING"
+            try:
+                if config is None or original_local_infile is None:
+                    raise RuntimeError("local_infile restore state is incomplete")
+                restore_local_infile(config, original_local_infile)
+            except BaseException as exc:
+                cleanup_errors.append((phase["value"], exc))
+        if connection is not None:
+            phase["value"] = "CLOSING"
+            try:
+                connection.close()
+            except BaseException as exc:
+                cleanup_errors.append((phase["value"], exc))
+
+    if failure is not None or cleanup_errors:
+        if failure is None:
+            primary_exc, operation_phase = cleanup_errors[0][1], "VERIFIED"
+        else:
+            primary_exc, operation_phase = failure
+        status = classify(
+            primary_exc,
+            operation_phase,
+            rollback_confirmed,
+            cleanup_errors,
+        )
+        result: dict[str, object] = {
+            "status": status,
+            "phase": (
+                cleanup_errors[0][0] if cleanup_errors else operation_phase
+            ),
+            "operation_phase": operation_phase,
+            "rollback_confirmed": rollback_confirmed,
+            "error_type": type(primary_exc).__name__,
+            "error": redact(primary_exc, password),
+        }
+        if cleanup_errors:
+            result["cleanup_errors"] = [
+                {
+                    "phase": cleanup_phase,
+                    "error_type": type(cleanup_exc).__name__,
+                    "error": redact(cleanup_exc, password),
+                }
+                for cleanup_phase, cleanup_exc in cleanup_errors
+            ]
+        print(json.dumps(result, sort_keys=True), file=sys.stderr)
+        return 2
+
+    if success_payload is None:
         print(
             json.dumps(
                 {
-                    "status": status,
+                    "status": "UNKNOWN",
                     "phase": phase["value"],
-                    "error_type": type(exc).__name__,
-                    "error": str(exc),
+                    "operation_phase": "VERIFIED",
+                    "rollback_confirmed": rollback_confirmed,
+                    "error_type": "InternalOutcomeError",
+                    "error": "verified payload was not finalized",
                 },
                 sort_keys=True,
             ),
             file=sys.stderr,
         )
         return 2
-    finally:
-        if changed_local_infile and original_local_infile is not None:
-            restore_local_infile(config, original_local_infile)
-        if connection is not None and connection.is_connected():
-            connection.close()
+    phase["value"] = "VERIFIED"
+    success_payload["status"] = "SUCCEEDED"
+    success_payload["phase"] = phase["value"]
+    print(json.dumps(success_payload, sort_keys=True))
+    return 0
 
 
 if __name__ == "__main__":
@@ -1013,13 +1311,16 @@ if __name__ == "__main__":
 Required safety behavior:
 
 - table name is checked against a three-name allowlist before interpolation；
-- input path is absolute and exists；
+- the raw input path must already be absolute before `resolve(strict=True)` runs, and the resolved target must be an existing regular file；
 - `single` truncates only `bulk_single`, `batch` only `bulk_batch`, `load` only `bulk_load`；
 - batch size must be `1..5000`；
-- load mode connects with `allow_local_infile=True`, saves `@@GLOBAL.local_infile`, enables it only if needed, and restores it in `finally`；
-- track phase as `BEFORE_SEND`、`EXECUTING`、`COMMITTING` or `VERIFIED`；an error before send is `FAILED`, a server error that proves rollback is `FAILED`, and a lost connection／timeout during execute or commit is `UNKNOWN`；never auto-retry `UNKNOWN`；
-- on any exception, rollback only when the connection is still usable, print JSON with phase and `status="FAILED"` or `status="UNKNOWN"`, then exit nonzero；
-- successful JSON includes mode, table, rows, seconds, rows_per_second, status deltas and fingerprint；
+- before load timing starts, scan the immutable TSV with `iter_rows()`／`parse_row()` and require strictly increasing unique primary IDs; the source manifest records exact row count, min／max ID, distinct ID count and the same UTF-8 CRC32／BIT_XOR lab fingerprint used by target SQL；
+- success requires accepted rows, exact target count, distinct primary IDs, min／max ID and target fingerprint all to equal the source manifest；
+- immediately after `LOAD DATA LOCAL` returns, capture `cursor.warning_count` and `rowcount` before issuing another SQL statement; any warning, reject, accepted-row mismatch or uncommitted target-manifest mismatch is rolled back instead of committed. Driver modes report an exception as `FAILED` or `UNKNOWN`; they never convert it into a successful run with a synthetic reject count；
+- load mode connects with `allow_local_infile=True`, saves `@@GLOBAL.local_infile`, assigns `restore_required=True` before sending the enable statement, and restores plus confirms the original value through a fresh admin connection even if enable acknowledgement is lost；
+- phases distinguish `VALIDATING`、`BEFORE_SEND`、`GLOBAL_SETTING`、`EXECUTING`、`COMMITTING`、`VERIFYING`、`ROLLING_BACK`、`RESTORING`、`CLOSING` and `VERIFIED`; parse／validation and local manifest failures are `FAILED`, a server rejection can be `FAILED` only when the same connection remains usable and rollback is confirmed, lost-connection／read-timeout／write-timeout after a statement and every commit ambiguity remain `UNKNOWN`, and any mandatory cleanup uncertainty is `UNKNOWN`；failure JSON records `operation_phase` and `rollback_confirmed`, and the runner never auto-retries `UNKNOWN`；
+- malformed or missing arguments use the same structured failure path; `--help` alone may retain argparse's normal zero-exit text. Parse, validation, execution, verification, rollback, restoration or close failure produces exactly one nonzero JSON outcome after all mandatory cleanup attempts, with the password redacted and no traceback；
+- successful JSON is emitted only after rollback／restoration／close finalization and includes mode, table, rows, warnings, rejected rows, seconds, rows_per_second, status deltas, source manifest and target manifest；
 - Connector/Python `executemany()` is described as a parameterized driver batch whose exact rewrite must be checked for the pinned connector; it is not mislabeled as proof of server-side prepared statements。
 
 Execution form recorded in the document:
