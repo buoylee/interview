@@ -138,7 +138,9 @@ case_3() {
       copy_meta "$raw/old-meta.dat"; decode_meta "$raw/old-meta.dat" >"$raw/old-meta.json"
       old_journal="$(jq -r .journal "$raw/old-meta.json")"; old_position="$(jq -r .position "$raw/old-meta.json")"
       jq -n --arg project "$COMPOSE_PROJECT_NAME" '{purpose:"m6-dedicated-retention",compose_project:$project}' >"$raw/retention-provenance.json"
-      MYSQL_PWD=rootpass MYSQL_USER=root SCENARIO_CLEANUP_FILE="$raw/retention-cleanup.sh" SCENARIO_STATE_DIR="$raw/retention-state" SCENARIO_PROVENANCE_FILE="$raw/retention-provenance.json" M6_RETENTION_DESTRUCTIVE_ACK=I_UNDERSTAND_M6_DEDICATED_RETENTION_DESTROYS_LOGS \
+      mysql_id="$("${compose[@]}" ps -q mysql)"
+      mysql_pwd="$(docker inspect "$mysql_id" | jq -er '.[0].Config.Env[]|select(startswith("MYSQL_ROOT_PASSWORD="))|split("=")[1]')"
+      MYSQL_PWD="$mysql_pwd" MYSQL_USER=root SCENARIO_CLEANUP_FILE="$raw/retention-cleanup.sh" SCENARIO_STATE_DIR="$raw/retention-state" SCENARIO_PROVENANCE_FILE="$raw/retention-provenance.json" M6_RETENTION_DESTRUCTIVE_ACK=I_UNDERSTAND_M6_DEDICATED_RETENTION_DESTROYS_LOGS \
         bash scenarios/scripts/fault-retention.sh apply mysql >"$raw/mysql-gap-status.json"
       test "$(jq -r .recorded_file "$raw/mysql-gap-status.json")" = "$old_journal"
       retained="$(jq -c .files "$raw/mysql-gap-status.json")"

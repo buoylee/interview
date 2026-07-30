@@ -2,7 +2,7 @@ SHELL := /bin/bash
 COMPOSE := docker compose -f infra/compose.yaml
 COMPOSE_ADAPTER := $(COMPOSE) -f infra/compose.adapter.yaml
 
-.PHONY: assert-java-21 package up up-adapter down reset scenario evidence verify verify-fast smoke-m0 scenario-m1 verify-m1 gate-m1 bootstrap-products-v2 bootstrap-index verify-products-v2 scenario-m3-after-es scenario-m3-after-dlq scenario-m3 verify-m3 gate-m2-m3 reconcile scenario-m4 verify-m4 rebuild scenario-m5 verify-m5 formal-final-m5
+.PHONY: assert-java-21 package up up-adapter down reset scenario evidence verify verify-fast verify-live-contracts smoke-m0 scenario-m1 verify-m1 gate-m1 bootstrap-products-v2 bootstrap-index verify-products-v2 scenario-m3-after-es scenario-m3-after-dlq scenario-m3 verify-m3 gate-m2-m3 reconcile scenario-m4 verify-m4 rebuild scenario-m5 verify-m5 formal-final-m5
 
 assert-java-21:
 	@java -version 2>&1 | head -n 1 | grep -Eq 'version "21([.]|\")' || { \
@@ -41,8 +41,17 @@ verify: verify-fast
 	$(MAKE) reset
 	$(MAKE) up
 	bash tests/end-to-end/m0-smoke.sh
+	$(MAKE) verify-live-contracts
 	bash tests/end-to-end/m4-reconciliation.sh
 	bash tests/end-to-end/m5-rebuild.sh
+
+verify-live-contracts:
+	bash tests/contracts/m2-m3-pipeline-control-schema.sh
+	bash tests/contracts/m4-reconciliation-control-negative.sh
+	bash tests/contracts/m5-rebuild-repeat-apply.sh
+	bash tests/contracts/m5-rebuild-schema-drift.sh
+	bash tests/contracts/m6-condition-ownership-migration.sh
+	bash tests/contracts/m6-primitives.sh
 
 smoke-m0: up
 	bash scenarios/scripts/smoke-m0.sh

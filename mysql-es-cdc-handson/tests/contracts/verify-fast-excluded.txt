@@ -5,4 +5,10 @@ evidence-contract.sh|parameterized validator covered by evidence-contract-tamper
 lib-m1-task3-fixtures.sh|sourced fixture library covered by the M1 evidence contracts
 m1-boundary-doc.sh|requires ignored generated M1 evidence and remains in make verify-m1
 m1-bulk-partial-evidence.sh|requires the ignored local Adapter archive and remains in make verify-m1
+m2-m3-pipeline-control-schema.sh|requires running MySQL and runs in make verify-live-contracts
+m4-reconciliation-control-negative.sh|requires running MySQL and runs in make verify-live-contracts
+m5-rebuild-repeat-apply.sh|requires running MySQL and runs in make verify-live-contracts
+m5-rebuild-schema-drift.sh|requires running MySQL and runs in make verify-live-contracts
+m6-condition-ownership-migration.sh|requires running MySQL and runs in make verify-live-contracts
+m6-primitives.sh|requires running Toxiproxy and runs in make verify-live-contracts
 normalized-evidence.sh|parameterized validator covered by normalized-evidence-tamper.sh and the evidence acceptance gate

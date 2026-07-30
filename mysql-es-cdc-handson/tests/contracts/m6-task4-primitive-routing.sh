@@ -16,7 +16,9 @@ section() { sed -n "/^case_$1()/,/^case_$2()/p" "$runtime"; }
 
 case3="$(section 3 4)"
 grep -Fq 'fault-retention.sh apply mysql' <<<"$case3"
-grep -Fq 'MYSQL_PWD=rootpass MYSQL_USER=root' <<<"$case3"
+grep -Fq 'MYSQL_PWD="$mysql_pwd" MYSQL_USER=root' <<<"$case3"
+grep -Fq 'MYSQL_ROOT_PASSWORD=' <<<"$case3"
+! grep -Fq 'MYSQL_PWD=rootpass' <<<"$case3"
 ! grep -Eq "mysql_root ['\"](FLUSH|PURGE) BINARY LOGS" <<<"$case3"
 
 for pair in '6 7' '7 8'; do

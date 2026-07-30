@@ -57,7 +57,7 @@ public class RestElasticsearchGateway implements ElasticsearchGateway {
         this.requestTimeout = requirePositive(requestTimeout);
         this.faults = Objects.requireNonNull(faults, "faults");
         String normalizedBaseUrl = Objects.requireNonNull(baseUrl, "baseUrl").replaceAll("/+$", "");
-        this.bulkUri = URI.create(normalizedBaseUrl + "/_bulk");
+        this.bulkUri = URI.create(normalizedBaseUrl + "/_bulk?require_alias=true");
     }
 
     @Override

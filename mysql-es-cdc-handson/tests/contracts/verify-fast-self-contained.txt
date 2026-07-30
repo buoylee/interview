@@ -14,20 +14,16 @@ m1-process-identity.sh
 m1-restart-evidence.sh
 m2-m3-bootstrap-fail-closed.sh
 m2-m3-elasticsearch-aliases.sh
-m2-m3-pipeline-control-schema.sh
 m2-m3-wire-contract.sh
 m3-completion-gate.sh
 m3-crash-evidence-tamper.sh
 m3-standard-evidence-tamper.sh
 m4-completion-assets.sh
 m4-dlq-evidence-tamper.sh
-m4-reconciliation-control-negative.sh
 m4-reconciliation-control.sh
 m4-verifier-independence-negative.sh
 m5-generation-assets.sh
 m5-rebuild-completion-assets.sh
-m5-rebuild-repeat-apply.sh
-m5-rebuild-schema-drift.sh
 m5-review-fixes.sh
 m5-write-gate-routing.sh
 m6-case-executors.sh
@@ -36,7 +32,6 @@ m6-collector-sorting.sh
 m6-collectors-retention.sh
 m6-command-intent.sh
 m6-compose-project.sh
-m6-condition-ownership-migration.sh
 m6-destructive-guard-negative.sh
 m6-destructive-guard.sh
 m6-evidence-gitignore.sh
@@ -47,7 +42,6 @@ m6-matrix-bundle-tamper.sh
 m6-matrix-catalog-isolation.sh
 m6-matrix-index-tamper.sh
 m6-pass-canonical-replacement.sh
-m6-primitives.sh
 m6-retention-gap.sh
 m6-retention-seed-ack.sh
 m6-task4-primitive-routing.sh

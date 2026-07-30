@@ -85,7 +85,7 @@ class RestElasticsearchGatewayTest {
                 BulkOutcome.RETRYABLE_FAILURE, BulkOutcome.PERMANENT_FAILURE);
         assertThat(result.items()).extracting(BulkItemResult::productId).containsExactly(1L, 2L, 3L, 4L, 5L);
         assertThat(result.items()).extracting(BulkItemResult::revision).containsExactly(4L, 8L, 3L, 6L, 7L);
-        assertThat(requestQuery.get()).isNull();
+        assertThat(requestQuery.get()).isEqualTo("require_alias=true");
         assertThat(requestContentType.get()).isEqualTo("application/x-ndjson");
         String[] lines = requestBody.get().split("\n", -1);
         assertThat(lines).hasSize(11);
@@ -190,7 +190,7 @@ class RestElasticsearchGatewayTest {
         gateway.write("products_write", List.of(document(1, 1)));
 
         assertThat(captured.get().uri().toString())
-                .isEqualTo("http://localhost:9200/_bulk");
+                .isEqualTo("http://localhost:9200/_bulk?require_alias=true");
     }
 
     @Test
