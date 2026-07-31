@@ -2,7 +2,7 @@
 
 | 结论／证据 | 等级 | 当前含义 |
 |---|---|---|
-| scenario、DDL、runner、验收与恢复契约已定义 | `READY_UNRUN` | 未运行 S／M／L；没有吞吐、速度比或正确性结果。 |
+| run `20260731T004638Z` 的 S／M evidence | `SCALED_REPRODUCED (M=1,000,000)` | S 九次、M 六次均通过 exact correctness；L 因保守 disk gate 不通过而未生成 input、未执行，不能宣称已实跑 1,000 万行。 |
 | 架构、机制与安全边界 | `REASONED` | 由 ch02／03／07／09／11 和官方文档推导。 |
 
 ## 陌生题目
@@ -761,11 +761,105 @@ publish boundary 是 staging validation 完整通过后，在已批准窗口以�
 
 每个 tier 前的 gate：确认独立 namespaced database／tables、source manifest 与 DDL 已冻结；测可用 disk（包括 client input、server temporary copy for `LOCAL`、data／undo／redo／binlog／relay-log headroom）；记录 server version、durability、binlog format、replica health/lag、Buffer Pool／checkpoint 指标基线；明确允许 lag／disk／elapsed SLA 与 ABORT threshold。任一空间、replica lag、checkpoint/redo pressure、error rate 或 correctness gate 不通过，标 `ABORTED`，保留 restart point，不进入下一 tier。S 只建 control cost；M/L 仅在 gate 通过后运行，且 L 的目标为 10,000,000 rows。
 
-evidence table 预留为 `READY_UNRUN`：
+### Run `20260731T004638Z`：环境与 immutable manifests
 
-| Tier／path／run | manifest SHA-256 | accepted／rejected | fingerprint | seconds／rows_per_second | redo／data／network deltas | outcome |
-|---|---|---|---|---|---|---|
-| 未运行 | — | — | — | — | — | `READY_UNRUN` |
+这次只使用 dedicated、namespaced lab：MySQL `8.0.36` container
+`mysql-senior-scenarios-mysql`、owned volume
+`mysql-senior-scenarios-data`、`127.0.0.1:33306`，资源上限为 4 CPU／4
+GiB，restart policy `no`。Connector/Python 固定为 `9.7.0`；runner 从
+commit `9e4c5c5` 的 canonical Markdown block 抽取到全新的
+`/private/tmp/mysql-senior-scenarios.KEYGU3` 并通过 `py_compile`。这是
+standalone lab，没有 replica／HA topology，因此 replica receive／apply／lag
+没有实测，相关生产结论仍为 `REASONED`。
+
+| Tier | rows | bytes | SHA-256 | generation／timing |
+|---|---:|---:|---|---|
+| S | 100,000 | 5,978,195 | `524a469ebdf9bc02b4275c65c95acd2413e5888f23aafa1214f98c70cbc8a83e` | deterministic generator；排除在 load timing 外 |
+| M | 1,000,000 | 60,781,896 | `3d320becef4a1e09cf5d01d30c2eefd787bc0de3906ba3ccfd97c692e9b6f9df` | 只在 M gate 通过后生成；排除在 load timing 外 |
+| L | 10,000,000 | — | — | disk gate 失败；未生成、未执行 |
+
+preflight 的 `local_infile=0`、`innodb_flush_log_at_trx_commit=1`、
+`sync_binlog=1`、`binlog_format=ROW`；三张 target 都从 exact zero rows
+开始。S 依固定顺序
+`single,batch,load,load,single,batch,batch,load,single`；M 依
+`batch,load,batch,load,batch,load` 交替。每个 invocation 都有且只有一行
+JSON，15 个 stderr 都是 empty。
+
+### 所有 trial 与 status deltas
+
+`redo/data/network` 分别是 `Innodb_os_log_written`／
+`Innodb_data_written`／`Bytes_received` 的 run delta，单位 bytes。
+
+| Tier／run | path | accepted／rejected | fingerprint | seconds | rows/s | redo／data／network | outcome |
+|---|---|---:|---:|---:|---:|---|---|
+| S-01 | single | 100,000／0 | 2313231901 | 233.793 | 427.73 | 110,739,456／196,105,216／14,592,207 | `SUCCEEDED/VERIFIED` |
+| S-02 | batch | 100,000／0 | 2313231901 | 2.007 | 49,818.62 | 19,421,696／25,393,152／6,587,792 | `SUCCEEDED/VERIFIED` |
+| S-03 | load | 100,000／0 | 2313231901 | 0.564 | 177,421.31 | 19,219,968／20,275,200／5,981,663 | `SUCCEEDED/VERIFIED` |
+| S-04 | load | 100,000／0 | 2313231901 | 0.522 | 191,445.04 | 19,176,960／23,356,928／5,981,663 | `SUCCEEDED/VERIFIED` |
+| S-05 | single | 100,000／0 | 2313231901 | 225.589 | 443.28 | 110,455,296／225,703,936／14,590,023 | `SUCCEEDED/VERIFIED` |
+| S-06 | batch | 100,000／0 | 2313231901 | 2.206 | 45,335.68 | 19,333,120／24,988,160／6,587,792 | `SUCCEEDED/VERIFIED` |
+| S-07 | batch | 100,000／0 | 2313231901 | 1.828 | 54,700.11 | 19,400,704／23,462,912／6,587,792 | `SUCCEEDED/VERIFIED` |
+| S-08 | load | 100,000／0 | 2313231901 | 0.509 | 196,273.95 | 19,148,288／19,960,832／5,981,663 | `SUCCEEDED/VERIFIED` |
+| S-09 | single | 100,000／0 | 2313231901 | 217.915 | 458.89 | 109,364,224／216,366,592／14,589,772 | `SUCCEEDED/VERIFIED` |
+| M-01 | batch | 1,000,000／0 | 1029324516 | 16.415 | 60,919.30 | 205,840,896／340,850,688／66,875,046 | `SUCCEEDED/VERIFIED` |
+| M-02 | load | 1,000,000／0 | 1029324516 | 5.495 | 181,987.18 | 195,062,784／291,447,296／60,812,375 | `SUCCEEDED/VERIFIED` |
+| M-03 | batch | 1,000,000／0 | 1029324516 | 16.147 | 61,932.06 | 205,851,648／351,273,472／66,874,795 | `SUCCEEDED/VERIFIED` |
+| M-04 | load | 1,000,000／0 | 1029324516 | 6.290 | 158,988.34 | 194,781,184／319,303,680／60,812,375 | `SUCCEEDED/VERIFIED` |
+| M-05 | batch | 1,000,000／0 | 1029324516 | 17.333 | 57,692.62 | 205,998,592／358,861,824／66,874,795 | `SUCCEEDED/VERIFIED` |
+| M-06 | load | 1,000,000／0 | 1029324516 | 6.209 | 161,067.91 | 194,999,808／302,605,312／60,812,375 | `SUCCEEDED/VERIFIED` |
+
+| Tier／path | seconds median（min–max） | rows/s median（min–max） |
+|---|---:|---:|
+| S single | 225.589（217.915–233.793） | 443.28（427.73–458.89） |
+| S batch | 2.007（1.828–2.206） | 49,818.62（45,335.68–54,700.11） |
+| S load | 0.522（0.509–0.564） | 191,445.04（177,421.31–196,273.95） |
+| M batch | 16.415（16.147–17.333） | 60,919.30（57,692.62–61,932.06） |
+| M load | 6.209（5.495–6.290） | 161,067.91（158,988.34–181,987.18） |
+
+每一 run 的 source／target 都满足 exact `count`、`min_id=1`、
+`max_id=rows`、`distinct_id=rows`、fingerprint 相等，且
+warnings／rejected 都为 0。三条 S path 的 fingerprint 都是
+`2313231901`；两条 M path 都是 `1029324516`。因此本机证据证明
+S／M 的结果相同；它不证明 lab CRC fingerprint 没有 collision，也不把
+M throughput 外推为 production 或 10M throughput。
+
+### Table size、resource gate 与停止点
+
+empty baseline 每张 target 的 `DATA_LENGTH`／`INDEX_LENGTH` 都是
+16,384／16,384 bytes。trial 后第一次直接读取
+`information_schema.TABLES` 仍回传旧的 16,384／16,384 与
+`TABLE_ROWS=0`；这是本次 unexpected result，不能拿 stale statistics
+通过 gate。因此以下尺寸是在 timing 外执行 `ANALYZE TABLE` 后记录：
+
+| tier／table | DATA_LENGTH | INDEX_LENGTH | 相对 empty 的 data／index delta |
+|---|---:|---:|---:|
+| S／三个 target | 7,880,704 | 4,734,976 | 7,864,320／4,718,592 |
+| M／bulk_batch | 69,844,992 | 53,100,544 | 69,828,608／53,084,160 |
+| M／bulk_load | 69,844,992 | 53,100,544 | 69,828,608／53,084,160 |
+
+gate 固定使用 S evidence，不因看到结果而改公式。S input
+`5,978,195` + largest S data `7,880,704` + largest S index
+`4,734,976` + largest observed S redo `110,739,456` + S runtime temp
+`6,062,080` = base `135,395,411` bytes。
+
+| Gate | projected peak | reserve | required free | measured free | verdict |
+|---|---:|---:|---:|---:|---|
+| M（×10） | 2,030,931,165 | 5,368,709,120（5 GiB） | 7,399,640,285 | 26,689,581,056 | PASS；margin 19,289,940,771 |
+| L（×100，S 后） | 20,309,311,650 | 10,737,418,240（10 GiB） | 31,046,729,890 | 26,689,581,056 | FAIL；short 4,357,148,834 |
+| L（M 后复核） | 20,309,311,650 | 10,737,418,240（10 GiB） | 31,046,729,890 | 25,546,821,632 | FAIL；short 5,499,908,258 |
+
+所以 L 在任何 mutation 前标记 `ABORTED (disk gate)`：没有产生 10M
+source，没有执行 batch／load，也没有为了过 gate 清除无关档案或修改
+Docker storage。M 后 snapshot 的 `Innodb_log_waits=0`、
+`Innodb_buffer_pool_wait_free=0`，redo checkpoint／current／flushed LSN
+同为 `1769553526`；这些是健康快照，不会推翻 disk hard gate。
+
+final safety check：`local_infile` 精确恢复为 `0`；durability／binlog
+仍为 `1／1／ROW`；dedicated container 是 `running/healthy`、
+restart count `0`、restart policy `no`；旧 `mysql-primary` 仍是
+`exited`，全程未使用。runtime raw JSON／TSV 只为临时 evidence，验证和
+commit 后已按 exact prefix 删除；container／volume 保留给后续 Task
+8／10，不能在这里清理。
 
 ## 面试口述
 
