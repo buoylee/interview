@@ -1114,7 +1114,19 @@ def main(argv: list[str] | None = None) -> int:
     has_help_token = any(
         argument in ("-h", "--help") for argument in arguments
     )
-    parser = JsonArgumentParser()
+    malformed_short_help = any(
+        argument.startswith("-h")
+        and not argument.startswith("--")
+        and argument != "-h"
+        for argument in arguments
+    )
+    parser = JsonArgumentParser(add_help=False, allow_abbrev=False)
+    parser.add_argument(
+        "-h",
+        "--help",
+        action="store_true",
+        help="show this help message and exit",
+    )
     parser.add_argument("--mode", choices=sorted(ALLOWED_TABLES), required=True)
     parser.add_argument(
         "--table", choices=sorted(ALLOWED_TABLES.values()), required=True
@@ -1137,8 +1149,13 @@ def main(argv: list[str] | None = None) -> int:
     config: dict[str, object] | None = None
 
     try:
+        if lone_help:
+            parser.print_help()
+            return 0
         if has_help_token and not lone_help:
             raise ContractError("-h/--help must be used alone")
+        if malformed_short_help:
+            raise ContractError("malformed short help option")
         args = parser.parse_args(arguments)
         expected_table = ALLOWED_TABLES[args.mode]
         if args.table != expected_table:
@@ -1239,8 +1256,6 @@ def main(argv: list[str] | None = None) -> int:
             "target_manifest": target_manifest,
         }
     except SystemExit as exc:
-        if exc.code == 0 and lone_help:
-            raise
         failure = (exc, phase["value"])
     except BaseException as exc:
         failure = (exc, phase["value"])
@@ -1340,7 +1355,7 @@ Required safety behavior:
 - immediately after `LOAD DATA LOCAL` returns, capture `cursor.warning_count` and `rowcount` before issuing another SQL statement; any warning, reject, accepted-row mismatch or uncommitted target-manifest mismatch is rolled back instead of committed. Driver modes report an exception as `FAILED` or `UNKNOWN`; they never convert it into a successful run with a synthetic reject count；
 - load mode connects with `allow_local_infile=True`, saves `@@GLOBAL.local_infile`, assigns `restore_required=True` before sending the enable statement, and restores plus confirms the original value through a fresh admin connection even if enable acknowledgement is lost；
 - phases distinguish `VALIDATING`、`BEFORE_SEND`、`SESSION_SETTING`、`GLOBAL_SETTING`、`EXECUTING`、`COMMITTING`、`VERIFYING`、`ROLLING_BACK`、`RESTORING`、`CLOSING` and `VERIFIED`; each mode enters `SESSION_SETTING` before assigning `connection.autocommit`, so a lost acknowledgement／read timeout／write timeout from that session statement is always `UNKNOWN` even if later rollback succeeds. Parse／validation and definite local before-send failures remain `FAILED`; a definite server rejection can be `FAILED` only when the same connection remains usable and rollback is confirmed, every commit ambiguity remains `UNKNOWN`, and any mandatory cleanup uncertainty is `UNKNOWN`；failure JSON records `operation_phase` and `rollback_confirmed`, and the runner never auto-retries `UNKNOWN`；
-- malformed or missing arguments use the same structured failure path; exact lone `-h` or lone `--help` may retain argparse's normal zero-exit text, but a help token mixed with any other argument is rejected before `parse_args()` and produces one structured nonzero JSON outcome without plaintext help. Parse, validation, execution, verification, rollback, restoration or close failure produces exactly one nonzero JSON outcome after all mandatory cleanup attempts, with the password redacted and no traceback；
+- malformed or missing arguments use the same structured failure path. The parser disables built-in exiting help and long-option abbreviation, then advertises a non-exiting `-h`／`--help` option: exact lone `-h` or lone `--help` explicitly prints help and returns zero before parsing; an exact help token mixed with any other argument and malformed short forms such as `-hh`／`-hfoo` are rejected before `parse_args()`; abbreviations such as `--he`／`--hel`, `--help=value`, unknown options and missing arguments produce one structured nonzero JSON outcome without plaintext usage／help. A valid option such as `--host` is not treated as help. Parse, validation, execution, verification, rollback, restoration or close failure produces exactly one nonzero JSON outcome after all mandatory cleanup attempts, with the password redacted and no traceback；
 - successful JSON is emitted only after rollback／restoration／close finalization and includes mode, table, rows, warnings, rejected rows, seconds, rows_per_second, status deltas, source manifest and target manifest；
 - Connector/Python `executemany()` is described as a parameterized driver batch whose exact rewrite must be checked for the pinned connector; it is not mislabeled as proof of server-side prepared statements。
 
