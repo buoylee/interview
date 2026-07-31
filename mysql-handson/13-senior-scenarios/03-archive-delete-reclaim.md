@@ -416,8 +416,32 @@ run `20260731T021647Z` 只使用 owned dedicated container
 8.0.36、4 CPU／4 GiB limit、`innodb_file_per_table=1`、
 `innodb_flush_log_at_trx_commit=1`、`sync_binlog=1`、
 `binlog_format=ROW`、`log_bin=1`。开始时 `/private/tmp` 可用
-24,303,628,288 bytes，超过 S peak 加 5 GiB reserve。旧
-`mysql-primary` 保持 `exited`，全程没有启动或使用。
+24,303,628,288 bytes；primary run 当时只持久化了 free bytes 与 5 GiB
+reserve，未保存一个可审计的 S-peak 数值，不能事后冒充为完整的
+predeclared arithmetic gate。
+
+raw evidence 清理后的 fix-round review 只读查询 retained `.ibd`，并用已
+记录的三个 dropped partition files 复原 seed-state footprint：
+
+```text
+retained archive .ibd files                    =    94,617,600
+3 dropped old partitions × 9,437,184           =    28,311,552
+seed-state six-role .ibd footprint              =   122,929,152
+same-size transient second-copy／undo allowance =   122,929,152
+largest observed mutation redo delta            =    10,910,720
+largest observed mutation binlog delta          =     2,023,690
+retrospective runtime／evidence safety pad       =    67,108,864
+conservative S-peak upper bound                  =   325,901,578
+5 GiB reserve                                    = 5,368,709,120
+required                                         = 5,694,610,698
+preflight free                                   = 24,303,628,288
+margin                                           = 18,609,017,590
+```
+
+这证明原 PASS verdict 在该保守 retrospective upper bound 下仍成立，但
+不改写历史：run 前真正 predeclared 的只有 5 GiB reserve、runtime／
+checkpoint limits 与停止条件；325,901,578-byte upper bound 是 fix round
+才重建的 audit。旧 `mysql-primary` 保持 `exited`，全程没有启动或使用。
 
 资料身份和执行身份刻意分开：
 
@@ -480,6 +504,14 @@ monotonic；redo 使用 `Innodb_os_log_written` delta；binlog 以
 | C partition drop／2 | 0.064891 | 同 elapsed | 37,376 | 291 | 49,991 |
 | C partition drop／3 | 0.071314 | 同 elapsed | 41,984 | 291 | 49,991 |
 
+A 的 timer 包住完整 client invocation：
+`START TRANSACTION → DELETE → SELECT ROW_COUNT() → COMMIT`。表中的
+affected=49,991 只在整个 invocation 成功返回、也就是收到 COMMIT ack 后
+才采信；随后用新的 read-only query 验证 eligible=0、hot=50,009，并取得
+immediate post-commit redo／binlog／history／size snapshot。它不是在
+DELETE statement 完成、transaction 尚未 commit 时发布 logical
+visibility。
+
 A median／range 是 0.125073／0.124207–0.134383 秒；B end-to-end
 median／range 是 12.246044／12.154967–12.864937 秒，包含每批 50 ms
 sleep、candidate query、watermark fsync 与 controller checks，不能拿它和
@@ -528,7 +560,7 @@ throttle 与 disk／checkpoint／restart checks；每轮都是 50 commits，
 
 | path | SQL／metadata visibility | history-list observation | `DATA_LENGTH／INDEX_LENGTH／DATA_FREE` | physical `.ibd` |
 |---|---|---|---|---|
-| A | statement ack 后 eligible=0、hot=50,009 | 33→34≤35、11→12≤13、9→10≤11；另一个独立查询在 0.028–0.032 s 内确认仍在 run 前 neighborhood | 三轮 pre／immediate／post observation 都是 6,832,128／3,686,400／3,145,728 bytes | 三轮一直 17,825,792 bytes |
+| A | COMMIT ack 后 eligible=0、hot=50,009 | 33→34≤35、11→12≤13、9→10≤11；另一个独立查询在 0.028–0.032 s 内确认仍在 run 前 neighborhood | 三轮 pre／immediate／post observation 都是 6,832,128／3,686,400／3,145,728 bytes | 三轮一直 17,825,792 bytes |
 | B | 最后 batch ack 后 eligible=0、hot=50,009 | 40→5≤42 用 0.031 s；21→29 后 15.859 s 到 1≤23；17→27 后 20.353 s 到 0≤19 | 三轮 pre／immediate／post observation 同样是 6,832,128／3,686,400／3,145,728 bytes | 三轮一直 17,825,792 bytes |
 | C | DDL ack 后只剩 `p202604／p202605／p202606／pmax`，hot=49,999 | 38→46 后 27.964 s 到 0≤40；28→36 后 57.266 s 到 0≤30；27→35 后 53.081 s 到 0≤29 | old partitions 的 metadata rows 与 logical estimates 随 partition metadata 一起消失 | 每轮三个 old files 各 9,437,184 bytes，都在 DDL ack 后的第一次 filesystem snapshot 已消失 |
 
