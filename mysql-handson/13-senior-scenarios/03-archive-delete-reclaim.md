@@ -1,0 +1,474 @@
+# 归档、批量删除与空间回收
+
+| 结论／证据 | 等级 | 当前含义 |
+|---|---|---|
+| S=100,000 的三条 mutation path | `READY_UNRUN` | DDL、资料、量测口径、验收、停止与恢复条件已定义；本文件没有宣称已经执行。 |
+| ch02／05／07／09／11 的机制边界 | `REUSED` | 直接链接既有 mechanism owner，不在这里重写页、MVCC、日志、复制与 PITR 原理。 |
+| 生产 retention、archive、delete 与 reclaim 决策 | `REASONED` | 由业务不变式与机制推导；没有外推本机耗时、redo、空间或线上延迟。 |
+
+## 陌生题目
+
+> 一张持续增长的历史表要删除三个月前的数据并释放磁盘，你怎么做，如何避免拖垮线上、误删 legal hold、制造复制延迟或以为 `DELETE` 后文件一定变小？
+
+这不是一句「分批删」就能结束的问题。先把资料生命周期拆开，否则很容易把「行已不可见」「purge 已追上」「InnoDB 可以复用页」和「OS 看见文件缩小」误当成同一件事。
+
+## 四个独立阶段与完成标准
+
+```text
+retention = 哪些数据何时有资格离开热库
+archive   = 冷数据放在哪里，如何验证可读和完整
+delete    = 行不可见、undo/redo/binlog、purge 与 replica apply
+reclaim   = InnoDB 可复用页 vs tablespace/OS 实际缩小
+```
+
+四阶段必须分别验收：
+
+1. **retention**：固定 eligibility cutoff、时区、资料 owner 与 legal-hold exclusion；不能用「大约三个月」作为 destructive predicate。
+2. **archive**：有稳定 `archive_run_id`、source／archive manifests、唯一身份、对象版本与实际可读验证。
+3. **delete**：有可重复的固定 predicate、batch watermark、剩余资料不变式、purge state、replica lag 与线上 P99 停止条件。
+4. **reclaim**：先说明目标是让 InnoDB 复用页，还是让 tablespace／OS 文件真正缩小；后者还要有 peak-space、MDL、时间与 restore source。
+
+进入任何不可逆步骤前，evidence manifest 必须写明：
+
+- cutoff 与 legal-hold 排除规则；
+- source、archive、hold 的 count／range／fingerprint；
+- destructive SQL 的 operator、change ticket 与审批；
+- 当前 disk reserve、P99 budget、replica lag budget；
+- 明确 restore source 及最近一次 restore drill 结果；
+- batch identity、已确认 commit 的 watermark 与 restart point。
+
+缺任何一项就不进入 destructive SQL。client 在 statement／commit 后 timeout 或失联时，结果是 `UNKNOWN`；先按 manifest 与 watermark 查证，不能把它当 `FAILED` 盲目重跑。
+
+## 先澄清的约束
+
+- retention 是按业务事件时间、建立时间还是法规时钟？cutoff 用哪个时区，谁能变更？
+- legal hold 是 row-level 例外还是整个 tenant／月份冻结？解除是否需要双人审批和审计？
+- archive 的 RPO、restore SLA、查询方式与保存年限是什么？冷库和热库是否共故障域？
+- 当前表是否 file-per-table、是否已按 retention key 分区、所有 unique key 是否能包含 partition key？
+- 线上 P99 latency budget、最低 disk reserve、redo checkpoint pressure 与 replica lag budget 各是多少？
+- replica 是只读查询节点、灾备候选还是两者皆是？大量变更必须多久 apply 完？
+- 删除期间能否暂停写入？本次 S lab 没有 concurrent OLTP，不能回答线上 P95／P99 影响。
+- 已经满盘时，可否先扩容／迁移，还是错误地期待 rebuild 在零额外空间下救急？
+
+## 跨章执行链
+
+本场景只组装机制，完整原理由下列 owner 负责：
+
+- [ch02 InnoDB storage](../02-innodb-storage/README.md)：page／extent／segment／tablespace、file-per-table 与 Buffer Pool。
+- [ch05 transaction and MVCC](../05-mvcc-and-transaction/README.md)：长事务、undo version、purge 受旧 ReadView 阻塞。
+- [ch07 logs and crash safety](../07-logs-and-crashsafe/README.md)：每次 `DELETE` 的 undo、redo、binlog、checkpoint 与 commit 边界。
+- [ch09 replication and HA](../09-replication-and-ha/README.md)：source receive、relay、apply、visibility 与 replica lag。
+- [ch11 operations and restore](../11-ops-and-troubleshooting/README.md)：备份、PITR、磁盘操作与 restore drill。
+
+机制链接为 `REUSED`；本文件对生产 choices 的组装仍是 `REASONED`。
+
+## S dataset：六个固定 table roles
+
+S 实验固定为 2026 年 1–6 月的 100,000 行 deterministic rows。六个业务 table roles 必须恰为：
+
+| table | role |
+|---|---|
+| `archive_source` | immutable seed；只作验收与 S lab restore source，不执行 destructive SQL |
+| `archive_big_delete` | 单一大事务路径 |
+| `archive_batch_delete` | 每次 1,000 行并 autocommit 的 bounded path |
+| `archive_partitioned` | 按月 `RANGE COLUMNS(created_at)` 的 partition-drop path |
+| `archive_cold` | 通过 manifest 验证的 archive copy |
+| `archive_hold` | 从可 drop partitions 分离、仍可查询的 legal-hold rows |
+
+`seed_digit` 只是同一 namespaced schema 内、seed 完立即删除的普通 helper table，不是第七个资料角色，也不是 temporary table。S lab 只允许在隔离的 `mysql_senior_scenarios` schema 执行。
+
+### 精确 DDL、seed 与 partition layout
+
+```sql
+CREATE DATABASE IF NOT EXISTS mysql_senior_scenarios
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+USE mysql_senior_scenarios;
+
+CREATE TABLE archive_source (
+  id         BIGINT UNSIGNED NOT NULL,
+  created_at DATETIME(6) NOT NULL,
+  payload    VARCHAR(128) NOT NULL,
+  legal_hold BOOLEAN NOT NULL DEFAULT FALSE,
+  PRIMARY KEY (id),
+  KEY idx_created (created_at, id)
+) ENGINE=InnoDB;
+
+CREATE TABLE archive_big_delete LIKE archive_source;
+CREATE TABLE archive_batch_delete LIKE archive_source;
+
+CREATE TABLE archive_partitioned (
+  id         BIGINT UNSIGNED NOT NULL,
+  created_at DATETIME(6) NOT NULL,
+  payload    VARCHAR(128) NOT NULL,
+  legal_hold BOOLEAN NOT NULL DEFAULT FALSE,
+  PRIMARY KEY (id, created_at),
+  KEY idx_created (created_at, id)
+) ENGINE=InnoDB
+PARTITION BY RANGE COLUMNS(created_at) (
+  PARTITION p202601 VALUES LESS THAN ('2026-02-01'),
+  PARTITION p202602 VALUES LESS THAN ('2026-03-01'),
+  PARTITION p202603 VALUES LESS THAN ('2026-04-01'),
+  PARTITION p202604 VALUES LESS THAN ('2026-05-01'),
+  PARTITION p202605 VALUES LESS THAN ('2026-06-01'),
+  PARTITION p202606 VALUES LESS THAN ('2026-07-01'),
+  PARTITION pmax VALUES LESS THAN (MAXVALUE)
+);
+
+DROP TABLE IF EXISTS seed_digit;
+CREATE TABLE seed_digit (d TINYINT UNSIGNED PRIMARY KEY);
+INSERT INTO seed_digit VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+
+INSERT INTO archive_source (id, created_at, payload, legal_hold)
+SELECT n,
+       TIMESTAMPADD(
+         SECOND,
+         FLOOR((n - 1) / 6),
+         TIMESTAMPADD(MONTH, MOD(n - 1, 6), '2026-01-01 00:00:00')
+       ),
+       CONCAT('archive-', LPAD(n, 12, '0')),
+       n <= 55 AND MOD(n - 1, 6) = 0
+FROM (
+  SELECT 1 + d0.d + 10*d1.d + 100*d2.d + 1000*d3.d
+           + 10000*d4.d + 100000*d5.d AS n
+  FROM seed_digit AS d0
+  CROSS JOIN seed_digit AS d1
+  CROSS JOIN seed_digit AS d2
+  CROSS JOIN seed_digit AS d3
+  CROSS JOIN seed_digit AS d4
+  CROSS JOIN seed_digit AS d5
+  ORDER BY n
+  LIMIT 100000
+) AS seq;
+
+INSERT INTO archive_big_delete SELECT * FROM archive_source;
+INSERT INTO archive_batch_delete SELECT * FROM archive_source;
+INSERT INTO archive_partitioned
+SELECT * FROM archive_source
+WHERE NOT (created_at < '2026-04-01 00:00:00' AND legal_hold = TRUE);
+
+DROP TABLE seed_digit;
+```
+
+MySQL 要求 partition expression 用到的每个 column 都出现在每个 unique key 中，primary key 也属于 unique key，所以 partitioned table 使用 `PRIMARY KEY(id, created_at)`，不能照抄 nonpartition 的 `PRIMARY KEY(id)`；这是 [MySQL 8.0 partition unique-key rule](https://dev.mysql.com/doc/refman/8.0/en/partitioning-limitations-partitioning-keys-unique-keys.html) 的 schema 约束，不是性能偏好。
+
+```sql
+CREATE TABLE archive_cold (
+  archive_run_id CHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  source_id      BIGINT UNSIGNED NOT NULL,
+  created_at     DATETIME(6) NOT NULL,
+  payload        VARCHAR(128) NOT NULL,
+  PRIMARY KEY (archive_run_id, source_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE archive_hold (
+  source_id   BIGINT UNSIGNED NOT NULL,
+  created_at  DATETIME(6) NOT NULL,
+  payload     VARCHAR(128) NOT NULL,
+  hold_reason VARCHAR(64) NOT NULL,
+  PRIMARY KEY (source_id)
+) ENGINE=InnoDB;
+```
+
+### 固定 predicate 与 seed invariants
+
+本场景唯一 old-data predicate 是：
+
+```sql
+created_at < '2026-04-01 00:00:00' AND legal_hold = FALSE
+```
+
+不要改成 `NOW() - INTERVAL 3 MONTH`，否则不同 trial 不再同源，重跑也失去稳定边界。seed 的纯数学预期是：
+
+| invariant | expected before mutation |
+|---|---:|
+| `archive_source`／两个 nonpartition copies | 100,000 rows each |
+| cutoff 前总 rows | 50,001 |
+| cutoff 前 `legal_hold=TRUE` | exactly 10 |
+| eligible old rows | 49,991 |
+| `archive_partitioned` | 99,990 rows；十个 old holds 已排除 |
+| `p202601`–`p202603` 合计 | 49,991 rows |
+
+这些是待 Task 8 验证的 expected invariants，不是本文件的 measured evidence。
+
+## destructive SQL 前的 archive manifest
+
+S lab 使用稳定身份：
+
+```text
+archive_run_id = ARCHIVE2026Q1S01
+cutoff         = 2026-04-01 00:00:00
+```
+
+对每个 mutation source 的 eligible range 先保存同一形状的 manifest：
+
+```sql
+SELECT COUNT(*) AS rows,
+       MIN(id) AS min_id,
+       MAX(id) AS max_id,
+       SUM(id) AS sum_id,
+       BIT_XOR(CRC32(CONCAT_WS('#', id, created_at, payload))) AS lab_fingerprint
+FROM source_table
+WHERE created_at < '2026-04-01 00:00:00'
+  AND legal_hold = FALSE;
+```
+
+`source_table` 依次实例化为 `archive_source`、`archive_big_delete`、`archive_batch_delete` 与尚未 drop 的 `archive_partitioned`。四者必须与 immutable source manifest 一致，才可继续。
+
+### copy、唯一身份与 cold-side compare
+
+先确认该 run identity 没有旧资料；若前次 client 失联，先查询而不是删除或覆盖：
+
+```sql
+SELECT COUNT(*)
+FROM archive_cold
+WHERE archive_run_id = 'ARCHIVE2026Q1S01';
+
+INSERT INTO archive_cold
+  (archive_run_id, source_id, created_at, payload)
+SELECT 'ARCHIVE2026Q1S01', id, created_at, payload
+FROM archive_source
+WHERE created_at < '2026-04-01 00:00:00'
+  AND legal_hold = FALSE;
+```
+
+`PRIMARY KEY(archive_run_id, source_id)` 让同一 archive identity 不会静默出现 duplicate。commit 成功后，以 `source_id AS id` 取得同形 manifest：
+
+```sql
+SELECT COUNT(*) AS rows,
+       MIN(source_id) AS min_id,
+       MAX(source_id) AS max_id,
+       SUM(source_id) AS sum_id,
+       BIT_XOR(
+         CRC32(CONCAT_WS('#', source_id, created_at, payload))
+       ) AS lab_fingerprint
+FROM archive_cold
+WHERE archive_run_id = 'ARCHIVE2026Q1S01';
+```
+
+只有 source 与 cold 的五个 aggregates 全部相等、随机抽样能实际读出 payload、evidence artifact 已持久化，才算 archive verified。CRC32／`BIT_XOR` 只是 lab fingerprint，不是密码学完整性证明；生产 archive 应使用更强 manifest、immutable object versioning、独立故障域、访问审计与定期 restore drill。
+
+### legal hold separation
+
+十个 old held rows 必须先复制进 `archive_hold`：
+
+```sql
+INSERT INTO archive_hold (source_id, created_at, payload, hold_reason)
+SELECT id, created_at, payload, 'legal-hold-s-lab'
+FROM archive_source
+WHERE created_at < '2026-04-01 00:00:00'
+  AND legal_hold = TRUE;
+
+SELECT COUNT(*) AS held_rows,
+       MIN(source_id) AS min_id,
+       MAX(source_id) AS max_id,
+       SUM(source_id) AS sum_id,
+       BIT_XOR(
+         CRC32(CONCAT_WS('#', source_id, created_at, payload))
+       ) AS lab_fingerprint
+FROM archive_hold;
+```
+
+结果必须与 `archive_source` 的 held manifest 相等且 `held_rows=10`。`archive_partitioned` 的 seed 已把这十行排除，因此 whole-month partitions 才全部具备 drop eligibility。row-level exception 与 partition boundary 不一致时，blind partition drop 会连 hold 一起丢掉；必须先以资料 placement 分离，不能用「DDL 很快」覆盖正确性问题。
+
+## 共同量测口径
+
+Task 8 对 A／B／C 每条 path 都要记录：
+
+| field | contract |
+|---|---|
+| elapsed | client monotonic start／end，明确是否含 throttle sleep |
+| affected rows | statement row count 与 before／after invariant 差值交叉验证 |
+| redo delta | 同一 server status 计数器的 before／after；记录变量名、版本与重启边界 |
+| binlog growth | before／after file+position；跨 file rotation 时按 `SHOW BINARY LOGS` 汇总，`log_bin=OFF` 则标 `NOT_APPLICABLE` |
+| purge state | `SHOW ENGINE INNODB STATUS` 的 `History list length` 与长事务清单 |
+| logical size | `information_schema.TABLES`／`PARTITIONS` 的 data+index estimates |
+| physical size | 有 datadir 权限才记录对应 table／partition tablespace file；否则明确 `NOT_OBSERVED` |
+| correctness | archive、hold、remaining rows、range 与 fingerprint invariants |
+
+本 S lab 没有 concurrent OLTP，因此不产生 P95 或 P99 latency claim。若明确启用 production-like concurrent profile，必须在 run 前填入 `p99_budget_ms` 与持续窗口；超过 budget 就停止新 batch，而不是事后挑一段好看的 latency。
+
+## Path A：一个大事务
+
+```sql
+START TRANSACTION;
+
+DELETE FROM archive_big_delete
+WHERE created_at < '2026-04-01 00:00:00'
+  AND legal_hold = FALSE;
+
+COMMIT;
+```
+
+执行前必须已验证 archive、hold、disk reserve 与 restore source。statement 期间观察 affected rows、locks、redo／checkpoint、binlog 与磁盘；commit 后再验收剩余资料。
+
+停止／恢复边界：
+
+- commit 前的业务或正确性问题可 `ROLLBACK`，但大量 rollback 本身会继续消耗时间、I/O 与 undo，不能假设瞬间恢复。
+- MySQL restart、I/O error、lock wait、disk reserve 或 checkpoint pressure 触发时，不再发新 destructive SQL；等待 crash recovery／rollback 状态明确。
+- client 在 `DELETE` 或 `COMMIT` 后失联是 `UNKNOWN`；先查 eligible count 与 manifests，绝不直接再发同一大事务。
+- 已确认 commit 后不能以普通 rollback 还原；S lab restore source 是 immutable `archive_source`，生产是 verified versioned archive 加已演练的 backup／PITR。
+
+## Path B：1,000-row autocommit batches
+
+每个 batch 先只读取得 candidate boundary：
+
+```sql
+SELECT id
+FROM archive_batch_delete
+WHERE created_at < '2026-04-01 00:00:00'
+  AND legal_hold = FALSE
+ORDER BY id
+LIMIT 1000;
+```
+
+然后在 `autocommit=1` session 执行固定 mutation：
+
+```sql
+DELETE FROM archive_batch_delete
+WHERE created_at < '2026-04-01 00:00:00'
+  AND legal_hold = FALSE
+ORDER BY id
+LIMIT 1000;
+```
+
+每次确认 commit 后，controller 把以下 watermark durable append 到 run evidence，才 sleep 50 ms 再发下一批：
+
+```text
+archive_run_id
+path = batch_delete
+batch_seq
+candidate_min_id
+candidate_max_id
+expected_rows
+affected_rows
+eligible_rows_after
+committed_at
+status = SUCCEEDED | FAILED | UNKNOWN | ABORTED
+```
+
+S dataset 的六个 roles 不另加 control table；watermark 存在 task evidence journal。生产可用独立 control store，但同样要让 `(archive_run_id,path,batch_seq)` 唯一。固定 predicate 令已删除 rows 自然不再匹配，因此 restart 仍从剩余资料取下一批；watermark 是 audit／reconciliation boundary，不是把 predicate 偷换成易漏资料的动态时间。
+
+如果 client 在 batch statement 后失联，将该 batch 标为 `UNKNOWN`。以 `candidate_max_id` 范围、eligible count 与 cumulative manifest reconciliation 判断事务是否全有或全无；未确认前不前进 watermark，也不把 batch 当 `FAILED` 自动重送。
+
+每批之间重新检查以下停止条件：
+
+- free disk 低于预先保留的 reserve；
+- lock wait／deadlock 超过 budget；
+- MySQL restart、I/O error 或连接进入 `UNKNOWN`；
+- archive／hold／remaining correctness mismatch；
+- redo checkpoint age／dirty-page pressure 越过预设 budget；
+- 明确使用 replica profile 时，replication lag 越过预声明 budget；
+- 明确使用 concurrent profile 时，线上 P99 连续越过预声明 budget。
+
+任一命中就停止**下一批**并持久化 `ABORTED` restart point。已提交 batches 不 rollback；修复原因后，从 verified watermark 和当前固定 predicate 继续。相较 Path A，它以更多 commits、总时间和 orchestration 换取 bounded transaction、throttle 与 resume。
+
+## Path C：whole-partition drop
+
+进入 DDL 前必须同时证明：
+
+1. `archive_cold` manifest 与 49,991 个 eligible old source rows 相同；
+2. `archive_hold` 恰有十行且 held manifest 相同；
+3. `archive_partitioned` 的 `p202601`–`p202603` manifest 与 cold 相同，且其中 `legal_hold=TRUE` 为零；
+4. restore source、disk reserve、MDL／replica stop budgets 已记录。
+
+然后才执行：
+
+```sql
+ALTER TABLE archive_partitioned
+  DROP PARTITION p202601,p202602,p202603;
+```
+
+MySQL 官方说明 `DROP PARTITION` 适用于 RANGE／LIST partitions，并会丢弃 named partitions 内的资料；因此它是 irreversible DDL，不是可以事后 `ROLLBACK` 的 row delete（[ALTER TABLE partition operations](https://dev.mysql.com/doc/refman/8.0/en/alter-table-partition-operations.html)）。
+
+即使 `binlog_format=ROW`，`ALTER TABLE` 等 DDL 仍以 statement format 写入 binary log；A／B 的 row-changing `DELETE` 则可能为每个 changed row 写 row event。官方也明确指出大量 DML 在 RBR 下可能显著增加 binlog data（[binary log format](https://dev.mysql.com/doc/refman/8.0/en/binary-log-setting.html)、[SBR vs RBR](https://dev.mysql.com/doc/refman/8.0/en/replication-sbr-rbr.html)）。所以 partition drop 通常避开逐行 DML 的日志量，但 replica 仍要接收并执行 DDL，MDL、apply 时间与 lag 仍须观察，不能称为「零成本」。
+
+DDL 发出后 client timeout 同样是 `UNKNOWN`：查 `information_schema.PARTITIONS`、remaining invariant 与 archive／hold manifests，不能再次盲发。恢复是由 `archive_cold` 加 `archive_hold` 重建资料，或从已演练 backup／PITR 恢复到独立实例后再受控回灌；不是 rollback DDL。
+
+## delete、purge、reuse 与 OS reclaim 的边界
+
+`DELETE` 不会立即从 database file 物理移除 record。InnoDB 先 delete-mark；当旧版本不再被 MVCC／rollback 需要时，background purge 才处理 history list 并物理清除 record。`History list length` 是 purge lag 的观察之一，长 consistent-read transaction 会让它增长（[MySQL 8.0 purge configuration](https://dev.mysql.com/doc/refman/8.0/en/innodb-purge-configuration.html)）。
+
+因此要分四个 verdict：
+
+1. **SQL visibility complete**：eligible query 已为零，held／recent rows 仍可见。
+2. **purge caught up**：history list 已回到 run 前稳定范围，且没有 blocker long transaction；这不等于文件缩小。
+3. **InnoDB reuse available**：被清掉的 records／pages 留在 tablespace 内，可由同表后续资料复用；通常不能据此承诺 `.ibd` 立即变小。
+4. **OS reclaim complete**：实际 tablespace file 缩小或 partition file 消失，并用 filesystem／tablespace evidence 验证。
+
+MySQL 8.0 默认 file-per-table；官方文件说明 truncate／drop file-per-table table 时空间可回到 OS，而 shared tablespace 的 freed space 通常只供 InnoDB 内部复用（[file-per-table tablespaces](https://dev.mysql.com/doc/refman/8.0/en/innodb-file-per-table-tablespaces.html)、[TRUNCATE reclaim boundary](https://dev.mysql.com/doc/refman/8.0/en/innodb-truncate-table-reclaim-space.html)）。官方 partition operations 文件也说明每个 InnoDB partition 有自己的 `.ibd` tablespace file；对这种 layout，drop whole partition 才可能直接移除对应 partition file（[ALTER TABLE partition operations](https://dev.mysql.com/doc/refman/8.0/en/alter-table-partition-operations.html)）。仍要以本机 `FILE_NAME`／filesystem before-after 证明，不能只看 `DATA_FREE` 推断。
+
+`OPTIMIZE TABLE` 对 InnoDB 会映射为 table rebuild／`ALTER TABLE ... FORCE`，可重组 table 与 indexes 并回收 file-per-table 的 unused space；它会用 online DDL，但 prepare／commit 仍短暂取得 exclusive table lock，特殊条件下还会走 table-copy method，而且默认会写入 binlog 复制到 replicas（[MySQL 8.0 OPTIMIZE TABLE](https://dev.mysql.com/doc/refman/8.0/en/optimize-table.html)）。
+
+所以 baseline 不是「每次大删后自动 `OPTIMIZE TABLE`」：
+
+- 先问业务是否真的需要 OS reclaim；未来还会增长时，内部 page reuse 可能已足够。
+- rebuild 前估算 table+indexes 的 peak space、临时空间、redo／I/O、MDL、完成时间和 replica 影响。
+- 先证明 restore source 和 rollback／cutover 方法，再安排 maintenance window。
+- 已满盘时不启动需要额外 peak space 的 rebuild；先扩容、迁移或从其他安全资料释放空间。
+
+## 三条 path 的预期与待证事实
+
+以下全部是 pre-run hypotheses，不是量测结果：
+
+- Path A 应产生最大单一 transaction，也最难 throttle、pause 与 resume。
+- Path B 应有更长 end-to-end time，但每个 transaction bounded，可按 disk／checkpoint／P99／replica budgets throttle 和续跑。
+- Path C 在 whole partitions 都 eligible 时应远便宜于逐行 delete，但前提是 schema、unique key、retention boundary 和 legal-hold placement 预先为它设计。
+- nonpartition `.ibd` 不应被假设在 `DELETE` 后缩小；purge caught up 也不证明 OS reclaim。
+- exact elapsed、redo delta、binlog growth、history-list peak、logical／physical size 全部 unknown，必须由 Task 8 记录。
+
+S run 保持 `READY_UNRUN`，不得把 expected counts 或官方机制写成 `REPRODUCED`。生产选择仍为 `REASONED`。
+
+## post-mutation correctness
+
+三个 path 各自完成后必须满足：
+
+| path | expected invariant |
+|---|---|
+| A／B | hot table 50,009 rows；eligible old rows 0；十个 old holds 仍可查询 |
+| C | `p202601`–`p202603` 不存在；partitioned hot table 49,999 rows |
+| all | `archive_cold` 49,991 rows且 manifest 不变；`archive_hold` exactly 10 rows且 manifest 不变 |
+| conservation | A／B：hot + cold = 100,000；C：partitioned hot + cold + hold = 100,000 |
+
+还要验证 recent rows 的 count／min／max／sum／fingerprint 与 immutable `archive_source` 相同。count 对了但 fingerprint、hold 或 range 错了，仍是 correctness failure，不能报告完成。
+
+## 30 秒
+
+我会先固定 retention cutoff、时区、legal hold、archive restore SLA、disk reserve、P99 和 replica-lag budget。destructive SQL 前先把 eligible rows 复制到有稳定 run ID 的 cold archive，用 count／range／sum／fingerprint 双边验证，并把 holds 分离且确认可读。没有 partition key 就用 `ORDER BY id LIMIT 1000` 的 autocommit batch，每批记录 watermark、sleep、重查停止条件；若 whole months 已按 retention key 分区且没有 row-level 例外，验证后才 drop partitions。最后分开验收行不可见、purge、页可复用和 OS 文件回收，绝不承诺 `DELETE` 会让 `.ibd` 自动缩小。
+
+## 3–5 分钟
+
+我先把问题拆成 retention、archive、delete、reclaim。retention 定义固定 cutoff 和 legal-hold exclusion；archive 以稳定 `archive_run_id` 建立 immutable copy，source/cold 用同形 manifest 验证，并要求独立 restore source 与 drill。delete 有三条路：一个大事务最简单，但 undo、redo、row binlog、rollback 与 replica apply 都集中成不可控 burst；1,000-row autocommit batches 虽较慢，却能在每个 verified watermark 后 throttle、停下和续跑；只有 schema 的 partition boundary 与 retention 对齐、unique key 合法、holds 已分离时，才用 whole-partition drop。
+
+执行链上，row delete 先变更可见性并产生 undo、redo、binlog，旧版本仍可能被长事务需要；purge 追上后 records／pages 才能回收给 InnoDB 使用。file-per-table 的 `.ibd` 通常不会因普通 `DELETE` 立即缩小。需要 OS reclaim 时，partition drop 可在适合 layout 下移除 partition tablespace；`OPTIMIZE TABLE` 则是 rebuild，要先规划 peak disk、MDL、I/O、replica 与 restore path，不是每次删除后的默认动作。
+
+验证时每条 path 都记录 elapsed、affected rows、redo delta、binlog growth、history list、logical／physical size 与 remaining invariants。S lab 没有 concurrent OLTP，所以不声称 P95／P99。生产批次只在 disk、lock、I/O、correctness、checkpoint、replica lag 与 P99 budgets 内继续；timeout 后是 `UNKNOWN`，先按 candidate boundary、manifest 与 watermark 对账，不盲重跑。
+
+## 追问树
+
+### legal hold 怎么办？
+
+row-level hold 不能和可 drop month 混在一起。先把 held rows 复制到 `archive_hold`，核对 exactly 10 与 fingerprint，再确认 droppable partitions 内 hold 为零。生产还要有 hold owner、解除审批和审计；做不到就不用 partition drop。
+
+### replica lag 已经很高怎么办？
+
+先停止新 batch，不把 source 清理优先级放在 replica recovery 之前。确认 receive 与 apply 的真实 backlog、当前大事务／DDL、disk 与 worker 状态；只有 lag 回到预声明 budget 才继续。大事务会让 apply 不可切割，bounded batches 才有 throttle 点；partition DDL 也仍须在 replica 执行。
+
+### disk pressure 正在上升怎么办？
+
+停止新 mutation，区分 data、undo、redo、binlog、relay、temporary space 哪个在长。普通 `DELETE` 可能先增加 undo／redo／binlog，不能当即时腾盘工具。保留 emergency reserve，先扩容或安全清理已确认可删的外部／日志资料。
+
+### 没有 partition key 怎么办？
+
+不要临时把生产大表硬改成 partitioned 后立刻 drop。先走 indexed fixed predicate 的 bounded delete；若 retention 是长期需求，再独立设计包含 partition key 的所有 unique keys、backfill／cutover、legal-hold placement 与 restore plan。
+
+### 没有 archive 怎么办？
+
+默认不删。先建立可读、可版本化、可验 manifest 的 archive，并完成 restore drill；只有业务明确批准不保留且 backup／PITR 满足法规与恢复要求时，才能重新定义 completion。
+
+### restore SLA 很短怎么办？
+
+不要只承诺「有对象存储」。用真实资料量演练 archive lookup、bulk restore、index rebuild、校验与 cutover，确认 RTO；必要时保留更热的 nearline store 或更细 partition。SLA 由 restore drill 证明，不由文件存在证明。
+
+### 磁盘已经满了怎么办？
+
+不启动巨大 `DELETE`、rollback 或 `OPTIMIZE TABLE` 来赌博，因为它们还需要写 undo／redo／binlog、temporary 或 rebuild peak space。先停止非必要写入、扩容／迁移、清理已确认安全的临时或过期日志并恢复 reserve；随后才按 archive manifest 做 bounded delete 或已验证的 partition drop。
