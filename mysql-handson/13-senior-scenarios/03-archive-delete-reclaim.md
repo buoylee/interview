@@ -2,7 +2,7 @@
 
 | 结论／证据 | 等级 | 当前含义 |
 |---|---|---|
-| S=100,000 的三条 mutation path | `READY_UNRUN` | DDL、资料、量测口径、验收、停止与恢复条件已定义；本文件没有宣称已经执行。 |
+| run `20260731T021647Z` 的 S=100,000 三条 mutation path | `SCALED_REPRODUCED (S=100000)` | big delete、batch delete 与 partition drop 各三次通过 correctness；这是隔离单机 S 实验，不外推生产吞吐、P99 或 replica lag。 |
 | ch02／05／07／09／11 的机制边界 | `REUSED` | 直接链接既有 mechanism owner，不在这里重写页、MVCC、日志、复制与 PITR 原理。 |
 | 生产 retention、archive、delete 与 reclaim 决策 | `REASONED` | 由业务不变式与机制推导；没有外推本机耗时、redo、空间或线上延迟。 |
 
@@ -188,7 +188,7 @@ created_at < '2026-04-01 00:00:00' AND legal_hold = FALSE
 | `archive_partitioned` | 99,990 rows；十个 old holds 已排除 |
 | `p202601`–`p202603` 合计 | 49,991 rows |
 
-这些是待 Task 8 验证的 expected invariants，不是本文件的 measured evidence。
+Task 8 的 run `20260731T021647Z` 已逐项验证这些 expected invariants；实际 manifest 记录在后文 evidence。
 
 ## destructive SQL 前的 archive manifest
 
@@ -272,7 +272,7 @@ FROM archive_hold;
 
 ## 共同量测口径
 
-Task 8 对 A／B／C 每条 path 都要记录：
+run `20260731T021647Z` 对 A／B／C 每条 path 都按以下口径记录：
 
 | field | contract |
 |---|---|
@@ -406,17 +406,194 @@ MySQL 8.0 默认 file-per-table；官方文件说明 truncate／drop file-per-ta
 - 先证明 restore source 和 rollback／cutover 方法，再安排 maintenance window。
 - 已满盘时不启动需要额外 peak space 的 rebuild；先扩容、迁移或从其他安全资料释放空间。
 
-## 三条 path 的预期与待证事实
+## S 实测 evidence
 
-以下全部是 pre-run hypotheses，不是量测结果：
+### 环境、身份与停止边界
 
-- Path A 应产生最大单一 transaction，也最难 throttle、pause 与 resume。
-- Path B 应有更长 end-to-end time，但每个 transaction bounded，可按 disk／checkpoint／P99／replica budgets throttle 和续跑。
-- Path C 在 whole partitions 都 eligible 时应远便宜于逐行 delete，但前提是 schema、unique key、retention boundary 和 legal-hold placement 预先为它设计。
-- nonpartition `.ibd` 不应被假设在 `DELETE` 后缩小；purge caught up 也不证明 OS reclaim。
-- exact elapsed、redo delta、binlog growth、history-list peak、logical／physical size 全部 unknown，必须由 Task 8 记录。
+run `20260731T021647Z` 只使用 owned dedicated container
+`mysql-senior-scenarios-mysql`、volume
+`mysql-senior-scenarios-data` 与 `127.0.0.1:33306`。环境是 MySQL
+8.0.36、4 CPU／4 GiB limit、`innodb_file_per_table=1`、
+`innodb_flush_log_at_trx_commit=1`、`sync_binlog=1`、
+`binlog_format=ROW`、`log_bin=1`。开始时 `/private/tmp` 可用
+24,303,628,288 bytes，超过 S peak 加 5 GiB reserve。旧
+`mysql-primary` 保持 `exited`，全程没有启动或使用。
 
-S run 保持 `READY_UNRUN`，不得把 expected counts 或官方机制写成 `REPRODUCED`。生产选择仍为 `REASONED`。
+资料身份和执行身份刻意分开：
+
+```text
+lab run ID    = 20260731T021647Z
+archive_run_id = ARCHIVE2026Q1S01
+cutoff         = 2026-04-01 00:00:00
+```
+
+先声明 1,500 秒总 runtime budget、180 秒 destructive statement
+timeout、60 秒 history-list observation window、512 MiB checkpoint-age
+limit 与 5 GiB disk reserve。任一 correctness mismatch、statement outcome
+`UNKNOWN`、restart／unhealthy、I/O error、disk reserve、checkpoint age 或
+`Innodb_log_waits` 越界就停止，不自动 retry。实际总 run 为 237.913 秒，
+没有命中停止条件。这里没有 replica 或 concurrent OLTP profile，因此
+replica lag 与 P95／P99 都是 `NOT_OBSERVED`。
+
+### immutable source、archive 与 legal-hold manifest
+
+建立 archive tables 前先确认 namespace 中没有旧 `archive_*` tables。
+`archive_cold` 的该 run identity 与 `archive_hold` 都先验为零，再各执行
+一次普通 `INSERT`；没有 `INSERT IGNORE`、upsert 或重复插入来掩盖边界。
+seed 后 `seed_digit` 已删除。
+
+| manifest | rows | min id | max id | sum id | lab fingerprint |
+|---|---:|---:|---:|---:|---:|
+| complete `archive_source` | 100,000 | 1 | 100,000 | 5,000,050,000 | 4,242,170,261 |
+| eligible source／`archive_cold` | 49,991 | 2 | 99,999 | 2,500,049,720 | 3,443,153,953 |
+| old `legal_hold` source／`archive_hold` | 10 | 1 | 55 | 280 | 104,009,398 |
+| recent source | 49,999 | 4 | 100,000 | 2,500,000,000 | 936,588,034 |
+| `archive_partitioned UNION ALL archive_hold` | 100,000 | 1 | 100,000 | 5,000,050,000 | 4,242,170,261 |
+
+月分布实际为 January–April 各 16,667 rows，May–June 各 16,666
+rows；cutoff 前共 50,001，其中 exactly 10 为 hold，剩余 49,991
+eligible。cold archive 还实际读出 `2／archive-000000000002`、
+`3／archive-000000000003` 与 `8／archive-000000000008`，不只比较
+count。每个 destructive trial 前，path manifest 都再次与 immutable
+source／cold／hold 比较；任一不等本来就不会发送 DELETE 或 DDL。
+
+这组 `BIT_XOR(CRC32(...))` 仍只是 lab fingerprint。生产必须使用更强的
+immutable manifest、object version、独立故障域与 restore drill；S lab
+的 restore source 是未 mutation 的 `archive_source`。
+
+### 三路各三次结果
+
+每轮按 A→B→C 执行；每条 path 都从同一 immutable source 重建自己的
+path table，stable archive identity 不重复写入。elapsed 是 client
+monotonic；redo 使用 `Innodb_os_log_written` delta；binlog 以
+`SHOW BINARY LOGS` total bytes delta 计算，三轮都没有 rotation。
+
+| path／trial | elapsed seconds | mutation-only seconds | redo bytes | binlog bytes | affected |
+|---|---:|---:|---:|---:|---:|
+| A big delete／1 | 0.134383 | 同 elapsed | 6,158,848 | 2,008,555 | 49,991 |
+| A big delete／2 | 0.125073 | 同 elapsed | 5,483,520 | 2,008,555 | 49,991 |
+| A big delete／3 | 0.124207 | 同 elapsed | 5,491,712 | 2,008,555 | 49,991 |
+| B batch delete／1 | 12.154967 | 2.684960 | 10,875,904 | 2,023,690 | 49,991 |
+| B batch delete／2 | 12.864937 | 3.078112 | 10,910,720 | 2,023,690 | 49,991 |
+| B batch delete／3 | 12.246044 | 2.892629 | 10,875,904 | 2,023,690 | 49,991 |
+| C partition drop／1 | 0.069888 | 同 elapsed | 37,888 | 291 | 49,991 |
+| C partition drop／2 | 0.064891 | 同 elapsed | 37,376 | 291 | 49,991 |
+| C partition drop／3 | 0.071314 | 同 elapsed | 41,984 | 291 | 49,991 |
+
+A median／range 是 0.125073／0.124207–0.134383 秒；B end-to-end
+median／range 是 12.246044／12.154967–12.864937 秒，包含每批 50 ms
+sleep、candidate query、watermark fsync 与 controller checks，不能拿它和
+A 的单 statement timing 当成纯 SQL benchmark。B mutation-only
+median 是 2.892629 秒。C statement／ack median／range 是
+0.069888／0.064891–0.071314 秒。
+
+这些数字只证明本机 S 的机制差异：A 是一个 49,991-row transaction；
+B 是 49 个 1,000-row commits 加最后 991 rows，共 50 个 bounded
+transactions；C 是已通过 placement proof 的三个 whole-partition DDL。
+不能把这个 timing 排名外推到 1,000 万行、concurrent OLTP、不同 storage
+或 replicas。
+
+### batch 中断、watermark 与恢复
+
+B trial 1 在 batch 3 已收到 commit ack、durable append watermark 后，于
+statement boundary 暂停发送下一批并验证状态。为了不把同一 process 内的
+pause 冒充 restart proof，timing trials 完成后又做了一次两阶段 recovery
+drill：phase 1 controller PID 86424 在 batch 3 写入并 `fsync` checkpoint
+后退出；另一个 PID 88570 的新 process 才进入 phase 2。process 之间再次
+只读验证：
+
+```text
+last completed batch = 3
+cumulative deleted   = 3,000
+hot rows remaining   = 97,000
+eligible remaining   = 46,991
+held remaining       = 10
+recent remaining     = 49,999
+```
+
+phase 2 先证明 checkpoint 与当前表的四个 counts 相同，且 PID 与 phase 1
+不同，才仍用相同 fixed predicate 从 batch 4 继续；没有把时间边界或
+candidate watermark 偷换成新的 deletion predicate。最终 batch 50 的
+candidate range 是 `98019–99999`，expected／affected 都是 991，
+eligible after 为 0，hold／recent／conservation manifests 再次通过。
+
+三个 timing trials 和额外 recovery drill 都为每批保存 candidate
+min／max、expected、affected、cumulative、eligible-after、50 ms
+throttle 与 disk／checkpoint／restart checks；每轮都是 50 commits，
+没有 duplicate side effect、`UNKNOWN` 或 retry。
+
+### visibility、history list、reuse 与 OS reclaim
+
+四个 milestone 分开取证，不能互相替代：
+
+| path | SQL／metadata visibility | history-list observation | `DATA_LENGTH／INDEX_LENGTH／DATA_FREE` | physical `.ibd` |
+|---|---|---|---|---|
+| A | statement ack 后 eligible=0、hot=50,009 | 33→34≤35、11→12≤13、9→10≤11；另一个独立查询在 0.028–0.032 s 内确认仍在 run 前 neighborhood | 三轮 pre／immediate／post observation 都是 6,832,128／3,686,400／3,145,728 bytes | 三轮一直 17,825,792 bytes |
+| B | 最后 batch ack 后 eligible=0、hot=50,009 | 40→5≤42 用 0.031 s；21→29 后 15.859 s 到 1≤23；17→27 后 20.353 s 到 0≤19 | 三轮 pre／immediate／post observation 同样是 6,832,128／3,686,400／3,145,728 bytes | 三轮一直 17,825,792 bytes |
+| C | DDL ack 后只剩 `p202604／p202605／p202606／pmax`，hot=49,999 | 38→46 后 27.964 s 到 0≤40；28→36 后 57.266 s 到 0≤30；27→35 后 53.081 s 到 0≤29 | old partitions 的 metadata rows 与 logical estimates 随 partition metadata 一起消失 | 每轮三个 old files 各 9,437,184 bytes，都在 DDL ack 后的第一次 filesystem snapshot 已消失 |
+
+history target 预先定义为 `max(5, pre + 2)`。`History list length` 是
+server-global、会受内部事务与其他 activity 影响的 noisy observation；
+上表只证明后来回到该 neighborhood，不把等待秒数归因为某一 DELETE／DDL
+的精确 purge duration。尤其 C 的 27.964–57.266 秒不是 DDL latency：
+`ALTER TABLE ... DROP PARTITION` 已在 0.065–0.071 秒返回，metadata、
+remaining manifest 与三个 file disappearance 都在 ack 后立即取证。
+
+A／B 在 rows 不可见且 history 回到 neighborhood 后，`.ibd` 都没有缩小；
+本次 `DATA_FREE` 和 information-schema size estimates 也没有变化。这证明
+普通 DELETE 没有完成 OS reclaim，但不能用 estimates 反向证明某个具体
+page 已经可复用。C 则实际观察到三个独立 partition tablespace file
+消失，合计 28,311,552 bytes；这个结果依赖 file-per-table、monthly
+partition layout 和 hold separation。
+
+### gated `OPTIMIZE TABLE`
+
+只在 B 的 final 50,009-row state 完成 visibility、correctness 与
+history observation 后再量 gate。以完整 source table 的
+`DATA_LENGTH + INDEX_LENGTH = 10,518,528` bytes 作为 second-copy
+estimate，加 5,368,709,120-byte reserve，required 为
+5,379,227,648 bytes；当时 free 24,078,176,256 bytes，gate 通过。
+
+受控 S maintenance experiment 的 `OPTIMIZE TABLE archive_batch_delete`
+实际回报 `doing recreate + analyze instead`／`OK`，耗时 0.573160 秒。
+`.ibd` 从 17,825,792 缩到 11,534,336 bytes，减少 6,291,456 bytes；
+redo／binlog 另增加 81,920／225 bytes。immediate
+information-schema estimates pre／post 都是
+`DATA_LENGTH=6,569,984`、`INDEX_LENGTH=3,407,872`、
+`DATA_FREE=3,145,728`，再次说明 estimates 不能代替 filesystem
+evidence。OPTIMIZE 后 hot／cold conservation、hold 与 recent manifest
+仍通过。
+
+这不是生产 recommendation。S 表很小、没有 concurrent MDL contender、
+replica 或 crash；生产 rebuild 必须重新评估真正 table+indexes size、
+temporary／redo peak、MDL、I/O、window、replica apply、restore source
+与 rollback／cutover。
+
+### correctness 与 expected-vs-actual
+
+九次 destructive trials 都满足：
+
+- A／B：hot=50,009、eligible=0、hold manifest exactly 10、recent
+  manifest 49,999，且 hot+cold=100,000；
+- C：old partitions 不存在、partitioned hot=49,999，且
+  hot+cold+hold=100,000；
+- all：cold 49,991 与 hold 10 的 five-field manifests 始终不变；
+- final globals 与 run 前相同，dedicated container
+  `running／healthy／restart_count=0／restart=no`，旧 container 仍
+  `exited`。
+
+| 我以为 | 实际 | 我学到 |
+|---|---|---|
+| 一个大 DELETE 最简单，所以也是默认生产方案 | S 中 statement 很快，但它仍是不可 throttle／resume 的 49,991-row transaction | elapsed 不能替代 transaction risk、UNKNOWN reconciliation 与 replica apply boundary |
+| 分批只会比较慢 | B 的 end-to-end 确实更长、redo／binlog 也略多，但中断后从 verified watermark 安全恢复 | bounded commits 买到 stop／throttle／resume control，不是白白损失性能 |
+| partition drop 快就能忽略 legal hold | C 只有先证明 10 holds 已分离、droppable partitions hold=0、union 等于 source 才安全 | schema／retention／hold placement 是 DDL 速度成立前的 correctness contract |
+| rows 删除、purge、文件缩小会一起完成 | A／B rows 已不可见且 history 回到 neighborhood，`.ibd` 仍不变；C 的独立 partition files 才直接消失 | logical delete、history observation、page reuse 与 OS reclaim 必须分开验收 |
+| `OPTIMIZE` 后看 `DATA_FREE` 就够 | information-schema estimates 没变，但 filesystem `.ibd` 实际缩小 | reclaim claim 要用正确 physical evidence，而且 rebuild 仍需 disk／MDL／window gate |
+
+因此只有 S mechanics 标为 `SCALED_REPRODUCED (S=100000)`；生产
+retention window、batch size、throughput、P99、replica lag、archive
+RPO／RTO、OPTIMIZE window 与目标 1,000 万行行为仍是 `REASONED` 或
+`NOT_OBSERVED`。
 
 ## post-mutation correctness
 

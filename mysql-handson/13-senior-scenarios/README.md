@@ -35,7 +35,7 @@
 | 1 | 从 access pattern 设计表、主键、型别、约束与索引 | [从 access patterns 设计 schema](01-schema-from-access-patterns.md) | `REPRODUCED (S=100000)` |
 | 2 | 高效且安全地汇入 1,000 万行 | [高效安全地导入 1,000 万行](02-bulk-load-10m.md) | `SCALED_REPRODUCED (M=1,000,000)`；L disk gate 未通过 |
 | 3 | 线上 schema 变更与资料 backfill | `python-data/07-migrations.md` | 路由；MySQL DDL 机制连到 ch11 |
-| 4 | 历史资料归档、大量删除与空间回收 | [归档、批量删除与空间回收](03-archive-delete-reclaim.md) | 新增场景，`READY_UNRUN` |
+| 4 | 历史资料归档、大量删除与空间回收 | [归档、批量删除与空间回收](03-archive-delete-reclaim.md) | `SCALED_REPRODUCED (S=100000)` |
 | 5 | 资料分布改变造成执行计划退化 | `mysql-handson/04-execution-and-explain/scenarios/01-plan-flips-by-selectivity.md` | 路由 |
 | 6 | 大型 JOIN、报表与全量汇出如何隔离 OLTP | `mysql-handson/13-senior-scenarios/04-report-export-isolation.md` | 新增缺口，`READY_UNRUN`；JOIN 机制连到 ch08 |
 | 7 | 深分页到大批量汇出的完整处理 | `mysql-handson/13-senior-scenarios/04-report-export-isolation.md` | 场景组装；分页机制连到 ch08 scenario 03 |
