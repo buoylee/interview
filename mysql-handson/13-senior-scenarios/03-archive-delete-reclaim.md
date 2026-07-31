@@ -429,18 +429,23 @@ retained archive .ibd files                    =    94,617,600
 seed-state six-role .ibd footprint              =   122,929,152
 same-size transient second-copy／undo allowance =   122,929,152
 largest observed mutation redo delta            =    10,910,720
-largest observed mutation binlog delta          =     2,023,690
+cumulative Task 8 binlog growth                 =    88,319,141
 retrospective runtime／evidence safety pad       =    67,108,864
-conservative S-peak upper bound                  =   325,901,578
+conservative S-peak upper bound                  =   412,197,029
 5 GiB reserve                                    = 5,368,709,120
-required                                         = 5,694,610,698
+required                                         = 5,780,906,149
 preflight free                                   = 24,303,628,288
-margin                                           = 18,609,017,590
+margin                                           = 18,522,722,139
 ```
+
+其中 cumulative binlog 以 run snapshots
+`598,617,845 - 510,298,704 = 88,319,141` bytes 计算。binlog 在整个
+Task 8 run 中累积，单一 trial 最大 delta 2,023,690 bytes 不能代表
+whole-run disk peak，因此不用于 gate。
 
 这证明原 PASS verdict 在该保守 retrospective upper bound 下仍成立，但
 不改写历史：run 前真正 predeclared 的只有 5 GiB reserve、runtime／
-checkpoint limits 与停止条件；325,901,578-byte upper bound 是 fix round
+checkpoint limits 与停止条件；412,197,029-byte upper bound 是 fix round
 才重建的 audit。旧 `mysql-primary` 保持 `exited`，全程没有启动或使用。
 
 资料身份和执行身份刻意分开：
