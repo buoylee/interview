@@ -37,8 +37,8 @@
 | 3 | 线上 schema 变更与资料 backfill | `python-data/07-migrations.md` | 路由；MySQL DDL 机制连到 ch11 |
 | 4 | 历史资料归档、大量删除与空间回收 | [归档、批量删除与空间回收](03-archive-delete-reclaim.md) | `SCALED_REPRODUCED (S=100000)` |
 | 5 | 资料分布改变造成执行计划退化 | `mysql-handson/04-execution-and-explain/scenarios/01-plan-flips-by-selectivity.md` | 路由 |
-| 6 | 大型 JOIN、报表与全量汇出如何隔离 OLTP | `mysql-handson/13-senior-scenarios/04-report-export-isolation.md` | 新增缺口，`READY_UNRUN`；JOIN 机制连到 ch08 |
-| 7 | 深分页到大批量汇出的完整处理 | `mysql-handson/13-senior-scenarios/04-report-export-isolation.md` | 场景组装；分页机制连到 ch08 scenario 03 |
+| 6 | 大型 JOIN、报表与全量汇出如何隔离 OLTP | [大型报表与导出隔离](04-report-export-isolation.md) | `READY_UNRUN`；JOIN 机制连到 ch08 |
+| 7 | 深分页到大批量汇出的完整处理 | [大型报表与导出隔离](04-report-export-isolation.md) | `READY_UNRUN`；场景组装；分页机制连到 ch08 scenario 03 |
 | 8 | 高并发扣库存与防超卖 | `system-design-scenarios/16-秒杀与票务.md` | 路由 |
 | 9 | 订单／支付／库存的 UNKNOWN、幂等与对账 | `financial-consistency/03-order-payment-inventory/README.md` | 路由；面试卡作闭卷入口 |
 | 10 | 热点库存行、锁竞争与死锁取舍 | `system-design-scenarios/16-秒杀与票务.md` | 路由；锁机制连到 ch06 |
@@ -52,7 +52,7 @@
 | 18 | 分片键、热点、扩容与 reshard | `mysql-handson/10-sharding-and-scaling/README.md` | 路由 |
 | 19 | 线上分片迁移、双写与 CDC 校验 | `mysql-handson/10-sharding-and-scaling/README.md` Case C | 路由；CDC 故障闭环连到 `mysql-es-cdc-handson` |
 
-[从 access patterns 设计 schema](01-schema-from-access-patterns.md) 已完成 run ID `20260730T214437Z` 的 `REPRODUCED (S=100000)`；[高效安全地导入 1,000 万行](02-bulk-load-10m.md) 与 [归档、批量删除与空间回收](03-archive-delete-reclaim.md) 已建立并为 `READY_UNRUN`。最后一个新增场景文件 `mysql-handson/13-senior-scenarios/04-report-export-isolation.md` 尚未建立；在文件建立前不使用 Markdown link。
+[从 access patterns 设计 schema](01-schema-from-access-patterns.md) 已完成 run ID `20260730T214437Z` 的 `REPRODUCED (S=100000)`；[高效安全地导入 1,000 万行](02-bulk-load-10m.md) 与 [归档、批量删除与空间回收](03-archive-delete-reclaim.md) 已建立并为 `READY_UNRUN`。[大型报表与导出隔离](04-report-export-isolation.md) 已建立为 `READY_UNRUN`，等待 Task 10 记录 S 级实测。
 
 ## 四个新增场景
 
@@ -61,7 +61,7 @@
 | `01-schema-from-access-patterns.md` | `REPRODUCED (S=100000)` | 从 access pattern 推导 schema |
 | [高效安全地导入 1,000 万行](02-bulk-load-10m.md) | `READY_UNRUN` | 1,000 万行安全、高吞吐、可恢复汇入 |
 | [归档、批量删除与空间回收](03-archive-delete-reclaim.md) | `READY_UNRUN` | retention、archive、delete、purge 与 reclaim |
-| `04-report-export-isolation.md` | `READY_UNRUN` | 报表／汇出与 OLTP 隔离，含深分页到汇出 |
+| [大型报表与导出隔离](04-report-export-isolation.md) | `READY_UNRUN` | 报表／汇出与 OLTP 隔离，含深分页到汇出 |
 
 ## 证据等级
 
