@@ -52,14 +52,14 @@
 | 18 | 分片键、热点、扩容与 reshard | `mysql-handson/10-sharding-and-scaling/README.md` | 路由 |
 | 19 | 线上分片迁移、双写与 CDC 校验 | `mysql-handson/10-sharding-and-scaling/README.md` Case C | 路由；CDC 故障闭环连到 `mysql-es-cdc-handson` |
 
-[从 access patterns 设计 schema](01-schema-from-access-patterns.md) 已完成 run ID `20260730T214437Z` 的 `REPRODUCED (S=100000)`；[高效安全地导入 1,000 万行](02-bulk-load-10m.md) 已完成 run ID `20260731T004638Z` 的 `SCALED_REPRODUCED (M=1,000,000)`，L 因 disk gate 未通过而未运行。其余两个新增场景文件尚未建立：`mysql-handson/13-senior-scenarios/03-archive-delete-reclaim.md`、`mysql-handson/13-senior-scenarios/04-report-export-isolation.md`，均为 `READY_UNRUN`；在文件建立前不使用 Markdown link。
+[从 access patterns 设计 schema](01-schema-from-access-patterns.md) 已完成 run ID `20260730T214437Z` 的 `REPRODUCED (S=100000)`；[高效安全地导入 1,000 万行](02-bulk-load-10m.md) 已建立并为 `READY_UNRUN`。其余两个新增场景文件尚未建立：`mysql-handson/13-senior-scenarios/03-archive-delete-reclaim.md`、`mysql-handson/13-senior-scenarios/04-report-export-isolation.md`，均为 `READY_UNRUN`；在文件建立前不使用 Markdown link。
 
 ## 四个新增场景
 
 | 场景 | 状态 | 负责的问题 |
 |---|---|---|
 | `01-schema-from-access-patterns.md` | `REPRODUCED (S=100000)` | 从 access pattern 推导 schema |
-| [高效安全地导入 1,000 万行](02-bulk-load-10m.md) | `SCALED_REPRODUCED (M=1,000,000)` | S／M correctness 已实跑；1,000 万行 L 尚未实跑 |
+| [高效安全地导入 1,000 万行](02-bulk-load-10m.md) | `READY_UNRUN` | 1,000 万行安全、高吞吐、可恢复汇入 |
 | `03-archive-delete-reclaim.md` | `READY_UNRUN` | retention、archive、delete、purge 与 reclaim |
 | `04-report-export-isolation.md` | `READY_UNRUN` | 报表／汇出与 OLTP 隔离，含深分页到汇出 |
 
