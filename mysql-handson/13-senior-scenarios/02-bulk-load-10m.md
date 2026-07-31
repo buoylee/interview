@@ -485,7 +485,19 @@ def main(argv: list[str] | None = None) -> int:
     has_help_token = any(
         argument in ("-h", "--help") for argument in arguments
     )
-    parser = JsonArgumentParser()
+    malformed_short_help = any(
+        argument.startswith("-h")
+        and not argument.startswith("--")
+        and argument != "-h"
+        for argument in arguments
+    )
+    parser = JsonArgumentParser(add_help=False, allow_abbrev=False)
+    parser.add_argument(
+        "-h",
+        "--help",
+        action="store_true",
+        help="show this help message and exit",
+    )
     parser.add_argument("--mode", choices=sorted(ALLOWED_TABLES), required=True)
     parser.add_argument(
         "--table", choices=sorted(ALLOWED_TABLES.values()), required=True
@@ -508,8 +520,13 @@ def main(argv: list[str] | None = None) -> int:
     config: dict[str, object] | None = None
 
     try:
+        if lone_help:
+            parser.print_help()
+            return 0
         if has_help_token and not lone_help:
             raise ContractError("-h/--help must be used alone")
+        if malformed_short_help:
+            raise ContractError("malformed short help option")
         args = parser.parse_args(arguments)
         expected_table = ALLOWED_TABLES[args.mode]
         if args.table != expected_table:
@@ -610,8 +627,6 @@ def main(argv: list[str] | None = None) -> int:
             "target_manifest": target_manifest,
         }
     except SystemExit as exc:
-        if exc.code == 0 and lone_help:
-            raise
         failure = (exc, phase["value"])
     except BaseException as exc:
         failure = (exc, phase["value"])
@@ -702,7 +717,7 @@ if __name__ == "__main__":
 
 Runner interface：`--mode single|batch|load`，`--table bulk_single|bulk_batch|bulk_load`，`--input /absolute/path/input.tsv`，`--batch-size 1000`，`--host 127.0.0.1`，`--port 3306`，`--user root`，`--password root`。
 
-CLI／result contract：exact lone `-h` 或 exact lone `--help` 是唯一允许 normal plaintext、zero-exit 的路径；其他 invocation 都在 mandatory cleanup 完成后输出恰一个 final JSON。help token 若与任何其他 argument 混用，会在 `parse_args()` 前拒绝，不打印 plaintext help。只有 `status="SUCCEEDED", phase="VERIFIED"` 返回 0；其他路径返回 2，并带 `FAILED`／`UNKNOWN`、operation／cleanup phase、rollback confirmation 和已遮蔽密码的 error。
+CLI／result contract：exact lone `-h` 或 exact lone `--help` 是唯一允许 normal plaintext、zero-exit 的路径；其他 invocation 都在 mandatory cleanup 完成后输出恰一个 final JSON。parser 关闭 built-in exiting help 与 long-option abbreviation，再以 non-exiting `-h`／`--help` action 负责 usage 展示；因此 mixed、abbreviated 或 malformed help-like token 不会绕过 structured outcome。只有 `status="SUCCEEDED", phase="VERIFIED"` 返回 0；其他路径返回 2，并带 `FAILED`／`UNKNOWN`、operation／cleanup phase、rollback confirmation 和已遮蔽密码的 error。
 
 安全 contract：
 
@@ -713,7 +728,7 @@ CLI／result contract：exact lone `-h` 或 exact lone `--help` 是唯一允许 
 - `LOAD DATA LOCAL` 返回后，在任何下一条 SQL 前保存 `cursor.warning_count` 与 `rowcount`；warning、reject、accepted mismatch 或 uncommitted target-manifest mismatch 一律 rollback，不 commit。
 - load mode 以 `allow_local_infile=True` 连接；若原值为 0，先写 `restore_required=True`，才送出 enable statement。即使 enable acknowledgement 遗失，也必须经 fresh admin connection restore，并 read back 确认原值；restore／read-back／close 任一 uncertainty 都是 `UNKNOWN`。
 - phase 区分 `VALIDATING`、`BEFORE_SEND`、`SESSION_SETTING`、`GLOBAL_SETTING`、`EXECUTING`、`COMMITTING`、`VERIFYING`、`ROLLING_BACK`、`RESTORING`、`CLOSING` 和 `VERIFIED`。三个 mode 都在每次 `connection.autocommit` assignment 前进入 `SESSION_SETTING`；该 session statement 的 lost ack／read timeout／write timeout 即使稍后 rollback 成功仍是 `UNKNOWN`。commit ambiguity 永远是 `UNKNOWN`；definite server rejection 只有在同一连接可用且 rollback confirmed 时才可为 `FAILED`。
-- malformed／missing／mixed-help arguments、validation、execution、verification、rollback、restoration 或 close failure 共用一个 structured nonzero JSON outcome，记录 `operation_phase` 与 `rollback_confirmed`，不泄漏 password、不输出 traceback。仅 exact lone `-h`／`--help` 保留 argparse normal help；`--help --unknown`、`--unknown --help` 等 mixed form 都是单一 JSON failure。成功 JSON 也只在 restore／close finalization 后输出，并包含 mode、table、rows、warnings、rejected、seconds、rows_per_second、status deltas、source manifest 和 target manifest。
+- malformed／missing／help-like arguments、validation、execution、verification、rollback、restoration 或 close failure 共用一个 structured nonzero JSON outcome，记录 `operation_phase` 与 `rollback_confirmed`，不泄漏 password、不输出 traceback。仅 exact lone `-h`／`--help` 显式 `print_help()` 后返回 0；exact help token 混入任何其他 argument，以及 `-hh`／`-hfoo` 等 malformed short form 都在 `parse_args()` 前拒绝。`--he`／`--hel` abbreviation、`--help=value`、unknown option 与 missing argument 则由 non-exiting parser 产生单一 JSON failure，不打印 usage／help；合法 `--host` 不当作 help。成功 JSON 也只在 restore／close finalization 后输出，并包含 mode、table、rows、warnings、rejected、seconds、rows_per_second、status deltas、source manifest 和 target manifest。
 
 `UNKNOWN` 必须先用 run ID／batch identity、target count／fingerprint 和 binlog／replica 位置查证，绝不自动重试；不能以重跑覆盖可能已提交的资料。
 
