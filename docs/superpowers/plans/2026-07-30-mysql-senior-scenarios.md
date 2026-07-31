@@ -722,9 +722,10 @@ The document contains a copyable Python block with this CLI:
 --password root
 ```
 
-CLI/result contract: `--help` is the only normal plaintext zero-exit path. Every
-other invocation emits exactly one final JSON object after cleanup: exit `0`
-only for `status="SUCCEEDED", phase="VERIFIED"`, otherwise exit `2` with
+CLI/result contract: exact lone `-h` or lone `--help` is the only normal
+plaintext zero-exit path. Every other invocation emits exactly one final JSON
+object after cleanup: exit `0` only for
+`status="SUCCEEDED", phase="VERIFIED"`, otherwise exit `2` with
 `status="FAILED"` or `status="UNKNOWN"`, the operation／cleanup phase,
 rollback-confirmation state and a redacted error.
 
@@ -1109,7 +1110,8 @@ def redact(value: object, password: str | None) -> str:
 def main(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     password = supplied_password(arguments)
-    help_requested = any(
+    lone_help = arguments in (["-h"], ["--help"])
+    has_help_token = any(
         argument in ("-h", "--help") for argument in arguments
     )
     parser = JsonArgumentParser()
@@ -1135,6 +1137,8 @@ def main(argv: list[str] | None = None) -> int:
     config: dict[str, object] | None = None
 
     try:
+        if has_help_token and not lone_help:
+            raise ContractError("-h/--help must be used alone")
         args = parser.parse_args(arguments)
         expected_table = ALLOWED_TABLES[args.mode]
         if args.table != expected_table:
@@ -1235,7 +1239,7 @@ def main(argv: list[str] | None = None) -> int:
             "target_manifest": target_manifest,
         }
     except SystemExit as exc:
-        if exc.code == 0 and help_requested:
+        if exc.code == 0 and lone_help:
             raise
         failure = (exc, phase["value"])
     except BaseException as exc:
@@ -1336,7 +1340,7 @@ Required safety behavior:
 - immediately after `LOAD DATA LOCAL` returns, capture `cursor.warning_count` and `rowcount` before issuing another SQL statement; any warning, reject, accepted-row mismatch or uncommitted target-manifest mismatch is rolled back instead of committed. Driver modes report an exception as `FAILED` or `UNKNOWN`; they never convert it into a successful run with a synthetic reject count；
 - load mode connects with `allow_local_infile=True`, saves `@@GLOBAL.local_infile`, assigns `restore_required=True` before sending the enable statement, and restores plus confirms the original value through a fresh admin connection even if enable acknowledgement is lost；
 - phases distinguish `VALIDATING`、`BEFORE_SEND`、`SESSION_SETTING`、`GLOBAL_SETTING`、`EXECUTING`、`COMMITTING`、`VERIFYING`、`ROLLING_BACK`、`RESTORING`、`CLOSING` and `VERIFIED`; each mode enters `SESSION_SETTING` before assigning `connection.autocommit`, so a lost acknowledgement／read timeout／write timeout from that session statement is always `UNKNOWN` even if later rollback succeeds. Parse／validation and definite local before-send failures remain `FAILED`; a definite server rejection can be `FAILED` only when the same connection remains usable and rollback is confirmed, every commit ambiguity remains `UNKNOWN`, and any mandatory cleanup uncertainty is `UNKNOWN`；failure JSON records `operation_phase` and `rollback_confirmed`, and the runner never auto-retries `UNKNOWN`；
-- malformed or missing arguments use the same structured failure path; `--help` alone may retain argparse's normal zero-exit text. Parse, validation, execution, verification, rollback, restoration or close failure produces exactly one nonzero JSON outcome after all mandatory cleanup attempts, with the password redacted and no traceback；
+- malformed or missing arguments use the same structured failure path; exact lone `-h` or lone `--help` may retain argparse's normal zero-exit text, but a help token mixed with any other argument is rejected before `parse_args()` and produces one structured nonzero JSON outcome without plaintext help. Parse, validation, execution, verification, rollback, restoration or close failure produces exactly one nonzero JSON outcome after all mandatory cleanup attempts, with the password redacted and no traceback；
 - successful JSON is emitted only after rollback／restoration／close finalization and includes mode, table, rows, warnings, rejected rows, seconds, rows_per_second, status deltas, source manifest and target manifest；
 - Connector/Python `executemany()` is described as a parameterized driver batch whose exact rewrite must be checked for the pinned connector; it is not mislabeled as proof of server-side prepared statements。
 
