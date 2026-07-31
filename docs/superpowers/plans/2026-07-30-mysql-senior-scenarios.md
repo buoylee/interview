@@ -1894,7 +1894,7 @@ Required questions:
 - Primary, shared replica, dedicated reporting replica or analytical store；
 - OLTP P95 budget and export completion SLA。
 
-State the hard boundary: `(created_at,id)` high watermark excludes later inserts, but cannot freeze updates／deletes to rows already inside the boundary. Mutable as-of correctness requires versioned history, a database／replica snapshot, CDC-built versioned read model, analytical snapshot, or a deliberately bounded MVCC snapshot with its undo／purge cost.
+State the hard boundary precisely: `(created_at,id)` is only a query upper bound. It is a complete membership boundary only when those cursor keys are immutable and insertion-monotone, or when job membership was materialized／snapshotted. A later **backdated** or otherwise in-bound INSERT with tuple `<= high` can appear in a new ReadView after resume; the tuple also cannot freeze UPDATE／DELETE of existing rows. Production must require monotone immutable cursor keys, materialized membership, versioned history, a database／replica snapshot, CDC-built versioned read model, analytical snapshot, or a deliberately bounded MVCC snapshot with its undo／purge cost.
 
 - [ ] **Step 3: Define the fixed S schema and query order**
 
@@ -1927,7 +1927,7 @@ CREATE TABLE oltp_probe (
 ) ENGINE=InnoDB;
 ```
 
-Seed `100000` orders, exactly three items per order and `10000` probe rows. Export order is immutable `(created_at ASC,id ASC)`; high watermark is the maximum tuple captured at job creation.
+Seed `100000` orders, exactly three items per order and `10000` probe rows. Export order is immutable `(created_at ASC,id ASC)`; high watermark is the maximum tuple captured at job creation. For Task 10, freeze `report_order` and `report_item` after seed, allow writes only to `oltp_probe`, reject an attempted backdated INSERT／UPDATE／DELETE, and compare pre/post source fingerprints. Without this S-only freeze, a resumed new ReadView does not prove fixed membership or values.
 
 Use this complete six-digit seed mapping:
 
@@ -2006,13 +2006,18 @@ job-<run-id>/
 ```json
 {
   "job_id": "run-id",
+  "connection_id": 123,
   "high_created_at": "2026-01-02 03:46:40.000000",
   "high_id": 100000,
+  "expected_rows": 100000,
   "last_created_at": "1970-01-01 00:00:00.000000",
   "last_id": 0,
   "next_part": 1,
   "rows_written": 0,
-  "status": "RUNNING"
+  "active_seconds": 0.0,
+  "parts": [],
+  "status": "RUNNING",
+  "abort_reason": null
 }
 ```
 
@@ -2020,10 +2025,15 @@ Artifact invariants:
 
 - each part is produced as `.tmp`, flushed／fsynced and atomically renamed；
 - checkpoint advances only after the part rename；
-- a process interruption after part rename but before checkpoint rewrites the same deterministic part number on resume, so it cannot duplicate output；this lab does not claim power-loss durability for a parent directory that was not fsynced；
-- final publish concatenates ordered parts into `artifact.tsv.tmp`, verifies row count and SHA-256, then `os.replace()` publishes `artifact.tsv`；
-- `ABORTED` keeps state and parts; `SUCCEEDED` requires final artifact plus result manifest；
+- every checkpoint appends one ordered part manifest entry containing number, name, rows, SHA-256, first cursor and last cursor；
+- resume verifies every checkpointed part's bytes, rows, hash, cursor order and contiguity; only the exact deterministic `next_part` file may exist uncheckpointed after rename-before-checkpoint, and it is rewritten from the old cursor；
+- missing, same-line-count corruption, stale extra, orphan or gapped parts fail before publish；
+- final publish consumes **only** the ordered checkpoint manifest, rechecks every part, requires `rows_written=expected_rows` and `last_cursor=high`, then writes／fsyncs／replaces `artifact.tsv`；
+- `SUCCEEDED` fast path requires state, result and artifact, and revalidates artifact row count／SHA against state and result instead of returning stale success；
+- `ABORTED` keeps state and parts; cumulative `active_seconds` survives planned resume, so `rows_per_active_second` never divides cumulative rows by only the latest invocation；
 - readers never consume `.tmp` or partial parts as a complete report。
+
+Internal manifest checks prove artifact construction integrity. Task 10 must still perform an independent external audit: buffered／chunked／resumed exact SHA equality, distinct keys and business aggregate fingerprints. The lab does not claim power-loss durability for parent directories that were not fsynced.
 
 - [ ] **Step 5: Embed exact runner interfaces**
 
@@ -2032,15 +2042,20 @@ The document contains one copyable `$MYSQL_SCENARIO_RUN_DIR/export_runner.py` bl
 ```text
 --mode buffered|chunked|oltp
 --job-dir /private/tmp/mysql-senior-scenarios.<suffix>/job-<run-id>
+--abort-file /private/tmp/mysql-senior-scenarios.<suffix>/abort-<run-id>.json
+--metrics-file /private/tmp/mysql-senior-scenarios.<suffix>/metrics-<run-id>.json
 --batch-size 1000
 --sleep-ms 20
 --max-batches 0
+--min-free-bytes 5419909120
 --duration-seconds 60
 --threads 4
---host 127.0.0.1 --port 3306 --user root --password root
+--host 127.0.0.1 --port 3306 --user root --password-env MYSQL_PASSWORD
 ```
 
-Use a complete implementation with these exact functions and types. The code below is the required behavior; the scenario may improve comments, but not change state fields, query order or safety gates:
+Interface migration from the earlier draft is intentional and binding: `job_dir=job-<run-id>` maps to `state.job_id=<run-id>`; empty runtime suffix／run ID are rejected; state gains expected-boundary and part-manifest metadata; `seconds`／`rows_per_second` become cumulative `active_seconds`／`rows_per_active_second`; passwords come only from the named environment variable. Consumers and Task 10 must use these corrected names.
+
+Use a complete implementation with these exact functions and types. The code below is the one canonical runner source; the scenario may improve comments, but not change state fields, query order, manifest validation or safety gates:
 
 ```python
 def capture_high_watermark(cursor) -> tuple[str, int]:
@@ -2055,14 +2070,23 @@ def fetch_batch(cursor, low: tuple[str, int], high: tuple[str, int], limit: int)
 def write_part(path: Path, rows: list[tuple]) -> tuple[int, str]:
     """Atomically write canonical TSV and return row count plus SHA-256."""
 
-def run_chunked(connection, job_dir: Path, batch_size: int, sleep_ms: int, max_batches: int) -> dict:
+def validate_manifest(job_dir: Path, state: dict, allow_pending: bool) -> list[dict]:
+    """Recheck ordered checkpointed parts and reject missing/stale/corrupt parts."""
+
+def publish(job_dir: Path, state: dict) -> tuple[int, str]:
+    """Publish exactly the verified manifest after expected boundary completion."""
+
+def validate_success(job_dir: Path, state: dict, result: dict) -> dict:
+    """Recheck artifact rows/SHA against persisted success state and result."""
+
+def run_chunked(connection, job_dir: Path, batch_size: int, sleep_ms: int, max_batches: int, abort_file: Path | None, min_free_bytes: int) -> dict:
     """Create or resume state, write deterministic parts and atomically publish on completion."""
 
 def run_buffered(connection, job_dir: Path) -> dict:
     """Use one buffered full-boundary query, fetch all rows, write one artifact and report max RSS."""
 
-def run_oltp(config: dict, duration: int, threads: int) -> dict:
-    """Run random point SELECT plus autocommit UPDATE on oltp_probe and report count,p50,p95,p99,error count."""
+def run_oltp(config: dict, duration: int, threads: int, metrics_file: Path | None, window_seconds: float) -> dict:
+    """Run OLTP probes, atomically emit live window metrics, and return final percentiles."""
 ```
 
 ```python
@@ -2074,8 +2098,10 @@ import hashlib
 import json
 import math
 import os
+import queue
 import random
 import resource
+import shutil
 import sys
 import time
 from datetime import datetime
@@ -2086,6 +2112,7 @@ import mysql.connector
 
 
 EPOCH = "1970-01-01 00:00:00.000000"
+RUNTIME_PREFIX = "mysql-senior-scenarios."
 EXPORT_SQL = """
 SELECT o.created_at, o.id, o.tenant_id, o.status,
        SUM(i.qty * i.unit_price) AS total_amount,
@@ -2111,10 +2138,19 @@ ORDER BY o.created_at, o.id
 """
 
 
+class StructuredArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise ValueError(message)
+
+
 def timestamp_text(value) -> str:
     if isinstance(value, datetime):
         return value.strftime("%Y-%m-%d %H:%M:%S.%f")
     return str(value)
+
+
+def cursor_value(value) -> tuple[str, int]:
+    return str(value[0]), int(value[1])
 
 
 def canonical_line(row: tuple) -> bytes:
@@ -2144,6 +2180,15 @@ def capture_high_watermark(cursor) -> tuple[str, int]:
     return str(row[0]), int(row[1])
 
 
+def count_boundary_rows(cursor, high: tuple[str, int]) -> int:
+    cursor.execute(
+        "SELECT COUNT(*) FROM report_order "
+        "WHERE (created_at,id) > (%s,%s) AND (created_at,id) <= (%s,%s)",
+        (EPOCH, 0, *high),
+    )
+    return int(cursor.fetchone()[0])
+
+
 def atomic_json(path: Path, value: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + ".tmp")
@@ -2153,6 +2198,13 @@ def atomic_json(path: Path, value: dict) -> None:
         handle.flush()
         os.fsync(handle.fileno())
     os.replace(temporary, path)
+
+
+def read_json(path: Path) -> dict:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise RuntimeError(f"{path.name} is not a JSON object")
+    return value
 
 
 def fetch_batch(
@@ -2182,30 +2234,240 @@ def write_part(path: Path, rows: list[tuple]) -> tuple[int, str]:
     return count, digest.hexdigest()
 
 
+def part_file_metadata(path: Path) -> dict:
+    digest = hashlib.sha256()
+    rows = 0
+    first_cursor = None
+    last_cursor = None
+    with path.open("rb") as handle:
+        for line in handle:
+            if not line.endswith(b"\n"):
+                raise RuntimeError(f"{path.name} has a noncanonical final line")
+            fields = line[:-1].split(b"\t")
+            if len(fields) != 6:
+                raise RuntimeError(f"{path.name} has a noncanonical column count")
+            current = (fields[0].decode("utf-8"), int(fields[1]))
+            if last_cursor is not None and current <= last_cursor:
+                raise RuntimeError(f"{path.name} cursor order is not strictly increasing")
+            first_cursor = first_cursor or current
+            last_cursor = current
+            digest.update(line)
+            rows += 1
+    if rows == 0:
+        raise RuntimeError(f"{path.name} is empty")
+    return {
+        "rows": rows,
+        "sha256": digest.hexdigest(),
+        "first_cursor": list(first_cursor),
+        "last_cursor": list(last_cursor),
+    }
+
+
+def file_rows_sha(path: Path) -> tuple[int, str]:
+    digest = hashlib.sha256()
+    rows = 0
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+            rows += chunk.count(b"\n")
+    return rows, digest.hexdigest()
+
+
 def max_rss_bytes() -> int:
     value = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return int(value if sys.platform == "darwin" else value * 1024)
 
 
-def publish(job_dir: Path, expected_rows: int) -> tuple[int, str]:
+def runtime_root(path: Path) -> Path:
+    resolved = path.resolve()
+    private_tmp = Path("/private/tmp").resolve()
+    if (
+        resolved.parent != private_tmp
+        or not resolved.name.startswith(RUNTIME_PREFIX)
+        or resolved.name == RUNTIME_PREFIX
+    ):
+        raise ValueError("runtime directory is outside the allowed nonempty prefix")
+    return resolved
+
+
+def validated_job_dir(path: Path) -> Path:
+    resolved = path.resolve()
+    root = runtime_root(resolved.parent)
+    if resolved.parent != root or not resolved.name.startswith("job-") or resolved.name == "job-":
+        raise ValueError("job directory must be an immediate job-<run-id> child")
+    return resolved
+
+
+def job_id_from_dir(job_dir: Path) -> str:
+    name = validated_job_dir(job_dir).name
+    return name[len("job-") :]
+
+
+def validated_runtime_file(path: Path, prefix: str) -> Path:
+    resolved = path.resolve()
+    root = runtime_root(resolved.parent)
+    if resolved.parent != root or not resolved.name.startswith(prefix):
+        raise ValueError(f"runtime file must start with {prefix}")
+    return resolved
+
+
+def validate_manifest(job_dir: Path, state: dict, allow_pending: bool) -> list[dict]:
+    parts = state.get("parts")
+    if not isinstance(parts, list):
+        raise RuntimeError("state parts is not a list")
+    expected_names = set()
+    total_rows = 0
+    previous = (EPOCH, 0)
+    validated = []
+    for expected_number, entry in enumerate(parts, 1):
+        expected_name = f"part-{expected_number:06d}.tsv"
+        if (
+            int(entry.get("number", -1)) != expected_number
+            or entry.get("name") != expected_name
+        ):
+            raise RuntimeError("part manifest has a gap or name mismatch")
+        path = job_dir / "parts" / expected_name
+        if not path.is_file():
+            raise RuntimeError(f"checkpointed part missing: {expected_name}")
+        observed = part_file_metadata(path)
+        for key in ("rows", "sha256", "first_cursor", "last_cursor"):
+            if observed[key] != entry.get(key):
+                raise RuntimeError(f"checkpointed part mismatch: {expected_name}:{key}")
+        first = cursor_value(entry["first_cursor"])
+        last = cursor_value(entry["last_cursor"])
+        if first <= previous or last < first:
+            raise RuntimeError("part manifest cursor order is invalid")
+        previous = last
+        total_rows += int(entry["rows"])
+        expected_names.add(expected_name)
+        validated.append(entry)
+
+    next_part = int(state.get("next_part", -1))
+    if next_part != len(parts) + 1:
+        raise RuntimeError("next_part does not follow the manifest")
+    actual_names = {
+        path.name for path in (job_dir / "parts").glob("part-*.tsv")
+    } if (job_dir / "parts").exists() else set()
+    allowed_names = set(expected_names)
+    pending_name = f"part-{next_part:06d}.tsv"
+    if allow_pending:
+        allowed_names.add(pending_name)
+    if expected_names - actual_names:
+        raise RuntimeError("one or more checkpointed parts are missing")
+    if actual_names - allowed_names:
+        raise RuntimeError("stale, orphan, or gapped part detected")
+    if total_rows != int(state.get("rows_written", -1)):
+        raise RuntimeError("manifest rows do not match rows_written")
+    expected_rows = int(state.get("expected_rows", -1))
+    if expected_rows < total_rows:
+        raise RuntimeError("rows_written exceeds expected boundary rows")
+    expected_last = previous if parts else (EPOCH, 0)
+    if expected_last != (
+        str(state.get("last_created_at")),
+        int(state.get("last_id", -1)),
+    ):
+        raise RuntimeError("state last cursor does not match manifest")
+    return validated
+
+
+def publish(job_dir: Path, state: dict) -> tuple[int, str]:
+    parts = validate_manifest(job_dir, state, allow_pending=False)
+    expected_rows = int(state["expected_rows"])
+    if int(state["rows_written"]) != expected_rows:
+        raise RuntimeError("checkpoint rows do not equal expected boundary rows")
+    if (
+        str(state["last_created_at"]),
+        int(state["last_id"]),
+    ) != (
+        str(state["high_created_at"]),
+        int(state["high_id"]),
+    ):
+        raise RuntimeError("last cursor does not equal the high watermark")
+
     artifact = job_dir / "artifact.tsv"
     temporary = job_dir / "artifact.tsv.tmp"
-    digest = hashlib.sha256()
-    rows = 0
-    with temporary.open("wb") as output:
-        for part in sorted((job_dir / "parts").glob("part-*.tsv")):
-            with part.open("rb") as source:
-                for chunk in iter(lambda: source.read(1024 * 1024), b""):
-                    output.write(chunk)
-                    digest.update(chunk)
-                    rows += chunk.count(b"\n")
-        output.flush()
-        os.fsync(output.fileno())
-    if rows != expected_rows:
+    artifact_digest = hashlib.sha256()
+    artifact_rows = 0
+    try:
+        with temporary.open("wb") as output:
+            for entry in parts:
+                part_digest = hashlib.sha256()
+                part_rows = 0
+                with (job_dir / "parts" / entry["name"]).open("rb") as source:
+                    for line in source:
+                        output.write(line)
+                        artifact_digest.update(line)
+                        part_digest.update(line)
+                        part_rows += line.count(b"\n")
+                if (
+                    part_rows != int(entry["rows"])
+                    or part_digest.hexdigest() != entry["sha256"]
+                ):
+                    raise RuntimeError(f"part changed during publish: {entry['name']}")
+                artifact_rows += part_rows
+            output.flush()
+            os.fsync(output.fileno())
+        if artifact_rows != expected_rows:
+            raise RuntimeError("artifact rows do not equal expected boundary rows")
+        os.replace(temporary, artifact)
+    except Exception:
         temporary.unlink(missing_ok=True)
-        raise RuntimeError(f"artifact rows {rows} != checkpoint rows {expected_rows}")
-    os.replace(temporary, artifact)
-    return rows, digest.hexdigest()
+        raise
+    return artifact_rows, artifact_digest.hexdigest()
+
+
+def validate_success(job_dir: Path, state: dict, result: dict) -> dict:
+    artifact = job_dir / "artifact.tsv"
+    if state.get("status") != "SUCCEEDED" or result.get("status") != "SUCCEEDED":
+        raise RuntimeError("success files do not contain SUCCEEDED")
+    if not artifact.is_file():
+        raise RuntimeError("SUCCEEDED artifact is missing")
+    rows, sha256 = file_rows_sha(artifact)
+    expected_rows = int(state["expected_rows"])
+    state_high = (str(state["high_created_at"]), int(state["high_id"]))
+    state_last = (str(state["last_created_at"]), int(state["last_id"]))
+    if (
+        rows != expected_rows
+        or int(state["rows_written"]) != expected_rows
+        or int(result.get("rows", -1)) != expected_rows
+        or result.get("sha256") != sha256
+        or state_last != state_high
+        or cursor_value(result.get("high_cursor", ("", -1))) != state_high
+        or cursor_value(result.get("last_cursor", ("", -1))) != state_last
+    ):
+        raise RuntimeError("SUCCEEDED artifact does not match state/result")
+    return result
+
+
+def stop_reason(abort_file: Path | None, job_dir: Path, min_free_bytes: int) -> str | None:
+    if abort_file is not None and abort_file.exists():
+        try:
+            return str(read_json(abort_file).get("reason") or "external gate")
+        except Exception:
+            return "unreadable external abort signal"
+    if min_free_bytes and shutil.disk_usage(job_dir.parent).free < min_free_bytes:
+        return f"free disk below {min_free_bytes}"
+    return None
+
+
+def aborted_result(state: dict, reason: str, active_seconds: float) -> dict:
+    state["status"] = "ABORTED"
+    state["abort_reason"] = reason
+    state["active_seconds"] = active_seconds
+    return {
+        "status": "ABORTED",
+        "mode": "chunked",
+        "reason": reason,
+        "rows": int(state["rows_written"]),
+        "active_seconds": active_seconds,
+        "rows_per_active_second": (
+            int(state["rows_written"]) / active_seconds if active_seconds else 0.0
+        ),
+        "max_rss_bytes": max_rss_bytes(),
+        "high_cursor": [state["high_created_at"], state["high_id"]],
+        "last_cursor": [state["last_created_at"], state["last_id"]],
+        "parts": len(state["parts"]),
+    }
 
 
 def run_chunked(
@@ -2214,31 +2476,58 @@ def run_chunked(
     batch_size: int,
     sleep_ms: int,
     max_batches: int,
+    abort_file: Path | None,
+    min_free_bytes: int,
 ) -> dict:
     state_path = job_dir / "state.json"
     result_path = job_dir / "result.json"
     cursor = connection.cursor()
     if state_path.exists():
-        state = json.loads(state_path.read_text(encoding="utf-8"))
-        if state["status"] == "SUCCEEDED":
-            return json.loads(result_path.read_text(encoding="utf-8"))
+        state = read_json(state_path)
+        if state.get("job_id") != job_id_from_dir(job_dir):
+            raise RuntimeError("state job_id does not match job directory")
+        if state.get("status") == "SUCCEEDED":
+            if not result_path.is_file():
+                raise RuntimeError("SUCCEEDED result.json is missing")
+            return validate_success(job_dir, state, read_json(result_path))
+        if state.get("status") not in ("RUNNING", "ABORTED"):
+            raise RuntimeError("state status is not resumable")
+        validate_manifest(job_dir, state, allow_pending=True)
         state["status"] = "RUNNING"
+        state["abort_reason"] = None
+        state["connection_id"] = int(connection.connection_id)
     else:
         high_created_at, high_id = capture_high_watermark(cursor)
+        expected_rows = count_boundary_rows(cursor, (high_created_at, high_id))
         state = {
-            "job_id": job_dir.name,
+            "job_id": job_id_from_dir(job_dir),
+            "connection_id": int(connection.connection_id),
             "high_created_at": high_created_at,
             "high_id": high_id,
+            "expected_rows": expected_rows,
             "last_created_at": EPOCH,
             "last_id": 0,
             "next_part": 1,
             "rows_written": 0,
+            "active_seconds": 0.0,
+            "parts": [],
             "status": "RUNNING",
+            "abort_reason": None,
         }
     atomic_json(state_path, state)
     started = time.perf_counter()
+    base_active = float(state["active_seconds"])
     batches_this_run = 0
     while True:
+        reason = stop_reason(abort_file, job_dir, min_free_bytes)
+        if reason is not None:
+            result = aborted_result(
+                state, reason, base_active + (time.perf_counter() - started)
+            )
+            atomic_json(state_path, state)
+            cursor.close()
+            return result
+
         rows = fetch_batch(
             cursor,
             (state["last_created_at"], int(state["last_id"])),
@@ -2246,53 +2535,51 @@ def run_chunked(
             batch_size,
         )
         if not rows:
-            artifact_rows, artifact_sha256 = publish(
-                job_dir, int(state["rows_written"])
-            )
-            elapsed = time.perf_counter() - started
+            state["active_seconds"] = base_active + (time.perf_counter() - started)
+            artifact_rows, artifact_sha256 = publish(job_dir, state)
             result = {
                 "status": "SUCCEEDED",
                 "mode": "chunked",
                 "rows": artifact_rows,
                 "sha256": artifact_sha256,
-                "seconds": elapsed,
-                "rows_per_second": artifact_rows / elapsed,
+                "active_seconds": state["active_seconds"],
+                "rows_per_active_second": (
+                    artifact_rows / state["active_seconds"]
+                    if state["active_seconds"] else 0.0
+                ),
                 "max_rss_bytes": max_rss_bytes(),
                 "high_cursor": [state["high_created_at"], state["high_id"]],
                 "last_cursor": [state["last_created_at"], state["last_id"]],
-                "parts": int(state["next_part"]) - 1,
+                "parts": len(state["parts"]),
             }
             atomic_json(result_path, result)
             state["status"] = "SUCCEEDED"
             atomic_json(state_path, state)
             cursor.close()
-            return result
+            return validate_success(job_dir, state, result)
 
         part_number = int(state["next_part"])
-        part_path = job_dir / "parts" / f"part-{part_number:06d}.tsv"
-        part_rows, _ = write_part(part_path, rows)
-        last = rows[-1]
-        state["last_created_at"] = timestamp_text(last[0])
-        state["last_id"] = int(last[1])
+        part_name = f"part-{part_number:06d}.tsv"
+        part_path = job_dir / "parts" / part_name
+        part_rows, part_sha256 = write_part(part_path, rows)
+        entry = {
+            "number": part_number,
+            "name": part_name,
+            "rows": part_rows,
+            "sha256": part_sha256,
+            "first_cursor": [timestamp_text(rows[0][0]), int(rows[0][1])],
+            "last_cursor": [timestamp_text(rows[-1][0]), int(rows[-1][1])],
+        }
+        state["parts"].append(entry)
+        state["last_created_at"], state["last_id"] = cursor_value(entry["last_cursor"])
         state["next_part"] = part_number + 1
         state["rows_written"] = int(state["rows_written"]) + part_rows
+        state["active_seconds"] = base_active + (time.perf_counter() - started)
         atomic_json(state_path, state)
         batches_this_run += 1
         if max_batches and batches_this_run >= max_batches:
-            state["status"] = "ABORTED"
+            result = aborted_result(state, "max_batches", state["active_seconds"])
             atomic_json(state_path, state)
-            elapsed = time.perf_counter() - started
-            result = {
-                "status": "ABORTED",
-                "mode": "chunked",
-                "rows": state["rows_written"],
-                "seconds": elapsed,
-                "rows_per_second": state["rows_written"] / elapsed,
-                "max_rss_bytes": max_rss_bytes(),
-                "high_cursor": [state["high_created_at"], state["high_id"]],
-                "last_cursor": [state["last_created_at"], state["last_id"]],
-                "parts": int(state["next_part"]) - 1,
-            }
             cursor.close()
             return result
         if sleep_ms:
@@ -2300,40 +2587,71 @@ def run_chunked(
 
 
 def run_buffered(connection, job_dir: Path) -> dict:
-    job_dir.mkdir(parents=True, exist_ok=False)
+    state_path = job_dir / "state.json"
+    result_path = job_dir / "result.json"
+    if job_dir.exists():
+        if state_path.is_file() and result_path.is_file():
+            state = read_json(state_path)
+            if state.get("job_id") != job_id_from_dir(job_dir):
+                raise RuntimeError("state job_id does not match job directory")
+            return validate_success(job_dir, state, read_json(result_path))
+        raise RuntimeError("buffered mode requires a fresh job directory")
+    job_dir.mkdir(parents=True)
     cursor = connection.cursor(buffered=True)
     high = capture_high_watermark(cursor)
+    expected_rows = count_boundary_rows(cursor, high)
+    state = {
+        "job_id": job_id_from_dir(job_dir),
+        "connection_id": int(connection.connection_id),
+        "high_created_at": high[0],
+        "high_id": high[1],
+        "expected_rows": expected_rows,
+        "last_created_at": EPOCH,
+        "last_id": 0,
+        "next_part": 1,
+        "rows_written": 0,
+        "active_seconds": 0.0,
+        "parts": [],
+        "status": "RUNNING",
+        "abort_reason": None,
+    }
+    atomic_json(state_path, state)
     started = time.perf_counter()
     cursor.execute(BUFFERED_SQL, (EPOCH, 0, *high))
     rows = list(cursor.fetchall())
-    artifact_rows, artifact_sha256 = write_part(
-        job_dir / "artifact.tsv", rows
-    )
+    artifact_rows, artifact_sha256 = write_part(job_dir / "artifact.tsv", rows)
+    if artifact_rows != expected_rows:
+        raise RuntimeError("buffered rows do not equal expected boundary rows")
+    last_cursor = [timestamp_text(rows[-1][0]), int(rows[-1][1])]
+    if cursor_value(last_cursor) != cursor_value(high):
+        raise RuntimeError("buffered last cursor does not equal high watermark")
     cursor.close()
-    elapsed = time.perf_counter() - started
+    active_seconds = time.perf_counter() - started
     result = {
         "status": "SUCCEEDED",
         "mode": "buffered",
         "rows": artifact_rows,
         "sha256": artifact_sha256,
-        "seconds": elapsed,
-        "rows_per_second": artifact_rows / elapsed,
+        "active_seconds": active_seconds,
+        "rows_per_active_second": (
+            artifact_rows / active_seconds if active_seconds else 0.0
+        ),
         "max_rss_bytes": max_rss_bytes(),
         "high_cursor": [high[0], high[1]],
-        "last_cursor": [timestamp_text(rows[-1][0]), int(rows[-1][1])],
+        "last_cursor": last_cursor,
     }
-    atomic_json(job_dir / "result.json", result)
-    atomic_json(job_dir / "state.json", {
-        "job_id": job_dir.name,
-        "high_created_at": high[0],
-        "high_id": high[1],
-        "last_created_at": result["last_cursor"][0],
-        "last_id": result["last_cursor"][1],
-        "next_part": 1,
-        "rows_written": artifact_rows,
-        "status": "SUCCEEDED",
-    })
-    return result
+    atomic_json(result_path, result)
+    state.update(
+        {
+            "last_created_at": last_cursor[0],
+            "last_id": last_cursor[1],
+            "rows_written": artifact_rows,
+            "active_seconds": active_seconds,
+            "status": "SUCCEEDED",
+        }
+    )
+    atomic_json(state_path, state)
+    return validate_success(job_dir, state, result)
 
 
 def percentile(values: list[float], fraction: float) -> float:
@@ -2344,117 +2662,193 @@ def percentile(values: list[float], fraction: float) -> float:
     return ordered[index]
 
 
-def oltp_worker(config: dict, duration: int, seed: int) -> tuple[list[float], int]:
+def oltp_worker(
+    config: dict,
+    deadline: float,
+    seed: int,
+    events: queue.SimpleQueue,
+) -> None:
     connection = mysql.connector.connect(**config)
     connection.autocommit = True
     cursor = connection.cursor()
     randomizer = random.Random(seed)
-    deadline = time.perf_counter() + duration
-    latencies: list[float] = []
-    errors = 0
-    while time.perf_counter() < deadline:
-        probe_id = randomizer.randint(1, 10000)
-        started = time.perf_counter_ns()
-        try:
-            cursor.execute("SELECT counter FROM oltp_probe WHERE id=%s", (probe_id,))
-            cursor.fetchone()
-            cursor.execute(
-                "UPDATE oltp_probe SET counter=counter+1 WHERE id=%s",
-                (probe_id,),
-            )
-            latencies.append((time.perf_counter_ns() - started) / 1_000_000)
-        except Exception:
-            errors += 1
-    cursor.close()
-    connection.close()
-    return latencies, errors
+    try:
+        while time.perf_counter() < deadline:
+            probe_id = randomizer.randint(1, 10000)
+            started = time.perf_counter_ns()
+            try:
+                cursor.execute("SELECT counter FROM oltp_probe WHERE id=%s", (probe_id,))
+                cursor.fetchone()
+                cursor.execute(
+                    "UPDATE oltp_probe SET counter=counter+1 WHERE id=%s",
+                    (probe_id,),
+                )
+                events.put(((time.perf_counter_ns() - started) / 1_000_000, False))
+            except Exception:
+                events.put((0.0, True))
+    finally:
+        cursor.close()
+        connection.close()
 
 
-def run_oltp(config: dict, duration: int, threads: int) -> dict:
+def run_oltp(
+    config: dict,
+    duration: int,
+    threads: int,
+    metrics_file: Path | None,
+    window_seconds: float,
+) -> dict:
+    started = time.perf_counter()
+    deadline = started + duration
+    next_window = started + window_seconds
+    events: queue.SimpleQueue = queue.SimpleQueue()
+    all_latencies = []
+    all_errors = 0
+    window_latencies = []
+    window_errors = 0
+    sequence = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as pool:
-        results = list(
-            pool.map(
-                lambda seed: oltp_worker(config, duration, seed),
-                range(1, threads + 1),
-            )
-        )
-    latencies = [value for values, _ in results for value in values]
-    errors = sum(error_count for _, error_count in results)
-    return {
-        "status": "SUCCEEDED" if errors == 0 else "FAILED",
+        futures = [
+            pool.submit(oltp_worker, config, deadline, seed, events)
+            for seed in range(1, threads + 1)
+        ]
+        while True:
+            while True:
+                try:
+                    latency, is_error = events.get_nowait()
+                except queue.Empty:
+                    break
+                if is_error:
+                    all_errors += 1
+                    window_errors += 1
+                else:
+                    all_latencies.append(latency)
+                    window_latencies.append(latency)
+            now = time.perf_counter()
+            if now >= next_window:
+                sequence += 1
+                if metrics_file is not None:
+                    atomic_json(
+                        metrics_file,
+                        {
+                            "status": "RUNNING",
+                            "window_seq": sequence,
+                            "window_operations": len(window_latencies),
+                            "window_errors": window_errors,
+                            "window_p95_ms": percentile(window_latencies, 0.95),
+                            "operations": len(all_latencies),
+                            "errors": all_errors,
+                        },
+                    )
+                window_latencies = []
+                window_errors = 0
+                next_window = now + window_seconds
+            if all(future.done() for future in futures) and events.empty():
+                break
+            time.sleep(0.02)
+        for future in futures:
+            future.result()
+    result = {
+        "status": "SUCCEEDED" if all_errors == 0 else "FAILED",
         "mode": "oltp",
-        "operations": len(latencies),
-        "errors": errors,
-        "p50_ms": percentile(latencies, 0.50),
-        "p95_ms": percentile(latencies, 0.95),
-        "p99_ms": percentile(latencies, 0.99),
+        "operations": len(all_latencies),
+        "errors": all_errors,
+        "p50_ms": percentile(all_latencies, 0.50),
+        "p95_ms": percentile(all_latencies, 0.95),
+        "p99_ms": percentile(all_latencies, 0.99),
     }
+    if metrics_file is not None:
+        atomic_json(metrics_file, {**result, "window_seq": sequence + 1})
+    return result
 
 
-def validated_job_dir(path: Path) -> Path:
-    resolved = path.resolve()
-    private_tmp = Path("/private/tmp").resolve()
-    runtime_root = resolved.parent
-    if (
-        runtime_root.parent != private_tmp
-        or not runtime_root.name.startswith("mysql-senior-scenarios.")
-        or not resolved.name.startswith("job-")
-    ):
-        raise ValueError("job directory is outside the allowed runtime prefix")
-    return resolved
+def require_password(env_name: str) -> str:
+    value = os.environ.get(env_name)
+    if value is None:
+        raise ValueError(f"password environment variable is not set: {env_name}")
+    return value
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=("buffered", "chunked", "oltp"), required=True)
-    parser.add_argument("--job-dir", type=Path)
-    parser.add_argument("--batch-size", type=int, default=1000)
-    parser.add_argument("--sleep-ms", type=int, default=20)
-    parser.add_argument("--max-batches", type=int, default=0)
-    parser.add_argument("--duration-seconds", type=int, default=60)
-    parser.add_argument("--threads", type=int, default=4)
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=3306)
-    parser.add_argument("--user", default="root")
-    parser.add_argument("--password", required=True)
-    args = parser.parse_args()
-
-    if not 1 <= args.batch_size <= 5000:
-        raise SystemExit("--batch-size must be in 1..5000")
-    if not 0 <= args.sleep_ms <= 1000:
-        raise SystemExit("--sleep-ms must be in 0..1000")
-    if not 1 <= args.threads <= 16:
-        raise SystemExit("--threads must be in 1..16")
-    if args.duration_seconds < 1 or args.max_batches < 0:
-        raise SystemExit("duration must be positive and max-batches nonnegative")
-
-    config = {
-        "host": args.host,
-        "port": args.port,
-        "user": args.user,
-        "password": args.password,
-        "database": "mysql_senior_scenarios",
-    }
     try:
+        parser = StructuredArgumentParser()
+        parser.add_argument("--mode", choices=("buffered", "chunked", "oltp"), required=True)
+        parser.add_argument("--job-dir", type=Path)
+        parser.add_argument("--abort-file", type=Path)
+        parser.add_argument("--metrics-file", type=Path)
+        parser.add_argument("--batch-size", type=int, default=1000)
+        parser.add_argument("--sleep-ms", type=int, default=20)
+        parser.add_argument("--max-batches", type=int, default=0)
+        parser.add_argument("--min-free-bytes", type=int, default=0)
+        parser.add_argument("--duration-seconds", type=int, default=60)
+        parser.add_argument("--window-seconds", type=float, default=1.0)
+        parser.add_argument("--threads", type=int, default=4)
+        parser.add_argument("--host", default="127.0.0.1")
+        parser.add_argument("--port", type=int, default=3306)
+        parser.add_argument("--user", default="root")
+        parser.add_argument("--password-env", default="MYSQL_PASSWORD")
+        args = parser.parse_args()
+
+        if not 1 <= args.batch_size <= 5000:
+            raise ValueError("--batch-size must be in 1..5000")
+        if not 0 <= args.sleep_ms <= 1000:
+            raise ValueError("--sleep-ms must be in 0..1000")
+        if not 1 <= args.threads <= 16:
+            raise ValueError("--threads must be in 1..16")
+        if (
+            args.duration_seconds < 1
+            or args.max_batches < 0
+            or args.min_free_bytes < 0
+            or not 0.1 <= args.window_seconds <= 10.0
+        ):
+            raise ValueError("duration/max-batches/disk/window argument is invalid")
+
+        config = {
+            "host": args.host,
+            "port": args.port,
+            "user": args.user,
+            "password": require_password(args.password_env),
+            "database": "mysql_senior_scenarios",
+        }
+        connection = None
         if args.mode == "oltp":
-            result = run_oltp(config, args.duration_seconds, args.threads)
+            metrics_file = (
+                validated_runtime_file(args.metrics_file, "metrics-")
+                if args.metrics_file is not None else None
+            )
+            result = run_oltp(
+                config,
+                args.duration_seconds,
+                args.threads,
+                metrics_file,
+                args.window_seconds,
+            )
         else:
             if args.job_dir is None:
                 raise ValueError("--job-dir is required for export modes")
             job_dir = validated_job_dir(args.job_dir)
-            connection = mysql.connector.connect(**config)
-            if args.mode == "buffered":
-                result = run_buffered(connection, job_dir)
-            else:
-                job_dir.mkdir(parents=True, exist_ok=True)
-                result = run_chunked(
-                    connection,
-                    job_dir,
-                    args.batch_size,
-                    args.sleep_ms,
-                    args.max_batches,
-                )
-            connection.close()
+            abort_file = (
+                validated_runtime_file(args.abort_file, "abort-")
+                if args.abort_file is not None else None
+            )
+            try:
+                connection = mysql.connector.connect(**config)
+                if args.mode == "buffered":
+                    result = run_buffered(connection, job_dir)
+                else:
+                    job_dir.mkdir(parents=True, exist_ok=True)
+                    result = run_chunked(
+                        connection,
+                        job_dir,
+                        args.batch_size,
+                        args.sleep_ms,
+                        args.max_batches,
+                        abort_file,
+                        args.min_free_bytes,
+                    )
+            finally:
+                if connection is not None:
+                    connection.close()
         print(json.dumps(result, sort_keys=True))
         return 0 if result["status"] in ("SUCCEEDED", "ABORTED") else 2
     except Exception as exc:
@@ -2478,12 +2872,12 @@ if __name__ == "__main__":
 
 Safety／correctness requirements:
 
-- `job_dir.resolve()` must be an immediate `job-*` child of an immediate `/private/tmp/mysql-senior-scenarios.*` runtime directory；
+- `job_dir.resolve()` must be an immediate nonempty `job-<run-id>` child of an immediate `/private/tmp/mysql-senior-scenarios.<nonempty-suffix>` runtime directory；
 - batch size `1..5000`, sleep `0..1000`, threads `1..16`；
 - parameterized SQL for all data values；
 - buffered and chunked artifacts use identical column order and canonical formatting；
-- runner JSON reports rows, SHA-256, seconds, throughput, max RSS, high／last cursors and status；
-- no user password appears in committed result snippets；
+- runner JSON reports rows, SHA-256, cumulative active time／throughput, max RSS, high／last cursors and status；
+- CLI and committed snippets contain only `--password-env MYSQL_PASSWORD`, never a password value；
 - interrupted chunked run is invoked with `--max-batches 3`, returns `ABORTED` with timing／cursor metrics, then the same job directory resumes with `--max-batches 0`；this proves process-level resume behavior, not host power-loss durability。
 
 - [ ] **Step 6: Define performance matrix and stop conditions**
@@ -2496,7 +2890,17 @@ Run groups, each three times with a fresh job directory:
 | buffered | 60 s, 4 threads | one buffered query／artifact |
 | chunked | 60 s, 4 threads | batch=1000, sleep=20 ms |
 
-Start OLTP five seconds before export. Record OLTP p50／p95／p99／errors, export elapsed／rows-per-second／max RSS, MySQL processlist／temporary-table／sort deltas and exact artifact correctness. Stop new batches if OLTP P95 exceeds the pre-run budget, disk reserve is breached, MySQL restarts, errors appear or output fingerprint diverges.
+Start OLTP five seconds before export. The temporary Task 10 controller consumes atomic one-second `window_p95_ms`／`window_errors` plus live disk free bytes. Record final OLTP p50／p95／p99／errors, export active time／rows-per-active-second／max RSS, MySQL processlist／temporary-table／sort deltas and exact artifact correctness.
+
+The numeric S disk gate is fixed before all groups:
+
+```text
+EXPECTED_ARTIFACT_BYTES = expected_rows(100000) * 256 = 25,600,000
+MIN_FREE_BYTES = 2 * EXPECTED_ARTIFACT_BYTES + 5 * 1024^3
+               = 5,419,909,120
+```
+
+The controller checks `MIN_FREE_BYTES` before each group and throughout the live 60-second window. Chunked mode also checks it itself before issuing every new batch. A P95／error／disk breach atomically writes an abort signal: chunked finishes at most its in-flight query/part and persists `ABORTED` before the next fetch; buffered has no batch boundary, so the controller reads its persisted connection ID, issues sanitized `KILL QUERY`, terminates the child if needed and writes separate external `ABORTED` evidence. MySQL restart or fingerprint divergence also invalidates the trial. Never rank `ABORTED` or planned-resume correctness runs as steady-state throughput.
 
 Pre-run hypotheses:
 
@@ -2512,7 +2916,7 @@ Mark S test `READY_UNRUN`, canonical mechanism links `REUSED`, production topolo
 
 Use official MySQL 8.0 documentation for consistent nonlocking reads／ReadView, long transaction effects, cursor／result fetching, temporary tables and replica lag boundaries; use official Connector/Python docs for buffered vs nonbuffered cursors. Cite primary sources.
 
-The 30-second answer must choose async job + fixed boundary + keyset chunks + bounded buffer + checkpoint + atomic artifact, then name OLTP／correctness gates. The 3–5-minute answer must distinguish membership boundary from value snapshot, explain tier placement, backpressure, resume ambiguity, validation, replica／warehouse alternatives and rollback／rebuild.
+The 30-second answer must choose async job + a **conditional** boundary (monotone immutable keys or materialized snapshot) + keyset chunks + bounded buffer + checkpoint + verified atomic artifact, then distinguish internal manifest integrity from the independent cross-mode SHA／business audit and name live OLTP／disk gates. It must not claim `(created_at,id)` alone excludes every later insert or that row-count-only publish proves business correctness. The 3–5-minute answer must distinguish membership boundary from value snapshot, explain backdated inserts, tier placement, backpressure, resume ambiguity, validation, replica／warehouse alternatives and rollback／rebuild.
 
 - [ ] **Step 8: Link route, verify, and commit expectation**
 
@@ -2521,7 +2925,7 @@ Update README to link `[大型报表与导出隔离](04-report-export-isolation.
 Run:
 
 ```bash
-rg -n 'READY_UNRUN|high watermark|更新|删除|run_chunked|run_buffered|run_oltp|ABORTED|artifact.tsv|30 秒|3–5 分钟' mysql-handson/13-senior-scenarios/04-report-export-isolation.md
+rg -n 'READY_UNRUN|high watermark|backdated|insertion-monotone|更新|删除|validate_manifest|validate_success|window_p95_ms|ABORTED|artifact.tsv|5419909120|30 秒|3–5 分钟' mysql-handson/13-senior-scenarios/04-report-export-isolation.md
 git diff --check -- mysql-handson/13-senior-scenarios/README.md mysql-handson/13-senior-scenarios/04-report-export-isolation.md
 git add mysql-handson/13-senior-scenarios/README.md mysql-handson/13-senior-scenarios/04-report-export-isolation.md
 git commit -m "docs(mysql): define report export isolation scenario"
@@ -2536,42 +2940,503 @@ git commit -m "docs(mysql): define report export isolation scenario"
 - Modify: `mysql-handson/13-senior-scenarios/README.md`
 
 **Interfaces:**
-- Consumes: Task 9 fixed schema, query, runner, performance matrix and immutable S dataset。
-- Produces: control／buffered／chunked OLTP comparison, identical artifacts, interrupted-resume proof and bounded claims。
+- Consumes: Task 9 fixed schema, query, corrected runner, live controller, performance matrix and frozen S dataset。
+- Produces: control／buffered／chunked OLTP comparison, live current-run abort evidence, identical artifacts, interrupted-resume proof and bounded claims。
 
-- [ ] **Step 1: Preflight and materialize runner in validated temp path**
+- [ ] **Step 1: Preflight and materialize both canonical temp programs**
 
-Repeat base-lab ownership／health, MySQL version／durability, free disk and host resource checks. Create the runtime directory with `MYSQL_SCENARIO_RUN_DIR=$(mktemp -d /private/tmp/mysql-senior-scenarios.XXXXXX)`, copy the committed code block to `$MYSQL_SCENARIO_RUN_DIR/export_runner.py`, and run:
+Repeat base-lab ownership／health, MySQL version／durability, transaction isolation, free disk and host resource checks. Set `MYSQL_SCENARIO_PORT=33306` for the owned dedicated container and verify that exact port/container label before use. Create the runtime directory with `MYSQL_SCENARIO_RUN_DIR=$(mktemp -d /private/tmp/mysql-senior-scenarios.XXXXXX)`. Copy the Task 9 runner block to `$MYSQL_SCENARIO_RUN_DIR/export_runner.py` and the controller block below to `$MYSQL_SCENARIO_RUN_DIR/scenario_controller.py`. Obtain the password outside committed snippets and export it only in the invoking shell as `MYSQL_PASSWORD`.
 
 ```bash
-uv run --with mysql-connector-python==9.7.0 python -m py_compile "$MYSQL_SCENARIO_RUN_DIR/export_runner.py"
+uv run --with mysql-connector-python==9.7.0 python -m py_compile \
+  "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
+  "$MYSQL_SCENARIO_RUN_DIR/scenario_controller.py"
 ```
 
-Expected: syntax exit `0`; no global MySQL variable changes.
+The second embedded block is the one canonical temporary controller source:
+
+```python
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import mysql.connector
+
+
+RUNTIME_PREFIX = "mysql-senior-scenarios."
+
+
+class StructuredArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise ValueError(message)
+
+
+def atomic_json(path: Path, value: dict) -> None:
+    temporary = path.with_name(path.name + ".tmp")
+    with temporary.open("w", encoding="utf-8") as handle:
+        json.dump(value, handle, sort_keys=True, indent=2)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, path)
+
+
+def read_json(path: Path) -> dict:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise RuntimeError(f"{path.name} is not a JSON object")
+    return value
+
+
+def validated_runtime_root(path: Path) -> Path:
+    resolved = path.resolve()
+    private_tmp = Path("/private/tmp").resolve()
+    if (
+        resolved.parent != private_tmp
+        or not resolved.name.startswith(RUNTIME_PREFIX)
+        or resolved.name == RUNTIME_PREFIX
+    ):
+        raise ValueError("runtime root is outside the allowed nonempty prefix")
+    return resolved
+
+
+def validated_job_dir(path: Path, root: Path) -> Path:
+    resolved = path.resolve()
+    if (
+        resolved.parent != root
+        or not resolved.name.startswith("job-")
+        or resolved.name == "job-"
+    ):
+        raise ValueError("job directory must be an immediate job-<run-id> child")
+    return resolved
+
+
+def gate_reason(
+    metrics: dict | None,
+    free_bytes: int,
+    p95_budget_ms: float,
+    min_free_bytes: int,
+) -> str | None:
+    if free_bytes < min_free_bytes:
+        return f"disk_free_bytes={free_bytes} below {min_free_bytes}"
+    if metrics is None:
+        return None
+    if int(metrics.get("window_errors", metrics.get("errors", 0))) > 0:
+        return "OLTP window errors exceeded zero"
+    if (
+        p95_budget_ms > 0
+        and int(metrics.get("window_operations", 0)) > 0
+        and float(metrics.get("window_p95_ms", 0.0)) > p95_budget_ms
+    ):
+        return (
+            f"OLTP window P95 {metrics['window_p95_ms']} "
+            f"exceeded {p95_budget_ms}"
+        )
+    return None
+
+
+def terminate_process(process, grace_seconds: float) -> None:
+    if process is None or process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=grace_seconds)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=grace_seconds)
+
+
+def wait_for_state(job_dir: Path, timeout_seconds: float) -> dict | None:
+    deadline = time.monotonic() + timeout_seconds
+    state_path = job_dir / "state.json"
+    while time.monotonic() < deadline:
+        if state_path.is_file():
+            return read_json(state_path)
+        time.sleep(0.05)
+    return None
+
+
+def kill_buffered_query(config: dict, connection_id: int) -> None:
+    admin = mysql.connector.connect(**config)
+    cursor = admin.cursor()
+    try:
+        cursor.execute(f"KILL QUERY {int(connection_id)}")
+    finally:
+        cursor.close()
+        admin.close()
+
+
+def abort_export(
+    mode: str,
+    process,
+    job_dir: Path,
+    abort_file: Path,
+    reason: str,
+    admin_config: dict,
+    grace_seconds: float,
+    kill_query=kill_buffered_query,
+) -> dict:
+    atomic_json(
+        abort_file,
+        {"status": "ABORT_REQUESTED", "reason": reason, "mode": mode},
+    )
+    evidence = {
+        "status": "ABORTED",
+        "mode": mode,
+        "reason": reason,
+        "kill_query_sent": False,
+        "forced_termination": False,
+    }
+    if process is None or process.poll() is not None:
+        evidence["already_exited"] = True
+        return evidence
+
+    if mode == "buffered":
+        state = wait_for_state(job_dir, 2.0)
+        if state is not None and state.get("connection_id") is not None:
+            try:
+                kill_query(admin_config, int(state["connection_id"]))
+                evidence["kill_query_sent"] = True
+            except Exception as exc:
+                evidence["kill_query_error"] = f"{type(exc).__name__}: {exc}"
+        try:
+            process.wait(timeout=grace_seconds)
+        except subprocess.TimeoutExpired:
+            evidence["forced_termination"] = True
+            terminate_process(process, grace_seconds)
+        final_state = wait_for_state(job_dir, 0.2)
+        if final_state is not None and final_state.get("status") != "SUCCEEDED":
+            final_state["status"] = "ABORTED"
+            final_state["abort_reason"] = reason
+            atomic_json(job_dir / "state.json", final_state)
+    else:
+        try:
+            process.wait(timeout=grace_seconds)
+        except subprocess.TimeoutExpired:
+            evidence["forced_termination"] = True
+            terminate_process(process, grace_seconds)
+        final_state = wait_for_state(job_dir, 0.2)
+        if final_state is not None and final_state.get("status") != "SUCCEEDED":
+            final_state["status"] = "ABORTED"
+            final_state["abort_reason"] = reason
+            atomic_json(job_dir / "state.json", final_state)
+    return evidence
+
+
+def load_metrics(path: Path) -> dict | None:
+    if not path.is_file():
+        return None
+    return read_json(path)
+
+
+def main() -> int:
+    try:
+        parser = StructuredArgumentParser()
+        parser.add_argument("--runner", type=Path, required=True)
+        parser.add_argument("--runtime-root", type=Path, required=True)
+        parser.add_argument("--trial-id", required=True)
+        parser.add_argument("--job-dir", type=Path)
+        parser.add_argument("--export-mode", choices=("none", "buffered", "chunked"), required=True)
+        parser.add_argument("--p95-budget-ms", type=float, default=0.0)
+        parser.add_argument("--min-free-bytes", type=int, required=True)
+        parser.add_argument("--duration-seconds", type=int, default=60)
+        parser.add_argument("--start-delay-seconds", type=float, default=5.0)
+        parser.add_argument("--threads", type=int, default=4)
+        parser.add_argument("--batch-size", type=int, default=1000)
+        parser.add_argument("--sleep-ms", type=int, default=20)
+        parser.add_argument("--host", default="127.0.0.1")
+        parser.add_argument("--port", type=int, default=3306)
+        parser.add_argument("--user", default="root")
+        parser.add_argument("--password-env", default="MYSQL_PASSWORD")
+        args = parser.parse_args()
+
+        root = validated_runtime_root(args.runtime_root)
+        runner = args.runner.resolve()
+        if runner.parent != root or runner.name != "export_runner.py":
+            raise ValueError("runner must be runtime-root/export_runner.py")
+        if args.export_mode != "none" and args.job_dir is None:
+            raise ValueError("--job-dir is required for export trials")
+        if (
+            not args.trial_id
+            or any(not (character.isalnum() or character in "-_") for character in args.trial_id)
+        ):
+            raise ValueError("trial-id must use only letters, digits, dash, or underscore")
+        job_dir = (
+            validated_job_dir(args.job_dir, root)
+            if args.job_dir is not None else root / "job-unused"
+        )
+        if args.export_mode != "none" and job_dir.name != f"job-{args.trial_id}":
+            raise ValueError("job directory run-id must equal trial-id")
+        if (
+            args.min_free_bytes <= 0
+            or args.duration_seconds < 1
+            or args.start_delay_seconds < 0
+            or not 1 <= args.threads <= 16
+        ):
+            raise ValueError("controller numeric argument is invalid")
+        if shutil.disk_usage(root).free < args.min_free_bytes:
+            raise RuntimeError("pre-group disk gate failed")
+        password = os.environ.get(args.password_env)
+        if password is None:
+            raise ValueError(f"password environment variable is not set: {args.password_env}")
+        admin_config = {
+            "host": args.host,
+            "port": args.port,
+            "user": args.user,
+            "password": password,
+            "database": "mysql_senior_scenarios",
+        }
+
+        run_id = args.trial_id
+        metrics_file = root / f"metrics-{run_id}.json"
+        abort_file = root / f"abort-{run_id}.json"
+        result_file = root / f"controller-result-{run_id}.json"
+        common = [
+            sys.executable,
+            str(runner),
+            "--host", args.host,
+            "--port", str(args.port),
+            "--user", args.user,
+            "--password-env", args.password_env,
+        ]
+        oltp_stdout = (root / f"oltp-{run_id}.stdout.json").open("w", encoding="utf-8")
+        oltp_stderr = (root / f"oltp-{run_id}.stderr.json").open("w", encoding="utf-8")
+        export_stdout = None
+        export_stderr = None
+        oltp = subprocess.Popen(
+            [
+                *common,
+                "--mode", "oltp",
+                "--duration-seconds", str(args.duration_seconds),
+                "--threads", str(args.threads),
+                "--metrics-file", str(metrics_file),
+            ],
+            stdout=oltp_stdout,
+            stderr=oltp_stderr,
+            text=True,
+        )
+        export = None
+        breach = None
+        export_abort = None
+        started = time.monotonic()
+        try:
+            while oltp.poll() is None or (export is not None and export.poll() is None):
+                metrics = load_metrics(metrics_file)
+                breach = gate_reason(
+                    metrics,
+                    shutil.disk_usage(root).free,
+                    args.p95_budget_ms,
+                    args.min_free_bytes,
+                )
+                if breach is not None:
+                    if export is not None:
+                        export_abort = abort_export(
+                            args.export_mode,
+                            export,
+                            job_dir,
+                            abort_file,
+                            breach,
+                            admin_config,
+                            5.0,
+                        )
+                    terminate_process(oltp, 2.0)
+                    break
+                if (
+                    export is None
+                    and args.export_mode != "none"
+                    and time.monotonic() - started >= args.start_delay_seconds
+                ):
+                    if job_dir.exists():
+                        raise RuntimeError("each trial requires a fresh job directory")
+                    export_stdout = (root / f"export-{run_id}.stdout.json").open(
+                        "w", encoding="utf-8"
+                    )
+                    export_stderr = (root / f"export-{run_id}.stderr.json").open(
+                        "w", encoding="utf-8"
+                    )
+                    export_command = [
+                        *common,
+                        "--mode", args.export_mode,
+                        "--job-dir", str(job_dir),
+                        "--abort-file", str(abort_file),
+                    ]
+                    if args.export_mode == "chunked":
+                        export_command.extend(
+                            [
+                                "--batch-size", str(args.batch_size),
+                                "--sleep-ms", str(args.sleep_ms),
+                                "--min-free-bytes", str(args.min_free_bytes),
+                            ]
+                        )
+                    export = subprocess.Popen(
+                        export_command,
+                        stdout=export_stdout,
+                        stderr=export_stderr,
+                        text=True,
+                    )
+                time.sleep(0.1)
+            if breach is None:
+                oltp_rc = oltp.wait()
+                export_rc = export.wait() if export is not None else None
+                status = (
+                    "SUCCEEDED"
+                    if oltp_rc == 0 and (export_rc is None or export_rc == 0)
+                    else "FAILED"
+                )
+                result = {
+                    "status": status,
+                    "mode": args.export_mode,
+                    "oltp_returncode": oltp_rc,
+                    "export_returncode": export_rc,
+                }
+            else:
+                result = {
+                    "status": "ABORTED",
+                    "mode": args.export_mode,
+                    "reason": breach,
+                    "export_abort": export_abort,
+                    "oltp_returncode": oltp.poll(),
+                    "export_returncode": export.poll() if export is not None else None,
+                }
+            atomic_json(result_file, result)
+            print(json.dumps(result, sort_keys=True))
+            return 0 if result["status"] in ("SUCCEEDED", "ABORTED") else 2
+        finally:
+            terminate_process(export, 1.0)
+            terminate_process(oltp, 1.0)
+            oltp_stdout.close()
+            oltp_stderr.close()
+            if export_stdout is not None:
+                export_stdout.close()
+            if export_stderr is not None:
+                export_stderr.close()
+    except Exception as exc:
+        print(
+            json.dumps(
+                {
+                    "status": "FAILED",
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                },
+                sort_keys=True,
+            ),
+            file=sys.stderr,
+        )
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+Expected: both syntax exits `0`; no global MySQL variable changes. The controller is temporary-only and is not added as a repository script.
 
 - [ ] **Step 2: Seed and verify the S dataset**
 
-Create exactly 100,000 orders, 300,000 items and 10,000 probe rows. Run `ANALYZE TABLE`. Verify counts, order min／max tuple, three items per order and aggregate fingerprint before performance runs.
+Create exactly 100,000 orders, 300,000 items and 10,000 probe rows. Run `ANALYZE TABLE`. Verify counts, order min／max tuple, three items per order and exact source aggregate fingerprints before performance runs.
+
+After seed, freeze both report source tables for the entire matrix. The dedicated S container has no other report writer; add six `BEFORE` triggers so even the experiment account cannot introduce an in-bound／backdated row or mutate an existing value:
+
+```sql
+CREATE TRIGGER freeze_report_order_insert BEFORE INSERT ON report_order
+FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='report dataset frozen';
+CREATE TRIGGER freeze_report_order_update BEFORE UPDATE ON report_order
+FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='report dataset frozen';
+CREATE TRIGGER freeze_report_order_delete BEFORE DELETE ON report_order
+FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='report dataset frozen';
+CREATE TRIGGER freeze_report_item_insert BEFORE INSERT ON report_item
+FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='report dataset frozen';
+CREATE TRIGGER freeze_report_item_update BEFORE UPDATE ON report_item
+FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='report dataset frozen';
+CREATE TRIGGER freeze_report_item_delete BEFORE DELETE ON report_item
+FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='report dataset frozen';
+```
+
+Run negative immutability probes and require all to fail with `report dataset frozen`: a backdated `report_order` INSERT whose `(created_at,id) <= captured high`, one UPDATE, one DELETE, and one INSERT／UPDATE／DELETE against `report_item`. Re-run counts and source fingerprints after the negative probes, after every group and at the end; they must be byte/numeric identical. Only `oltp_probe` may change. This S freeze is the reason cross-invocation resume can be compared exactly; it is not evidence that a bare production high watermark freezes membership.
 
 - [ ] **Step 3: Establish the OLTP-only control three times**
 
-Run `--mode oltp --duration-seconds 60 --threads 4` three times without export. Record operation count, p50／p95／p99 and errors. Before either export mode, set the exact stop budget to `1.50 × median(control P95)` and require `errors=0`; write that numeric budget before those runs.
+Predeclare the numeric disk formula and require the computed threshold before **each** group:
+
+```bash
+EXPECTED_ROWS=100000
+EXPECTED_ROW_BYTES=256
+MIN_FREE_BYTES=5419909120
+```
+
+The equality is binding: `MIN_FREE_BYTES = 2 * 100000 * 256 + 5 * 1024^3 = 5,419,909,120`.
+
+Run the controller three times with unique trial IDs `control-1..3`, `--export-mode none`, `--duration-seconds 60`, `--threads 4`, `--p95-budget-ms 0` and `--min-free-bytes "$MIN_FREE_BYTES"`. Example for the first trial:
+
+```bash
+uv run --with mysql-connector-python==9.7.0 python \
+  "$MYSQL_SCENARIO_RUN_DIR/scenario_controller.py" \
+  --runner "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
+  --runtime-root "$MYSQL_SCENARIO_RUN_DIR" \
+  --trial-id control-1 --export-mode none \
+  --duration-seconds 60 --threads 4 \
+  --p95-budget-ms 0 --min-free-bytes "$MIN_FREE_BYTES" \
+  --host 127.0.0.1 --port "$MYSQL_SCENARIO_PORT" \
+  --user root --password-env MYSQL_PASSWORD
+```
+
+Record operation count, final p50／p95／p99, every one-second live window and errors. Require all control errors=`0`. Before either export mode, calculate and write the numeric `OLTP_P95_BUDGET_MS = 1.50 × median(control final P95)`; once written it cannot be changed to make later trials pass.
 
 - [ ] **Step 4: Run buffered export with concurrent OLTP three times**
 
 For each trial:
 
-1. create a fresh job directory；
-2. start OLTP mode and wait five seconds；
-3. run buffered mode against the fixed high watermark；
-4. wait for OLTP completion；
-5. capture both JSON outputs, MySQL status deltas and artifact manifest。
+1. choose a fresh **nonexistent** `job-buffered-N` path；
+2. recheck `free >= MIN_FREE_BYTES` and the frozen source fingerprint；
+3. invoke the controller with matching `--trial-id buffered-N`, the predeclared numeric P95 budget and fixed disk threshold；
+4. let the controller start OLTP, wait five seconds, then launch buffered export；
+5. capture controller, OLTP, export, state, artifact and MySQL status evidence。
 
-Stop later buffered trials if the predeclared P95 or correctness gate fails; preserve the failed output.
+Example:
+
+```bash
+uv run --with mysql-connector-python==9.7.0 python \
+  "$MYSQL_SCENARIO_RUN_DIR/scenario_controller.py" \
+  --runner "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
+  --runtime-root "$MYSQL_SCENARIO_RUN_DIR" \
+  --trial-id buffered-1 --export-mode buffered \
+  --job-dir "$MYSQL_SCENARIO_RUN_DIR/job-buffered-1" \
+  --duration-seconds 60 --threads 4 \
+  --p95-budget-ms "$OLTP_P95_BUDGET_MS" \
+  --min-free-bytes "$MIN_FREE_BYTES" \
+  --host 127.0.0.1 --port "$MYSQL_SCENARIO_PORT" \
+  --user root --password-env MYSQL_PASSWORD
+```
+
+On a live P95／error／disk breach, the controller writes the abort signal, reads buffered `connection_id`, issues `KILL QUERY`, terminates the process if the query does not exit within the grace period, and writes `controller-result-*.json` with external `ABORTED` evidence. A buffered internal artifact that had already completed before a later window breach does not turn the trial into a successful performance sample. Stop later buffered trials and preserve the failed/aborted output.
 
 - [ ] **Step 5: Run chunked export with concurrent OLTP three times**
 
-Repeat the same structure with `--batch-size 1000 --sleep-ms 20 --max-batches 0`. Record part count, checkpoint progression, throughput, max RSS and final artifact manifest.
+Repeat with unique `chunked-1..3` job/trial IDs, `--batch-size 1000 --sleep-ms 20`. The controller checks live window metrics/disk, and the runner independently checks disk plus abort signal **before every fetch**. On breach, the in-flight query/part may finish, but the next batch must not be issued; state becomes `ABORTED` with resumable manifest and reason.
+
+```bash
+uv run --with mysql-connector-python==9.7.0 python \
+  "$MYSQL_SCENARIO_RUN_DIR/scenario_controller.py" \
+  --runner "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
+  --runtime-root "$MYSQL_SCENARIO_RUN_DIR" \
+  --trial-id chunked-1 --export-mode chunked \
+  --job-dir "$MYSQL_SCENARIO_RUN_DIR/job-chunked-1" \
+  --duration-seconds 60 --threads 4 \
+  --batch-size 1000 --sleep-ms 20 \
+  --p95-budget-ms "$OLTP_P95_BUDGET_MS" \
+  --min-free-bytes "$MIN_FREE_BYTES" \
+  --host 127.0.0.1 --port "$MYSQL_SCENARIO_PORT" \
+  --user root --password-env MYSQL_PASSWORD
+```
+
+Record manifest progression, active throughput, max RSS and live abort boundary. Do not resume a gate-aborted performance trial and then rank it; diagnose the gate first.
 
 - [ ] **Step 6: Prove interruption and idempotent resume**
 
@@ -2581,15 +3446,19 @@ Use a separate job directory:
 uv run --with mysql-connector-python==9.7.0 python "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
   --mode chunked --job-dir "$MYSQL_SCENARIO_RUN_DIR/job-resume" \
   --batch-size 1000 --sleep-ms 20 --max-batches 3 \
-  --host 127.0.0.1 --port 3306 --user root --password root
+  --min-free-bytes "$MIN_FREE_BYTES" \
+  --host 127.0.0.1 --port "$MYSQL_SCENARIO_PORT" \
+  --user root --password-env MYSQL_PASSWORD
 
 uv run --with mysql-connector-python==9.7.0 python "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
   --mode chunked --job-dir "$MYSQL_SCENARIO_RUN_DIR/job-resume" \
   --batch-size 1000 --sleep-ms 20 --max-batches 0 \
-  --host 127.0.0.1 --port 3306 --user root --password root
+  --min-free-bytes "$MIN_FREE_BYTES" \
+  --host 127.0.0.1 --port "$MYSQL_SCENARIO_PORT" \
+  --user root --password-env MYSQL_PASSWORD
 ```
 
-Expected: first result=`ABORTED` after three committed parts; second resumes from saved cursor and ends `SUCCEEDED`; final output has no duplicate／missing row.
+Expected: first result=`ABORTED` after three committed parts; second validates those part hashes/cursors, resumes from saved cursor and ends `SUCCEEDED`; final bytes/SHA equal a fresh successful export with no duplicate／missing row. `active_seconds` is cumulative across both planned invocations. This is correctness evidence only, never a steady-state performance sample.
 
 - [ ] **Step 7: Compare artifacts and correctness before latency claims**
 
@@ -2604,21 +3473,22 @@ no duplicate order id
 last cursor = high watermark
 ```
 
-If hashes differ, diagnose formatting／snapshot／ordering before reporting any performance comparison.
+First require each runner's internal state/result/artifact integrity checks. Then independently compute external file bytes/SHA, distinct keys and business aggregates and compare buffered／chunked／resumed artifacts. If hashes differ, diagnose formatting／membership／snapshot／ordering before reporting any performance comparison; a matching internal manifest alone is not cross-mode correctness.
 
 - [ ] **Step 8: Summarize three-run evidence and explicit limitations**
 
-For each group report all three OLTP percentile sets and median／range; for export modes report elapsed, throughput, max RSS and status deltas. Separate:
+For each group report all three OLTP percentile sets, every live window, median／range and controller status; for successful fresh export modes report active time, active throughput, max RSS and status deltas. List `ABORTED` separately with trigger and stop boundary; do not include it or resume-correctness runs in steady-state median/range. Separate:
 
 - observed S facts；
 - scaled trend only；
 - reasoning about mutable rows；
+- reasoning about backdated/in-bound inserts and membership snapshots；
 - reasoning about read replica／warehouse；
 - untested production capacity。
 
 - [ ] **Step 9: Patch status and expectation gap**
 
-Use `apply_patch` to add environment, run IDs, source manifest, run tables, stop budget, artifact equality, interruption／resume timeline, expected-vs-actual and production boundary. Mark exact S behavior `SCALED_REPRODUCED`, reused ch08／ch09 mechanisms `REUSED`, and production topology conclusions `REASONED`.
+Use `apply_patch` to add environment, run IDs, frozen-source pre/post manifests, numeric disk/P95 gates, live window/controller tables, abort boundaries, successful artifact equality, interruption／resume timeline, expected-vs-actual and production boundary. Explicitly state that S used triggers plus an isolated writer set; production needs immutable insertion-monotone keys or snapshotted/materialized membership. Mark exact S behavior `SCALED_REPRODUCED`, reused ch08／ch09 mechanisms `REUSED`, and production topology conclusions `REASONED`.
 
 Update only the report/export README row to `SCALED_REPRODUCED (S=100000)`.
 
@@ -2626,7 +3496,7 @@ Update only the report/export README row to `SCALED_REPRODUCED (S=100000)`.
 
 ```bash
 case "$MYSQL_SCENARIO_RUN_DIR" in
-  /private/tmp/mysql-senior-scenarios.*) ;;
+  /private/tmp/mysql-senior-scenarios.?*) ;;
   *) exit 1 ;;
 esac
 rm -rf -- "$MYSQL_SCENARIO_RUN_DIR"
