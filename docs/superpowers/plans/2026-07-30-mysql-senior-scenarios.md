@@ -2006,6 +2006,7 @@ job-<run-id>/
 ```json
 {
   "job_id": "run-id",
+  "mode": "chunked",
   "connection_id": 123,
   "high_created_at": "2026-01-02 03:46:40.000000",
   "high_id": 100000,
@@ -2015,6 +2016,8 @@ job-<run-id>/
   "next_part": 1,
   "rows_written": 0,
   "active_seconds": 0.0,
+  "artifact_rows": null,
+  "artifact_sha256": null,
   "parts": [],
   "status": "RUNNING",
   "abort_reason": null
@@ -2029,7 +2032,7 @@ Artifact invariants:
 - resume verifies every checkpointed part's bytes, rows, hash, cursor order and contiguity; only the exact deterministic `next_part` file may exist uncheckpointed after rename-before-checkpoint, and it is rewritten from the old cursor；
 - missing, same-line-count corruption, stale extra, orphan or gapped parts fail before publish；
 - final publish consumes **only** the ordered checkpoint manifest, rechecks every part, requires `rows_written=expected_rows` and `last_cursor=high`, then writes／fsyncs／replaces `artifact.tsv`；
-- `SUCCEEDED` fast path requires state, result and artifact, and revalidates artifact row count／SHA against state and result instead of returning stale success；
+- `SUCCEEDED` fast path requires state, result and artifact to agree on job／mode／rows／SHA／cursors; chunked mode also revalidates every ordered part and requires their exact concatenated bytes／SHA to equal the artifact, so a coupled artifact／result rewrite cannot bypass the manifest；
 - `ABORTED` keeps state and parts; cumulative `active_seconds` survives planned resume, so `rows_per_active_second` never divides cumulative rows by only the latest invocation；
 - readers never consume `.tmp` or partial parts as a complete report。
 
@@ -2044,6 +2047,7 @@ The document contains one copyable `$MYSQL_SCENARIO_RUN_DIR/export_runner.py` bl
 --job-dir /private/tmp/mysql-senior-scenarios.<suffix>/job-<run-id>
 --abort-file /private/tmp/mysql-senior-scenarios.<suffix>/abort-<run-id>.json
 --metrics-file /private/tmp/mysql-senior-scenarios.<suffix>/metrics-<run-id>.json
+--trial-id <run-id>
 --batch-size 1000
 --sleep-ms 20
 --max-batches 0
@@ -2053,7 +2057,7 @@ The document contains one copyable `$MYSQL_SCENARIO_RUN_DIR/export_runner.py` bl
 --host 127.0.0.1 --port 3306 --user root --password-env MYSQL_PASSWORD
 ```
 
-Interface migration from the earlier draft is intentional and binding: `job_dir=job-<run-id>` maps to `state.job_id=<run-id>`; empty runtime suffix／run ID are rejected; state gains expected-boundary and part-manifest metadata; `seconds`／`rows_per_second` become cumulative `active_seconds`／`rows_per_active_second`; passwords come only from the named environment variable. Consumers and Task 10 must use these corrected names.
+Interface migration from the earlier draft is intentional and binding: `job_dir=job-<run-id>` maps to `state.job_id=<run-id>` and the abort suffix, while OLTP `trial_id=<run-id>` maps to the metrics suffix; empty runtime suffix／run ID are rejected. State gains mode, expected-boundary, artifact and part-manifest metadata; `seconds`／`rows_per_second` become cumulative `active_seconds`／`rows_per_active_second`; passwords come only from the named environment variable. Consumers and Task 10 must use these corrected names.
 
 Use a complete implementation with these exact functions and types. The code below is the one canonical runner source; the scenario may improve comments, but not change state fields, query order, manifest validation or safety gates:
 
@@ -2073,6 +2077,9 @@ def write_part(path: Path, rows: list[tuple]) -> tuple[int, str]:
 def validate_manifest(job_dir: Path, state: dict, allow_pending: bool) -> list[dict]:
     """Recheck ordered checkpointed parts and reject missing/stale/corrupt parts."""
 
+def manifest_artifact_signature(job_dir: Path, state: dict) -> tuple[int, str]:
+    """Return exact rows/SHA of the ordered validated part concatenation."""
+
 def publish(job_dir: Path, state: dict) -> tuple[int, str]:
     """Publish exactly the verified manifest after expected boundary completion."""
 
@@ -2085,8 +2092,8 @@ def run_chunked(connection, job_dir: Path, batch_size: int, sleep_ms: int, max_b
 def run_buffered(connection, job_dir: Path) -> dict:
     """Use one buffered full-boundary query, fetch all rows, write one artifact and report max RSS."""
 
-def run_oltp(config: dict, duration: int, threads: int, metrics_file: Path | None, window_seconds: float) -> dict:
-    """Run OLTP probes, atomically emit live window metrics, and return final percentiles."""
+def run_oltp(config: dict, duration: int, threads: int, metrics_file: Path | None, window_seconds: float, trial_id: str) -> dict:
+    """Emit trial-bound heartbeat/window/cumulative metrics and final percentiles."""
 ```
 
 ```python
@@ -2303,11 +2310,11 @@ def job_id_from_dir(job_dir: Path) -> str:
     return name[len("job-") :]
 
 
-def validated_runtime_file(path: Path, prefix: str) -> Path:
+def validated_runtime_file(path: Path, prefix: str, suffix: str) -> Path:
     resolved = path.resolve()
     root = runtime_root(resolved.parent)
-    if resolved.parent != root or not resolved.name.startswith(prefix):
-        raise ValueError(f"runtime file must start with {prefix}")
+    if not suffix or resolved.parent != root or resolved.name != f"{prefix}{suffix}.json":
+        raise ValueError(f"runtime file must equal {prefix}<nonempty-id>.json")
     return resolved
 
 
@@ -2370,6 +2377,18 @@ def validate_manifest(job_dir: Path, state: dict, allow_pending: bool) -> list[d
     return validated
 
 
+def manifest_artifact_signature(job_dir: Path, state: dict) -> tuple[int, str]:
+    parts = validate_manifest(job_dir, state, allow_pending=False)
+    digest = hashlib.sha256()
+    rows = 0
+    for entry in parts:
+        with (job_dir / "parts" / entry["name"]).open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+                rows += chunk.count(b"\n")
+    return rows, digest.hexdigest()
+
+
 def publish(job_dir: Path, state: dict) -> tuple[int, str]:
     parts = validate_manifest(job_dir, state, allow_pending=False)
     expected_rows = int(state["expected_rows"])
@@ -2426,16 +2445,27 @@ def validate_success(job_dir: Path, state: dict, result: dict) -> dict:
     expected_rows = int(state["expected_rows"])
     state_high = (str(state["high_created_at"]), int(state["high_id"]))
     state_last = (str(state["last_created_at"]), int(state["last_id"]))
+    state_mode = str(state.get("mode"))
     if (
         rows != expected_rows
         or int(state["rows_written"]) != expected_rows
         or int(result.get("rows", -1)) != expected_rows
         or result.get("sha256") != sha256
+        or int(state.get("artifact_rows", -1)) != expected_rows
+        or state.get("artifact_sha256") != sha256
+        or result.get("mode") != state_mode
+        or result.get("job_id") != state.get("job_id")
         or state_last != state_high
         or cursor_value(result.get("high_cursor", ("", -1))) != state_high
         or cursor_value(result.get("last_cursor", ("", -1))) != state_last
     ):
         raise RuntimeError("SUCCEEDED artifact does not match state/result")
+    if state_mode == "chunked":
+        manifest_rows, manifest_sha256 = manifest_artifact_signature(job_dir, state)
+        if manifest_rows != rows or manifest_sha256 != sha256:
+            raise RuntimeError("SUCCEEDED artifact does not match checkpoint manifest")
+    elif state_mode != "buffered":
+        raise RuntimeError("SUCCEEDED state mode is invalid")
     return result
 
 
@@ -2457,6 +2487,7 @@ def aborted_result(state: dict, reason: str, active_seconds: float) -> dict:
     return {
         "status": "ABORTED",
         "mode": "chunked",
+        "job_id": state["job_id"],
         "reason": reason,
         "rows": int(state["rows_written"]),
         "active_seconds": active_seconds,
@@ -2489,7 +2520,9 @@ def run_chunked(
         if state.get("status") == "SUCCEEDED":
             if not result_path.is_file():
                 raise RuntimeError("SUCCEEDED result.json is missing")
-            return validate_success(job_dir, state, read_json(result_path))
+            result = validate_success(job_dir, state, read_json(result_path))
+            cursor.close()
+            return result
         if state.get("status") not in ("RUNNING", "ABORTED"):
             raise RuntimeError("state status is not resumable")
         validate_manifest(job_dir, state, allow_pending=True)
@@ -2501,6 +2534,7 @@ def run_chunked(
         expected_rows = count_boundary_rows(cursor, (high_created_at, high_id))
         state = {
             "job_id": job_id_from_dir(job_dir),
+            "mode": "chunked",
             "connection_id": int(connection.connection_id),
             "high_created_at": high_created_at,
             "high_id": high_id,
@@ -2510,6 +2544,8 @@ def run_chunked(
             "next_part": 1,
             "rows_written": 0,
             "active_seconds": 0.0,
+            "artifact_rows": None,
+            "artifact_sha256": None,
             "parts": [],
             "status": "RUNNING",
             "abort_reason": None,
@@ -2540,6 +2576,7 @@ def run_chunked(
             result = {
                 "status": "SUCCEEDED",
                 "mode": "chunked",
+                "job_id": state["job_id"],
                 "rows": artifact_rows,
                 "sha256": artifact_sha256,
                 "active_seconds": state["active_seconds"],
@@ -2553,6 +2590,8 @@ def run_chunked(
                 "parts": len(state["parts"]),
             }
             atomic_json(result_path, result)
+            state["artifact_rows"] = artifact_rows
+            state["artifact_sha256"] = artifact_sha256
             state["status"] = "SUCCEEDED"
             atomic_json(state_path, state)
             cursor.close()
@@ -2602,6 +2641,7 @@ def run_buffered(connection, job_dir: Path) -> dict:
     expected_rows = count_boundary_rows(cursor, high)
     state = {
         "job_id": job_id_from_dir(job_dir),
+        "mode": "buffered",
         "connection_id": int(connection.connection_id),
         "high_created_at": high[0],
         "high_id": high[1],
@@ -2611,6 +2651,8 @@ def run_buffered(connection, job_dir: Path) -> dict:
         "next_part": 1,
         "rows_written": 0,
         "active_seconds": 0.0,
+        "artifact_rows": None,
+        "artifact_sha256": None,
         "parts": [],
         "status": "RUNNING",
         "abort_reason": None,
@@ -2630,6 +2672,7 @@ def run_buffered(connection, job_dir: Path) -> dict:
     result = {
         "status": "SUCCEEDED",
         "mode": "buffered",
+        "job_id": state["job_id"],
         "rows": artifact_rows,
         "sha256": artifact_sha256,
         "active_seconds": active_seconds,
@@ -2647,6 +2690,8 @@ def run_buffered(connection, job_dir: Path) -> dict:
             "last_id": last_cursor[1],
             "rows_written": artifact_rows,
             "active_seconds": active_seconds,
+            "artifact_rows": artifact_rows,
+            "artifact_sha256": artifact_sha256,
             "status": "SUCCEEDED",
         }
     )
@@ -2697,6 +2742,7 @@ def run_oltp(
     threads: int,
     metrics_file: Path | None,
     window_seconds: float,
+    trial_id: str,
 ) -> dict:
     started = time.perf_counter()
     deadline = started + duration
@@ -2732,12 +2778,15 @@ def run_oltp(
                         metrics_file,
                         {
                             "status": "RUNNING",
+                            "trial_id": trial_id,
+                            "heartbeat_at_epoch": time.time(),
                             "window_seq": sequence,
                             "window_operations": len(window_latencies),
                             "window_errors": window_errors,
                             "window_p95_ms": percentile(window_latencies, 0.95),
                             "operations": len(all_latencies),
                             "errors": all_errors,
+                            "active_elapsed_seconds": now - started,
                         },
                     )
                 window_latencies = []
@@ -2751,6 +2800,7 @@ def run_oltp(
     result = {
         "status": "SUCCEEDED" if all_errors == 0 else "FAILED",
         "mode": "oltp",
+        "trial_id": trial_id,
         "operations": len(all_latencies),
         "errors": all_errors,
         "p50_ms": percentile(all_latencies, 0.50),
@@ -2758,7 +2808,19 @@ def run_oltp(
         "p99_ms": percentile(all_latencies, 0.99),
     }
     if metrics_file is not None:
-        atomic_json(metrics_file, {**result, "window_seq": sequence + 1})
+        atomic_json(
+            metrics_file,
+            {
+                **result,
+                "trial_id": trial_id,
+                "heartbeat_at_epoch": time.time(),
+                "window_seq": sequence + 1,
+                "window_operations": len(window_latencies),
+                "window_errors": window_errors,
+                "window_p95_ms": percentile(window_latencies, 0.95),
+                "active_elapsed_seconds": time.perf_counter() - started,
+            },
+        )
     return result
 
 
@@ -2776,6 +2838,7 @@ def main() -> int:
         parser.add_argument("--job-dir", type=Path)
         parser.add_argument("--abort-file", type=Path)
         parser.add_argument("--metrics-file", type=Path)
+        parser.add_argument("--trial-id")
         parser.add_argument("--batch-size", type=int, default=1000)
         parser.add_argument("--sleep-ms", type=int, default=20)
         parser.add_argument("--max-batches", type=int, default=0)
@@ -2812,8 +2875,13 @@ def main() -> int:
         }
         connection = None
         if args.mode == "oltp":
+            if (
+                not args.trial_id
+                or any(not (character.isalnum() or character in "-_") for character in args.trial_id)
+            ):
+                raise ValueError("OLTP mode requires a safe nonempty trial-id")
             metrics_file = (
-                validated_runtime_file(args.metrics_file, "metrics-")
+                validated_runtime_file(args.metrics_file, "metrics-", args.trial_id)
                 if args.metrics_file is not None else None
             )
             result = run_oltp(
@@ -2822,13 +2890,15 @@ def main() -> int:
                 args.threads,
                 metrics_file,
                 args.window_seconds,
+                args.trial_id,
             )
         else:
             if args.job_dir is None:
                 raise ValueError("--job-dir is required for export modes")
             job_dir = validated_job_dir(args.job_dir)
+            job_id = job_id_from_dir(job_dir)
             abort_file = (
-                validated_runtime_file(args.abort_file, "abort-")
+                validated_runtime_file(args.abort_file, "abort-", job_id)
                 if args.abort_file is not None else None
             )
             try:
@@ -2873,10 +2943,11 @@ if __name__ == "__main__":
 Safety／correctness requirements:
 
 - `job_dir.resolve()` must be an immediate nonempty `job-<run-id>` child of an immediate `/private/tmp/mysql-senior-scenarios.<nonempty-suffix>` runtime directory；
+- direct runner abort／metrics paths must equal `abort-<job-id>.json`／`metrics-<trial-id>.json` under that same runtime root; a prefix-only or empty-suffix match is rejected；
 - batch size `1..5000`, sleep `0..1000`, threads `1..16`；
 - parameterized SQL for all data values；
 - buffered and chunked artifacts use identical column order and canonical formatting；
-- runner JSON reports rows, SHA-256, cumulative active time／throughput, max RSS, high／last cursors and status；
+- export runner JSON reports job ID, rows, SHA-256, cumulative active time／throughput, max RSS, high／last cursors and status; OLTP JSON reports its trial ID；
 - CLI and committed snippets contain only `--password-env MYSQL_PASSWORD`, never a password value；
 - interrupted chunked run is invoked with `--max-batches 3`, returns `ABORTED` with timing／cursor metrics, then the same job directory resumes with `--max-batches 0`；this proves process-level resume behavior, not host power-loss durability。
 
@@ -2890,7 +2961,9 @@ Run groups, each three times with a fresh job directory:
 | buffered | 60 s, 4 threads | one buffered query／artifact |
 | chunked | 60 s, 4 threads | batch=1000, sleep=20 ms |
 
-Start OLTP five seconds before export. The temporary Task 10 controller consumes atomic one-second `window_p95_ms`／`window_errors` plus live disk free bytes. Record final OLTP p50／p95／p99／errors, export active time／rows-per-active-second／max RSS, MySQL processlist／temporary-table／sort deltas and exact artifact correctness.
+Start OLTP before export, but do not use wall time alone as proof of load. OLTP atomically replaces a trial-bound heartbeat containing `trial_id`, epoch timestamp, advancing `window_seq`, one-second operations／errors／P95, cumulative operations／errors and active elapsed time. The controller rejects pre-existing trial files and launches export only after observing at least five fresh, advancing, nonempty same-trial windows covering at least five active seconds.
+
+Before and throughout export, missing／malformed／stale／wrong-trial／regressing／changed or nonadvancing metrics fail closed after only the declared startup／heartbeat grace. Cumulative errors cannot be masked by a zero-error latest window; cumulative errors, window errors, P95 and live disk each remain independent stop gates. Record final OLTP p50／p95／p99／errors, every accepted live window, export active time／rows-per-active-second／max RSS, MySQL processlist／temporary-table／sort deltas and exact artifact correctness.
 
 The numeric S disk gate is fixed before all groups:
 
@@ -2900,7 +2973,9 @@ MIN_FREE_BYTES = 2 * EXPECTED_ARTIFACT_BYTES + 5 * 1024^3
                = 5,419,909,120
 ```
 
-The controller checks `MIN_FREE_BYTES` before each group and throughout the live 60-second window. Chunked mode also checks it itself before issuing every new batch. A P95／error／disk breach atomically writes an abort signal: chunked finishes at most its in-flight query/part and persists `ABORTED` before the next fetch; buffered has no batch boundary, so the controller reads its persisted connection ID, issues sanitized `KILL QUERY`, terminates the child if needed and writes separate external `ABORTED` evidence. MySQL restart or fingerprint divergence also invalidates the trial. Never rank `ABORTED` or planned-resume correctness runs as steady-state throughput.
+The controller checks `MIN_FREE_BYTES` before each group and throughout the live 60-second window. Chunked mode also checks it itself before issuing every new batch. A P95／error／disk breach atomically writes an abort signal: chunked finishes at most its in-flight query/part and persists `ABORTED` before the next fetch; buffered has no batch boundary, so the controller reads its persisted connection ID, issues sanitized `KILL QUERY`, terminates the child if needed and writes separate external `ABORTED` evidence. Forced termination with no child JSON preserves the latest checkpoint as `ABORTED`.
+
+On normal child exit, the controller accepts exactly one structured JSON object across stdout／stderr and reconciles it with return code and persisted state. Only child `SUCCEEDED`, return code `0`, and consistent state／result／artifact integrity can produce controller success; `ABORTED` with exit code 0 remains `ABORTED`, an unstarted export is never success, and missing／malformed／multiple／contradictory child output is `FAILED`. The successful export is re-invoked through the runner's manifest-linked fast path before evidence is accepted. MySQL restart or fingerprint divergence also invalidates the trial. Never rank `ABORTED` or planned-resume correctness runs as steady-state throughput.
 
 Pre-run hypotheses:
 
@@ -2959,11 +3034,14 @@ The second embedded block is the one canonical temporary controller source:
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
+import math
 import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -3028,7 +3106,9 @@ def gate_reason(
         return f"disk_free_bytes={free_bytes} below {min_free_bytes}"
     if metrics is None:
         return None
-    if int(metrics.get("window_errors", metrics.get("errors", 0))) > 0:
+    if int(metrics.get("errors", 0)) > 0:
+        return "OLTP cumulative errors exceeded zero"
+    if int(metrics.get("window_errors", 0)) > 0:
         return "OLTP window errors exceeded zero"
     if (
         p95_budget_ms > 0
@@ -3040,6 +3120,279 @@ def gate_reason(
             f"exceeded {p95_budget_ms}"
         )
     return None
+
+
+def new_metrics_tracker() -> dict:
+    return {
+        "window_seq": 0,
+        "last_advance_monotonic": None,
+        "operations": 0,
+        "errors": 0,
+        "active_elapsed_seconds": 0.0,
+        "activity_windows": 0,
+        "last_window_operations": 0,
+        "last_status": None,
+        "sequence_payload": None,
+        "accepted_windows": [],
+    }
+
+
+def _integer_field(metrics: dict, name: str) -> int:
+    value = metrics.get(name)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{name} must be a nonnegative integer")
+    return value
+
+
+def _float_field(metrics: dict, name: str) -> float:
+    value = metrics.get(name)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be numeric")
+    parsed = float(value)
+    if not math.isfinite(parsed) or parsed < 0:
+        raise ValueError(f"{name} must be finite and nonnegative")
+    return parsed
+
+
+def inspect_metrics(
+    metrics: dict | None,
+    trial_id: str,
+    now_epoch: float,
+    now_monotonic: float,
+    tracker: dict,
+    heartbeat_grace_seconds: float,
+    require_present: bool,
+) -> tuple[dict, str | None]:
+    if metrics is None:
+        return (
+            dict(tracker),
+            (
+                "OLTP metrics missing"
+                if require_present or int(tracker.get("window_seq", 0)) > 0
+                else None
+            ),
+        )
+    try:
+        if metrics.get("status") not in ("RUNNING", "SUCCEEDED", "FAILED"):
+            raise ValueError("status is invalid")
+        if metrics.get("trial_id") != trial_id:
+            return dict(tracker), "OLTP metrics trial_id mismatch"
+        heartbeat = _float_field(metrics, "heartbeat_at_epoch")
+        if heartbeat > now_epoch + 1.0:
+            return dict(tracker), "OLTP metrics heartbeat is in the future"
+        if now_epoch - heartbeat > heartbeat_grace_seconds:
+            return dict(tracker), "OLTP metrics heartbeat is stale"
+        sequence = _integer_field(metrics, "window_seq")
+        if sequence < 1:
+            raise ValueError("window_seq must be positive")
+        window_operations = _integer_field(metrics, "window_operations")
+        window_errors = _integer_field(metrics, "window_errors")
+        window_p95 = _float_field(metrics, "window_p95_ms")
+        operations = _integer_field(metrics, "operations")
+        errors = _integer_field(metrics, "errors")
+        active_elapsed = _float_field(metrics, "active_elapsed_seconds")
+    except (TypeError, ValueError) as exc:
+        return dict(tracker), f"OLTP metrics malformed: {exc}"
+
+    previous_sequence = int(tracker["window_seq"])
+    if sequence < previous_sequence:
+        return dict(tracker), "OLTP metrics sequence regressed"
+    sequence_payload = (
+        metrics["status"],
+        heartbeat,
+        sequence,
+        window_operations,
+        window_errors,
+        window_p95,
+        operations,
+        errors,
+        active_elapsed,
+    )
+    if sequence == previous_sequence:
+        if sequence_payload != tracker.get("sequence_payload"):
+            return dict(tracker), "OLTP metrics sequence payload changed"
+        last_advance = tracker.get("last_advance_monotonic")
+        if (
+            last_advance is not None
+            and now_monotonic - float(last_advance) > heartbeat_grace_seconds
+        ):
+            return dict(tracker), "OLTP metrics sequence is nonadvancing"
+        return dict(tracker), None
+    if (
+        operations < int(tracker["operations"])
+        or errors < int(tracker["errors"])
+        or active_elapsed < float(tracker["active_elapsed_seconds"])
+    ):
+        return dict(tracker), "OLTP metrics cumulative counters regressed"
+
+    updated = dict(tracker)
+    updated["window_seq"] = sequence
+    updated["last_advance_monotonic"] = now_monotonic
+    updated["operations"] = operations
+    updated["errors"] = errors
+    updated["active_elapsed_seconds"] = active_elapsed
+    updated["last_window_operations"] = window_operations
+    updated["last_status"] = metrics["status"]
+    updated["sequence_payload"] = sequence_payload
+    accepted_windows = list(updated["accepted_windows"])
+    accepted_windows.append(
+        {
+            "status": metrics["status"],
+            "trial_id": trial_id,
+            "heartbeat_at_epoch": heartbeat,
+            "window_seq": sequence,
+            "window_operations": window_operations,
+            "window_errors": window_errors,
+            "window_p95_ms": window_p95,
+            "operations": operations,
+            "errors": errors,
+            "active_elapsed_seconds": active_elapsed,
+        }
+    )
+    updated["accepted_windows"] = accepted_windows
+    if metrics["status"] == "RUNNING" and window_operations > 0:
+        updated["activity_windows"] = int(updated["activity_windows"]) + 1
+    return updated, None
+
+
+def ready_for_export(tracker: dict, minimum_active_seconds: float) -> bool:
+    return (
+        tracker.get("last_status") == "RUNNING"
+        and int(tracker.get("activity_windows", 0)) >= 5
+        and float(tracker.get("active_elapsed_seconds", 0.0))
+        >= max(5.0, minimum_active_seconds)
+        and int(tracker.get("last_window_operations", 0)) > 0
+    )
+
+
+def _parse_child_output(stdout: str, stderr: str) -> dict:
+    records = []
+    for stream_name, content in (("stdout", stdout), ("stderr", stderr)):
+        for line in content.splitlines():
+            if not line.strip():
+                continue
+            try:
+                value = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(
+                    f"child {stream_name} contains malformed JSON"
+                ) from exc
+            if not isinstance(value, dict):
+                raise RuntimeError(f"child {stream_name} JSON is not an object")
+            records.append(value)
+    if len(records) != 1:
+        raise RuntimeError("child must emit exactly one structured JSON object")
+    if records[0].get("status") not in ("SUCCEEDED", "ABORTED", "FAILED"):
+        raise RuntimeError("child JSON status is invalid")
+    return records[0]
+
+
+def read_child_result(stdout_path: Path, stderr_path: Path) -> dict:
+    stdout = stdout_path.read_text(encoding="utf-8")
+    stderr = stderr_path.read_text(encoding="utf-8")
+    return _parse_child_output(stdout, stderr)
+
+
+def _matching_result_fields(left: dict, right: dict) -> bool:
+    return left == right
+
+
+def reconcile_export_result(
+    mode: str,
+    returncode: int | None,
+    child: dict,
+    job_dir: Path,
+    verifier_command: list[str],
+    run_verifier=subprocess.run,
+) -> dict:
+    if returncode is None:
+        raise RuntimeError("export child was never started")
+    state_path = job_dir / "state.json"
+    if not state_path.is_file():
+        raise RuntimeError("export persisted state is missing")
+    state = read_json(state_path)
+    expected_job_id = job_dir.name[len("job-") :]
+    if state.get("job_id") != expected_job_id or state.get("mode") != mode:
+        raise RuntimeError("export persisted state identity is invalid")
+    if child.get("mode") != mode or child.get("job_id") != expected_job_id:
+        raise RuntimeError("export child identity contradicts persisted state")
+
+    status = child["status"]
+    if status == "ABORTED":
+        if returncode != 0 or state.get("status") != "ABORTED":
+            raise RuntimeError("ABORTED child contradicts return code or persisted state")
+        if int(child.get("rows", -1)) != int(state.get("rows_written", -2)):
+            raise RuntimeError("ABORTED child rows contradict persisted checkpoint")
+        if child.get("reason") != state.get("abort_reason"):
+            raise RuntimeError("ABORTED child reason contradicts persisted checkpoint")
+        if child.get("high_cursor") != [
+            state.get("high_created_at"),
+            state.get("high_id"),
+        ]:
+            raise RuntimeError("ABORTED child high cursor contradicts persisted checkpoint")
+        if child.get("last_cursor") != [
+            state.get("last_created_at"),
+            state.get("last_id"),
+        ]:
+            raise RuntimeError("ABORTED child last cursor contradicts persisted checkpoint")
+        if int(child.get("parts", -1)) != len(state.get("parts", [])):
+            raise RuntimeError("ABORTED child part count contradicts persisted checkpoint")
+        if float(child.get("active_seconds", -1.0)) != float(
+            state.get("active_seconds", -2.0)
+        ):
+            raise RuntimeError("ABORTED child timing contradicts persisted checkpoint")
+        if (job_dir / "result.json").exists():
+            raise RuntimeError("ABORTED export unexpectedly has result.json")
+        return child
+
+    if status == "FAILED":
+        if returncode == 0 or state.get("status") == "SUCCEEDED":
+            raise RuntimeError("FAILED child contradicts return code or persisted state")
+        return child
+
+    if returncode != 0 or state.get("status") != "SUCCEEDED":
+        raise RuntimeError("SUCCEEDED child contradicts return code or persisted state")
+    result_path = job_dir / "result.json"
+    if not result_path.is_file():
+        raise RuntimeError("SUCCEEDED export result.json is missing")
+    persisted = read_json(result_path)
+    if persisted.get("status") != "SUCCEEDED":
+        raise RuntimeError("persisted export result is not SUCCEEDED")
+    if not _matching_result_fields(child, persisted):
+        raise RuntimeError("child JSON contradicts persisted export result")
+
+    verification = run_verifier(
+        verifier_command,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    verified = _parse_child_output(
+        verification.stdout or "",
+        verification.stderr or "",
+    )
+    if verification.returncode != 0 or verified.get("status") != "SUCCEEDED":
+        raise RuntimeError("runner fast-path integrity verification failed")
+    if not _matching_result_fields(verified, persisted):
+        raise RuntimeError("runner verifier contradicts persisted export result")
+    return persisted
+
+
+def reconcile_oltp_result(
+    returncode: int,
+    child: dict,
+    trial_id: str,
+) -> dict:
+    if (
+        returncode == 0
+        and child.get("status") == "SUCCEEDED"
+        and child.get("mode") == "oltp"
+        and child.get("trial_id") == trial_id
+    ):
+        return child
+    if returncode != 0 and child.get("status") == "FAILED":
+        return child
+    raise RuntimeError("OLTP child JSON contradicts its return code or trial identity")
 
 
 def terminate_process(process, grace_seconds: float) -> None:
@@ -3064,13 +3417,24 @@ def wait_for_state(job_dir: Path, timeout_seconds: float) -> dict | None:
 
 
 def kill_buffered_query(config: dict, connection_id: int) -> None:
+    validated_id = int(connection_id)
+    if validated_id <= 0:
+        raise ValueError("connection_id must be positive")
     admin = mysql.connector.connect(**config)
     cursor = admin.cursor()
     try:
-        cursor.execute(f"KILL QUERY {int(connection_id)}")
+        cursor.execute(f"KILL QUERY {validated_id}")
     finally:
         cursor.close()
         admin.close()
+
+
+def _persist_aborted_checkpoint(job_dir: Path, reason: str) -> None:
+    state = wait_for_state(job_dir, 0.2)
+    if state is not None and state.get("status") != "SUCCEEDED":
+        state["status"] = "ABORTED"
+        state["abort_reason"] = reason
+        atomic_json(job_dir / "state.json", state)
 
 
 def abort_export(
@@ -3094,8 +3458,12 @@ def abort_export(
         "kill_query_sent": False,
         "forced_termination": False,
     }
-    if process is None or process.poll() is not None:
+    if process is None:
+        evidence["not_started"] = True
+        return evidence
+    if process.poll() is not None:
         evidence["already_exited"] = True
+        _persist_aborted_checkpoint(job_dir, reason)
         return evidence
 
     if mode == "buffered":
@@ -3106,28 +3474,83 @@ def abort_export(
                 evidence["kill_query_sent"] = True
             except Exception as exc:
                 evidence["kill_query_error"] = f"{type(exc).__name__}: {exc}"
-        try:
-            process.wait(timeout=grace_seconds)
-        except subprocess.TimeoutExpired:
-            evidence["forced_termination"] = True
-            terminate_process(process, grace_seconds)
-        final_state = wait_for_state(job_dir, 0.2)
-        if final_state is not None and final_state.get("status") != "SUCCEEDED":
-            final_state["status"] = "ABORTED"
-            final_state["abort_reason"] = reason
-            atomic_json(job_dir / "state.json", final_state)
-    else:
-        try:
-            process.wait(timeout=grace_seconds)
-        except subprocess.TimeoutExpired:
-            evidence["forced_termination"] = True
-            terminate_process(process, grace_seconds)
-        final_state = wait_for_state(job_dir, 0.2)
-        if final_state is not None and final_state.get("status") != "SUCCEEDED":
-            final_state["status"] = "ABORTED"
-            final_state["abort_reason"] = reason
-            atomic_json(job_dir / "state.json", final_state)
+    try:
+        process.wait(timeout=grace_seconds)
+    except subprocess.TimeoutExpired:
+        evidence["forced_termination"] = True
+        terminate_process(process, grace_seconds)
+    _persist_aborted_checkpoint(job_dir, reason)
     return evidence
+
+
+def _close_quietly(resource) -> None:
+    if resource is not None:
+        try:
+            resource.close()
+        except Exception:
+            pass
+
+
+def run_kill_query_preflight(
+    config: dict,
+    connect=mysql.connector.connect,
+    pause=time.sleep,
+) -> dict:
+    victim = None
+    killer = None
+    victim_cursor = None
+    killer_cursor = None
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = None
+    entered_execute = threading.Event()
+    try:
+        victim = connect(**config)
+        killer = connect(**config)
+        victim_cursor = victim.cursor()
+        killer_cursor = killer.cursor()
+        connection_id = int(victim.connection_id)
+        if connection_id <= 0:
+            raise RuntimeError("preflight victim connection_id is invalid")
+
+        def blocking_query() -> None:
+            entered_execute.set()
+            victim_cursor.execute("SELECT SLEEP(30)")
+            victim_cursor.fetchone()
+
+        future = executor.submit(blocking_query)
+        if not entered_execute.wait(timeout=2.0):
+            raise RuntimeError("preflight victim query did not start")
+        pause(0.2)
+        killer_cursor.execute(f"KILL QUERY {connection_id}")
+        try:
+            future.result(timeout=5.0)
+        except concurrent.futures.TimeoutError as exc:
+            raise RuntimeError("KILL QUERY did not interrupt the victim") from exc
+        except Exception as exc:
+            if int(getattr(exc, "errno", -1)) != 1317:
+                raise
+        else:
+            raise RuntimeError("KILL QUERY victim completed without interruption")
+        return {
+            "status": "SUCCEEDED",
+            "mode": "preflight-kill",
+            "connection_id": connection_id,
+            "observed_errno": 1317,
+        }
+    finally:
+        _close_quietly(killer_cursor)
+        _close_quietly(killer)
+        if future is not None and not future.done():
+            _close_quietly(victim)
+            victim = None
+        _close_quietly(victim_cursor)
+        _close_quietly(victim)
+        if future is not None and not future.done():
+            try:
+                future.result(timeout=1.0)
+            except Exception:
+                pass
+        executor.shutdown(wait=False, cancel_futures=True)
 
 
 def load_metrics(path: Path) -> dict | None:
@@ -3136,18 +3559,36 @@ def load_metrics(path: Path) -> dict | None:
     return read_json(path)
 
 
+def _require_fresh_paths(paths: list[Path]) -> None:
+    existing = [path.name for path in paths if path.exists()]
+    if existing:
+        raise RuntimeError(
+            "trial paths must not pre-exist: " + ", ".join(sorted(existing))
+        )
+
+
 def main() -> int:
+    result_file = None
+    oltp = None
+    export = None
+    handles = []
     try:
         parser = StructuredArgumentParser()
         parser.add_argument("--runner", type=Path, required=True)
         parser.add_argument("--runtime-root", type=Path, required=True)
         parser.add_argument("--trial-id", required=True)
         parser.add_argument("--job-dir", type=Path)
-        parser.add_argument("--export-mode", choices=("none", "buffered", "chunked"), required=True)
+        parser.add_argument(
+            "--export-mode",
+            choices=("none", "buffered", "chunked", "preflight-kill"),
+            required=True,
+        )
         parser.add_argument("--p95-budget-ms", type=float, default=0.0)
         parser.add_argument("--min-free-bytes", type=int, required=True)
         parser.add_argument("--duration-seconds", type=int, default=60)
         parser.add_argument("--start-delay-seconds", type=float, default=5.0)
+        parser.add_argument("--startup-grace-seconds", type=float, default=12.0)
+        parser.add_argument("--heartbeat-grace-seconds", type=float, default=2.5)
         parser.add_argument("--threads", type=int, default=4)
         parser.add_argument("--batch-size", type=int, default=1000)
         parser.add_argument("--sleep-ms", type=int, default=20)
@@ -3161,31 +3602,44 @@ def main() -> int:
         runner = args.runner.resolve()
         if runner.parent != root or runner.name != "export_runner.py":
             raise ValueError("runner must be runtime-root/export_runner.py")
-        if args.export_mode != "none" and args.job_dir is None:
+        if args.export_mode in ("buffered", "chunked") and args.job_dir is None:
             raise ValueError("--job-dir is required for export trials")
         if (
             not args.trial_id
-            or any(not (character.isalnum() or character in "-_") for character in args.trial_id)
+            or any(
+                not (character.isalnum() or character in "-_")
+                for character in args.trial_id
+            )
         ):
-            raise ValueError("trial-id must use only letters, digits, dash, or underscore")
+            raise ValueError(
+                "trial-id must use only letters, digits, dash, or underscore"
+            )
         job_dir = (
             validated_job_dir(args.job_dir, root)
-            if args.job_dir is not None else root / "job-unused"
+            if args.job_dir is not None
+            else root / "job-unused"
         )
-        if args.export_mode != "none" and job_dir.name != f"job-{args.trial_id}":
+        if (
+            args.export_mode in ("buffered", "chunked")
+            and job_dir.name != f"job-{args.trial_id}"
+        ):
             raise ValueError("job directory run-id must equal trial-id")
         if (
             args.min_free_bytes <= 0
             or args.duration_seconds < 1
-            or args.start_delay_seconds < 0
             or not 1 <= args.threads <= 16
+            or args.start_delay_seconds < 5.0
+            or args.startup_grace_seconds <= args.start_delay_seconds
+            or not 0.5 <= args.heartbeat_grace_seconds <= 10.0
         ):
             raise ValueError("controller numeric argument is invalid")
         if shutil.disk_usage(root).free < args.min_free_bytes:
             raise RuntimeError("pre-group disk gate failed")
         password = os.environ.get(args.password_env)
         if password is None:
-            raise ValueError(f"password environment variable is not set: {args.password_env}")
+            raise ValueError(
+                f"password environment variable is not set: {args.password_env}"
+            )
         admin_config = {
             "host": args.host,
             "port": args.port,
@@ -3197,152 +3651,269 @@ def main() -> int:
         run_id = args.trial_id
         metrics_file = root / f"metrics-{run_id}.json"
         abort_file = root / f"abort-{run_id}.json"
-        result_file = root / f"controller-result-{run_id}.json"
+        candidate_result_file = root / f"controller-result-{run_id}.json"
+        oltp_stdout_path = root / f"oltp-{run_id}.stdout.json"
+        oltp_stderr_path = root / f"oltp-{run_id}.stderr.json"
+        export_stdout_path = root / f"export-{run_id}.stdout.json"
+        export_stderr_path = root / f"export-{run_id}.stderr.json"
+        _require_fresh_paths(
+            [
+                metrics_file,
+                abort_file,
+                candidate_result_file,
+                oltp_stdout_path,
+                oltp_stderr_path,
+                export_stdout_path,
+                export_stderr_path,
+            ]
+        )
+        result_file = candidate_result_file
+        if args.export_mode in ("buffered", "chunked") and job_dir.exists():
+            raise RuntimeError("each trial requires a fresh job directory")
+
+        if args.export_mode == "preflight-kill":
+            result = run_kill_query_preflight(admin_config)
+            atomic_json(result_file, result)
+            print(json.dumps(result, sort_keys=True))
+            return 0
+
         common = [
             sys.executable,
             str(runner),
-            "--host", args.host,
-            "--port", str(args.port),
-            "--user", args.user,
-            "--password-env", args.password_env,
+            "--host",
+            args.host,
+            "--port",
+            str(args.port),
+            "--user",
+            args.user,
+            "--password-env",
+            args.password_env,
         ]
-        oltp_stdout = (root / f"oltp-{run_id}.stdout.json").open("w", encoding="utf-8")
-        oltp_stderr = (root / f"oltp-{run_id}.stderr.json").open("w", encoding="utf-8")
-        export_stdout = None
-        export_stderr = None
+        oltp_stdout = oltp_stdout_path.open("w", encoding="utf-8")
+        oltp_stderr = oltp_stderr_path.open("w", encoding="utf-8")
+        handles.extend((oltp_stdout, oltp_stderr))
         oltp = subprocess.Popen(
             [
                 *common,
-                "--mode", "oltp",
-                "--duration-seconds", str(args.duration_seconds),
-                "--threads", str(args.threads),
-                "--metrics-file", str(metrics_file),
+                "--mode",
+                "oltp",
+                "--duration-seconds",
+                str(args.duration_seconds),
+                "--threads",
+                str(args.threads),
+                "--metrics-file",
+                str(metrics_file),
+                "--trial-id",
+                run_id,
             ],
             stdout=oltp_stdout,
             stderr=oltp_stderr,
             text=True,
         )
-        export = None
+        export_command = None
         breach = None
         export_abort = None
         started = time.monotonic()
-        try:
-            while oltp.poll() is None or (export is not None and export.poll() is None):
-                metrics = load_metrics(metrics_file)
+        tracker = new_metrics_tracker()
+        latest_metrics = None
+
+        while True:
+            now_monotonic = time.monotonic()
+            now_epoch = time.time()
+            elapsed = now_monotonic - started
+            try:
+                latest_metrics = load_metrics(metrics_file)
+            except Exception as exc:
+                breach = f"OLTP metrics malformed: {type(exc).__name__}: {exc}"
+                break
+            require_metrics = (
+                export is not None or elapsed >= args.startup_grace_seconds
+            )
+            tracker, breach = inspect_metrics(
+                latest_metrics,
+                run_id,
+                now_epoch,
+                now_monotonic,
+                tracker,
+                args.heartbeat_grace_seconds,
+                require_metrics,
+            )
+            if breach is None:
                 breach = gate_reason(
-                    metrics,
+                    latest_metrics,
                     shutil.disk_usage(root).free,
                     args.p95_budget_ms,
                     args.min_free_bytes,
                 )
-                if breach is not None:
-                    if export is not None:
-                        export_abort = abort_export(
-                            args.export_mode,
-                            export,
-                            job_dir,
-                            abort_file,
-                            breach,
-                            admin_config,
-                            5.0,
-                        )
-                    terminate_process(oltp, 2.0)
-                    break
-                if (
-                    export is None
-                    and args.export_mode != "none"
-                    and time.monotonic() - started >= args.start_delay_seconds
-                ):
-                    if job_dir.exists():
-                        raise RuntimeError("each trial requires a fresh job directory")
-                    export_stdout = (root / f"export-{run_id}.stdout.json").open(
-                        "w", encoding="utf-8"
+            if breach is not None:
+                break
+
+            if (
+                export is None
+                and args.export_mode in ("buffered", "chunked")
+                and ready_for_export(tracker, args.start_delay_seconds)
+            ):
+                export_stdout = export_stdout_path.open("w", encoding="utf-8")
+                export_stderr = export_stderr_path.open("w", encoding="utf-8")
+                handles.extend((export_stdout, export_stderr))
+                export_command = [
+                    *common,
+                    "--mode",
+                    args.export_mode,
+                    "--job-dir",
+                    str(job_dir),
+                    "--abort-file",
+                    str(abort_file),
+                ]
+                if args.export_mode == "chunked":
+                    export_command.extend(
+                        [
+                            "--batch-size",
+                            str(args.batch_size),
+                            "--sleep-ms",
+                            str(args.sleep_ms),
+                            "--min-free-bytes",
+                            str(args.min_free_bytes),
+                        ]
                     )
-                    export_stderr = (root / f"export-{run_id}.stderr.json").open(
-                        "w", encoding="utf-8"
-                    )
-                    export_command = [
-                        *common,
-                        "--mode", args.export_mode,
-                        "--job-dir", str(job_dir),
-                        "--abort-file", str(abort_file),
-                    ]
-                    if args.export_mode == "chunked":
-                        export_command.extend(
-                            [
-                                "--batch-size", str(args.batch_size),
-                                "--sleep-ms", str(args.sleep_ms),
-                                "--min-free-bytes", str(args.min_free_bytes),
-                            ]
-                        )
-                    export = subprocess.Popen(
-                        export_command,
-                        stdout=export_stdout,
-                        stderr=export_stderr,
-                        text=True,
-                    )
-                time.sleep(0.1)
-            if breach is None:
-                oltp_rc = oltp.wait()
-                export_rc = export.wait() if export is not None else None
+                export = subprocess.Popen(
+                    export_command,
+                    stdout=export_stdout,
+                    stderr=export_stderr,
+                    text=True,
+                )
+
+            if (
+                export is None
+                and args.export_mode in ("buffered", "chunked")
+                and elapsed >= args.startup_grace_seconds
+            ):
+                breach = (
+                    "OLTP did not produce five fresh nonempty windows "
+                    "within startup grace"
+                )
+                break
+            oltp_running = oltp.poll() is None
+            export_running = export is not None and export.poll() is None
+            if not oltp_running and export_running:
+                breach = "OLTP ended before concurrent export completed"
+                break
+            if not oltp_running and not export_running:
+                break
+            time.sleep(0.1)
+
+        if breach is not None:
+            if export is not None:
+                export_abort = abort_export(
+                    args.export_mode,
+                    export,
+                    job_dir,
+                    abort_file,
+                    breach,
+                    admin_config,
+                    5.0,
+                )
+            terminate_process(oltp, 2.0)
+            result = {
+                "status": "ABORTED",
+                "mode": args.export_mode,
+                "reason": breach,
+                "accepted_windows": list(tracker["accepted_windows"]),
+                "export_abort": export_abort,
+                "oltp_returncode": oltp.poll(),
+                "export_returncode": export.poll() if export is not None else None,
+            }
+        else:
+            oltp_rc = oltp.wait()
+            export_rc = export.wait() if export is not None else None
+            for handle in handles:
+                handle.close()
+            oltp_child = read_child_result(oltp_stdout_path, oltp_stderr_path)
+            oltp_result = reconcile_oltp_result(oltp_rc, oltp_child, run_id)
+            if args.export_mode == "none":
+                if export is not None:
+                    raise RuntimeError("control trial unexpectedly started export")
+                export_result = None
                 status = (
                     "SUCCEEDED"
-                    if oltp_rc == 0 and (export_rc is None or export_rc == 0)
+                    if oltp_result["status"] == "SUCCEEDED"
                     else "FAILED"
                 )
-                result = {
-                    "status": status,
-                    "mode": args.export_mode,
-                    "oltp_returncode": oltp_rc,
-                    "export_returncode": export_rc,
-                }
             else:
-                result = {
-                    "status": "ABORTED",
-                    "mode": args.export_mode,
-                    "reason": breach,
-                    "export_abort": export_abort,
-                    "oltp_returncode": oltp.poll(),
-                    "export_returncode": export.poll() if export is not None else None,
-                }
-            atomic_json(result_file, result)
-            print(json.dumps(result, sort_keys=True))
-            return 0 if result["status"] in ("SUCCEEDED", "ABORTED") else 2
-        finally:
-            terminate_process(export, 1.0)
-            terminate_process(oltp, 1.0)
-            oltp_stdout.close()
-            oltp_stderr.close()
-            if export_stdout is not None:
-                export_stdout.close()
-            if export_stderr is not None:
-                export_stderr.close()
+                if export is None or export_command is None:
+                    raise RuntimeError(
+                        "export never started from five fresh OLTP windows"
+                    )
+                export_child = read_child_result(
+                    export_stdout_path, export_stderr_path
+                )
+                export_result = reconcile_export_result(
+                    args.export_mode,
+                    export_rc,
+                    export_child,
+                    job_dir,
+                    export_command,
+                )
+                if oltp_result["status"] != "SUCCEEDED":
+                    status = "FAILED"
+                else:
+                    status = export_result["status"]
+            result = {
+                "status": status,
+                "mode": args.export_mode,
+                "accepted_windows": list(tracker["accepted_windows"]),
+                "oltp_returncode": oltp_rc,
+                "export_returncode": export_rc,
+                "oltp_result": oltp_result,
+                "export_result": export_result,
+            }
+        atomic_json(result_file, result)
+        print(json.dumps(result, sort_keys=True))
+        return 0 if result["status"] in ("SUCCEEDED", "ABORTED") else 2
     except Exception as exc:
-        print(
-            json.dumps(
-                {
-                    "status": "FAILED",
-                    "error_type": type(exc).__name__,
-                    "error": str(exc),
-                },
-                sort_keys=True,
-            ),
-            file=sys.stderr,
-        )
+        result = {
+            "status": "FAILED",
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
+        if result_file is not None:
+            try:
+                atomic_json(result_file, result)
+            except Exception:
+                pass
+        print(json.dumps(result, sort_keys=True), file=sys.stderr)
         return 2
+    finally:
+        terminate_process(export, 1.0)
+        terminate_process(oltp, 1.0)
+        for handle in handles:
+            _close_quietly(handle)
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-Expected: both syntax exits `0`; no global MySQL variable changes. The controller is temporary-only and is not added as a repository script.
+Expected: both syntax exits `0`; no global MySQL variable changes. The controller is temporary-only and is not added as a repository script. Every trial ID owns fresh metrics／abort／controller-result／stdout／stderr files; any pre-existing path is rejected before a child starts. Normal completion is based on the single structured child JSON plus persisted integrity, never return code alone.
 
 - [ ] **Step 2: Seed and verify the S dataset**
 
 Create exactly 100,000 orders, 300,000 items and 10,000 probe rows. Run `ANALYZE TABLE`. Verify counts, order min／max tuple, three items per order and exact source aggregate fingerprints before performance runs.
 
-After seed, freeze both report source tables for the entire matrix. The dedicated S container has no other report writer; add six `BEFORE` triggers so even the experiment account cannot introduce an in-bound／backdated row or mutate an existing value:
+After seed, freeze both report source tables for the entire matrix. The dedicated S container has no other report writer. On an interrupted rerun, first run the exact trigger teardown below, drop／recreate the scenario tables, reseed, and use fresh trial paths; never continue from an unknown partially frozen dataset.
+
+Run this teardown before trigger creation and run the same block again only after the final post-matrix source fingerprint:
+
+```sql
+DROP TRIGGER IF EXISTS freeze_report_order_insert;
+DROP TRIGGER IF EXISTS freeze_report_order_update;
+DROP TRIGGER IF EXISTS freeze_report_order_delete;
+DROP TRIGGER IF EXISTS freeze_report_item_insert;
+DROP TRIGGER IF EXISTS freeze_report_item_update;
+DROP TRIGGER IF EXISTS freeze_report_item_delete;
+```
+
+Add six `BEFORE` triggers so even the experiment account cannot introduce an in-bound／backdated row or mutate an existing value:
 
 ```sql
 CREATE TRIGGER freeze_report_order_insert BEFORE INSERT ON report_order
@@ -3373,6 +3944,21 @@ MIN_FREE_BYTES=5419909120
 
 The equality is binding: `MIN_FREE_BYTES = 2 * 100000 * 256 + 5 * 1024^3 = 5,419,909,120`.
 
+Before any timed control or buffered trial, prove that the controller identity can interrupt a different connection. This mode opens two disposable connections, starts `SELECT SLEEP(30)` on the victim, issues `KILL QUERY <validated-positive-connection-id>` on the other, requires victim errno `1317`, then closes both connections:
+
+```bash
+uv run --with mysql-connector-python==9.7.0 python \
+  "$MYSQL_SCENARIO_RUN_DIR/scenario_controller.py" \
+  --runner "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
+  --runtime-root "$MYSQL_SCENARIO_RUN_DIR" \
+  --trial-id kill-preflight-1 --export-mode preflight-kill \
+  --min-free-bytes "$MIN_FREE_BYTES" \
+  --host 127.0.0.1 --port "$MYSQL_SCENARIO_PORT" \
+  --user root --password-env MYSQL_PASSWORD
+```
+
+Require controller status `SUCCEEDED`, mode `preflight-kill` and observed errno `1317`. Any connection, permission, interruption, cleanup or structured-result failure stops the matrix; in particular, skip all buffered trials rather than discovering missing `KILL QUERY` authority only after a live breach.
+
 Run the controller three times with unique trial IDs `control-1..3`, `--export-mode none`, `--duration-seconds 60`, `--threads 4`, `--p95-budget-ms 0` and `--min-free-bytes "$MIN_FREE_BYTES"`. Example for the first trial:
 
 ```bash
@@ -3396,7 +3982,7 @@ For each trial:
 1. choose a fresh **nonexistent** `job-buffered-N` path；
 2. recheck `free >= MIN_FREE_BYTES` and the frozen source fingerprint；
 3. invoke the controller with matching `--trial-id buffered-N`, the predeclared numeric P95 budget and fixed disk threshold；
-4. let the controller start OLTP, wait five seconds, then launch buffered export；
+4. let the controller start OLTP and launch buffered export only after five accepted fresh, advancing, nonempty same-trial windows cover at least five active seconds；
 5. capture controller, OLTP, export, state, artifact and MySQL status evidence。
 
 Example:
@@ -3474,6 +4060,17 @@ last cursor = high watermark
 ```
 
 First require each runner's internal state/result/artifact integrity checks. Then independently compute external file bytes/SHA, distinct keys and business aggregates and compare buffered／chunked／resumed artifacts. If hashes differ, diagnose formatting／membership／snapshot／ordering before reporting any performance comparison; a matching internal manifest alone is not cross-mode correctness.
+
+After the last identical frozen-source fingerprint is recorded, tear down the fixed-name guards explicitly:
+
+```sql
+DROP TRIGGER IF EXISTS freeze_report_order_insert;
+DROP TRIGGER IF EXISTS freeze_report_order_update;
+DROP TRIGGER IF EXISTS freeze_report_order_delete;
+DROP TRIGGER IF EXISTS freeze_report_item_insert;
+DROP TRIGGER IF EXISTS freeze_report_item_update;
+DROP TRIGGER IF EXISTS freeze_report_item_delete;
+```
 
 - [ ] **Step 8: Summarize three-run evidence and explicit limitations**
 
