@@ -3867,7 +3867,7 @@ def validate_latency_calibration(root: Path, binding: dict) -> dict:
         ):
             raise
         raise RuntimeError(f"latency calibration validation failed: {exc}") from exc
-    if persisted != rebuilt:
+    if not canonical_json_equal(persisted, rebuilt):
         raise RuntimeError("latency calibration artifact is inconsistent")
     expected_hash = canonical_json_sha256(
         {"binding": binding, "trials": rebuilt["trials"]}
