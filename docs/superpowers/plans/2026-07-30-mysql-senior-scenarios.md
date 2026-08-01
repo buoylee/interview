@@ -2161,18 +2161,45 @@ def connector_environment() -> dict:
     }
 
 
-def require_pure_connection(connection) -> dict:
-    if type(connection) is not MySQLConnection:
-        raise RuntimeError(
-            "connector did not return the required pure Python MySQLConnection"
-        )
+class ConnectorContractError(RuntimeError):
+    def __init__(self, message: str, connector_evidence: dict):
+        super().__init__(message)
+        self.connector_evidence = connector_evidence
+
+
+def observe_connector(connection=None) -> dict:
     return {
         **connector_environment(),
         "actual_connection_class": (
-            f"{type(connection).__module__}.{type(connection).__qualname__}"
+            None
+            if connection is None
+            else f"{type(connection).__module__}.{type(connection).__qualname__}"
         ),
-        "actual_pure": True,
+        "actual_pure": (
+            None if connection is None else type(connection) is MySQLConnection
+        ),
     }
+
+
+def require_pure_connection(connection) -> dict:
+    observed = observe_connector(connection)
+    if type(connection) is not MySQLConnection:
+        raise ConnectorContractError(
+            "connector did not return the required pure Python MySQLConnection",
+            observed,
+        )
+    return observed
+
+
+def connector_failure_evidence(exc: Exception, fallback: dict) -> dict:
+    observed = getattr(exc, "connector_evidence", fallback)
+    return observed if isinstance(observed, dict) else fallback
+
+
+def strict_connection_id(value) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise RuntimeError("connection_id must be a positive integer")
+    return value
 
 
 class StructuredArgumentParser(argparse.ArgumentParser):
@@ -2572,14 +2599,14 @@ def run_chunked(
         validate_manifest(job_dir, state, allow_pending=True)
         state["status"] = "RUNNING"
         state["abort_reason"] = None
-        state["connection_id"] = int(connection.connection_id)
+        state["connection_id"] = strict_connection_id(connection.connection_id)
     else:
         high_created_at, high_id = capture_high_watermark(cursor)
         expected_rows = count_boundary_rows(cursor, (high_created_at, high_id))
         state = {
             "job_id": job_id_from_dir(job_dir),
             "mode": "chunked",
-            "connection_id": int(connection.connection_id),
+            "connection_id": strict_connection_id(connection.connection_id),
             "connector_contract": connector_contract,
             "high_created_at": high_created_at,
             "high_id": high_id,
@@ -2690,7 +2717,7 @@ def run_buffered(connection, connector_contract: dict, job_dir: Path) -> dict:
     state = {
         "job_id": job_id_from_dir(job_dir),
         "mode": "buffered",
-        "connection_id": int(connection.connection_id),
+        "connection_id": strict_connection_id(connection.connection_id),
         "connector_contract": connector_contract,
         "high_created_at": high[0],
         "high_id": high[1],
@@ -2757,6 +2784,30 @@ def percentile(values: list[float], fraction: float) -> float:
     return ordered[index]
 
 
+def close_oltp_resources(cursor, connection) -> dict:
+    failures = []
+    if cursor is not None:
+        try:
+            cursor.close()
+        except Exception as exc:
+            failures.append(f"cursor close failed: {type(exc).__name__}: {exc}")
+    try:
+        connection.close()
+    except Exception as exc:
+        failures.append(f"connection close failed: {type(exc).__name__}: {exc}")
+    try:
+        is_connected = getattr(connection, "is_connected")
+        if not callable(is_connected) or is_connected() is not False:
+            raise RuntimeError("is_connected() did not return False")
+    except Exception as exc:
+        failures.append(
+            f"connection closure could not be verified: {type(exc).__name__}: {exc}"
+        )
+    if failures:
+        raise RuntimeError("; ".join(failures))
+    return {"closed": True, "close_proof": "is_connected_false"}
+
+
 def oltp_worker(
     config: dict,
     deadline: float,
@@ -2767,9 +2818,10 @@ def oltp_worker(
     cursor = None
     identity = None
     connection_id = None
+    work_error = None
     try:
         identity = require_pure_connection(connection)
-        connection_id = int(connection.connection_id)
+        connection_id = strict_connection_id(connection.connection_id)
         connection.autocommit = True
         cursor = connection.cursor()
         randomizer = random.Random(seed)
@@ -2786,15 +2838,28 @@ def oltp_worker(
                 events.put(((time.perf_counter_ns() - started) / 1_000_000, False))
             except Exception:
                 events.put((0.0, True))
-    finally:
-        if cursor is not None:
-            cursor.close()
-        connection.close()
+    except BaseException as exc:
+        work_error = exc
+    close_error = None
+    try:
+        close_evidence = close_oltp_resources(cursor, connection)
+    except BaseException as exc:
+        close_error = exc
+    if work_error is not None:
+        if identity is not None and not hasattr(work_error, "connector_evidence"):
+            work_error.connector_evidence = identity
+        if close_error is not None:
+            work_error.add_note(f"worker cleanup also failed: {close_error}")
+        raise work_error
+    if close_error is not None:
+        if identity is not None:
+            close_error.connector_evidence = identity
+        raise close_error
     return {
         **identity,
         "worker": seed,
         "connection_id": connection_id,
-        "closed": True,
+        **close_evidence,
     }
 
 
@@ -2862,9 +2927,14 @@ def run_oltp(
         len(worker_connections) != threads
         or len({item["connection_id"] for item in worker_connections}) != threads
         or any(
-            item.get("worker") != expected_worker
+            isinstance(item.get("worker"), bool)
+            or not isinstance(item.get("worker"), int)
+            or item.get("worker") != expected_worker
+            or isinstance(item.get("connection_id"), bool)
+            or not isinstance(item.get("connection_id"), int)
             or item.get("actual_pure") is not True
             or item.get("closed") is not True
+            or item.get("close_proof") != "is_connected_false"
             for expected_worker, item in enumerate(worker_connections, 1)
         )
     ):
@@ -2872,13 +2942,13 @@ def run_oltp(
     connector_contract = {
         key: value
         for key, value in worker_connections[0].items()
-        if key not in ("worker", "connection_id", "closed")
+        if key not in ("worker", "connection_id", "closed", "close_proof")
     }
     if any(
         {
             key: value
             for key, value in item.items()
-            if key not in ("worker", "connection_id", "closed")
+            if key not in ("worker", "connection_id", "closed", "close_proof")
         }
         != connector_contract
         for item in worker_connections
@@ -2926,6 +2996,8 @@ def require_password(env_name: str) -> str:
 
 
 def main() -> int:
+    connector_evidence = observe_connector()
+    failure_identity = {}
     try:
         parser = StructuredArgumentParser()
         parser.add_argument("--mode", choices=("buffered", "chunked", "oltp"), required=True)
@@ -2946,6 +3018,9 @@ def main() -> int:
         parser.add_argument("--user", default="root")
         parser.add_argument("--password-env", default="MYSQL_PASSWORD")
         args = parser.parse_args()
+        failure_identity = {"mode": args.mode}
+        if args.mode == "oltp" and args.trial_id:
+            failure_identity["trial_id"] = args.trial_id
         expected_root = runtime_root(args.runtime_root)
 
         if not 1 <= args.batch_size <= 5000:
@@ -3012,6 +3087,7 @@ def main() -> int:
             )
             try:
                 connection = mysql.connector.connect(**config)
+                connector_evidence = observe_connector(connection)
                 connector_contract = require_pure_connection(connection)
                 if args.mode == "buffered":
                     result = run_buffered(connection, connector_contract, job_dir)
@@ -3037,8 +3113,12 @@ def main() -> int:
             json.dumps(
                 {
                     "status": "FAILED",
+                    **failure_identity,
                     "error_type": type(exc).__name__,
                     "error": str(exc),
+                    "connector_evidence": connector_failure_evidence(
+                        exc, connector_evidence
+                    ),
                 },
                 sort_keys=True,
             ),
@@ -3148,6 +3228,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import hashlib
 import json
 import math
 import os
@@ -3184,18 +3265,79 @@ def connector_environment() -> dict:
     }
 
 
-def require_pure_connection(connection) -> dict:
-    if type(connection) is not MySQLConnection:
-        raise RuntimeError(
-            "connector did not return the required pure Python MySQLConnection"
-        )
+class ConnectorContractError(RuntimeError):
+    def __init__(self, message: str, connector_evidence: dict):
+        super().__init__(message)
+        self.connector_evidence = connector_evidence
+
+
+def observe_connector(connection=None) -> dict:
     return {
         **connector_environment(),
         "actual_connection_class": (
-            f"{type(connection).__module__}.{type(connection).__qualname__}"
+            None
+            if connection is None
+            else f"{type(connection).__module__}.{type(connection).__qualname__}"
         ),
-        "actual_pure": True,
+        "actual_pure": (
+            None if connection is None else type(connection) is MySQLConnection
+        ),
     }
+
+
+def require_pure_connection(connection) -> dict:
+    observed = observe_connector(connection)
+    if type(connection) is not MySQLConnection:
+        raise ConnectorContractError(
+            "connector did not return the required pure Python MySQLConnection",
+            observed,
+        )
+    return observed
+
+
+def connector_failure_evidence(exc: Exception, fallback: dict) -> dict:
+    observed = getattr(exc, "connector_evidence", fallback)
+    return observed if isinstance(observed, dict) else fallback
+
+
+def validate_connector_evidence(value) -> dict:
+    expected_environment = connector_environment()
+    expected_keys = set(expected_environment) | {
+        "actual_connection_class",
+        "actual_pure",
+    }
+    valid_actual_class = value.get("actual_connection_class") if isinstance(value, dict) else None
+    valid_actual_pure = value.get("actual_pure") if isinstance(value, dict) else None
+    if (
+        not isinstance(value, dict)
+        or set(value) != expected_keys
+        or any(value.get(key) != expected for key, expected in expected_environment.items())
+        or (
+            valid_actual_class is not None
+            and (
+                not isinstance(valid_actual_class, str)
+                or not valid_actual_class
+            )
+        )
+        or (
+            valid_actual_pure is not True
+            and valid_actual_pure is not False
+            and valid_actual_pure is not None
+        )
+        or ((valid_actual_class is None) != (valid_actual_pure is None))
+    ):
+        fallback = observe_connector()
+        if isinstance(value, dict):
+            fallback.update(
+                {
+                    "actual_connection_class": value.get("actual_connection_class"),
+                    "actual_pure": value.get("actual_pure"),
+                }
+            )
+        raise ConnectorContractError(
+            "connector evidence is missing or malformed", fallback
+        )
+    return value
 
 
 def validate_connector_contract(value: dict) -> dict:
@@ -3207,15 +3349,23 @@ def validate_connector_contract(value: dict) -> dict:
         "actual_pure": True,
     }
     if value != expected:
-        raise RuntimeError("connector contract is missing or contradictory")
+        observed = validate_connector_evidence(value)
+        raise ConnectorContractError(
+            "connector contract is missing or contradictory", observed
+        )
     return value
 
 
 def validate_worker_connections(result: dict) -> list[dict]:
     contract = validate_connector_contract(result.get("connector_contract"))
     workers = result.get("worker_connections")
-    threads = int(result.get("threads", -1))
-    if not isinstance(workers, list) or threads < 1 or len(workers) != threads:
+    try:
+        threads = _integer_field(result, "threads")
+        if threads < 1:
+            raise ValueError("threads must be positive")
+    except ValueError as exc:
+        raise RuntimeError("OLTP worker thread count is invalid") from exc
+    if not isinstance(workers, list) or len(workers) != threads:
         raise RuntimeError("OLTP worker connection evidence is incomplete")
     expected_contract_fields = set(contract)
     connection_ids = set()
@@ -3225,10 +3375,15 @@ def validate_worker_connections(result: dict) -> list[dict]:
         observed_contract = {
             key: worker.get(key) for key in expected_contract_fields
         }
-        connection_id = int(worker.get("connection_id", -1))
+        try:
+            worker_number = _integer_field(worker, "worker")
+            connection_id = _integer_field(worker, "connection_id")
+        except ValueError as exc:
+            raise RuntimeError("OLTP worker integer evidence is invalid") from exc
         if (
-            worker.get("worker") != expected_worker
+            worker_number != expected_worker
             or worker.get("closed") is not True
+            or worker.get("close_proof") != "is_connected_false"
             or connection_id <= 0
             or observed_contract != contract
         ):
@@ -3622,6 +3777,11 @@ def reconcile_oltp_result(
 ) -> dict:
     if child.get("mode") != "oltp" or child.get("trial_id") != trial_id:
         raise RuntimeError("OLTP child identity is invalid")
+    if child.get("status") == "FAILED":
+        if returncode == 0:
+            raise RuntimeError("FAILED OLTP child returned exit code zero")
+        validate_connector_evidence(child.get("connector_evidence"))
+        return child
     try:
         operations = _integer_field(child, "operations")
         errors = _integer_field(child, "errors")
@@ -3636,8 +3796,6 @@ def reconcile_oltp_result(
         and errors == 0
     ):
         return child
-    if returncode != 0 and child.get("status") == "FAILED":
-        return child
     raise RuntimeError("OLTP child JSON contradicts its return code or trial identity")
 
 
@@ -3649,22 +3807,32 @@ def validate_oltp_smoke(
 ) -> dict:
     if duration_seconds != 5 or threads != 4:
         raise RuntimeError("OLTP smoke must run for five seconds with four threads")
+    try:
+        operations = _integer_field(oltp_result, "operations")
+        errors = _integer_field(oltp_result, "errors")
+        child_threads = _integer_field(oltp_result, "threads")
+        window_seq = _integer_field(tracker, "window_seq")
+        tracker_operations = _integer_field(tracker, "operations")
+        tracker_errors = _integer_field(tracker, "errors")
+        active_elapsed = _float_field(tracker, "active_elapsed_seconds")
+    except ValueError as exc:
+        raise RuntimeError("OLTP smoke numeric evidence is malformed") from exc
     if (
         oltp_result.get("status") != "SUCCEEDED"
-        or int(oltp_result.get("operations", 0)) <= 0
-        or int(oltp_result.get("errors", -1)) != 0
-        or int(oltp_result.get("threads", -1)) != 4
+        or operations <= 0
+        or errors != 0
+        or child_threads != 4
     ):
         raise RuntimeError("OLTP smoke child result failed its work/error contract")
     workers = validate_worker_connections(oltp_result)
     accepted = tracker.get("accepted_windows")
     if (
-        int(tracker.get("window_seq", 0)) < 2
+        window_seq < 2
         or not isinstance(accepted, list)
         or len(accepted) < 2
-        or int(tracker.get("operations", 0)) <= 0
-        or int(tracker.get("errors", -1)) != 0
-        or float(tracker.get("active_elapsed_seconds", 0.0)) <= 0.0
+        or tracker_operations <= 0
+        or tracker_errors != 0
+        or active_elapsed <= 0.0
     ):
         raise RuntimeError("OLTP smoke metrics did not progress")
     return {
@@ -3672,14 +3840,120 @@ def validate_oltp_smoke(
         "mode": "preflight-oltp",
         "duration_seconds": duration_seconds,
         "threads": threads,
-        "operations": int(oltp_result["operations"]),
-        "errors": int(oltp_result["errors"]),
+        "operations": operations,
+        "errors": errors,
         "accepted_windows": len(accepted),
-        "last_window_seq": int(tracker["window_seq"]),
+        "last_window_seq": window_seq,
         "worker_connections": len(workers),
         "connector_contract": oltp_result["connector_contract"],
         "excluded_from_control_statistics": True,
     }
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def experiment_binding(root: Path, runner: Path, config: dict) -> dict:
+    try:
+        port = _integer_field(config, "port")
+    except ValueError as exc:
+        raise RuntimeError("experiment port binding is invalid") from exc
+    if port <= 0 or config.get("use_pure") is not True:
+        raise RuntimeError("experiment connector binding is invalid")
+    return {
+        "runtime_root": str(root.resolve()),
+        "runner_sha256": file_sha256(runner),
+        "host": config.get("host"),
+        "port": port,
+        "user": config.get("user"),
+        "database": config.get("database"),
+        "requested_use_pure": True,
+    }
+
+
+def validate_persisted_smoke(root: Path, binding: dict) -> dict:
+    path = root / "controller-result-oltp-smoke-1.json"
+    if not path.is_file():
+        raise RuntimeError("persisted OLTP smoke artifact is missing")
+    result = read_json(path)
+    smoke = result.get("smoke_result")
+    if (
+        result.get("status") != "SUCCEEDED"
+        or result.get("mode") != "preflight-oltp"
+        or result.get("experiment_binding") != binding
+        or not isinstance(smoke, dict)
+        or smoke.get("status") != "SUCCEEDED"
+        or smoke.get("mode") != "preflight-oltp"
+        or smoke.get("excluded_from_control_statistics") is not True
+    ):
+        raise RuntimeError("persisted OLTP smoke binding or status is invalid")
+    try:
+        duration = _integer_field(smoke, "duration_seconds")
+        threads = _integer_field(smoke, "threads")
+        operations = _integer_field(smoke, "operations")
+        errors = _integer_field(smoke, "errors")
+        accepted = _integer_field(smoke, "accepted_windows")
+        last_window = _integer_field(smoke, "last_window_seq")
+        workers = _integer_field(smoke, "worker_connections")
+    except ValueError as exc:
+        raise RuntimeError("persisted OLTP smoke numeric evidence is invalid") from exc
+    if (
+        duration != 5
+        or threads != 4
+        or operations <= 0
+        or errors != 0
+        or accepted < 2
+        or last_window < 2
+        or workers != 4
+    ):
+        raise RuntimeError("persisted OLTP smoke evidence is insufficient")
+    validate_connector_contract(smoke.get("connector_contract"))
+    return smoke
+
+
+def build_smoke_failure(
+    breach: str,
+    tracker: dict,
+    returncode: int | None,
+    stdout_path: Path,
+    stderr_path: Path,
+    trial_id: str,
+) -> dict:
+    result = {
+        "status": "FAILED",
+        "mode": "preflight-oltp",
+        "reason": breach,
+        "accepted_windows": list(tracker.get("accepted_windows", [])),
+        "oltp_returncode": returncode,
+    }
+    try:
+        child = read_child_result(stdout_path, stderr_path)
+    except Exception as exc:
+        result["structured_output_error"] = f"{type(exc).__name__}: {exc}"
+        return result
+    result["oltp_child"] = child
+    if child.get("status") != "FAILED":
+        result["child_reconciliation_error"] = (
+            "smoke breach cannot accept a non-FAILED child"
+        )
+        return result
+    try:
+        result["oltp_failure"] = reconcile_oltp_result(
+            returncode if returncode is not None else -1,
+            child,
+            trial_id,
+        )
+    except Exception as exc:
+        result["child_reconciliation_error"] = f"{type(exc).__name__}: {exc}"
+        result["connector_evidence"] = connector_failure_evidence(
+            exc, observe_connector()
+        )
+    return result
 
 
 def terminate_process(process, grace_seconds: float) -> None:
@@ -3704,9 +3978,14 @@ def wait_for_state(job_dir: Path, timeout_seconds: float) -> dict | None:
 
 
 def kill_buffered_query(config: dict, connection_id: int) -> dict:
-    validated_id = int(connection_id)
+    try:
+        validated_id = _integer_field(
+            {"connection_id": connection_id}, "connection_id"
+        )
+    except ValueError as exc:
+        raise ValueError("connection_id must be a positive integer") from exc
     if validated_id <= 0:
-        raise ValueError("connection_id must be positive")
+        raise ValueError("connection_id must be a positive integer")
     if config.get("use_pure") is not True:
         raise ValueError("admin connection must request use_pure=True")
     admin = mysql.connector.connect(**config)
@@ -3769,7 +4048,7 @@ def abort_export(
         if state is not None and state.get("connection_id") is not None:
             try:
                 evidence["kill_query_connector"] = kill_query(
-                    admin_config, int(state["connection_id"])
+                    admin_config, state["connection_id"]
                 )
                 evidence["kill_query_sent"] = True
             except Exception as exc:
@@ -3802,9 +4081,11 @@ def wait_for_active_victim(
     monotonic=time.monotonic,
     pause=time.sleep,
 ) -> dict:
-    validated_id = int(connection_id)
+    validated_id = _integer_field(
+        {"connection_id": connection_id}, "connection_id"
+    )
     if validated_id <= 0:
-        raise ValueError("connection_id must be positive")
+        raise ValueError("connection_id must be a positive integer")
     if not 0 < timeout_seconds <= 10.0:
         raise ValueError("active query timeout must be in (0,10]")
     deadline = monotonic() + timeout_seconds
@@ -3814,7 +4095,7 @@ def wait_for_active_victim(
         killer_cursor.execute(PROCESSLIST_SQL, (validated_id,))
         row = killer_cursor.fetchone()
         if row is not None:
-            observed_id = int(row[0])
+            observed_id = _integer_field({"connection_id": row[0]}, "connection_id")
             observed_sql = str(row[1])
             if observed_id != validated_id:
                 raise RuntimeError("active victim identity mismatch")
@@ -3834,9 +4115,11 @@ def wait_for_victim_cleanup(
     monotonic=time.monotonic,
     pause=time.sleep,
 ) -> int:
-    validated_id = int(connection_id)
+    validated_id = _integer_field(
+        {"connection_id": connection_id}, "connection_id"
+    )
     if validated_id <= 0:
-        raise ValueError("connection_id must be positive")
+        raise ValueError("connection_id must be a positive integer")
     if not 0 < timeout_seconds <= 10.0:
         raise ValueError("cleanup timeout must be in (0,10]")
     deadline = monotonic() + timeout_seconds
@@ -3847,7 +4130,8 @@ def wait_for_victim_cleanup(
             "SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE ID=%s",
             (validated_id,),
         )
-        if int(killer_cursor.fetchone()[0]) == 0:
+        count = _integer_field({"processlist_count": killer_cursor.fetchone()[0]}, "processlist_count")
+        if count == 0:
             return polls
         if monotonic() >= deadline:
             raise RuntimeError("victim connection survived cleanup deadline")
@@ -3867,6 +4151,8 @@ def run_kill_query_preflight(
     killer_cursor = None
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     future = None
+    victim_connector = None
+    killer_connector = None
     try:
         if config.get("use_pure") is not True:
             raise ValueError("KILL preflight must request use_pure=True")
@@ -3876,7 +4162,9 @@ def run_kill_query_preflight(
         killer_connector = require_pure_connection(killer)
         victim_cursor = victim.cursor()
         killer_cursor = killer.cursor()
-        connection_id = int(victim.connection_id)
+        connection_id = _integer_field(
+            {"connection_id": victim.connection_id}, "connection_id"
+        )
         if connection_id <= 0:
             raise RuntimeError("preflight victim connection_id is invalid")
         victim_cursor.execute(
@@ -3933,6 +4221,11 @@ def run_kill_query_preflight(
             },
             **active,
         }
+    except Exception as exc:
+        observed = killer_connector or victim_connector
+        if observed is not None and not hasattr(exc, "connector_evidence"):
+            exc.connector_evidence = observed
+        raise
     finally:
         _close_quietly(killer_cursor)
         _close_quietly(killer)
@@ -3968,6 +4261,7 @@ def main() -> int:
     oltp = None
     export = None
     handles = []
+    connector_evidence = observe_connector()
     try:
         parser = StructuredArgumentParser()
         parser.add_argument("--runner", type=Path, required=True)
@@ -4057,6 +4351,7 @@ def main() -> int:
             "database": "mysql_senior_scenarios",
             "use_pure": True,
         }
+        current_binding = experiment_binding(root, runner, admin_config)
 
         run_id = args.trial_id
         metrics_file = root / f"metrics-{run_id}.json"
@@ -4087,6 +4382,10 @@ def main() -> int:
             atomic_json(result_file, result)
             print(json.dumps(result, sort_keys=True))
             return 0
+
+        smoke_gate = None
+        if args.export_mode in ("none", "buffered", "chunked"):
+            smoke_gate = validate_persisted_smoke(root, current_binding)
 
         common = [
             sys.executable,
@@ -4227,16 +4526,34 @@ def main() -> int:
                     5.0,
                 )
             terminate_process(oltp, 2.0)
-            result = {
-                "status": "ABORTED",
-                "mode": args.export_mode,
-                "reason": breach,
-                "accepted_windows": list(tracker["accepted_windows"]),
-                "export_abort": export_abort,
-                "oltp_returncode": oltp.poll(),
-                "export_returncode": export.poll() if export is not None else None,
-                "controller_connector_environment": connector_environment(),
-            }
+            for handle in handles:
+                handle.close()
+            if args.export_mode == "preflight-oltp":
+                result = build_smoke_failure(
+                    breach,
+                    tracker,
+                    oltp.poll(),
+                    oltp_stdout_path,
+                    oltp_stderr_path,
+                    run_id,
+                )
+                result["export_abort"] = None
+                result["export_returncode"] = None
+            else:
+                result = {
+                    "status": "ABORTED",
+                    "mode": args.export_mode,
+                    "reason": breach,
+                    "accepted_windows": list(tracker["accepted_windows"]),
+                    "export_abort": export_abort,
+                    "oltp_returncode": oltp.poll(),
+                    "export_returncode": (
+                        export.poll() if export is not None else None
+                    ),
+                }
+            result["experiment_binding"] = current_binding
+            result["smoke_gate"] = smoke_gate
+            result["controller_connector_environment"] = connector_environment()
         else:
             oltp_rc = oltp.wait()
             export_rc = export.wait() if export is not None else None
@@ -4249,7 +4566,10 @@ def main() -> int:
                 if export is not None:
                     raise RuntimeError("control trial unexpectedly started export")
                 export_result = None
-                if args.export_mode == "preflight-oltp":
+                if (
+                    args.export_mode == "preflight-oltp"
+                    and oltp_result["status"] == "SUCCEEDED"
+                ):
                     smoke_result = validate_oltp_smoke(
                         oltp_result,
                         tracker,
@@ -4285,6 +4605,8 @@ def main() -> int:
                 "oltp_result": oltp_result,
                 "export_result": export_result,
                 "smoke_result": smoke_result,
+                "experiment_binding": current_binding,
+                "smoke_gate": smoke_gate,
                 "controller_connector_environment": connector_environment(),
             }
         atomic_json(result_file, result)
@@ -4295,6 +4617,9 @@ def main() -> int:
             "status": "FAILED",
             "error_type": type(exc).__name__,
             "error": str(exc),
+            "connector_evidence": connector_failure_evidence(
+                exc, connector_evidence
+            ),
         }
         if result_file is not None:
             try:
@@ -4314,7 +4639,7 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-Expected: both syntax exits `0`; no global MySQL variable changes. The controller is temporary-only and is not added as a repository script. Every trial ID owns fresh metrics／abort／controller-result／stdout／stderr files; any pre-existing path is rejected before a child starts. Normal completion is based on the single structured child JSON plus persisted integrity, never return code alone. Materialized programs must retain the explicit `use_pure=True` configuration and exact-type `MySQLConnection` gate. Before live work, record Python/platform, Connector version, `threadsafety`, `HAVE_CEXT` and the requested pure mode; every successful connection result must add the actual pure class evidence.
+Expected: both syntax exits `0`; no global MySQL variable changes. The controller is temporary-only and is not added as a repository script. Every trial ID owns fresh metrics／abort／controller-result／stdout／stderr files; any pre-existing path is rejected before a child starts. Normal completion is based on the single structured child JSON plus persisted integrity, never return code alone. Materialized programs must retain the explicit `use_pure=True` configuration and exact-type `MySQLConnection` gate. Before live work, record Python/platform, Connector version, `threadsafety`, `HAVE_CEXT` and the requested pure mode; successful results add the exact pure class, while every `FAILED` JSON retains the observed implementation envelope including unknown／mismatched actual class. OLTP cleanup always attempts connection close even when cursor close fails and accepts `closed=true` only after `is_connected() is False`; missing proof or either close error fails closed. Child thread, worker and connection IDs are exact JSON integers—strings and booleans are invalid.
 
 - [ ] **Step 2: Seed and verify the S dataset**
 
@@ -4379,7 +4704,7 @@ uv run --with mysql-connector-python==9.7.0 python \
 
 Require controller status `SUCCEEDED`, mode `preflight-kill`, observed errno `1317`, positive `connection_id`, exact `active_query`, `active_polls >= 1`, `victim_connection_absent=true`, `temporary_table_discarded=true` and `cleanup_polls >= 1`. Preserve these active-query and cleanup observations with the preflight result. Any connection, active-query poll, identity, permission, interruption, cleanup or structured-result failure stops the matrix; in particular, skip all buffered trials rather than discovering missing `KILL QUERY` authority only after a live breach.
 
-Before the live preflight, injected offline contract tests must also require that an unexpected victim errno is re-raised and closes all resources, and that a victim still visible through the cleanup timeout fails closed and closes both connections. The success path must assert `cleanup_polls >= 1`. Additional injected contracts must prove every runner/controller connection receives `use_pure=True`, actual-mode mismatch fails closed, each OLTP worker owns and closes a distinct connection, export/KILL semantics remain reconciled, and smoke acceptance/rejection cannot bypass structured child, metrics or connector evidence.
+Before the live preflight, injected offline contract tests must also require that an unexpected victim errno is re-raised and closes all resources, and that a victim still visible through the cleanup timeout fails closed and closes both connections. The success path must assert `cleanup_polls >= 1`. Additional injected contracts must prove every runner/controller connection receives `use_pure=True`, actual-mode mismatch fails closed with the observed envelope, each OLTP worker owns and verifiably closes a distinct connection even across cursor／connection close faults, coercible non-integer child fields are rejected, export/KILL semantics remain reconciled, and smoke acceptance/rejection cannot bypass structured child, metrics or connector evidence.
 
 After the KILL preflight and before `control-1`, run one mandatory client-concurrency smoke with the same canonical runner and the same four-thread OLTP shape, but only five seconds:
 
@@ -4395,7 +4720,9 @@ uv run --with mysql-connector-python==9.7.0 python \
   --user root --password-env MYSQL_PASSWORD
 ```
 
-Require one structured controller `SUCCEEDED`, positive child operations, zero child errors, at least two accepted advancing nonempty metric sequences, four distinct closed worker connections and an exact pure connector contract. Preserve the smoke result with `excluded_from_control_statistics=true`. A native exit, empty/multiple/malformed child output, missing/nonprogressing metrics, shared/unclosed connection or actual-mode mismatch stops the matrix. Never retry this smoke in the same runtime. The prior Python 3.13/macOS arm64/Connector 9.7.0 evidence—canonical one-thread success, default `HAVE_CEXT=true` four-thread exit 139, and the same four-thread workload succeeding with `use_pure=True`—is an excluded client/environment boundary, not a MySQL performance sample.
+Require one structured controller `SUCCEEDED`, positive child operations, zero child errors, at least two accepted advancing nonempty metric sequences, four distinct verifiably closed worker connections and an exact pure connector contract. Preserve the smoke result with `excluded_from_control_statistics=true` plus a binding over the exact runtime root, runner SHA-256 and non-secret connection configuration. For this mode only, any metrics／gate breach, native exit, empty／multiple／malformed child output, shared／unclosed connection or actual-mode mismatch persists controller `FAILED` and exits `2`; it must never use timed-export `ABORTED`／exit-0 semantics. Parse and retain a structured child failure when one exists, otherwise retain the structured-output error and implementation envelope. Never retry this smoke in the same runtime. The prior Python 3.13/macOS arm64/Connector 9.7.0 evidence—canonical one-thread success, default `HAVE_CEXT=true` four-thread exit 139, and the same four-thread workload succeeding with `use_pure=True`—is an excluded client/environment boundary, not a MySQL performance sample.
+
+Every later timed `none`／`buffered`／`chunked` invocation must validate `controller-result-oltp-smoke-1.json` as `SUCCEEDED`, excluded, sufficiently progressing, exact-pure and equal to its current runtime／runner／connection binding before starting any child. Missing, failed, malformed, stale-runtime, changed-runner or changed-config smoke evidence fails the timed invocation before `Popen`; timed export breach behavior after this gate remains the documented `ABORTED` contract.
 
 Run the controller three times with unique trial IDs `control-1..3`, `--export-mode none`, `--duration-seconds 60`, `--threads 4`, `--p95-budget-ms 0` and `--min-free-bytes "$MIN_FREE_BYTES"`. Example for the first trial:
 
