@@ -2125,6 +2125,11 @@ from mysql.connector.connection import MySQLConnection
 
 EPOCH = "1970-01-01 00:00:00.000000"
 RUNTIME_PREFIX = "mysql-senior-scenarios."
+# Return to heartbeat/window publication after at most this many queued events
+# or this much monotonic wall time. These are liveness bounds, not throughput
+# targets, and do not relax the controller's 2.5-second heartbeat gate.
+OLTP_DRAIN_MAX_EVENTS = 256
+OLTP_DRAIN_MAX_SECONDS = 0.010
 EXPORT_SQL = """
 SELECT o.created_at, o.id, o.tenant_id, o.status,
        SUM(i.qty * i.unit_price) AS total_amount,
@@ -2784,6 +2789,39 @@ def percentile(values: list[float], fraction: float) -> float:
     return ordered[index]
 
 
+def drain_oltp_event_slice(
+    events,
+    *,
+    max_events: int,
+    max_seconds: float,
+    monotonic=time.perf_counter,
+) -> dict:
+    if max_events < 1 or max_seconds <= 0:
+        raise ValueError("OLTP drain bounds must be positive")
+    started = monotonic()
+    drained = []
+    for _index in range(max_events):
+        if monotonic() - started >= max_seconds:
+            return {
+                "events": drained,
+                "limit_hit": True,
+                "limit_reason": "time",
+            }
+        try:
+            drained.append(events.get_nowait())
+        except queue.Empty:
+            return {
+                "events": drained,
+                "limit_hit": False,
+                "limit_reason": None,
+            }
+    return {
+        "events": drained,
+        "limit_hit": True,
+        "limit_reason": "count",
+    }
+
+
 def close_oltp_resources(cursor, connection) -> dict:
     failures = []
     if cursor is not None:
@@ -2880,25 +2918,20 @@ def run_oltp(
     window_latencies = []
     window_errors = 0
     sequence = 0
+    drain_limit_hits = 0
+    max_heartbeat_lateness_ms = 0.0
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as pool:
         futures = [
             pool.submit(oltp_worker, config, deadline, seed, events)
             for seed in range(1, threads + 1)
         ]
         while True:
-            while True:
-                try:
-                    latency, is_error = events.get_nowait()
-                except queue.Empty:
-                    break
-                if is_error:
-                    all_errors += 1
-                    window_errors += 1
-                else:
-                    all_latencies.append(latency)
-                    window_latencies.append(latency)
             now = time.perf_counter()
-            if now >= next_window:
+            if now >= next_window and (window_latencies or window_errors):
+                max_heartbeat_lateness_ms = max(
+                    max_heartbeat_lateness_ms,
+                    max(0.0, (now - next_window) * 1000.0),
+                )
                 sequence += 1
                 if metrics_file is not None:
                     atomic_json(
@@ -2914,14 +2947,37 @@ def run_oltp(
                             "operations": len(all_latencies),
                             "errors": all_errors,
                             "active_elapsed_seconds": now - started,
+                            "drain_limit_hits": drain_limit_hits,
+                            "max_heartbeat_lateness_ms": max_heartbeat_lateness_ms,
                         },
                     )
                 window_latencies = []
                 window_errors = 0
                 next_window = now + window_seconds
-            if all(future.done() for future in futures) and events.empty():
+
+            drained = drain_oltp_event_slice(
+                events,
+                max_events=OLTP_DRAIN_MAX_EVENTS,
+                max_seconds=OLTP_DRAIN_MAX_SECONDS,
+            )
+            for latency, is_error in drained["events"]:
+                if is_error:
+                    all_errors += 1
+                    window_errors += 1
+                else:
+                    all_latencies.append(latency)
+                    window_latencies.append(latency)
+            if drained["limit_hit"]:
+                drain_limit_hits += 1
+
+            if (
+                all(future.done() for future in futures)
+                and not drained["limit_hit"]
+                and events.empty()
+            ):
                 break
-            time.sleep(0.02)
+            if not drained["limit_hit"]:
+                time.sleep(0.02)
         worker_connections = [future.result() for future in futures]
     if (
         len(worker_connections) != threads
@@ -2968,6 +3024,8 @@ def run_oltp(
         "p95_ms": percentile(all_latencies, 0.95),
         "p99_ms": percentile(all_latencies, 0.99),
         "threads": threads,
+        "drain_limit_hits": drain_limit_hits,
+        "max_heartbeat_lateness_ms": max_heartbeat_lateness_ms,
         "connector_contract": connector_contract,
         "worker_connections": worker_connections,
     }
@@ -2983,6 +3041,8 @@ def run_oltp(
                 "window_errors": window_errors,
                 "window_p95_ms": percentile(window_latencies, 0.95),
                 "active_elapsed_seconds": time.perf_counter() - started,
+                "drain_limit_hits": drain_limit_hits,
+                "max_heartbeat_lateness_ms": max_heartbeat_lateness_ms,
             },
         )
     return result
@@ -3472,6 +3532,8 @@ def new_metrics_tracker() -> dict:
         "operations": 0,
         "errors": 0,
         "active_elapsed_seconds": 0.0,
+        "drain_limit_hits": 0,
+        "max_heartbeat_lateness_ms": 0.0,
         "activity_windows": 0,
         "last_window_operations": 0,
         "last_status": None,
@@ -3521,10 +3583,6 @@ def inspect_metrics(
         if metrics.get("trial_id") != trial_id:
             return dict(tracker), "OLTP metrics trial_id mismatch"
         heartbeat = _float_field(metrics, "heartbeat_at_epoch")
-        if heartbeat > now_epoch + 1.0:
-            return dict(tracker), "OLTP metrics heartbeat is in the future"
-        if now_epoch - heartbeat > heartbeat_grace_seconds:
-            return dict(tracker), "OLTP metrics heartbeat is stale"
         sequence = _integer_field(metrics, "window_seq")
         if sequence < 1:
             raise ValueError("window_seq must be positive")
@@ -3536,8 +3594,17 @@ def inspect_metrics(
         operations = _integer_field(metrics, "operations")
         errors = _integer_field(metrics, "errors")
         active_elapsed = _float_field(metrics, "active_elapsed_seconds")
+        drain_limit_hits = _integer_field(metrics, "drain_limit_hits")
+        max_heartbeat_lateness_ms = _float_field(
+            metrics, "max_heartbeat_lateness_ms"
+        )
     except (TypeError, ValueError) as exc:
         return dict(tracker), f"OLTP metrics malformed: {exc}"
+
+    if heartbeat > now_epoch + 1.0:
+        return dict(tracker), "OLTP metrics heartbeat is in the future"
+    if now_epoch - heartbeat > heartbeat_grace_seconds:
+        return dict(tracker), "OLTP metrics heartbeat is stale"
 
     previous_sequence = int(tracker["window_seq"])
     if sequence < previous_sequence:
@@ -3552,6 +3619,8 @@ def inspect_metrics(
         operations,
         errors,
         active_elapsed,
+        drain_limit_hits,
+        max_heartbeat_lateness_ms,
     )
     if sequence == previous_sequence:
         if sequence_payload != tracker.get("sequence_payload"):
@@ -3566,6 +3635,10 @@ def inspect_metrics(
     previous_operations = int(tracker["operations"])
     previous_errors = int(tracker["errors"])
     previous_active_elapsed = float(tracker["active_elapsed_seconds"])
+    previous_drain_limit_hits = int(tracker["drain_limit_hits"])
+    previous_max_heartbeat_lateness_ms = float(
+        tracker["max_heartbeat_lateness_ms"]
+    )
     if previous_sequence == 0:
         if operations < window_operations:
             return dict(tracker), (
@@ -3589,6 +3662,13 @@ def inspect_metrics(
         if active_elapsed <= previous_active_elapsed:
             return dict(tracker), (
                 "OLTP metrics active elapsed time did not advance"
+            )
+        if drain_limit_hits < previous_drain_limit_hits:
+            return dict(tracker), "OLTP metrics drain_limit_hits regressed"
+        if max_heartbeat_lateness_ms < previous_max_heartbeat_lateness_ms:
+            return (
+                dict(tracker),
+                "OLTP metrics max_heartbeat_lateness_ms regressed",
             )
         operation_delta = operations - previous_operations
         error_delta = errors - previous_errors
@@ -3616,6 +3696,8 @@ def inspect_metrics(
     updated["operations"] = operations
     updated["errors"] = errors
     updated["active_elapsed_seconds"] = active_elapsed
+    updated["drain_limit_hits"] = drain_limit_hits
+    updated["max_heartbeat_lateness_ms"] = max_heartbeat_lateness_ms
     updated["last_window_operations"] = window_operations
     updated["last_status"] = metrics["status"]
     updated["sequence_payload"] = sequence_payload
@@ -3632,12 +3714,42 @@ def inspect_metrics(
             "operations": operations,
             "errors": errors,
             "active_elapsed_seconds": active_elapsed,
+            "drain_limit_hits": drain_limit_hits,
+            "max_heartbeat_lateness_ms": max_heartbeat_lateness_ms,
         }
     )
     updated["accepted_windows"] = accepted_windows
     if metrics["status"] == "RUNNING":
         updated["activity_windows"] = int(updated["activity_windows"]) + 1
     return updated, None
+
+
+def build_metrics_breach_diagnostics(
+    metrics_file: Path,
+    latest_metrics: dict | None,
+    now_epoch: float,
+    tracker: dict,
+    reason: str,
+) -> dict:
+    heartbeat_age_seconds = None
+    if isinstance(latest_metrics, dict):
+        try:
+            heartbeat_age_seconds = now_epoch - _float_field(
+                latest_metrics, "heartbeat_at_epoch"
+            )
+        except ValueError:
+            heartbeat_age_seconds = None
+    try:
+        metrics_file_mtime_ns = metrics_file.stat().st_mtime_ns
+    except OSError:
+        metrics_file_mtime_ns = None
+    return {
+        "reason": reason,
+        "last_metrics": latest_metrics,
+        "heartbeat_age_seconds": heartbeat_age_seconds,
+        "metrics_file_mtime_ns": metrics_file_mtime_ns,
+        "metrics_tracker": dict(tracker),
+    }
 
 
 def ready_for_export(tracker: dict, minimum_active_seconds: float) -> bool:
@@ -3785,6 +3897,8 @@ def reconcile_oltp_result(
     try:
         operations = _integer_field(child, "operations")
         errors = _integer_field(child, "errors")
+        _integer_field(child, "drain_limit_hits")
+        _float_field(child, "max_heartbeat_lateness_ms")
         validate_connector_contract(child.get("connector_contract"))
         validate_worker_connections(child)
     except ValueError as exc:
@@ -3815,6 +3929,10 @@ def validate_oltp_smoke(
         tracker_operations = _integer_field(tracker, "operations")
         tracker_errors = _integer_field(tracker, "errors")
         active_elapsed = _float_field(tracker, "active_elapsed_seconds")
+        drain_limit_hits = _integer_field(oltp_result, "drain_limit_hits")
+        max_heartbeat_lateness_ms = _float_field(
+            oltp_result, "max_heartbeat_lateness_ms"
+        )
     except ValueError as exc:
         raise RuntimeError("OLTP smoke numeric evidence is malformed") from exc
     if (
@@ -3842,6 +3960,8 @@ def validate_oltp_smoke(
         "threads": threads,
         "operations": operations,
         "errors": errors,
+        "drain_limit_hits": drain_limit_hits,
+        "max_heartbeat_lateness_ms": max_heartbeat_lateness_ms,
         "accepted_windows": len(accepted),
         "last_window_seq": window_seq,
         "worker_connections": len(workers),
@@ -3900,6 +4020,8 @@ def validate_persisted_smoke(root: Path, binding: dict) -> dict:
         accepted = _integer_field(smoke, "accepted_windows")
         last_window = _integer_field(smoke, "last_window_seq")
         workers = _integer_field(smoke, "worker_connections")
+        _integer_field(smoke, "drain_limit_hits")
+        _float_field(smoke, "max_heartbeat_lateness_ms")
     except ValueError as exc:
         raise RuntimeError("persisted OLTP smoke numeric evidence is invalid") from exc
     if (
@@ -4551,6 +4673,14 @@ def main() -> int:
                         export.poll() if export is not None else None
                     ),
                 }
+            if breach == "OLTP metrics heartbeat is stale":
+                result["metrics_diagnostics"] = build_metrics_breach_diagnostics(
+                    metrics_file,
+                    latest_metrics,
+                    now_epoch,
+                    tracker,
+                    breach,
+                )
             result["experiment_binding"] = current_binding
             result["smoke_gate"] = smoke_gate
             result["controller_connector_environment"] = connector_environment()
@@ -4639,6 +4769,33 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
+The fourth fresh run observed a pause at the OLTP metrics
+publication/process boundary: window 26 was the last complete document, the
+next zero-byte atomic-write temporary file appeared only at the controller's
+termination boundary, and no child stack or queue-depth sample was retained.
+The former unbounded `get_nowait()` drain is therefore the strongest
+code-level hypothesis consistent with the pre-write delay, not a proven unique
+cause; scheduler or other pre-write stalls remain possible. This correction
+does not increase the `2.5 s` heartbeat grace.
+
+The runner checks a due publication before every bounded drain slice. A slice
+consumes at most `256` events and at most `10 ms` monotonic wall time; hitting
+either bound returns immediately to the publication check and skips the idle
+sleep while backlog may remain. When all futures finish, slices continue until
+the queue is observed empty, so cumulative operation/error totals neither lose
+nor duplicate events. Window membership is explicitly observation-based: an
+event belongs to the window in which the controller thread consumes it. Thus an
+event completed by a worker before a publication boundary but still queued is
+honestly counted in the next window; cumulative totals remain exact.
+
+Every current runner metrics/result document must contain strict
+`drain_limit_hits` and `max_heartbeat_lateness_ms` fields. The controller
+rejects missing, coercible, malformed or regressing values; there is no
+legacy-absence default in the current contract. On an exact stale-heartbeat
+breach it retains timed-mode `ABORTED` semantics and additionally persists the
+last raw metrics document, computed heartbeat age, metrics file mtime in
+nanoseconds when available, and the full tracker/accepted-window evidence.
+
 Expected: both syntax exits `0`; no global MySQL variable changes. The controller is temporary-only and is not added as a repository script. Every trial ID owns fresh metrics／abort／controller-result／stdout／stderr files; any pre-existing path is rejected before a child starts. Normal completion is based on the single structured child JSON plus persisted integrity, never return code alone. Materialized programs must retain the explicit `use_pure=True` configuration and exact-type `MySQLConnection` gate. Before live work, record Python/platform, Connector version, `threadsafety`, `HAVE_CEXT` and the requested pure mode; successful results add the exact pure class, while every `FAILED` JSON retains the observed implementation envelope including unknown／mismatched actual class. OLTP cleanup always attempts connection close even when cursor close fails and accepts `closed=true` only after `is_connected() is False`; missing proof or either close error fails closed. Child thread, worker and connection IDs are exact JSON integers—strings and booleans are invalid.
 
 - [ ] **Step 2: Seed and verify the S dataset**
@@ -4676,6 +4833,90 @@ FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='report dataset frozen';
 ```
 
 Run negative immutability probes and require all to fail with `report dataset frozen`: a backdated `report_order` INSERT whose `(created_at,id) <= captured high`, one UPDATE, one DELETE, and one INSERT／UPDATE／DELETE against `report_item`. Re-run counts and source fingerprints after the negative probes, after every group and at the end; they must be byte/numeric identical. Only `oltp_probe` may change. This S freeze is the reason cross-invocation resume can be compared exactly; it is not evidence that a bare production high watermark freezes membership.
+
+The freeze fingerprint contains only immutable `report_order`／`report_item`
+membership and values. It must never include the expected-mutable
+`oltp_probe.counter` sum. Capture the probe table's ordered column／index schema
+and exact row count separately before the matrix; recheck those invariants and
+record the counter sum after each group and before／after trigger teardown. Use
+this canonical audit split so an advanced probe counter is evidence, not a
+false source-divergence failure:
+
+```python
+TASK10_REPORT_SOURCE_FIELDS = (
+    "orders",
+    "min_cursor",
+    "high_cursor",
+    "order_crc32_sum",
+    "items",
+    "item_orders",
+    "item_crc32_sum",
+    "min_items_per_order",
+    "max_items_per_order",
+    "report_rows",
+    "total_amount_fingerprint",
+    "item_count_fingerprint",
+)
+
+
+def audit_task10_freeze(
+    seed_manifest: dict,
+    current_manifest: dict,
+    seed_probe_schema,
+    current_probe_schema,
+) -> dict:
+    seed_source = {
+        field: seed_manifest[field] for field in TASK10_REPORT_SOURCE_FIELDS
+    }
+    current_source = {
+        field: current_manifest[field] for field in TASK10_REPORT_SOURCE_FIELDS
+    }
+    if current_source != seed_source:
+        raise RuntimeError("report source fingerprint changed")
+
+    seed_probe_rows = seed_manifest.get("probes")
+    current_probe_rows = current_manifest.get("probes")
+    if (
+        isinstance(seed_probe_rows, bool)
+        or not isinstance(seed_probe_rows, int)
+        or seed_probe_rows != 10000
+        or current_probe_rows != seed_probe_rows
+    ):
+        raise RuntimeError("oltp_probe row count changed")
+    if (
+        not isinstance(seed_probe_schema, (list, tuple))
+        or not seed_probe_schema
+        or current_probe_schema != seed_probe_schema
+    ):
+        raise RuntimeError("oltp_probe schema changed")
+
+    counter_before = seed_manifest.get("probe_counter_sum")
+    counter_after = current_manifest.get("probe_counter_sum")
+    if (
+        isinstance(counter_before, bool)
+        or not isinstance(counter_before, int)
+        or counter_before < 0
+        or isinstance(counter_after, bool)
+        or not isinstance(counter_after, int)
+        or counter_after < counter_before
+    ):
+        raise RuntimeError("oltp_probe counter evidence is invalid")
+    return {
+        "source_matches_baseline": True,
+        "oltp_probe": {
+            "rows": current_probe_rows,
+            "counter_sum_before": counter_before,
+            "counter_sum_after": counter_after,
+            "counter_advanced": counter_after > counter_before,
+            "schema_matches": True,
+        },
+    }
+```
+
+The controlled-stop audit calls this helper before and after dropping exactly
+the six freeze triggers. It fails closed for report source, probe row-count or
+probe schema divergence, but does not compare the mutable counter sum to seed
+zero as part of report-source equality.
 
 - [ ] **Step 3: Establish the OLTP-only control three times**
 
