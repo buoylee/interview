@@ -3600,7 +3600,7 @@ def run_kill_query_preflight(
 
         def blocking_query() -> None:
             entered_execute.set()
-            victim_cursor.execute("SELECT SLEEP(30)")
+            victim_cursor.execute("SELECT SLEEP(30), 1")
             victim_cursor.fetchone()
 
         future = executor.submit(blocking_query)
@@ -4032,7 +4032,7 @@ MIN_FREE_BYTES=5419909120
 
 The equality is binding: `MIN_FREE_BYTES = 2 * 100000 * 256 + 5 * 1024^3 = 5,419,909,120`.
 
-Before any timed control or buffered trial, prove that the controller identity can interrupt a different connection. This mode opens two disposable connections, starts `SELECT SLEEP(30)` on the victim, issues `KILL QUERY <validated-positive-connection-id>` on the other, requires victim errno `1317`, then closes both connections:
+Before any timed control or buffered trial, prove that the controller identity can interrupt a different connection. This mode opens two disposable connections, starts compound statement `SELECT SLEEP(30), 1` on the victim, issues `KILL QUERY <validated-positive-connection-id>` on the other, requires victim errno `1317`, then closes both connections. The extra select expression is intentional: MySQL documents that an interrupted standalone `SELECT SLEEP(...)` returns `1` without a query error, whereas interrupted `SLEEP()` used as only part of a query follows the query-interruption error path. [MySQL 8.0 `SLEEP()`](https://dev.mysql.com/doc/refman/8.0/en/miscellaneous-functions.html)
 
 ```bash
 uv run --with mysql-connector-python==9.7.0 python \
