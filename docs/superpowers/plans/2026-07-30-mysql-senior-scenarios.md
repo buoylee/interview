@@ -2044,6 +2044,7 @@ The document contains one copyable `$MYSQL_SCENARIO_RUN_DIR/export_runner.py` bl
 
 ```text
 --mode buffered|chunked|oltp
+--runtime-root /private/tmp/mysql-senior-scenarios.<suffix>
 --job-dir /private/tmp/mysql-senior-scenarios.<suffix>/job-<run-id>
 --abort-file /private/tmp/mysql-senior-scenarios.<suffix>/abort-<run-id>.json
 --metrics-file /private/tmp/mysql-senior-scenarios.<suffix>/metrics-<run-id>.json
@@ -2057,7 +2058,7 @@ The document contains one copyable `$MYSQL_SCENARIO_RUN_DIR/export_runner.py` bl
 --host 127.0.0.1 --port 3306 --user root --password-env MYSQL_PASSWORD
 ```
 
-Interface migration from the earlier draft is intentional and binding: `job_dir=job-<run-id>` maps to `state.job_id=<run-id>` and the abort suffix, while OLTP `trial_id=<run-id>` maps to the metrics suffix; empty runtime suffix／run ID are rejected. State gains mode, expected-boundary, artifact and part-manifest metadata; `seconds`／`rows_per_second` become cumulative `active_seconds`／`rows_per_active_second`; passwords come only from the named environment variable. Consumers and Task 10 must use these corrected names.
+Interface migration from the earlier draft is intentional and binding: `job_dir=job-<run-id>` maps to `state.job_id=<run-id>` and the abort suffix, while OLTP `trial_id=<run-id>` maps to the metrics suffix; `--runtime-root`, job, abort, metrics and controller evidence all resolve beneath the same exact nonempty runtime directory, and empty runtime suffix／run ID are rejected. State gains mode, expected-boundary, artifact and part-manifest metadata; `seconds`／`rows_per_second` become cumulative `active_seconds`／`rows_per_active_second`; passwords come only from the named environment variable. Consumers and Task 10 must use these corrected names.
 
 Use a complete implementation with these exact functions and types. The code below is the one canonical runner source; the scenario may improve comments, but not change state fields, query order, manifest validation or safety gates:
 
@@ -2310,10 +2311,19 @@ def job_id_from_dir(job_dir: Path) -> str:
     return name[len("job-") :]
 
 
-def validated_runtime_file(path: Path, prefix: str, suffix: str) -> Path:
+def validated_runtime_file(
+    path: Path,
+    prefix: str,
+    suffix: str,
+    expected_root: Path,
+) -> Path:
     resolved = path.resolve()
-    root = runtime_root(resolved.parent)
-    if not suffix or resolved.parent != root or resolved.name != f"{prefix}{suffix}.json":
+    root = runtime_root(expected_root)
+    if (
+        not suffix
+        or resolved.parent != root
+        or resolved.name != f"{prefix}{suffix}.json"
+    ):
         raise ValueError(f"runtime file must equal {prefix}<nonempty-id>.json")
     return resolved
 
@@ -2798,7 +2808,11 @@ def run_oltp(
         for future in futures:
             future.result()
     result = {
-        "status": "SUCCEEDED" if all_errors == 0 else "FAILED",
+        "status": (
+            "SUCCEEDED"
+            if all_errors == 0 and len(all_latencies) > 0
+            else "FAILED"
+        ),
         "mode": "oltp",
         "trial_id": trial_id,
         "operations": len(all_latencies),
@@ -2807,7 +2821,7 @@ def run_oltp(
         "p95_ms": percentile(all_latencies, 0.95),
         "p99_ms": percentile(all_latencies, 0.99),
     }
-    if metrics_file is not None:
+    if metrics_file is not None and (window_latencies or window_errors):
         atomic_json(
             metrics_file,
             {
@@ -2835,6 +2849,7 @@ def main() -> int:
     try:
         parser = StructuredArgumentParser()
         parser.add_argument("--mode", choices=("buffered", "chunked", "oltp"), required=True)
+        parser.add_argument("--runtime-root", type=Path, required=True)
         parser.add_argument("--job-dir", type=Path)
         parser.add_argument("--abort-file", type=Path)
         parser.add_argument("--metrics-file", type=Path)
@@ -2851,6 +2866,7 @@ def main() -> int:
         parser.add_argument("--user", default="root")
         parser.add_argument("--password-env", default="MYSQL_PASSWORD")
         args = parser.parse_args()
+        expected_root = runtime_root(args.runtime_root)
 
         if not 1 <= args.batch_size <= 5000:
             raise ValueError("--batch-size must be in 1..5000")
@@ -2881,7 +2897,12 @@ def main() -> int:
             ):
                 raise ValueError("OLTP mode requires a safe nonempty trial-id")
             metrics_file = (
-                validated_runtime_file(args.metrics_file, "metrics-", args.trial_id)
+                validated_runtime_file(
+                    args.metrics_file,
+                    "metrics-",
+                    args.trial_id,
+                    expected_root,
+                )
                 if args.metrics_file is not None else None
             )
             result = run_oltp(
@@ -2896,9 +2917,16 @@ def main() -> int:
             if args.job_dir is None:
                 raise ValueError("--job-dir is required for export modes")
             job_dir = validated_job_dir(args.job_dir)
+            if job_dir.parent != expected_root:
+                raise ValueError("job directory must be under --runtime-root")
             job_id = job_id_from_dir(job_dir)
             abort_file = (
-                validated_runtime_file(args.abort_file, "abort-", job_id)
+                validated_runtime_file(
+                    args.abort_file,
+                    "abort-",
+                    job_id,
+                    expected_root,
+                )
                 if args.abort_file is not None else None
             )
             try:
@@ -2943,7 +2971,7 @@ if __name__ == "__main__":
 Safety／correctness requirements:
 
 - `job_dir.resolve()` must be an immediate nonempty `job-<run-id>` child of an immediate `/private/tmp/mysql-senior-scenarios.<nonempty-suffix>` runtime directory；
-- direct runner abort／metrics paths must equal `abort-<job-id>.json`／`metrics-<trial-id>.json` under that same runtime root; a prefix-only or empty-suffix match is rejected；
+- direct runner `--runtime-root`, job, abort and metrics paths must resolve under the exact same runtime root; abort／metrics names must equal `abort-<job-id>.json`／`metrics-<trial-id>.json`, and another otherwise-valid runtime root, a prefix-only name or an empty suffix is rejected；
 - batch size `1..5000`, sleep `0..1000`, threads `1..16`；
 - parameterized SQL for all data values；
 - buffered and chunked artifacts use identical column order and canonical formatting；
@@ -2961,9 +2989,9 @@ Run groups, each three times with a fresh job directory:
 | buffered | 60 s, 4 threads | one buffered query／artifact |
 | chunked | 60 s, 4 threads | batch=1000, sleep=20 ms |
 
-Start OLTP before export, but do not use wall time alone as proof of load. OLTP atomically replaces a trial-bound heartbeat containing `trial_id`, epoch timestamp, advancing `window_seq`, one-second operations／errors／P95, cumulative operations／errors and active elapsed time. The controller rejects pre-existing trial files and launches export only after observing at least five fresh, advancing, nonempty same-trial windows covering at least five active seconds.
+Start OLTP before export, but do not use wall time alone as proof of load. OLTP atomically replaces a trial-bound heartbeat containing `trial_id`, epoch timestamp, advancing `window_seq`, positive one-second operations, window errors／P95, cumulative operations／errors and active elapsed time. Each accepted sequence must have positive operations and active time; cumulative operations and active time strictly advance, cumulative errors never decrease, and window deltas reconcile with the cumulative deltas (exactly for consecutive sequences, at least covered when observations skip sequences). The controller rejects contradictory or pre-existing trial files and launches export only after observing at least five fresh, advancing, nonempty same-trial windows covering at least five active seconds and positive cumulative work.
 
-Before and throughout export, missing／malformed／stale／wrong-trial／regressing／changed or nonadvancing metrics fail closed after only the declared startup／heartbeat grace. Cumulative errors cannot be masked by a zero-error latest window; cumulative errors, window errors, P95 and live disk each remain independent stop gates. Record final OLTP p50／p95／p99／errors, every accepted live window, export active time／rows-per-active-second／max RSS, MySQL processlist／temporary-table／sort deltas and exact artifact correctness.
+Before and throughout export, missing／malformed／stale／wrong-trial／regressing／changed or nonadvancing metrics fail closed after only the declared startup／heartbeat grace. Cumulative errors cannot be masked by a zero-error latest window; cumulative errors, window errors, P95 and live disk each remain independent stop gates. The final OLTP child result must also report positive cumulative operations and zero errors to be `SUCCEEDED`; a zero-work early exit cannot make a control trial pass. Record final OLTP p50／p95／p99／errors, every accepted live window, export active time／rows-per-active-second／max RSS, MySQL processlist／temporary-table／sort deltas and exact artifact correctness.
 
 The numeric S disk gate is fixed before all groups:
 
@@ -2973,7 +3001,7 @@ MIN_FREE_BYTES = 2 * EXPECTED_ARTIFACT_BYTES + 5 * 1024^3
                = 5,419,909,120
 ```
 
-The controller checks `MIN_FREE_BYTES` before each group and throughout the live 60-second window. Chunked mode also checks it itself before issuing every new batch. A P95／error／disk breach atomically writes an abort signal: chunked finishes at most its in-flight query/part and persists `ABORTED` before the next fetch; buffered has no batch boundary, so the controller reads its persisted connection ID, issues sanitized `KILL QUERY`, terminates the child if needed and writes separate external `ABORTED` evidence. Forced termination with no child JSON preserves the latest checkpoint as `ABORTED`.
+The controller checks `MIN_FREE_BYTES` before each group and throughout the live 60-second window. Chunked mode also checks it itself before issuing every new batch. A P95／error／disk breach atomically writes an abort signal: chunked finishes at most its in-flight query/part and persists `ABORTED` before the next fetch; buffered has no batch boundary, so the controller reads its persisted connection ID, issues sanitized `KILL QUERY`, terminates the child if needed and writes separate external `ABORTED` evidence. After the child is known stopped, an incomplete checkpoint is persisted as `ABORTED`; if the runner had already atomically completed, its genuine `SUCCEEDED` checkpoint is preserved, but the controller's gate-breach evidence remains `ABORTED` and the trial can never become a performance success.
 
 On normal child exit, the controller accepts exactly one structured JSON object across stdout／stderr and reconciles it with return code and persisted state. Only child `SUCCEEDED`, return code `0`, and consistent state／result／artifact integrity can produce controller success; `ABORTED` with exit code 0 remains `ABORTED`, an unstarted export is never success, and missing／malformed／multiple／contradictory child output is `FAILED`. The successful export is re-invoked through the runner's manifest-linked fast path before evidence is accepted. MySQL restart or fingerprint divergence also invalidates the trial. Never rank `ABORTED` or planned-resume correctness runs as steady-state throughput.
 
@@ -3186,6 +3214,8 @@ def inspect_metrics(
         if sequence < 1:
             raise ValueError("window_seq must be positive")
         window_operations = _integer_field(metrics, "window_operations")
+        if window_operations < 1:
+            raise ValueError("window_operations must be positive")
         window_errors = _integer_field(metrics, "window_errors")
         window_p95 = _float_field(metrics, "window_p95_ms")
         operations = _integer_field(metrics, "operations")
@@ -3218,12 +3248,52 @@ def inspect_metrics(
         ):
             return dict(tracker), "OLTP metrics sequence is nonadvancing"
         return dict(tracker), None
-    if (
-        operations < int(tracker["operations"])
-        or errors < int(tracker["errors"])
-        or active_elapsed < float(tracker["active_elapsed_seconds"])
-    ):
-        return dict(tracker), "OLTP metrics cumulative counters regressed"
+    previous_operations = int(tracker["operations"])
+    previous_errors = int(tracker["errors"])
+    previous_active_elapsed = float(tracker["active_elapsed_seconds"])
+    if previous_sequence == 0:
+        if operations < window_operations:
+            return dict(tracker), (
+                "OLTP metrics window operations exceed cumulative operations"
+            )
+        if errors < window_errors:
+            return dict(tracker), (
+                "OLTP metrics window errors exceed cumulative errors"
+            )
+        if active_elapsed <= 0.0:
+            return dict(tracker), (
+                "OLTP metrics active elapsed time must be positive"
+            )
+    else:
+        if operations <= previous_operations:
+            return dict(tracker), (
+                "OLTP metrics cumulative operations did not advance"
+            )
+        if errors < previous_errors:
+            return dict(tracker), "OLTP metrics cumulative errors regressed"
+        if active_elapsed <= previous_active_elapsed:
+            return dict(tracker), (
+                "OLTP metrics active elapsed time did not advance"
+            )
+        operation_delta = operations - previous_operations
+        error_delta = errors - previous_errors
+        if operation_delta < window_operations:
+            return dict(tracker), (
+                "OLTP metrics window operations exceed cumulative delta"
+            )
+        if error_delta < window_errors:
+            return dict(tracker), (
+                "OLTP metrics window errors exceed cumulative delta"
+            )
+        if sequence == previous_sequence + 1:
+            if operation_delta != window_operations:
+                return dict(tracker), (
+                    "OLTP metrics consecutive operation delta is inconsistent"
+                )
+            if error_delta != window_errors:
+                return dict(tracker), (
+                    "OLTP metrics consecutive error delta is inconsistent"
+                )
 
     updated = dict(tracker)
     updated["window_seq"] = sequence
@@ -3250,7 +3320,7 @@ def inspect_metrics(
         }
     )
     updated["accepted_windows"] = accepted_windows
-    if metrics["status"] == "RUNNING" and window_operations > 0:
+    if metrics["status"] == "RUNNING":
         updated["activity_windows"] = int(updated["activity_windows"]) + 1
     return updated, None
 
@@ -3261,6 +3331,7 @@ def ready_for_export(tracker: dict, minimum_active_seconds: float) -> bool:
         and int(tracker.get("activity_windows", 0)) >= 5
         and float(tracker.get("active_elapsed_seconds", 0.0))
         >= max(5.0, minimum_active_seconds)
+        and int(tracker.get("operations", 0)) > 0
         and int(tracker.get("last_window_operations", 0)) > 0
     )
 
@@ -3383,11 +3454,18 @@ def reconcile_oltp_result(
     child: dict,
     trial_id: str,
 ) -> dict:
+    if child.get("mode") != "oltp" or child.get("trial_id") != trial_id:
+        raise RuntimeError("OLTP child identity is invalid")
+    try:
+        operations = _integer_field(child, "operations")
+        errors = _integer_field(child, "errors")
+    except ValueError as exc:
+        raise RuntimeError(f"OLTP child counters are invalid: {exc}") from exc
     if (
         returncode == 0
         and child.get("status") == "SUCCEEDED"
-        and child.get("mode") == "oltp"
-        and child.get("trial_id") == trial_id
+        and operations > 0
+        and errors == 0
     ):
         return child
     if returncode != 0 and child.get("status") == "FAILED":
@@ -3429,12 +3507,16 @@ def kill_buffered_query(config: dict, connection_id: int) -> None:
         admin.close()
 
 
-def _persist_aborted_checkpoint(job_dir: Path, reason: str) -> None:
+def _persist_aborted_checkpoint(job_dir: Path, reason: str) -> str:
     state = wait_for_state(job_dir, 0.2)
-    if state is not None and state.get("status") != "SUCCEEDED":
-        state["status"] = "ABORTED"
-        state["abort_reason"] = reason
-        atomic_json(job_dir / "state.json", state)
+    if state is None:
+        return "MISSING"
+    if state.get("status") == "SUCCEEDED":
+        return "SUCCEEDED"
+    state["status"] = "ABORTED"
+    state["abort_reason"] = reason
+    atomic_json(job_dir / "state.json", state)
+    return "ABORTED"
 
 
 def abort_export(
@@ -3463,7 +3545,9 @@ def abort_export(
         return evidence
     if process.poll() is not None:
         evidence["already_exited"] = True
-        _persist_aborted_checkpoint(job_dir, reason)
+        evidence["persisted_state_status"] = _persist_aborted_checkpoint(
+            job_dir, reason
+        )
         return evidence
 
     if mode == "buffered":
@@ -3479,7 +3563,9 @@ def abort_export(
     except subprocess.TimeoutExpired:
         evidence["forced_termination"] = True
         terminate_process(process, grace_seconds)
-    _persist_aborted_checkpoint(job_dir, reason)
+    evidence["persisted_state_status"] = _persist_aborted_checkpoint(
+        job_dir, reason
+    )
     return evidence
 
 
@@ -3680,6 +3766,8 @@ def main() -> int:
         common = [
             sys.executable,
             str(runner),
+            "--runtime-root",
+            str(root),
             "--host",
             args.host,
             "--port",
@@ -4001,7 +4089,7 @@ uv run --with mysql-connector-python==9.7.0 python \
   --user root --password-env MYSQL_PASSWORD
 ```
 
-On a live P95／error／disk breach, the controller writes the abort signal, reads buffered `connection_id`, issues `KILL QUERY`, terminates the process if the query does not exit within the grace period, and writes `controller-result-*.json` with external `ABORTED` evidence. A buffered internal artifact that had already completed before a later window breach does not turn the trial into a successful performance sample. Stop later buffered trials and preserve the failed/aborted output.
+On a live P95／error／disk breach, the controller writes the abort signal, reads buffered `connection_id`, issues `KILL QUERY`, terminates the process if the query does not exit within the grace period, and writes `controller-result-*.json` with external `ABORTED` evidence. An incomplete checkpoint becomes `ABORTED`; a genuinely completed internal `SUCCEEDED` state/artifact is preserved and recorded as `persisted_state_status=SUCCEEDED`, but the gate-breached controller result remains `ABORTED` and cannot become a performance sample. Stop later buffered trials and preserve both the controller evidence and checkpoint.
 
 - [ ] **Step 5: Run chunked export with concurrent OLTP three times**
 
@@ -4030,14 +4118,16 @@ Use a separate job directory:
 
 ```bash
 uv run --with mysql-connector-python==9.7.0 python "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
-  --mode chunked --job-dir "$MYSQL_SCENARIO_RUN_DIR/job-resume" \
+  --mode chunked --runtime-root "$MYSQL_SCENARIO_RUN_DIR" \
+  --job-dir "$MYSQL_SCENARIO_RUN_DIR/job-resume" \
   --batch-size 1000 --sleep-ms 20 --max-batches 3 \
   --min-free-bytes "$MIN_FREE_BYTES" \
   --host 127.0.0.1 --port "$MYSQL_SCENARIO_PORT" \
   --user root --password-env MYSQL_PASSWORD
 
 uv run --with mysql-connector-python==9.7.0 python "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
-  --mode chunked --job-dir "$MYSQL_SCENARIO_RUN_DIR/job-resume" \
+  --mode chunked --runtime-root "$MYSQL_SCENARIO_RUN_DIR" \
+  --job-dir "$MYSQL_SCENARIO_RUN_DIR/job-resume" \
   --batch-size 1000 --sleep-ms 20 --max-batches 0 \
   --min-free-bytes "$MIN_FREE_BYTES" \
   --host 127.0.0.1 --port "$MYSQL_SCENARIO_PORT" \
