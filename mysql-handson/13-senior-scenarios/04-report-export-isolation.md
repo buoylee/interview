@@ -1286,7 +1286,13 @@ Task 10 把下方第二个 canonical executable fence 原样物化到 `$MYSQL_SC
 --host 127.0.0.1 --port 3306 --user root --password-env MYSQL_PASSWORD
 ```
 
-`--runtime-root`、runner、job、metrics、abort、stdout/stderr 与 controller-result 全部绑定到同一个 exact runtime root；export mode 的 `job-<run-id>` suffix 必须等于 `trial-id`。timing 前的 preflight-kill 使用两个 disposable connections：victim 执行 compound statement `SELECT SLEEP(30), 1`，killer 执行 `KILL QUERY <validated-positive-connection-id>`，必须观察 victim errno `1317`，并在 success、正常回传或权限失败时都关闭两个 cursors 与两个 connections。额外的 select expression 是刻意的：MySQL 8.0 说明 interrupted standalone `SELECT SLEEP(...)` 会回传 `1` 而不产生 query error；当 `SLEEP()` 只是较大 query 的一部分时，才走 query-interruption error path。[MySQL 8.0 `SLEEP()`](https://dev.mysql.com/doc/refman/8.0/en/miscellaneous-functions.html)
+`--runtime-root`、runner、job、metrics、abort、stdout/stderr 与 controller-result 全部绑定到同一个 exact runtime root；export mode 的 `job-<run-id>` suffix 必须等于 `trial-id`。
+
+Before any timed control or buffered trial, prove that the controller identity can interrupt a different connection. This mode opens two disposable connections. The victim creates connection-local temporary table `kill_preflight_probe`, inserts one row, then executes exact marked row query `SELECT /* mysql_senior_kill_preflight */ 1 FROM kill_preflight_probe WHERE SLEEP(30)=0`. The killer polls `information_schema.PROCESSLIST` for the validated positive victim ID and requires the returned ID and full SQL to equal that exact query; a fixed sleep or an event set before `execute()` is not proof that the statement is active. Only after this bounded five-second poll succeeds may it issue `KILL QUERY <validated-positive-connection-id>`, require victim Connector errno `1317`, and close both connections so the temporary table is discarded. Never-active, wrong-ID/query, poll/permission error or normal query return fails closed without claiming cancellation. MySQL documents that interrupted standalone `SLEEP()` returns `1` without a query error, while its row-query example with `SLEEP()` in `WHERE` produces error `1317`. [MySQL 8.0 `SLEEP()`](https://dev.mysql.com/doc/refman/8.0/en/miscellaneous-functions.html)
+
+Require controller status `SUCCEEDED`, mode `preflight-kill`, observed errno `1317`, positive `connection_id`, exact `active_query`, `active_polls >= 1`, `victim_connection_absent=true`, `temporary_table_discarded=true` and `cleanup_polls >= 1`. Preserve these active-query and cleanup observations with the preflight result. Any connection, active-query poll, identity, permission, interruption, cleanup or structured-result failure stops the matrix; in particular, skip all buffered trials rather than discovering missing `KILL QUERY` authority only after a live breach.
+
+Before the live preflight, injected offline contract tests must also require that an unexpected victim errno is re-raised and closes all resources, and that a victim still visible through the cleanup timeout fails closed and closes both connections. The success path must assert `cleanup_polls >= 1`.
 
 ```python
 from __future__ import annotations
@@ -1299,7 +1305,6 @@ import os
 import shutil
 import subprocess
 import sys
-import threading
 import time
 from pathlib import Path
 
@@ -1307,6 +1312,14 @@ import mysql.connector
 
 
 RUNTIME_PREFIX = "mysql-senior-scenarios."
+KILL_PREFLIGHT_SQL = (
+    "SELECT /* mysql_senior_kill_preflight */ 1 "
+    "FROM kill_preflight_probe WHERE SLEEP(30)=0"
+)
+PROCESSLIST_SQL = (
+    "SELECT ID, INFO FROM information_schema.PROCESSLIST "
+    "WHERE ID=%s AND COMMAND='Query'"
+)
 
 
 class StructuredArgumentParser(argparse.ArgumentParser):
@@ -1807,10 +1820,73 @@ def _close_quietly(resource) -> None:
             pass
 
 
+def wait_for_active_victim(
+    killer_cursor,
+    connection_id: int,
+    expected_sql: str,
+    future,
+    timeout_seconds: float,
+    monotonic=time.monotonic,
+    pause=time.sleep,
+) -> dict:
+    validated_id = int(connection_id)
+    if validated_id <= 0:
+        raise ValueError("connection_id must be positive")
+    if not 0 < timeout_seconds <= 10.0:
+        raise ValueError("active query timeout must be in (0,10]")
+    deadline = monotonic() + timeout_seconds
+    polls = 0
+    while monotonic() < deadline:
+        polls += 1
+        killer_cursor.execute(PROCESSLIST_SQL, (validated_id,))
+        row = killer_cursor.fetchone()
+        if row is not None:
+            observed_id = int(row[0])
+            observed_sql = str(row[1])
+            if observed_id != validated_id:
+                raise RuntimeError("active victim identity mismatch")
+            if observed_sql != expected_sql:
+                raise RuntimeError("active victim query mismatch")
+            return {"active_query": observed_sql, "active_polls": polls}
+        if future.done():
+            raise RuntimeError("victim query ended before active observation")
+        pause(0.02)
+    raise RuntimeError("exact victim query was never observed active")
+
+
+def wait_for_victim_cleanup(
+    killer_cursor,
+    connection_id: int,
+    timeout_seconds: float,
+    monotonic=time.monotonic,
+    pause=time.sleep,
+) -> int:
+    validated_id = int(connection_id)
+    if validated_id <= 0:
+        raise ValueError("connection_id must be positive")
+    if not 0 < timeout_seconds <= 10.0:
+        raise ValueError("cleanup timeout must be in (0,10]")
+    deadline = monotonic() + timeout_seconds
+    polls = 0
+    while True:
+        polls += 1
+        killer_cursor.execute(
+            "SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE ID=%s",
+            (validated_id,),
+        )
+        if int(killer_cursor.fetchone()[0]) == 0:
+            return polls
+        if monotonic() >= deadline:
+            raise RuntimeError("victim connection survived cleanup deadline")
+        pause(0.02)
+
+
 def run_kill_query_preflight(
     config: dict,
     connect=mysql.connector.connect,
     pause=time.sleep,
+    active_timeout_seconds: float = 5.0,
+    cleanup_timeout_seconds: float = 2.0,
 ) -> dict:
     victim = None
     killer = None
@@ -1818,7 +1894,6 @@ def run_kill_query_preflight(
     killer_cursor = None
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     future = None
-    entered_execute = threading.Event()
     try:
         victim = connect(**config)
         killer = connect(**config)
@@ -1827,16 +1902,25 @@ def run_kill_query_preflight(
         connection_id = int(victim.connection_id)
         if connection_id <= 0:
             raise RuntimeError("preflight victim connection_id is invalid")
+        victim_cursor.execute(
+            "CREATE TEMPORARY TABLE kill_preflight_probe "
+            "(id TINYINT UNSIGNED NOT NULL PRIMARY KEY) ENGINE=InnoDB"
+        )
+        victim_cursor.execute("INSERT INTO kill_preflight_probe VALUES (1)")
 
         def blocking_query() -> None:
-            entered_execute.set()
-            victim_cursor.execute("SELECT SLEEP(30), 1")
-            victim_cursor.fetchone()
+            victim_cursor.execute(KILL_PREFLIGHT_SQL)
+            victim_cursor.fetchall()
 
         future = executor.submit(blocking_query)
-        if not entered_execute.wait(timeout=2.0):
-            raise RuntimeError("preflight victim query did not start")
-        pause(0.2)
+        active = wait_for_active_victim(
+            killer_cursor,
+            connection_id,
+            KILL_PREFLIGHT_SQL,
+            future,
+            active_timeout_seconds,
+            pause=pause,
+        )
         killer_cursor.execute(f"KILL QUERY {connection_id}")
         try:
             future.result(timeout=5.0)
@@ -1847,11 +1931,25 @@ def run_kill_query_preflight(
                 raise
         else:
             raise RuntimeError("KILL QUERY victim completed without interruption")
+        _close_quietly(victim_cursor)
+        victim_cursor = None
+        _close_quietly(victim)
+        victim = None
+        cleanup_polls = wait_for_victim_cleanup(
+            killer_cursor,
+            connection_id,
+            cleanup_timeout_seconds,
+            pause=pause,
+        )
         return {
             "status": "SUCCEEDED",
             "mode": "preflight-kill",
             "connection_id": connection_id,
             "observed_errno": 1317,
+            "victim_connection_absent": True,
+            "temporary_table_discarded": True,
+            "cleanup_polls": cleanup_polls,
+            **active,
         }
     finally:
         _close_quietly(killer_cursor)
