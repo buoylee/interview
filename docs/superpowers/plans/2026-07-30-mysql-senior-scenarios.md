@@ -3650,6 +3650,7 @@ def run_kill_query_preflight(
     connect=mysql.connector.connect,
     pause=time.sleep,
     active_timeout_seconds: float = 5.0,
+    cleanup_timeout_seconds: float = 2.0,
 ) -> dict:
     victim = None
     killer = None
@@ -3701,7 +3702,7 @@ def run_kill_query_preflight(
         cleanup_polls = wait_for_victim_cleanup(
             killer_cursor,
             connection_id,
-            2.0,
+            cleanup_timeout_seconds,
             pause=pause,
         )
         return {
@@ -4137,6 +4138,8 @@ uv run --with mysql-connector-python==9.7.0 python \
 ```
 
 Require controller status `SUCCEEDED`, mode `preflight-kill`, observed errno `1317`, positive `connection_id`, exact `active_query`, `active_polls >= 1`, `victim_connection_absent=true`, `temporary_table_discarded=true` and `cleanup_polls >= 1`. Preserve these active-query and cleanup observations with the preflight result. Any connection, active-query poll, identity, permission, interruption, cleanup or structured-result failure stops the matrix; in particular, skip all buffered trials rather than discovering missing `KILL QUERY` authority only after a live breach.
+
+Before the live preflight, injected offline contract tests must also require that an unexpected victim errno is re-raised and closes all resources, and that a victim still visible through the cleanup timeout fails closed and closes both connections. The success path must assert `cleanup_polls >= 1`.
 
 Run the controller three times with unique trial IDs `control-1..3`, `--export-mode none`, `--duration-seconds 60`, `--threads 4`, `--p95-budget-ms 0` and `--min-free-bytes "$MIN_FREE_BYTES"`. Example for the first trial:
 
