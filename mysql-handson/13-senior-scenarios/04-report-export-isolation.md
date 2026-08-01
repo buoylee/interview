@@ -281,6 +281,11 @@ from mysql.connector.connection import MySQLConnection
 
 EPOCH = "1970-01-01 00:00:00.000000"
 RUNTIME_PREFIX = "mysql-senior-scenarios."
+# Return to heartbeat/window publication after at most this many queued events
+# or this much monotonic wall time. These are liveness bounds, not throughput
+# targets, and do not relax the controller's 2.5-second heartbeat gate.
+OLTP_DRAIN_MAX_EVENTS = 256
+OLTP_DRAIN_MAX_SECONDS = 0.010
 EXPORT_SQL = """
 SELECT o.created_at, o.id, o.tenant_id, o.status,
        SUM(i.qty * i.unit_price) AS total_amount,
@@ -940,6 +945,39 @@ def percentile(values: list[float], fraction: float) -> float:
     return ordered[index]
 
 
+def drain_oltp_event_slice(
+    events,
+    *,
+    max_events: int,
+    max_seconds: float,
+    monotonic=time.perf_counter,
+) -> dict:
+    if max_events < 1 or max_seconds <= 0:
+        raise ValueError("OLTP drain bounds must be positive")
+    started = monotonic()
+    drained = []
+    for _index in range(max_events):
+        if monotonic() - started >= max_seconds:
+            return {
+                "events": drained,
+                "limit_hit": True,
+                "limit_reason": "time",
+            }
+        try:
+            drained.append(events.get_nowait())
+        except queue.Empty:
+            return {
+                "events": drained,
+                "limit_hit": False,
+                "limit_reason": None,
+            }
+    return {
+        "events": drained,
+        "limit_hit": True,
+        "limit_reason": "count",
+    }
+
+
 def close_oltp_resources(cursor, connection) -> dict:
     failures = []
     if cursor is not None:
@@ -1026,7 +1064,13 @@ def run_oltp(
     metrics_file: Path | None,
     window_seconds: float,
     trial_id: str,
+    diagnostics: dict | None = None,
 ) -> dict:
+    if diagnostics is None:
+        diagnostics = {
+            "drain_limit_hits": 0,
+            "max_heartbeat_lateness_ms": 0.0,
+        }
     started = time.perf_counter()
     deadline = started + duration
     next_window = started + window_seconds
@@ -1036,25 +1080,20 @@ def run_oltp(
     window_latencies = []
     window_errors = 0
     sequence = 0
+    diagnostics["drain_limit_hits"] = 0
+    diagnostics["max_heartbeat_lateness_ms"] = 0.0
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as pool:
         futures = [
             pool.submit(oltp_worker, config, deadline, seed, events)
             for seed in range(1, threads + 1)
         ]
         while True:
-            while True:
-                try:
-                    latency, is_error = events.get_nowait()
-                except queue.Empty:
-                    break
-                if is_error:
-                    all_errors += 1
-                    window_errors += 1
-                else:
-                    all_latencies.append(latency)
-                    window_latencies.append(latency)
             now = time.perf_counter()
-            if now >= next_window:
+            if now >= next_window and (window_latencies or window_errors):
+                diagnostics["max_heartbeat_lateness_ms"] = max(
+                    diagnostics["max_heartbeat_lateness_ms"],
+                    max(0.0, (now - next_window) * 1000.0),
+                )
                 sequence += 1
                 if metrics_file is not None:
                     atomic_json(
@@ -1070,14 +1109,39 @@ def run_oltp(
                             "operations": len(all_latencies),
                             "errors": all_errors,
                             "active_elapsed_seconds": now - started,
+                            "drain_limit_hits": diagnostics["drain_limit_hits"],
+                            "max_heartbeat_lateness_ms": diagnostics[
+                                "max_heartbeat_lateness_ms"
+                            ],
                         },
                     )
                 window_latencies = []
                 window_errors = 0
                 next_window = now + window_seconds
-            if all(future.done() for future in futures) and events.empty():
+
+            drained = drain_oltp_event_slice(
+                events,
+                max_events=OLTP_DRAIN_MAX_EVENTS,
+                max_seconds=OLTP_DRAIN_MAX_SECONDS,
+            )
+            for latency, is_error in drained["events"]:
+                if is_error:
+                    all_errors += 1
+                    window_errors += 1
+                else:
+                    all_latencies.append(latency)
+                    window_latencies.append(latency)
+            if drained["limit_hit"]:
+                diagnostics["drain_limit_hits"] += 1
+
+            if (
+                all(future.done() for future in futures)
+                and not drained["limit_hit"]
+                and events.empty()
+            ):
                 break
-            time.sleep(0.02)
+            if not drained["limit_hit"]:
+                time.sleep(0.02)
         worker_connections = [future.result() for future in futures]
     if (
         len(worker_connections) != threads
@@ -1124,6 +1188,10 @@ def run_oltp(
         "p95_ms": percentile(all_latencies, 0.95),
         "p99_ms": percentile(all_latencies, 0.99),
         "threads": threads,
+        "drain_limit_hits": diagnostics["drain_limit_hits"],
+        "max_heartbeat_lateness_ms": diagnostics[
+            "max_heartbeat_lateness_ms"
+        ],
         "connector_contract": connector_contract,
         "worker_connections": worker_connections,
     }
@@ -1139,6 +1207,10 @@ def run_oltp(
                 "window_errors": window_errors,
                 "window_p95_ms": percentile(window_latencies, 0.95),
                 "active_elapsed_seconds": time.perf_counter() - started,
+                "drain_limit_hits": diagnostics["drain_limit_hits"],
+                "max_heartbeat_lateness_ms": diagnostics[
+                    "max_heartbeat_lateness_ms"
+                ],
             },
         )
     return result
@@ -1154,6 +1226,10 @@ def require_password(env_name: str) -> str:
 def main() -> int:
     connector_evidence = observe_connector()
     failure_identity = {}
+    oltp_diagnostics = {
+        "drain_limit_hits": 0,
+        "max_heartbeat_lateness_ms": 0.0,
+    }
     try:
         parser = StructuredArgumentParser()
         parser.add_argument("--mode", choices=("buffered", "chunked", "oltp"), required=True)
@@ -1224,6 +1300,7 @@ def main() -> int:
                 metrics_file,
                 args.window_seconds,
                 args.trial_id,
+                diagnostics=oltp_diagnostics,
             )
         else:
             if args.job_dir is None:
@@ -1270,6 +1347,11 @@ def main() -> int:
                 {
                     "status": "FAILED",
                     **failure_identity,
+                    **(
+                        oltp_diagnostics
+                        if failure_identity.get("mode") == "oltp"
+                        else {}
+                    ),
                     "error_type": type(exc).__name__,
                     "error": str(exc),
                     "connector_evidence": connector_failure_evidence(
@@ -1307,7 +1389,7 @@ if __name__ == "__main__":
 
 ## OLTP probe 与三次矩阵
 
-`--mode oltp` 的每个 operation 是随机 primary-key `SELECT counter` 加一个 autocommit `UPDATE counter=counter+1`。final JSON 报告 trial identity、成功 operation count、compound operation 的 p50／p95／p99 与 error count；live metrics 每约一秒 atomically replace 同 trial 的 heartbeat。probe 是干扰量尺，不是业务 workload 的替身。
+`--mode oltp` 的每个 operation 是随机 primary-key `SELECT counter` 加一个 autocommit `UPDATE counter=counter+1`。final JSON 报告 trial identity、成功 operation count、compound operation 的 p50／p95／p99、error count 与 strict drain／heartbeat-lateness diagnostics；live metrics 每约一秒 atomically replace 同 trial 的 heartbeat。probe 是干扰量尺，不是业务 workload 的替身。
 
 每组必须跑三次，每个 export trial 使用 fresh job directory：
 
@@ -1331,10 +1413,12 @@ OLTP JSON：
 
 ```text
 trial_id, operations, p50_ms, p95_ms, p99_ms, errors, status,
+drain_limit_hits, max_heartbeat_lateness_ms,
 connector_contract, worker_connections(worker, connection_id, closed, close_proof)
 
 live: heartbeat_at_epoch, window_seq, window_operations, window_errors,
-window_p95_ms, operations, errors, active_elapsed_seconds
+window_p95_ms, operations, errors, active_elapsed_seconds,
+drain_limit_hits, max_heartbeat_lateness_ms
 ```
 
 Export JSON：
@@ -1474,6 +1558,7 @@ import shutil
 import subprocess
 import sys
 import time
+from collections import namedtuple
 from pathlib import Path
 
 import mysql.connector
@@ -1488,6 +1573,12 @@ KILL_PREFLIGHT_SQL = (
 PROCESSLIST_SQL = (
     "SELECT ID, INFO FROM information_schema.PROCESSLIST "
     "WHERE ID=%s AND COMMAND='Query'"
+)
+
+
+MetricsSnapshot = namedtuple(
+    "MetricsSnapshot",
+    ("document", "mtime_ns", "device", "inode", "size_bytes"),
 )
 
 
@@ -1709,6 +1800,8 @@ def new_metrics_tracker() -> dict:
         "operations": 0,
         "errors": 0,
         "active_elapsed_seconds": 0.0,
+        "drain_limit_hits": 0,
+        "max_heartbeat_lateness_ms": 0.0,
         "activity_windows": 0,
         "last_window_operations": 0,
         "last_status": None,
@@ -1758,10 +1851,6 @@ def inspect_metrics(
         if metrics.get("trial_id") != trial_id:
             return dict(tracker), "OLTP metrics trial_id mismatch"
         heartbeat = _float_field(metrics, "heartbeat_at_epoch")
-        if heartbeat > now_epoch + 1.0:
-            return dict(tracker), "OLTP metrics heartbeat is in the future"
-        if now_epoch - heartbeat > heartbeat_grace_seconds:
-            return dict(tracker), "OLTP metrics heartbeat is stale"
         sequence = _integer_field(metrics, "window_seq")
         if sequence < 1:
             raise ValueError("window_seq must be positive")
@@ -1773,8 +1862,17 @@ def inspect_metrics(
         operations = _integer_field(metrics, "operations")
         errors = _integer_field(metrics, "errors")
         active_elapsed = _float_field(metrics, "active_elapsed_seconds")
+        drain_limit_hits = _integer_field(metrics, "drain_limit_hits")
+        max_heartbeat_lateness_ms = _float_field(
+            metrics, "max_heartbeat_lateness_ms"
+        )
     except (TypeError, ValueError) as exc:
         return dict(tracker), f"OLTP metrics malformed: {exc}"
+
+    if heartbeat > now_epoch + 1.0:
+        return dict(tracker), "OLTP metrics heartbeat is in the future"
+    if now_epoch - heartbeat > heartbeat_grace_seconds:
+        return dict(tracker), "OLTP metrics heartbeat is stale"
 
     previous_sequence = int(tracker["window_seq"])
     if sequence < previous_sequence:
@@ -1789,6 +1887,8 @@ def inspect_metrics(
         operations,
         errors,
         active_elapsed,
+        drain_limit_hits,
+        max_heartbeat_lateness_ms,
     )
     if sequence == previous_sequence:
         if sequence_payload != tracker.get("sequence_payload"):
@@ -1803,6 +1903,10 @@ def inspect_metrics(
     previous_operations = int(tracker["operations"])
     previous_errors = int(tracker["errors"])
     previous_active_elapsed = float(tracker["active_elapsed_seconds"])
+    previous_drain_limit_hits = int(tracker["drain_limit_hits"])
+    previous_max_heartbeat_lateness_ms = float(
+        tracker["max_heartbeat_lateness_ms"]
+    )
     if previous_sequence == 0:
         if operations < window_operations:
             return dict(tracker), (
@@ -1826,6 +1930,13 @@ def inspect_metrics(
         if active_elapsed <= previous_active_elapsed:
             return dict(tracker), (
                 "OLTP metrics active elapsed time did not advance"
+            )
+        if drain_limit_hits < previous_drain_limit_hits:
+            return dict(tracker), "OLTP metrics drain_limit_hits regressed"
+        if max_heartbeat_lateness_ms < previous_max_heartbeat_lateness_ms:
+            return (
+                dict(tracker),
+                "OLTP metrics max_heartbeat_lateness_ms regressed",
             )
         operation_delta = operations - previous_operations
         error_delta = errors - previous_errors
@@ -1853,6 +1964,8 @@ def inspect_metrics(
     updated["operations"] = operations
     updated["errors"] = errors
     updated["active_elapsed_seconds"] = active_elapsed
+    updated["drain_limit_hits"] = drain_limit_hits
+    updated["max_heartbeat_lateness_ms"] = max_heartbeat_lateness_ms
     updated["last_window_operations"] = window_operations
     updated["last_status"] = metrics["status"]
     updated["sequence_payload"] = sequence_payload
@@ -1869,12 +1982,49 @@ def inspect_metrics(
             "operations": operations,
             "errors": errors,
             "active_elapsed_seconds": active_elapsed,
+            "drain_limit_hits": drain_limit_hits,
+            "max_heartbeat_lateness_ms": max_heartbeat_lateness_ms,
         }
     )
     updated["accepted_windows"] = accepted_windows
     if metrics["status"] == "RUNNING":
         updated["activity_windows"] = int(updated["activity_windows"]) + 1
     return updated, None
+
+
+def build_metrics_breach_diagnostics(
+    snapshot: MetricsSnapshot | None,
+    now_epoch: float,
+    tracker: dict,
+    reason: str,
+) -> dict:
+    latest_metrics = None if snapshot is None else snapshot.document
+    heartbeat_age_seconds = None
+    if isinstance(latest_metrics, dict):
+        try:
+            heartbeat_age_seconds = now_epoch - _float_field(
+                latest_metrics, "heartbeat_at_epoch"
+            )
+        except ValueError:
+            heartbeat_age_seconds = None
+    return {
+        "reason": reason,
+        "last_metrics": latest_metrics,
+        "heartbeat_age_seconds": heartbeat_age_seconds,
+        "metrics_file_mtime_ns": (
+            None if snapshot is None else snapshot.mtime_ns
+        ),
+        "metrics_file_identity": (
+            None
+            if snapshot is None
+            else {
+                "device": snapshot.device,
+                "inode": snapshot.inode,
+                "size_bytes": snapshot.size_bytes,
+            }
+        ),
+        "metrics_tracker": dict(tracker),
+    }
 
 
 def ready_for_export(tracker: dict, minimum_active_seconds: float) -> bool:
@@ -2007,13 +2157,49 @@ def reconcile_export_result(
     return persisted
 
 
+def validate_oltp_diagnostics(
+    child: dict,
+    tracker: dict | None = None,
+) -> tuple[int, float]:
+    try:
+        drain_limit_hits = _integer_field(child, "drain_limit_hits")
+        max_heartbeat_lateness_ms = _float_field(
+            child, "max_heartbeat_lateness_ms"
+        )
+    except ValueError as exc:
+        raise RuntimeError(
+            f"OLTP child diagnostics are invalid: {exc}"
+        ) from exc
+    if tracker is not None:
+        try:
+            tracked_drain_limit_hits = _integer_field(
+                tracker, "drain_limit_hits"
+            )
+            tracked_max_heartbeat_lateness_ms = _float_field(
+                tracker, "max_heartbeat_lateness_ms"
+            )
+        except ValueError as exc:
+            raise RuntimeError(
+                f"OLTP tracker diagnostics are invalid: {exc}"
+            ) from exc
+        if (
+            drain_limit_hits < tracked_drain_limit_hits
+            or max_heartbeat_lateness_ms
+            < tracked_max_heartbeat_lateness_ms
+        ):
+            raise RuntimeError("OLTP child diagnostics regressed")
+    return drain_limit_hits, max_heartbeat_lateness_ms
+
+
 def reconcile_oltp_result(
     returncode: int,
     child: dict,
     trial_id: str,
+    tracker: dict | None = None,
 ) -> dict:
     if child.get("mode") != "oltp" or child.get("trial_id") != trial_id:
         raise RuntimeError("OLTP child identity is invalid")
+    validate_oltp_diagnostics(child, tracker)
     if child.get("status") == "FAILED":
         if returncode == 0:
             raise RuntimeError("FAILED OLTP child returned exit code zero")
@@ -2052,6 +2238,10 @@ def validate_oltp_smoke(
         tracker_operations = _integer_field(tracker, "operations")
         tracker_errors = _integer_field(tracker, "errors")
         active_elapsed = _float_field(tracker, "active_elapsed_seconds")
+        drain_limit_hits = _integer_field(oltp_result, "drain_limit_hits")
+        max_heartbeat_lateness_ms = _float_field(
+            oltp_result, "max_heartbeat_lateness_ms"
+        )
     except ValueError as exc:
         raise RuntimeError("OLTP smoke numeric evidence is malformed") from exc
     if (
@@ -2079,6 +2269,8 @@ def validate_oltp_smoke(
         "threads": threads,
         "operations": operations,
         "errors": errors,
+        "drain_limit_hits": drain_limit_hits,
+        "max_heartbeat_lateness_ms": max_heartbeat_lateness_ms,
         "accepted_windows": len(accepted),
         "last_window_seq": window_seq,
         "worker_connections": len(workers),
@@ -2137,6 +2329,8 @@ def validate_persisted_smoke(root: Path, binding: dict) -> dict:
         accepted = _integer_field(smoke, "accepted_windows")
         last_window = _integer_field(smoke, "last_window_seq")
         workers = _integer_field(smoke, "worker_connections")
+        _integer_field(smoke, "drain_limit_hits")
+        _float_field(smoke, "max_heartbeat_lateness_ms")
     except ValueError as exc:
         raise RuntimeError("persisted OLTP smoke numeric evidence is invalid") from exc
     if (
@@ -2184,6 +2378,7 @@ def build_smoke_failure(
             returncode if returncode is not None else -1,
             child,
             trial_id,
+            tracker=tracker,
         )
     except Exception as exc:
         result["child_reconciliation_error"] = f"{type(exc).__name__}: {exc}"
@@ -2479,10 +2674,59 @@ def run_kill_query_preflight(
         executor.shutdown(wait=False, cancel_futures=True)
 
 
-def load_metrics(path: Path) -> dict | None:
-    if not path.is_file():
+def load_metrics_snapshot(path: Path) -> MetricsSnapshot | None:
+    try:
+        handle = path.open("rb")
+    except FileNotFoundError:
         return None
-    return read_json(path)
+    except OSError as exc:
+        raise RuntimeError(f"metrics snapshot open failed: {exc}") from exc
+    with handle:
+        try:
+            before = os.fstat(handle.fileno())
+        except OSError as exc:
+            raise RuntimeError(
+                f"metrics snapshot metadata read failed: {exc}"
+            ) from exc
+        try:
+            raw = handle.read()
+        except OSError as exc:
+            raise RuntimeError(f"metrics snapshot read failed: {exc}") from exc
+        try:
+            after = os.fstat(handle.fileno())
+        except OSError as exc:
+            raise RuntimeError(
+                f"metrics snapshot metadata read failed: {exc}"
+            ) from exc
+    before_identity = (
+        before.st_dev,
+        before.st_ino,
+        before.st_size,
+        before.st_mtime_ns,
+    )
+    after_identity = (
+        after.st_dev,
+        after.st_ino,
+        after.st_size,
+        after.st_mtime_ns,
+    )
+    if before_identity != after_identity or len(raw) != after.st_size:
+        raise RuntimeError("metrics snapshot changed during read")
+    try:
+        document = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            f"metrics snapshot JSON is malformed: {exc}"
+        ) from exc
+    if not isinstance(document, dict):
+        raise RuntimeError("metrics snapshot JSON is malformed: object required")
+    return MetricsSnapshot(
+        document=dict(document),
+        mtime_ns=after.st_mtime_ns,
+        device=after.st_dev,
+        inode=after.st_ino,
+        size_bytes=after.st_size,
+    )
 
 
 def _require_fresh_paths(paths: list[Path]) -> None:
@@ -2664,6 +2908,7 @@ def main() -> int:
         export_abort = None
         started = time.monotonic()
         tracker = new_metrics_tracker()
+        latest_snapshot = None
         latest_metrics = None
 
         while True:
@@ -2671,7 +2916,12 @@ def main() -> int:
             now_epoch = time.time()
             elapsed = now_monotonic - started
             try:
-                latest_metrics = load_metrics(metrics_file)
+                latest_snapshot = load_metrics_snapshot(metrics_file)
+                latest_metrics = (
+                    None
+                    if latest_snapshot is None
+                    else latest_snapshot.document
+                )
             except Exception as exc:
                 breach = f"OLTP metrics malformed: {type(exc).__name__}: {exc}"
                 break
@@ -2788,6 +3038,13 @@ def main() -> int:
                         export.poll() if export is not None else None
                     ),
                 }
+            if breach == "OLTP metrics heartbeat is stale":
+                result["metrics_diagnostics"] = build_metrics_breach_diagnostics(
+                    latest_snapshot,
+                    now_epoch,
+                    tracker,
+                    breach,
+                )
             result["experiment_binding"] = current_binding
             result["smoke_gate"] = smoke_gate
             result["controller_connector_environment"] = connector_environment()
@@ -2797,7 +3054,12 @@ def main() -> int:
             for handle in handles:
                 handle.close()
             oltp_child = read_child_result(oltp_stdout_path, oltp_stderr_path)
-            oltp_result = reconcile_oltp_result(oltp_rc, oltp_child, run_id)
+            oltp_result = reconcile_oltp_result(
+                oltp_rc,
+                oltp_child,
+                run_id,
+                tracker=tracker,
+            )
             smoke_result = None
             if args.export_mode in ("none", "preflight-oltp"):
                 if export is not None:
@@ -2876,6 +3138,12 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
+The fourth fresh run observed a pause at the OLTP metrics publication/process boundary: window 26 was the last complete document, the next zero-byte atomic-write temporary file appeared only at the controller's termination boundary, and no child stack or queue-depth sample was retained. The former unbounded `get_nowait()` drain is therefore the strongest code-level hypothesis consistent with the pre-write delay, not a proven unique cause; scheduler or other pre-write stalls remain possible. This correction does not increase the `2.5 s` heartbeat grace.
+
+The runner checks a due publication before every bounded drain slice. A slice consumes at most `256` events and at most `10 ms` monotonic wall time; hitting either bound returns immediately to the publication check and skips the idle sleep while backlog may remain. When all futures finish, slices continue until the queue is observed empty, so cumulative operation/error totals neither lose nor duplicate events. Window membership is explicitly observation-based: an event belongs to the window in which the controller thread consumes it. Thus an event completed by a worker before a publication boundary but still queued is honestly counted in the next window; cumulative totals remain exact.
+
+Every current runner metrics/result document, including the generic OLTP `FAILED` envelope, must contain strict `drain_limit_hits` and `max_heartbeat_lateness_ms` fields. The runner updates a shared in-process diagnostics envelope as work progresses. The controller validates it before returning either `FAILED` or `SUCCEEDED` and rejects missing, coercible, malformed or tracker-regressing values; there is no legacy-absence default in the current contract. On an exact stale-heartbeat breach it retains timed-mode `ABORTED` semantics. The last raw metrics document and its mtime/device/inode/size metadata come from one immutable snapshot read through the same opened file descriptor before termination. The controller therefore persists a coherent document, heartbeat age, file identity and full tracker/accepted-window evidence even if termination triggers a later atomic replacement.
+
 Materialized runner／controller 必须保留 explicit `use_pure=True` 与 exact-type `MySQLConnection` gate。live work 前记录 Python/platform、Connector version、`threadsafety`、`HAVE_CEXT` 与 requested pure mode；successful result 加 exact pure class，所有 `FAILED` JSON 也保留 observed implementation envelope，包括 unknown／mismatched actual class。OLTP cleanup 即使 cursor close 失败也必须继续尝试 connection close；只有 `is_connected() is False` 才能记录 `closed=true`，缺 proof 或任一 close error 都 fail closed。child thread、worker 与 connection ID 是 exact JSON integer；string／boolean 都不接受。
 
 KILL preflight 后、`control-1` 前，必须用同一 canonical runner 跑一次固定五秒、四 worker 的 client-concurrency smoke：
@@ -2919,6 +3187,81 @@ controller 只接受 stdout/stderr 合计 **一个** structured JSON object，�
 ### Task 10 freeze 与 teardown boundary
 
 Task 10 在 seed 与 source baseline fingerprint 后建立六个 freeze triggers，分别拒绝 `report_order`／`report_item` 的 INSERT、UPDATE、DELETE；先执行 backdated INSERT、UPDATE、DELETE negative probes 并确认都被拒绝，矩阵期间只写 `oltp_probe`。最后一个 resumed artifact 和 external audit 完成后，再取 post fingerprint；只有它与 baseline 相同，才能 teardown freeze triggers。中断重跑要先执行明确的 `DROP TRIGGER IF EXISTS` recovery block，再重新 seed／fingerprint／freeze；Task 9 不留下 runtime artifact，Task 10 的 verified teardown 和 Task 11 的 database drop 才拥有清理边界。
+
+Freeze fingerprint 只包含 immutable `report_order`／`report_item` membership 与 values，绝不能把 expected-mutable `oltp_probe.counter` sum 混进 source equality。矩阵前另存 probe table 的 ordered column／index schema 与 exact row count；每组后及 trigger teardown 前后重验这两个 invariants，并独立记录 counter sum。使用以下 canonical audit split，让 advanced counter 成为负载确实执行的 evidence，而不是 false source-divergence failure：
+
+```python
+TASK10_REPORT_SOURCE_FIELDS = (
+    "orders",
+    "min_cursor",
+    "high_cursor",
+    "order_crc32_sum",
+    "items",
+    "item_orders",
+    "item_crc32_sum",
+    "min_items_per_order",
+    "max_items_per_order",
+    "report_rows",
+    "total_amount_fingerprint",
+    "item_count_fingerprint",
+)
+
+
+def audit_task10_freeze(
+    seed_manifest: dict,
+    current_manifest: dict,
+    seed_probe_schema,
+    current_probe_schema,
+) -> dict:
+    seed_source = {
+        field: seed_manifest[field] for field in TASK10_REPORT_SOURCE_FIELDS
+    }
+    current_source = {
+        field: current_manifest[field] for field in TASK10_REPORT_SOURCE_FIELDS
+    }
+    if current_source != seed_source:
+        raise RuntimeError("report source fingerprint changed")
+
+    seed_probe_rows = seed_manifest.get("probes")
+    current_probe_rows = current_manifest.get("probes")
+    if (
+        isinstance(seed_probe_rows, bool)
+        or not isinstance(seed_probe_rows, int)
+        or seed_probe_rows != 10000
+        or current_probe_rows != seed_probe_rows
+    ):
+        raise RuntimeError("oltp_probe row count changed")
+    if (
+        not isinstance(seed_probe_schema, (list, tuple))
+        or not seed_probe_schema
+        or current_probe_schema != seed_probe_schema
+    ):
+        raise RuntimeError("oltp_probe schema changed")
+
+    counter_before = seed_manifest.get("probe_counter_sum")
+    counter_after = current_manifest.get("probe_counter_sum")
+    if (
+        isinstance(counter_before, bool)
+        or not isinstance(counter_before, int)
+        or counter_before < 0
+        or isinstance(counter_after, bool)
+        or not isinstance(counter_after, int)
+        or counter_after < counter_before
+    ):
+        raise RuntimeError("oltp_probe counter evidence is invalid")
+    return {
+        "source_matches_baseline": True,
+        "oltp_probe": {
+            "rows": current_probe_rows,
+            "counter_sum_before": counter_before,
+            "counter_sum_after": counter_after,
+            "counter_advanced": counter_after > counter_before,
+            "schema_matches": True,
+        },
+    }
+```
+
+Controlled-stop audit 在 drop exactly six freeze triggers 前后都调用该 helper。report source、probe row-count 或 probe schema divergence 均 fail closed；mutable counter sum 不与 seed zero 做 report-source equality。
 
 ## 预期，不是假装实测
 
@@ -3007,7 +3350,9 @@ artifact 先写 `.tmp` 后 replace，result 再写，最后 state 才 `SUCCEEDED
 - control／buffered／chunked 各三次原始结果、median 与 range；
 - processlist、temporary／sort、InnoDB history delta；
 - freeze triggers、backdated INSERT／UPDATE／DELETE rejection、pre/post source fingerprint 与 verified teardown；
+- immutable report-source equality，以及另行审计且不回退的 `oltp_probe` row count／ordered schema／counter sum；
 - two-connection `KILL QUERY` privilege preflight、五个 advancing 1 秒 OLTP windows、所有 accepted live metrics 与 controller evidence；
+- strict nonregressing `drain_limit_hits`／`max_heartbeat_lateness_ms`，以及 stale `ABORTED` 的 coherent raw document／age／mtime／device／inode／size／tracker evidence；
 - Python/platform、Connector version、`threadsafety`、`HAVE_CEXT`、requested／actual implementation、四个 distinct verifiably closed worker connections；
 - mandatory `oltp-smoke-1` 的 excluded result、exact runtime／runner SHA／non-secret connection binding，以及 C Extension native-crash excluded boundary；
 - numeric disk gate：`2 * 100000 * 256 + 5 * 1024^3 = 5419909120` bytes；
