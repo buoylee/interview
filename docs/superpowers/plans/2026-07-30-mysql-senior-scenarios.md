@@ -3236,7 +3236,7 @@ Run groups, each three times with a fresh job directory:
 
 Start OLTP before export, but do not use wall time alone as proof of load. OLTP atomically replaces a trial-bound heartbeat containing `trial_id`, epoch timestamp, advancing `window_seq`, positive one-second operations, window errors／P95, cumulative operations／errors and active elapsed time. Each accepted sequence must have positive operations and active time; cumulative operations and active time strictly advance, cumulative errors never decrease, and window deltas reconcile with the cumulative deltas (exactly for consecutive sequences, at least covered when observations skip sequences). The controller rejects contradictory or pre-existing trial files and launches export only after observing at least five fresh, advancing, nonempty same-trial windows covering at least five active seconds and positive cumulative work.
 
-Before and throughout export, missing／malformed／stale／wrong-trial／regressing／changed or nonadvancing metrics fail closed after only the declared startup／heartbeat grace. Cumulative errors cannot be masked by a zero-error latest window; cumulative errors, window errors, P95 and live disk each remain independent stop gates. The final OLTP child result must also report positive cumulative operations and zero errors to be `SUCCEEDED`; a zero-work early exit cannot make a control trial pass. Record final OLTP p50／p95／p99／errors, every accepted live window, export active time／rows-per-active-second／max RSS, MySQL processlist／temporary-table／sort deltas and exact artifact correctness.
+Before and throughout export, missing／malformed／stale／wrong-trial／regressing／changed or nonadvancing metrics fail closed after only the declared startup／heartbeat grace. Cumulative errors cannot be masked by a zero-error latest window; cumulative errors, window errors, rolling-five P95 and live disk each remain independent stop gates, while raw one-second P95 never independently stops a trial. The final OLTP child result must also report positive cumulative operations and zero errors to be `SUCCEEDED`; a zero-work early exit cannot make a control trial pass. Record final OLTP p50／p95／p99／errors, every accepted live window, export active time／rows-per-active-second／max RSS, MySQL processlist／temporary-table／sort deltas and exact artifact correctness.
 
 The numeric S disk gate is fixed before all groups:
 
@@ -3347,6 +3347,17 @@ MetricsSnapshot = namedtuple(
 )
 
 
+def canonical_json_equal(left, right) -> bool:
+    try:
+        return json.dumps(
+            left, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ) == json.dumps(
+            right, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        )
+    except (TypeError, ValueError):
+        return False
+
+
 def connector_environment() -> dict:
     return {
         "python_version": platform.python_version(),
@@ -3404,11 +3415,15 @@ def validate_connector_evidence(value) -> dict:
     if (
         not isinstance(value, dict)
         or set(value) != expected_keys
-        or any(value.get(key) != expected for key, expected in expected_environment.items())
+        or any(
+            type(value.get(key)) is not type(expected)
+            or value.get(key) != expected
+            for key, expected in expected_environment.items()
+        )
         or (
             valid_actual_class is not None
             and (
-                not isinstance(valid_actual_class, str)
+                type(valid_actual_class) is not str
                 or not valid_actual_class
             )
         )
@@ -3441,7 +3456,7 @@ def validate_connector_contract(value: dict) -> dict:
         ),
         "actual_pure": True,
     }
-    if value != expected:
+    if not canonical_json_equal(value, expected):
         observed = validate_connector_evidence(value)
         raise ConnectorContractError(
             "connector contract is missing or contradictory", observed
@@ -3468,6 +3483,7 @@ def validate_worker_connections(result: dict) -> list[dict]:
         observed_contract = {
             key: worker.get(key) for key in expected_contract_fields
         }
+        validate_connector_contract(observed_contract)
         try:
             worker_number = _integer_field(worker, "worker")
             connection_id = _integer_field(worker, "connection_id")
@@ -3478,7 +3494,7 @@ def validate_worker_connections(result: dict) -> list[dict]:
             or worker.get("closed") is not True
             or worker.get("close_proof") != "is_connected_false"
             or connection_id <= 0
-            or observed_contract != contract
+            or not canonical_json_equal(observed_contract, contract)
         ):
             raise RuntimeError("OLTP worker connection contract is invalid")
         connection_ids.add(connection_id)
@@ -3669,7 +3685,7 @@ def validate_experiment_binding(binding: dict) -> dict:
         raise RuntimeError("experiment binding is invalid")
     runtime_root = binding.get("runtime_root")
     if (
-        not isinstance(runtime_root, str)
+        type(runtime_root) is not str
         or not runtime_root
         or not Path(runtime_root).name.startswith(RUNTIME_PREFIX)
     ):
@@ -3677,25 +3693,51 @@ def validate_experiment_binding(binding: dict) -> dict:
     for name in ("runner_sha256", "controller_sha256"):
         value = binding.get(name)
         if (
-            not isinstance(value, str)
+            type(value) is not str
             or len(value) != 64
             or any(character not in "0123456789abcdef" for character in value)
         ):
             raise RuntimeError("experiment program hash binding is invalid")
-    try:
-        port = _integer_field(binding, "port")
-    except ValueError as exc:
-        raise RuntimeError("experiment port binding is invalid") from exc
+    port = binding.get("port")
     if (
-        port <= 0
+        type(port) is not int
+        or port <= 0
         or binding.get("requested_use_pure") is not True
         or any(
-            not isinstance(binding.get(name), str) or not binding.get(name)
+            type(binding.get(name)) is not str or not binding.get(name)
             for name in ("host", "user", "database")
         )
     ):
         raise RuntimeError("experiment connection binding is invalid")
     return binding
+
+
+def validate_control_trial_contract(value: dict) -> dict:
+    expected = {
+        "duration_seconds": 60,
+        "threads": 4,
+        "window_seconds": 1.0,
+        "export_mode": "none",
+        "requested_p95_budget_ms": 0.0,
+    }
+    expected_types = {
+        "duration_seconds": int,
+        "threads": int,
+        "window_seconds": float,
+        "export_mode": str,
+        "requested_p95_budget_ms": float,
+    }
+    if (
+        not isinstance(value, dict)
+        or set(value) != set(expected)
+        or any(
+            type(value.get(name)) is not expected_type
+            for name, expected_type in expected_types.items()
+        )
+        or not canonical_json_equal(value, expected)
+    ):
+        raise RuntimeError("control trial contract is invalid")
+    return value
 
 
 def build_latency_calibration(
@@ -3719,10 +3761,11 @@ def build_latency_calibration(
             raise RuntimeError("control trial IDs are missing, duplicate, or reordered")
         if result.get("status") != "SUCCEEDED" or result.get("mode") != "none":
             raise RuntimeError("control trial status or mode is invalid")
-        if result.get("experiment_binding") != binding:
+        result_binding = result.get("experiment_binding")
+        validate_experiment_binding(result_binding)
+        if not canonical_json_equal(result_binding, binding):
             raise RuntimeError("control trial experiment binding changed")
-        if result.get("trial_contract") != expected_contract:
-            raise RuntimeError("control trial contract is invalid")
+        validate_control_trial_contract(result.get("trial_contract"))
         child = result.get("oltp_result")
         if not isinstance(child, dict):
             raise RuntimeError("control trial OLTP result is missing")
