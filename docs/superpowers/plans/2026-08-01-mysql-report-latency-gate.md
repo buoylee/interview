@@ -56,15 +56,33 @@ FIFTH_CONTROL_RESULTS = [
     read_json(FIFTH_RUNTIME / f"controller-result-control-{number}.json")
     for number in (1, 2, 3)
 ]
-BINDING = FIFTH_CONTROL_RESULTS[0]["experiment_binding"]
 CALIBRATION = {"budget_ms": 2083.017375}
+SYNTHETIC_BINDING = {
+    "runtime_root": "/private/tmp/mysql-senior-scenarios.synthetic",
+    "runner_sha256": "1" * 64,
+    "controller_sha256": "2" * 64,
+    "host": "127.0.0.1",
+    "port": 33306,
+    "user": "root",
+    "database": "mysql_senior_scenarios",
+    "requested_use_pure": True,
+}
+CONTROL_TRIAL_CONTRACT = {
+    "duration_seconds": 60,
+    "threads": 4,
+    "window_seconds": 1.0,
+    "export_mode": "none",
+    "requested_p95_budget_ms": 0.0,
+}
 
 
-def tracker_with_windows(values: list[float]) -> dict:
+def tracker_with_windows(
+    values: list[float], trial_id: str = "buffered-1"
+) -> dict:
     return {
         "accepted_windows": [
             {
-                "trial_id": "buffered-1",
+                "trial_id": trial_id,
                 "window_seq": index,
                 "window_operations": 1,
                 "window_errors": 0,
@@ -75,21 +93,60 @@ def tracker_with_windows(values: list[float]) -> dict:
     }
 
 
+def synthetic_pure_oltp_result(trial_id: str) -> dict:
+    connector_contract = {
+        **controller.connector_environment(),
+        "actual_connection_class": (
+            f"{controller.MySQLConnection.__module__}."
+            f"{controller.MySQLConnection.__qualname__}"
+        ),
+        "actual_pure": True,
+    }
+    return {
+        "status": "SUCCEEDED",
+        "mode": "oltp",
+        "trial_id": trial_id,
+        "threads": 4,
+        "errors": 0,
+        "connector_contract": connector_contract,
+        "worker_connections": [
+            {
+                **connector_contract,
+                "worker": worker,
+                "connection_id": 1000 + worker,
+                "closed": True,
+                "close_proof": "is_connected_false",
+            }
+            for worker in range(1, 5)
+        ],
+    }
+
+
 def control_result(trial_id: str, values: list[float]) -> dict:
     return {
         "status": "SUCCEEDED",
         "mode": "none",
         "trial_id": trial_id,
-        "experiment_binding": BINDING,
-        "accepted_windows": tracker_with_windows(values)["accepted_windows"],
+        "experiment_binding": SYNTHETIC_BINDING,
+        "trial_contract": CONTROL_TRIAL_CONTRACT,
+        "accepted_windows": tracker_with_windows(
+            values, trial_id
+        )["accepted_windows"],
+        "oltp_result": synthetic_pure_oltp_result(trial_id),
     }
 
 
-def test_fifth_controls_reproduce_reference_envelope():
-    calibration = build_latency_calibration(FIFTH_CONTROL_RESULTS, BINDING)
-    assert calibration["rolling_count"] == 167
-    assert calibration["rolling_max_ms"] == 1388.678250
-    assert calibration["budget_ms"] == 2083.017375
+def test_fifth_controls_reproduce_historical_arithmetic_only():
+    per_trial = [
+        rolling_five_medians(result["accepted_windows"])
+        for result in FIFTH_CONTROL_RESULTS
+    ]
+    combined = [value for values in per_trial for value in values]
+    rolling_max_ms = max(combined)
+    budget_ms = rolling_max_ms * 1.5
+    assert len(combined) == 167
+    assert rolling_max_ms == 1388.678250
+    assert budget_ms == 2083.017375
 
 
 def test_one_raw_window_cannot_abort_before_five_windows():
@@ -97,11 +154,26 @@ def test_one_raw_window_cannot_abort_before_five_windows():
     assert rolling_latency_reason(tracker, CALIBRATION) is None
 
 
+def test_strict_new_format_controls_build_calibration():
+    results = [
+        control_result("control-1", [1.0] * 55),
+        control_result("control-2", [2.0] * 55),
+        control_result("control-3", [3.0] * 55),
+    ]
+    calibration = build_latency_calibration(results, SYNTHETIC_BINDING)
+    assert calibration["rolling_count"] == 153
+    assert calibration["rolling_max_ms"] == 3.0
+    assert calibration["budget_ms"] == 4.5
+
+
 def test_rolling_windows_never_cross_trials():
-    results = [control_result("control-1", [1, 2, 3]),
-               control_result("control-2", [100, 101, 102])]
+    results = [
+        control_result("control-1", [1, 2, 3]),
+        control_result("control-2", [100] * 55),
+        control_result("control-3", [200] * 55),
+    ]
     with pytest.raises(RuntimeError, match="five accepted windows"):
-        build_latency_calibration(results, BINDING)
+        build_latency_calibration(results, SYNTHETIC_BINDING)
 
 
 def test_timed_mode_validates_calibration_before_popen():
@@ -122,11 +194,19 @@ reviewed runner, controller, smoke result, and no calibration artifact. It
 patches only process creation and MySQL observation boundaries, not calibration
 or validation functions.
 
-Also cover missing/duplicate/reordered trial IDs, fewer than five windows,
-nonadvancing sequences, wrong trial IDs, boolean/string/nonfinite/negative
-values, changed bindings, changed input hash, changed derived fields, an
-existing calibration path, changed duration/thread/window contracts, and
-immediate non-latency breaches.
+The fifth stopped-runtime fixture is isolated to the historical arithmetic test
+above. It directly runs `rolling_five_medians` once per trial, combines only the
+three per-trial result lists, and never calls `build_latency_calibration` or
+normalizes／backfills legacy fields. Every `build_latency_calibration` test uses
+synthetic new-format results with exact ordered IDs, `trial_contract`, current
+binding including runner/controller SHA-256, and exact pure-client evidence.
+Include a successful strict-builder test, then cover missing/duplicate/reordered
+trial IDs, missing trial contracts or controller hashes, fewer than five
+windows, nonadvancing sequences, wrong trial IDs, boolean/string/nonfinite/
+negative values, changed bindings, changed input hash, changed derived fields,
+an existing calibration path, changed duration/thread/window contracts, and
+immediate non-latency breaches. Legacy control results must fail strict builder
+validation; they are never upgraded into current-runtime calibration inputs.
 
 - [ ] **Step 2: Run RED and preserve the expected failures**
 
