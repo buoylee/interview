@@ -3246,7 +3246,7 @@ MIN_FREE_BYTES = 2 * EXPECTED_ARTIFACT_BYTES + 5 * 1024^3
                = 5,419,909,120
 ```
 
-The controller checks `MIN_FREE_BYTES` before each group and throughout the live 60-second window. Chunked mode also checks it itself before issuing every new batch. A P95／error／disk breach atomically writes an abort signal: chunked finishes at most its in-flight query/part and persists `ABORTED` before the next fetch; buffered has no batch boundary, so the controller reads its persisted connection ID, issues sanitized `KILL QUERY`, terminates the child if needed and writes separate external `ABORTED` evidence. After the child is known stopped, an incomplete checkpoint is persisted as `ABORTED`; if the runner had already atomically completed, its genuine `SUCCEEDED` checkpoint is preserved, but the controller's gate-breach evidence remains `ABORTED` and the trial can never become a performance success.
+The controller checks `MIN_FREE_BYTES` before each group and throughout the live 60-second window. Chunked mode also checks it itself before issuing every new batch. A rolling-five P95／error／disk breach atomically writes an abort signal; raw one-second latency never independently aborts. Chunked finishes at most its in-flight query/part and persists `ABORTED` before the next fetch; buffered has no batch boundary, so the controller reads its persisted connection ID, issues sanitized `KILL QUERY`, terminates the child if needed and writes separate external `ABORTED` evidence. After the child is known stopped, an incomplete checkpoint is persisted as `ABORTED`; if the runner had already atomically completed, its genuine `SUCCEEDED` checkpoint is preserved, but the controller's gate-breach evidence remains `ABORTED` and the trial can never become a performance success.
 
 On normal child exit, the controller accepts exactly one structured JSON object across stdout／stderr and reconciles it with return code and persisted state. Only child `SUCCEEDED`, return code `0`, and consistent state／result／artifact integrity can produce controller success; `ABORTED` with exit code 0 remains `ABORTED`, an unstarted export is never success, and missing／malformed／multiple／contradictory child output is `FAILED`. The successful export is re-invoked through the runner's manifest-linked fast path before evidence is accepted. MySQL restart or fingerprint divergence also invalidates the trial. Never rank `ABORTED` or planned-resume correctness runs as steady-state throughput.
 
@@ -3335,6 +3335,10 @@ PROCESSLIST_SQL = (
     "SELECT ID, INFO FROM information_schema.PROCESSLIST "
     "WHERE ID=%s AND COMMAND='Query'"
 )
+ROLLING_WINDOW_SIZE = 5
+LATENCY_MULTIPLIER = 1.5
+CALIBRATION_SCHEMA = "report-latency-calibration-v1"
+CONTROL_TRIAL_IDS = ("control-1", "control-2", "control-3")
 
 
 MetricsSnapshot = namedtuple(
@@ -3542,15 +3546,6 @@ def gate_reason(
         return "OLTP cumulative errors exceeded zero"
     if int(metrics.get("window_errors", 0)) > 0:
         return "OLTP window errors exceeded zero"
-    if (
-        p95_budget_ms > 0
-        and int(metrics.get("window_operations", 0)) > 0
-        and float(metrics.get("window_p95_ms", 0.0)) > p95_budget_ms
-    ):
-        return (
-            f"OLTP window P95 {metrics['window_p95_ms']} "
-            f"exceeded {p95_budget_ms}"
-        )
     return None
 
 
@@ -3586,6 +3581,257 @@ def _float_field(metrics: dict, name: str) -> float:
     if not math.isfinite(parsed) or parsed < 0:
         raise ValueError(f"{name} must be finite and nonnegative")
     return parsed
+
+
+def percentile(values: list[float], fraction: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    index = max(0, math.ceil(len(ordered) * fraction) - 1)
+    return ordered[index]
+
+
+def canonical_json_sha256(value: dict) -> str:
+    encoded = json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def rolling_five_medians(windows: list[dict]) -> list[float]:
+    if not isinstance(windows, list) or len(windows) < ROLLING_WINDOW_SIZE:
+        raise RuntimeError("control trial has fewer than five accepted windows")
+    values = []
+    previous_seq = None
+    trial_id = None
+    for window in windows:
+        if not isinstance(window, dict):
+            raise RuntimeError("control window is malformed")
+        current_trial_id = window.get("trial_id")
+        if not isinstance(current_trial_id, str) or not current_trial_id:
+            raise RuntimeError("control window trial_id is invalid")
+        if trial_id is None:
+            trial_id = current_trial_id
+        elif current_trial_id != trial_id:
+            raise RuntimeError("control windows do not belong to the same trial")
+        try:
+            sequence = _integer_field(window, "window_seq")
+            if sequence < 1:
+                raise ValueError("window_seq must be positive")
+            if previous_seq is not None and sequence != previous_seq + 1:
+                raise RuntimeError("control windows are not consecutive")
+            previous_seq = sequence
+            if _integer_field(window, "window_operations") < 1:
+                raise RuntimeError("control window is empty")
+            if _integer_field(window, "window_errors") != 0:
+                raise RuntimeError("control window contains errors")
+            values.append(_float_field(window, "window_p95_ms"))
+        except ValueError as exc:
+            raise RuntimeError(f"control window is malformed: {exc}") from exc
+    return [
+        percentile(values[index - ROLLING_WINDOW_SIZE:index], 0.50)
+        for index in range(ROLLING_WINDOW_SIZE, len(values) + 1)
+    ]
+
+
+def rolling_latency_reason(
+    tracker: dict, calibration: dict
+) -> str | None:
+    accepted = tracker.get("accepted_windows")
+    if not isinstance(accepted, list):
+        raise RuntimeError("accepted windows are invalid")
+    if len(accepted) < ROLLING_WINDOW_SIZE:
+        return None
+    current = rolling_five_medians(accepted[-ROLLING_WINDOW_SIZE:])[-1]
+    tracker["rolling_window_p95_ms"] = current
+    tracker["rolling_window_count"] = ROLLING_WINDOW_SIZE
+    try:
+        budget = _float_field(calibration, "budget_ms")
+    except ValueError as exc:
+        raise RuntimeError("latency calibration budget is invalid") from exc
+    if current > budget:
+        return f"OLTP rolling-five median P95 {current} exceeded {budget}"
+    return None
+
+
+def validate_experiment_binding(binding: dict) -> dict:
+    expected_keys = {
+        "runtime_root",
+        "runner_sha256",
+        "controller_sha256",
+        "host",
+        "port",
+        "user",
+        "database",
+        "requested_use_pure",
+    }
+    if not isinstance(binding, dict) or set(binding) != expected_keys:
+        raise RuntimeError("experiment binding is invalid")
+    runtime_root = binding.get("runtime_root")
+    if (
+        not isinstance(runtime_root, str)
+        or not runtime_root
+        or not Path(runtime_root).name.startswith(RUNTIME_PREFIX)
+    ):
+        raise RuntimeError("experiment runtime binding is invalid")
+    for name in ("runner_sha256", "controller_sha256"):
+        value = binding.get(name)
+        if (
+            not isinstance(value, str)
+            or len(value) != 64
+            or any(character not in "0123456789abcdef" for character in value)
+        ):
+            raise RuntimeError("experiment program hash binding is invalid")
+    try:
+        port = _integer_field(binding, "port")
+    except ValueError as exc:
+        raise RuntimeError("experiment port binding is invalid") from exc
+    if (
+        port <= 0
+        or binding.get("requested_use_pure") is not True
+        or any(
+            not isinstance(binding.get(name), str) or not binding.get(name)
+            for name in ("host", "user", "database")
+        )
+    ):
+        raise RuntimeError("experiment connection binding is invalid")
+    return binding
+
+
+def build_latency_calibration(
+    control_results: list[dict], binding: dict
+) -> dict:
+    validate_experiment_binding(binding)
+    if not isinstance(control_results, list) or len(control_results) != 3:
+        raise RuntimeError("exactly three control trials are required")
+    expected_contract = {
+        "duration_seconds": 60,
+        "threads": 4,
+        "window_seconds": 1.0,
+        "export_mode": "none",
+        "requested_p95_budget_ms": 0.0,
+    }
+    trials = []
+    for expected_trial_id, result in zip(CONTROL_TRIAL_IDS, control_results):
+        if not isinstance(result, dict):
+            raise RuntimeError("control trial result is malformed")
+        if result.get("trial_id") != expected_trial_id:
+            raise RuntimeError("control trial IDs are missing, duplicate, or reordered")
+        if result.get("status") != "SUCCEEDED" or result.get("mode") != "none":
+            raise RuntimeError("control trial status or mode is invalid")
+        if result.get("experiment_binding") != binding:
+            raise RuntimeError("control trial experiment binding changed")
+        if result.get("trial_contract") != expected_contract:
+            raise RuntimeError("control trial contract is invalid")
+        child = result.get("oltp_result")
+        if not isinstance(child, dict):
+            raise RuntimeError("control trial OLTP result is missing")
+        try:
+            child_threads = _integer_field(child, "threads")
+            child_errors = _integer_field(child, "errors")
+        except ValueError as exc:
+            raise RuntimeError("control trial OLTP result is malformed") from exc
+        if (
+            child.get("status") != "SUCCEEDED"
+            or child.get("mode") != "oltp"
+            or child.get("trial_id") != expected_trial_id
+            or child_threads != 4
+            or child_errors != 0
+        ):
+            raise RuntimeError("control trial OLTP result is invalid")
+        validate_connector_contract(child.get("connector_contract"))
+        validate_worker_connections(child)
+        accepted = result.get("accepted_windows")
+        if not isinstance(accepted, list):
+            raise RuntimeError("control trial accepted windows are invalid")
+        if len(accepted) < ROLLING_WINDOW_SIZE:
+            raise RuntimeError("control trial has fewer than five accepted windows")
+        if len(accepted) < 55:
+            raise RuntimeError("control trial has fewer than 55 accepted windows")
+        try:
+            first_sequence = _integer_field(accepted[0], "window_seq")
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("control trial first sequence is invalid") from exc
+        if first_sequence != 1:
+            raise RuntimeError("control trial first accepted sequence must be 1")
+        if any(window.get("trial_id") != expected_trial_id for window in accepted):
+            raise RuntimeError("control windows have the wrong trial_id")
+        rolling_values = rolling_five_medians(accepted)
+        trials.append(
+            {
+                "status": "SUCCEEDED",
+                "mode": "none",
+                "trial_id": expected_trial_id,
+                "experiment_binding": dict(binding),
+                "trial_contract": dict(expected_contract),
+                "accepted_windows": [dict(window) for window in accepted],
+                "oltp_result": dict(child),
+                "rolling_values_ms": rolling_values,
+            }
+        )
+    combined = [
+        value for trial in trials for value in trial["rolling_values_ms"]
+    ]
+    rolling_max = max(combined)
+    calibration = {
+        "schema": CALIBRATION_SCHEMA,
+        "formula": "1.5 * max(rolling-5 median(window_p95_ms))",
+        "window_size": ROLLING_WINDOW_SIZE,
+        "multiplier": LATENCY_MULTIPLIER,
+        "experiment_binding": dict(binding),
+        "trials": trials,
+        "rolling_count": len(combined),
+        "rolling_min_ms": min(combined),
+        "rolling_median_ms": percentile(combined, 0.50),
+        "rolling_p95_ms": percentile(combined, 0.95),
+        "rolling_p99_ms": percentile(combined, 0.99),
+        "rolling_max_ms": rolling_max,
+        "budget_ms": rolling_max * LATENCY_MULTIPLIER,
+    }
+    calibration["inputs_sha256"] = canonical_json_sha256(
+        {"binding": binding, "trials": trials}
+    )
+    return calibration
+
+
+def validate_latency_calibration(root: Path, binding: dict) -> dict:
+    validate_experiment_binding(binding)
+    if binding.get("runtime_root") != str(root.resolve()):
+        raise RuntimeError("latency calibration runtime binding changed")
+    path = root / "latency-calibration.json"
+    if not path.is_file():
+        raise RuntimeError("latency calibration artifact is missing")
+    try:
+        persisted = read_json(path)
+        trials = persisted.get("trials")
+        if not isinstance(trials, list):
+            raise RuntimeError("latency calibration trials are invalid")
+        control_results = []
+        for trial in trials:
+            if not isinstance(trial, dict):
+                raise RuntimeError("latency calibration trial is malformed")
+            control_results.append(
+                {
+                    key: value
+                    for key, value in trial.items()
+                    if key != "rolling_values_ms"
+                }
+            )
+        rebuilt = build_latency_calibration(control_results, binding)
+    except Exception as exc:
+        if isinstance(exc, RuntimeError) and str(exc).startswith(
+            "latency calibration"
+        ):
+            raise
+        raise RuntimeError(f"latency calibration validation failed: {exc}") from exc
+    if persisted != rebuilt:
+        raise RuntimeError("latency calibration artifact is inconsistent")
+    expected_hash = canonical_json_sha256(
+        {"binding": binding, "trials": rebuilt["trials"]}
+    )
+    if persisted.get("inputs_sha256") != expected_hash:
+        raise RuntimeError("latency calibration input hash changed")
+    return persisted
 
 
 def inspect_metrics(
@@ -3788,7 +4034,31 @@ def build_metrics_breach_diagnostics(
     }
 
 
-def ready_for_export(tracker: dict, minimum_active_seconds: float) -> bool:
+def ready_for_export(
+    tracker: dict,
+    minimum_active_seconds: float,
+    calibration: dict | None = None,
+) -> bool:
+    accepted = tracker.get("accepted_windows")
+    if not isinstance(accepted, list) or len(accepted) < ROLLING_WINDOW_SIZE:
+        return False
+    try:
+        current = rolling_five_medians(
+            accepted[-ROLLING_WINDOW_SIZE:]
+        )[-1]
+        if calibration is None and "rolling_window_p95_ms" not in tracker:
+            tracker["rolling_window_p95_ms"] = current
+            tracker["rolling_window_count"] = ROLLING_WINDOW_SIZE
+        if tracker.get("rolling_window_p95_ms") != current:
+            return False
+        if tracker.get("rolling_window_count") != ROLLING_WINDOW_SIZE:
+            return False
+        if calibration is not None and current > _float_field(
+            calibration, "budget_ms"
+        ):
+            return False
+    except (RuntimeError, ValueError):
+        return False
     return (
         tracker.get("last_status") == "RUNNING"
         and int(tracker.get("activity_windows", 0)) >= 5
@@ -4055,14 +4325,38 @@ def experiment_binding(root: Path, runner: Path, config: dict) -> dict:
         raise RuntimeError("experiment port binding is invalid") from exc
     if port <= 0 or config.get("use_pure") is not True:
         raise RuntimeError("experiment connector binding is invalid")
-    return {
+    if "__file__" in globals():
+        controller_path = Path(__file__).resolve()
+        expected_controller = root / "scenario_controller.py"
+        if controller_path != expected_controller:
+            raise RuntimeError(
+                "controller must be runtime-root/scenario_controller.py"
+            )
+        controller_sha256 = file_sha256(controller_path)
+    else:
+        # Offline fence-execution regressions have no materialized __file__.
+        # Live scripts always take the strict branch above.
+        controller_sha256 = file_sha256(runner)
+    binding = {
         "runtime_root": str(root.resolve()),
         "runner_sha256": file_sha256(runner),
+        "controller_sha256": controller_sha256,
         "host": config.get("host"),
         "port": port,
         "user": config.get("user"),
         "database": config.get("database"),
         "requested_use_pure": True,
+    }
+    return validate_experiment_binding(binding)
+
+
+def trial_contract(args: argparse.Namespace) -> dict:
+    return {
+        "duration_seconds": args.duration_seconds,
+        "threads": args.threads,
+        "window_seconds": 1.0,
+        "export_mode": args.export_mode,
+        "requested_p95_budget_ms": args.p95_budget_ms,
     }
 
 
@@ -4503,6 +4797,9 @@ def main() -> int:
     oltp = None
     export = None
     handles = []
+    current_binding = None
+    current_contract = None
+    latency_calibration = None
     connector_evidence = observe_connector()
     try:
         parser = StructuredArgumentParser()
@@ -4518,6 +4815,7 @@ def main() -> int:
                 "chunked",
                 "preflight-kill",
                 "preflight-oltp",
+                "latency-calibration",
             ),
             required=True,
         )
@@ -4535,6 +4833,7 @@ def main() -> int:
         parser.add_argument("--user", default="root")
         parser.add_argument("--password-env", default="MYSQL_PASSWORD")
         args = parser.parse_args()
+        current_contract = trial_contract(args)
 
         root = validated_runtime_root(args.runtime_root)
         runner = args.runner.resolve()
@@ -4571,6 +4870,11 @@ def main() -> int:
             or not 0.5 <= args.heartbeat_grace_seconds <= 10.0
         ):
             raise ValueError("controller numeric argument is invalid")
+        if args.p95_budget_ms != 0.0:
+            raise ValueError(
+                "controller modes require --p95-budget-ms 0; "
+                "the calibration artifact is the only latency authority"
+            )
         if args.export_mode == "preflight-oltp" and (
             args.trial_id != "oltp-smoke-1"
             or args.duration_seconds != 5
@@ -4578,6 +4882,21 @@ def main() -> int:
             or args.p95_budget_ms != 0.0
         ):
             raise ValueError("OLTP smoke requires its fixed ID/duration/threads/budget")
+        if args.export_mode == "latency-calibration" and (
+            args.trial_id != "latency-calibration-1"
+            or args.duration_seconds != 60
+            or args.threads != 4
+            or args.job_dir is not None
+        ):
+            raise ValueError(
+                "latency calibration requires its fixed ID/duration/threads"
+            )
+        if args.export_mode in ("none", "buffered", "chunked") and (
+            args.duration_seconds != 60 or args.threads != 4
+        ):
+            raise ValueError(
+                "timed trials require 60 seconds and four threads"
+            )
         if shutil.disk_usage(root).free < args.min_free_bytes:
             raise RuntimeError("pre-group disk gate failed")
         password = os.environ.get(args.password_env)
@@ -4603,31 +4922,68 @@ def main() -> int:
         oltp_stderr_path = root / f"oltp-{run_id}.stderr.json"
         export_stdout_path = root / f"export-{run_id}.stdout.json"
         export_stderr_path = root / f"export-{run_id}.stderr.json"
-        _require_fresh_paths(
-            [
-                metrics_file,
-                abort_file,
-                candidate_result_file,
-                oltp_stdout_path,
-                oltp_stderr_path,
-                export_stdout_path,
-                export_stderr_path,
-            ]
-        )
+        fresh_paths = [
+            metrics_file,
+            abort_file,
+            candidate_result_file,
+            oltp_stdout_path,
+            oltp_stderr_path,
+            export_stdout_path,
+            export_stderr_path,
+        ]
+        calibration_path = root / "latency-calibration.json"
+        if args.export_mode == "latency-calibration":
+            fresh_paths.append(calibration_path)
+        _require_fresh_paths(fresh_paths)
         result_file = candidate_result_file
         if args.export_mode in ("buffered", "chunked") and job_dir.exists():
             raise RuntimeError("each trial requires a fresh job directory")
 
         if args.export_mode == "preflight-kill":
             result = run_kill_query_preflight(admin_config)
+            result["trial_id"] = run_id
+            result["experiment_binding"] = current_binding
+            result["trial_contract"] = current_contract
             result["controller_connector_environment"] = connector_environment()
             atomic_json(result_file, result)
             print(json.dumps(result, sort_keys=True))
             return 0
 
         smoke_gate = None
-        if args.export_mode in ("none", "buffered", "chunked"):
+        if args.export_mode in (
+            "none",
+            "buffered",
+            "chunked",
+            "latency-calibration",
+        ):
             smoke_gate = validate_persisted_smoke(root, current_binding)
+        if args.export_mode == "latency-calibration":
+            controls = [
+                read_json(root / f"controller-result-{trial_id}.json")
+                for trial_id in CONTROL_TRIAL_IDS
+            ]
+            latency_calibration = build_latency_calibration(
+                controls, current_binding
+            )
+            atomic_json(calibration_path, latency_calibration)
+            result = {
+                "status": "SUCCEEDED",
+                "mode": "latency-calibration",
+                "trial_id": run_id,
+                "experiment_binding": current_binding,
+                "trial_contract": current_contract,
+                "smoke_gate": smoke_gate,
+                "calibration_artifact": calibration_path.name,
+                "calibration": latency_calibration,
+                "controller_connector_environment": connector_environment(),
+            }
+            atomic_json(result_file, result)
+            print(json.dumps(result, sort_keys=True))
+            return 0
+        if args.export_mode in ("buffered", "chunked"):
+            latency_calibration = validate_latency_calibration(
+                root, current_binding
+            )
 
         common = [
             sys.executable,
@@ -4655,6 +5011,8 @@ def main() -> int:
                 str(args.duration_seconds),
                 "--threads",
                 str(args.threads),
+                "--window-seconds",
+                "1.0",
                 "--metrics-file",
                 str(metrics_file),
                 "--trial-id",
@@ -4705,13 +5063,21 @@ def main() -> int:
                     args.p95_budget_ms,
                     args.min_free_bytes,
                 )
+            if breach is None and latency_calibration is not None:
+                breach = rolling_latency_reason(
+                    tracker, latency_calibration
+                )
             if breach is not None:
                 break
 
             if (
                 export is None
                 and args.export_mode in ("buffered", "chunked")
-                and ready_for_export(tracker, args.start_delay_seconds)
+                and ready_for_export(
+                    tracker,
+                    args.start_delay_seconds,
+                    latency_calibration,
+                )
             ):
                 export_stdout = export_stdout_path.open("w", encoding="utf-8")
                 export_stderr = export_stderr_path.open("w", encoding="utf-8")
@@ -4807,6 +5173,9 @@ def main() -> int:
                     breach,
                 )
             result["experiment_binding"] = current_binding
+            result["trial_id"] = run_id
+            result["trial_contract"] = current_contract
+            result["latency_calibration"] = latency_calibration
             result["smoke_gate"] = smoke_gate
             result["controller_connector_environment"] = connector_environment()
         else:
@@ -4859,6 +5228,8 @@ def main() -> int:
             result = {
                 "status": status,
                 "mode": args.export_mode,
+                "trial_id": run_id,
+                "trial_contract": current_contract,
                 "accepted_windows": list(tracker["accepted_windows"]),
                 "oltp_returncode": oltp_rc,
                 "export_returncode": export_rc,
@@ -4866,6 +5237,7 @@ def main() -> int:
                 "export_result": export_result,
                 "smoke_result": smoke_result,
                 "experiment_binding": current_binding,
+                "latency_calibration": latency_calibration,
                 "smoke_gate": smoke_gate,
                 "controller_connector_environment": connector_environment(),
             }
@@ -4877,6 +5249,11 @@ def main() -> int:
             "status": "FAILED",
             "error_type": type(exc).__name__,
             "error": str(exc),
+            "trial_id": (
+                None if current_contract is None else getattr(args, "trial_id", None)
+            ),
+            "trial_contract": current_contract,
+            "experiment_binding": current_binding,
             "connector_evidence": connector_failure_evidence(
                 exc, connector_evidence
             ),
@@ -5096,7 +5473,7 @@ uv run --with mysql-connector-python==9.7.0 python \
   --user root --password-env MYSQL_PASSWORD
 ```
 
-Require one structured controller `SUCCEEDED`, positive child operations, zero child errors, at least two accepted advancing nonempty metric sequences, four distinct verifiably closed worker connections and an exact pure connector contract. Preserve the smoke result with `excluded_from_control_statistics=true` plus a binding over the exact runtime root, runner SHA-256 and non-secret connection configuration. For this mode only, any metrics／gate breach, native exit, empty／multiple／malformed child output, shared／unclosed connection or actual-mode mismatch persists controller `FAILED` and exits `2`; it must never use timed-export `ABORTED`／exit-0 semantics. Parse and retain a structured child failure when one exists, otherwise retain the structured-output error and implementation envelope. Never retry this smoke in the same runtime. The prior Python 3.13/macOS arm64/Connector 9.7.0 evidence—canonical one-thread success, default `HAVE_CEXT=true` four-thread exit 139, and the same four-thread workload succeeding with `use_pure=True`—is an excluded client/environment boundary, not a MySQL performance sample.
+Require one structured controller `SUCCEEDED`, positive child operations, zero child errors, at least two accepted advancing nonempty metric sequences, four distinct verifiably closed worker connections and an exact pure connector contract. Preserve the smoke result with `excluded_from_control_statistics=true` plus a binding over the exact runtime root, runner/controller SHA-256 values and non-secret connection configuration. For this mode only, any metrics／gate breach, native exit, empty／multiple／malformed child output, shared／unclosed connection or actual-mode mismatch persists controller `FAILED` and exits `2`; it must never use timed-export `ABORTED`／exit-0 semantics. Parse and retain a structured child failure when one exists, otherwise retain the structured-output error and implementation envelope. Never retry this smoke in the same runtime. The prior Python 3.13/macOS arm64/Connector 9.7.0 evidence—canonical one-thread success, default `HAVE_CEXT=true` four-thread exit 139, and the same four-thread workload succeeding with `use_pure=True`—is an excluded client/environment boundary, not a MySQL performance sample.
 
 Every later timed `none`／`buffered`／`chunked` invocation must validate `controller-result-oltp-smoke-1.json` as `SUCCEEDED`, excluded, sufficiently progressing, exact-pure and equal to its current runtime／runner／connection binding before starting any child. Missing, failed, malformed, stale-runtime, changed-runner or changed-config smoke evidence fails the timed invocation before `Popen`; timed export breach behavior after this gate remains the documented `ABORTED` contract.
 
@@ -5114,7 +5491,21 @@ uv run --with mysql-connector-python==9.7.0 python \
   --user root --password-env MYSQL_PASSWORD
 ```
 
-Record operation count, final p50／p95／p99, every one-second live window and errors. Require all control errors=`0`. Before either export mode, calculate and write the numeric `OLTP_P95_BUDGET_MS = 1.50 × median(control final P95)`; once written it cannot be changed to make later trials pass.
+Record operation count, final p50／p95／p99, every one-second live window and errors. Require all control errors=`0`. After all three controls and before any export, run the fixed calibration mode exactly once:
+
+```bash
+uv run --with mysql-connector-python==9.7.0 python \
+  "$MYSQL_SCENARIO_RUN_DIR/scenario_controller.py" \
+  --runner "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
+  --runtime-root "$MYSQL_SCENARIO_RUN_DIR" \
+  --trial-id latency-calibration-1 --export-mode latency-calibration \
+  --duration-seconds 60 --threads 4 \
+  --min-free-bytes "$MIN_FREE_BYTES" \
+  --host 127.0.0.1 --port "$MYSQL_SCENARIO_PORT" \
+  --user root --password-env MYSQL_PASSWORD
+```
+
+Require `controller-result-latency-calibration-1.json` and the full atomic `latency-calibration.json`. Preserve the complete calibration artifact and its numeric current-runtime budget before any buffered／chunked invocation. It contains each control's ordered accepted windows, per-trial rolling-five medians, combined statistics and canonical input SHA-256. The fixed budget is `1.5 * max(all control rolling-five medians)`; the removed `1.5 * median(final control P95)` command is invalid because it calibrates and enforces different statistical units. The stopped fifth-runtime value is historical regression evidence only and must never be reused as the current runtime's budget.
 
 - [ ] **Step 4: Run buffered export with concurrent OLTP three times**
 
@@ -5122,8 +5513,8 @@ For each trial:
 
 1. choose a fresh **nonexistent** `job-buffered-N` path；
 2. recheck `free >= MIN_FREE_BYTES` and the frozen source fingerprint；
-3. invoke the controller with matching `--trial-id buffered-N`, the predeclared numeric P95 budget and fixed disk threshold；
-4. let the controller start OLTP and launch buffered export only after five accepted fresh, advancing, nonempty same-trial windows cover at least five active seconds；
+3. invoke the controller with matching `--trial-id buffered-N`, the frozen calibration artifact and fixed disk threshold；
+4. let the controller start OLTP and launch buffered export only after five accepted fresh, advancing, nonempty same-trial windows cover at least five active seconds and their rolling median is within the frozen budget；
 5. capture controller, OLTP, export, state, artifact and MySQL status evidence。
 
 Example:
@@ -5136,13 +5527,12 @@ uv run --with mysql-connector-python==9.7.0 python \
   --trial-id buffered-1 --export-mode buffered \
   --job-dir "$MYSQL_SCENARIO_RUN_DIR/job-buffered-1" \
   --duration-seconds 60 --threads 4 \
-  --p95-budget-ms "$OLTP_P95_BUDGET_MS" \
   --min-free-bytes "$MIN_FREE_BYTES" \
   --host 127.0.0.1 --port "$MYSQL_SCENARIO_PORT" \
   --user root --password-env MYSQL_PASSWORD
 ```
 
-On a live P95／error／disk breach, the controller writes the abort signal, reads buffered `connection_id`, issues `KILL QUERY`, terminates the process if the query does not exit within the grace period, and writes `controller-result-*.json` with external `ABORTED` evidence. An incomplete checkpoint becomes `ABORTED`; a genuinely completed internal `SUCCEEDED` state/artifact is preserved and recorded as `persisted_state_status=SUCCEEDED`, but the gate-breached controller result remains `ABORTED` and cannot become a performance sample. Stop later buffered trials and preserve both the controller evidence and checkpoint.
+On a live rolling-five P95／error／disk breach, the controller writes the abort signal, reads buffered `connection_id`, issues `KILL QUERY`, terminates the process if the query does not exit within the grace period, and writes `controller-result-*.json` with external `ABORTED` evidence. Raw one-second latency never independently aborts; error, disk, heartbeat and malformed-metrics gates remain immediate. An incomplete checkpoint becomes `ABORTED`; a genuinely completed internal `SUCCEEDED` state/artifact is preserved and recorded as `persisted_state_status=SUCCEEDED`, but the gate-breached controller result remains `ABORTED` and cannot become a performance sample. Stop later buffered trials and preserve both the controller evidence and checkpoint.
 
 - [ ] **Step 5: Run chunked export with concurrent OLTP three times**
 
@@ -5157,7 +5547,6 @@ uv run --with mysql-connector-python==9.7.0 python \
   --job-dir "$MYSQL_SCENARIO_RUN_DIR/job-chunked-1" \
   --duration-seconds 60 --threads 4 \
   --batch-size 1000 --sleep-ms 20 \
-  --p95-budget-ms "$OLTP_P95_BUDGET_MS" \
   --min-free-bytes "$MIN_FREE_BYTES" \
   --host 127.0.0.1 --port "$MYSQL_SCENARIO_PORT" \
   --user root --password-env MYSQL_PASSWORD
@@ -5217,7 +5606,7 @@ DROP TRIGGER IF EXISTS freeze_report_item_delete;
 
 - [ ] **Step 8: Summarize three-run evidence and explicit limitations**
 
-For each group report all three OLTP percentile sets, every live window, median／range and controller status; for successful fresh export modes report active time, active throughput, max RSS and status deltas. List `ABORTED` separately with trigger and stop boundary; do not include it or resume-correctness runs in steady-state median/range. Separate:
+For each group report all three OLTP percentile sets, every live window, median／range and controller status; for successful fresh export modes report active time, active throughput, max RSS and status deltas. List `ABORTED` separately with trigger and stop boundary; do not include it or resume-correctness runs in steady-state median/range. Report the safety outcome separately from the interference outcome: safety states whether the empirical rolling envelope aborted and at which rolling window, while interference compares all ordered windows and three trial-level percentile sets only after successful completion. Preserve the full calibration artifact and numeric budget, and report `rolling_max/rolling_median` as the environment-noise ratio. A large ratio limits sensitivity to moderate regressions; the empirical envelope is host/runtime-specific and is not a production SLO. Separate:
 
 - observed S facts；
 - scaled trend only；
@@ -5230,7 +5619,7 @@ Also record the excluded C-extension native-crash boundary and the mandatory pur
 
 - [ ] **Step 9: Patch status and expectation gap**
 
-Use `apply_patch` to add environment, run IDs, frozen-source pre/post manifests, connector identity/implementation contract, excluded pure-mode smoke and C-extension crash boundary, numeric disk/P95 gates, live window/controller tables, abort boundaries, successful artifact equality, interruption／resume timeline, expected-vs-actual and production boundary. Explicitly state that S used triggers plus an isolated writer set and that observed latency/capacity includes the pure-Python client; production needs immutable insertion-monotone keys or snapshotted/materialized membership, and this run does not establish MySQL-only or C-extension capacity. Mark exact S behavior `SCALED_REPRODUCED`, reused ch08／ch09 mechanisms `REUSED`, and production topology conclusions `REASONED`.
+Use `apply_patch` to add environment, run IDs, frozen-source pre/post manifests, connector identity/implementation contract, excluded pure-mode smoke and C-extension crash boundary, numeric disk gate, full rolling calibration and current-runtime budget, live window/controller tables, separate safety/interference outcomes, environment-noise ratio, abort boundaries, successful artifact equality, interruption／resume timeline, expected-vs-actual and production boundary. Explicitly state that the empirical envelope is not a production SLO, S used triggers plus an isolated writer set, and observed latency/capacity includes the pure-Python client; production needs immutable insertion-monotone keys or snapshotted/materialized membership, and this run does not establish MySQL-only or C-extension capacity. Mark exact S behavior `SCALED_REPRODUCED`, reused ch08／ch09 mechanisms `REUSED`, and production topology conclusions `REASONED`.
 
 Update only the report/export README row to `SCALED_REPRODUCED (S=100000)`.
 
