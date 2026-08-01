@@ -1286,7 +1286,7 @@ Task 10 把下方第二个 canonical executable fence 原样物化到 `$MYSQL_SC
 --host 127.0.0.1 --port 3306 --user root --password-env MYSQL_PASSWORD
 ```
 
-`--runtime-root`、runner、job、metrics、abort、stdout/stderr 与 controller-result 全部绑定到同一个 exact runtime root；export mode 的 `job-<run-id>` suffix 必须等于 `trial-id`。preflight-kill 使用同一 admin identity 做 timing 前权限验证。
+`--runtime-root`、runner、job、metrics、abort、stdout/stderr 与 controller-result 全部绑定到同一个 exact runtime root；export mode 的 `job-<run-id>` suffix 必须等于 `trial-id`。timing 前的 preflight-kill 使用两个 disposable connections：victim 执行 compound statement `SELECT SLEEP(30), 1`，killer 执行 `KILL QUERY <validated-positive-connection-id>`，必须观察 victim errno `1317`，并在 success、正常回传或权限失败时都关闭两个 cursors 与两个 connections。额外的 select expression 是刻意的：MySQL 8.0 说明 interrupted standalone `SELECT SLEEP(...)` 会回传 `1` 而不产生 query error；当 `SLEEP()` 只是较大 query 的一部分时，才走 query-interruption error path。[MySQL 8.0 `SLEEP()`](https://dev.mysql.com/doc/refman/8.0/en/miscellaneous-functions.html)
 
 ```python
 from __future__ import annotations
@@ -1830,7 +1830,7 @@ def run_kill_query_preflight(
 
         def blocking_query() -> None:
             entered_execute.set()
-            victim_cursor.execute("SELECT SLEEP(30)")
+            victim_cursor.execute("SELECT SLEEP(30), 1")
             victim_cursor.fetchone()
 
         future = executor.submit(blocking_query)
