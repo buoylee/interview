@@ -1402,10 +1402,11 @@ if __name__ == "__main__":
 执行顺序固定：
 
 1. 先独立跑三次 control，要求三次 `errors=0`。
-2. 以三次 control P95 的 median 定义预算：`OLTP_P95_BUDGET = 1.50 × median(control P95)`；必须在 export 前写下数字。
-3. 每个 concurrent trial 先启动 OLTP；controller 必须观察到同一 `trial_id` 至少五个 fresh、advancing、nonempty window，覆盖至少五秒 active time且 cumulative work 为正，才启动 export。只等 wall clock 五秒不算证据。
-4. export 前后各 capture MySQL status；OLTP 与 export 都结束后才归档 final JSON、所有 accepted live windows、state、manifest 与 artifact audit。
-5. 同组后续 trial 是否继续，由停止条件决定，不可跑完后才补一个预算。
+2. control 完成后、任一 export 前，固定执行一次 `latency-calibration-1`；它只读取三份 current-runtime control evidence，原子写入 `latency-calibration.json` 与 `controller-result-latency-calibration-1.json`，不启动 child process。
+3. 令每个 control trial 的第 `t` 个 five-window rolling median 为 `R_t`。固定 budget 是 `B = 1.5 * max(all control R_t)`，artifact 同时保存 ordered accepted windows、每 trial 的 rolling medians、combined statistics 与 canonical input SHA-256。不得用 `1.5 * median(final control P95)` 混合不同统计单位；stopped fifth-runtime 数字只作 historical regression evidence，**must never be reused as the current runtime's budget**。
+4. 每个 concurrent trial 先启动 OLTP；controller 必须观察到同一 `trial_id` 至少五个 fresh、advancing、nonempty window，覆盖至少五秒 active time且 cumulative work 为正，且最新 rolling median 在 frozen `B` 内，才启动 export。只等 wall clock 五秒不算证据。
+5. export 前后各 capture MySQL status；OLTP 与 export 都结束后才归档 final JSON、所有 accepted live windows、state、manifest 与 artifact audit。
+6. 同组后续 trial 是否继续，由停止条件决定，不可跑完后才补一个预算。
 
 ### 每次要记录的证据
 
@@ -1525,8 +1526,8 @@ Task 10 把下方第二个 canonical executable fence 原样物化到 `$MYSQL_SC
 --runtime-root /private/tmp/mysql-senior-scenarios.<suffix>
 --trial-id <run-id>
 --job-dir <runtime-root>/job-<run-id>
---export-mode none|buffered|chunked|preflight-kill|preflight-oltp
---p95-budget-ms <predeclared-control-derived-number>
+--export-mode none|buffered|chunked|preflight-kill|preflight-oltp|latency-calibration
+--p95-budget-ms 0
 --min-free-bytes 5419909120
 --duration-seconds 60
 --start-delay-seconds 5
@@ -1537,6 +1538,8 @@ Task 10 把下方第二个 canonical executable fence 原样物化到 `$MYSQL_SC
 ```
 
 `--runtime-root`、runner、job、metrics、abort、stdout/stderr 与 controller-result 全部绑定到同一个 exact runtime root；export mode 的 `job-<run-id>` suffix 必须等于 `trial-id`。
+
+`latency-calibration` 只能用固定 ID `latency-calibration-1`、60 秒、4 threads、无 job directory；它在 child 创建前严格重建三份 `control-1..3` 的 current-runtime contract。`none`、`buffered`、`chunked` 都拒绝非零 CLI P95 budget；buffered／chunked 在开 stdout/stderr 或第一次 `Popen` 前必须验证 frozen `latency-calibration.json`，该 artifact 是唯一 latency authority。
 
 Before any timed control or buffered trial, prove that the controller identity can interrupt a different connection. This mode opens two disposable, explicitly pure connections. The victim creates connection-local temporary table `kill_preflight_probe`, inserts one row, then executes exact marked row query `SELECT /* mysql_senior_kill_preflight */ 1 FROM kill_preflight_probe WHERE SLEEP(30)=0`. The killer polls `information_schema.PROCESSLIST` for the validated positive victim ID and requires the returned ID and full SQL to equal that exact query; a fixed sleep or an event set before `execute()` is not proof that the statement is active. Only after this bounded five-second poll succeeds may it issue `KILL QUERY <validated-positive-connection-id>`, require victim Connector errno `1317`, and close both connections so the temporary table is discarded. Never-active, wrong-ID/query, actual-mode mismatch, poll/permission error or normal query return fails closed without claiming cancellation. MySQL documents that interrupted standalone `SLEEP()` returns `1` without a query error, while its row-query example with `SLEEP()` in `WHERE` produces error `1317`. [MySQL 8.0 `SLEEP()`](https://dev.mysql.com/doc/refman/8.0/en/miscellaneous-functions.html)
 
@@ -1574,12 +1577,27 @@ PROCESSLIST_SQL = (
     "SELECT ID, INFO FROM information_schema.PROCESSLIST "
     "WHERE ID=%s AND COMMAND='Query'"
 )
+ROLLING_WINDOW_SIZE = 5
+LATENCY_MULTIPLIER = 1.5
+CALIBRATION_SCHEMA = "report-latency-calibration-v1"
+CONTROL_TRIAL_IDS = ("control-1", "control-2", "control-3")
 
 
 MetricsSnapshot = namedtuple(
     "MetricsSnapshot",
     ("document", "mtime_ns", "device", "inode", "size_bytes"),
 )
+
+
+def canonical_json_equal(left, right) -> bool:
+    try:
+        return json.dumps(
+            left, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ) == json.dumps(
+            right, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        )
+    except (TypeError, ValueError):
+        return False
 
 
 def connector_environment() -> dict:
@@ -1639,11 +1657,15 @@ def validate_connector_evidence(value) -> dict:
     if (
         not isinstance(value, dict)
         or set(value) != expected_keys
-        or any(value.get(key) != expected for key, expected in expected_environment.items())
+        or any(
+            type(value.get(key)) is not type(expected)
+            or value.get(key) != expected
+            for key, expected in expected_environment.items()
+        )
         or (
             valid_actual_class is not None
             and (
-                not isinstance(valid_actual_class, str)
+                type(valid_actual_class) is not str
                 or not valid_actual_class
             )
         )
@@ -1676,7 +1698,7 @@ def validate_connector_contract(value: dict) -> dict:
         ),
         "actual_pure": True,
     }
-    if value != expected:
+    if not canonical_json_equal(value, expected):
         observed = validate_connector_evidence(value)
         raise ConnectorContractError(
             "connector contract is missing or contradictory", observed
@@ -1703,6 +1725,7 @@ def validate_worker_connections(result: dict) -> list[dict]:
         observed_contract = {
             key: worker.get(key) for key in expected_contract_fields
         }
+        validate_connector_contract(observed_contract)
         try:
             worker_number = _integer_field(worker, "worker")
             connection_id = _integer_field(worker, "connection_id")
@@ -1713,7 +1736,7 @@ def validate_worker_connections(result: dict) -> list[dict]:
             or worker.get("closed") is not True
             or worker.get("close_proof") != "is_connected_false"
             or connection_id <= 0
-            or observed_contract != contract
+            or not canonical_json_equal(observed_contract, contract)
         ):
             raise RuntimeError("OLTP worker connection contract is invalid")
         connection_ids.add(connection_id)
@@ -1781,15 +1804,6 @@ def gate_reason(
         return "OLTP cumulative errors exceeded zero"
     if int(metrics.get("window_errors", 0)) > 0:
         return "OLTP window errors exceeded zero"
-    if (
-        p95_budget_ms > 0
-        and int(metrics.get("window_operations", 0)) > 0
-        and float(metrics.get("window_p95_ms", 0.0)) > p95_budget_ms
-    ):
-        return (
-            f"OLTP window P95 {metrics['window_p95_ms']} "
-            f"exceeded {p95_budget_ms}"
-        )
     return None
 
 
@@ -1825,6 +1839,284 @@ def _float_field(metrics: dict, name: str) -> float:
     if not math.isfinite(parsed) or parsed < 0:
         raise ValueError(f"{name} must be finite and nonnegative")
     return parsed
+
+
+def percentile(values: list[float], fraction: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    index = max(0, math.ceil(len(ordered) * fraction) - 1)
+    return ordered[index]
+
+
+def canonical_json_sha256(value: dict) -> str:
+    encoded = json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def rolling_five_medians(windows: list[dict]) -> list[float]:
+    if not isinstance(windows, list) or len(windows) < ROLLING_WINDOW_SIZE:
+        raise RuntimeError("control trial has fewer than five accepted windows")
+    values = []
+    previous_seq = None
+    trial_id = None
+    for window in windows:
+        if not isinstance(window, dict):
+            raise RuntimeError("control window is malformed")
+        current_trial_id = window.get("trial_id")
+        if not isinstance(current_trial_id, str) or not current_trial_id:
+            raise RuntimeError("control window trial_id is invalid")
+        if trial_id is None:
+            trial_id = current_trial_id
+        elif current_trial_id != trial_id:
+            raise RuntimeError("control windows do not belong to the same trial")
+        try:
+            sequence = _integer_field(window, "window_seq")
+            if sequence < 1:
+                raise ValueError("window_seq must be positive")
+            if previous_seq is not None and sequence != previous_seq + 1:
+                raise RuntimeError("control windows are not consecutive")
+            previous_seq = sequence
+            if _integer_field(window, "window_operations") < 1:
+                raise RuntimeError("control window is empty")
+            if _integer_field(window, "window_errors") != 0:
+                raise RuntimeError("control window contains errors")
+            values.append(_float_field(window, "window_p95_ms"))
+        except ValueError as exc:
+            raise RuntimeError(f"control window is malformed: {exc}") from exc
+    return [
+        percentile(values[index - ROLLING_WINDOW_SIZE:index], 0.50)
+        for index in range(ROLLING_WINDOW_SIZE, len(values) + 1)
+    ]
+
+
+def rolling_latency_reason(
+    tracker: dict, calibration: dict
+) -> str | None:
+    accepted = tracker.get("accepted_windows")
+    if not isinstance(accepted, list):
+        raise RuntimeError("accepted windows are invalid")
+    if len(accepted) < ROLLING_WINDOW_SIZE:
+        return None
+    current = rolling_five_medians(accepted[-ROLLING_WINDOW_SIZE:])[-1]
+    tracker["rolling_window_p95_ms"] = current
+    tracker["rolling_window_count"] = ROLLING_WINDOW_SIZE
+    try:
+        budget = _float_field(calibration, "budget_ms")
+    except ValueError as exc:
+        raise RuntimeError("latency calibration budget is invalid") from exc
+    if current > budget:
+        return f"OLTP rolling-five median P95 {current} exceeded {budget}"
+    return None
+
+
+def validate_experiment_binding(binding: dict) -> dict:
+    expected_keys = {
+        "runtime_root",
+        "runner_sha256",
+        "controller_sha256",
+        "host",
+        "port",
+        "user",
+        "database",
+        "requested_use_pure",
+    }
+    if not isinstance(binding, dict) or set(binding) != expected_keys:
+        raise RuntimeError("experiment binding is invalid")
+    runtime_root = binding.get("runtime_root")
+    if (
+        type(runtime_root) is not str
+        or not runtime_root
+        or not Path(runtime_root).name.startswith(RUNTIME_PREFIX)
+    ):
+        raise RuntimeError("experiment runtime binding is invalid")
+    for name in ("runner_sha256", "controller_sha256"):
+        value = binding.get(name)
+        if (
+            type(value) is not str
+            or len(value) != 64
+            or any(character not in "0123456789abcdef" for character in value)
+        ):
+            raise RuntimeError("experiment program hash binding is invalid")
+    port = binding.get("port")
+    if (
+        type(port) is not int
+        or port <= 0
+        or binding.get("requested_use_pure") is not True
+        or any(
+            type(binding.get(name)) is not str or not binding.get(name)
+            for name in ("host", "user", "database")
+        )
+    ):
+        raise RuntimeError("experiment connection binding is invalid")
+    return binding
+
+
+def validate_control_trial_contract(value: dict) -> dict:
+    expected = {
+        "duration_seconds": 60,
+        "threads": 4,
+        "window_seconds": 1.0,
+        "export_mode": "none",
+        "requested_p95_budget_ms": 0.0,
+    }
+    expected_types = {
+        "duration_seconds": int,
+        "threads": int,
+        "window_seconds": float,
+        "export_mode": str,
+        "requested_p95_budget_ms": float,
+    }
+    if (
+        not isinstance(value, dict)
+        or set(value) != set(expected)
+        or any(
+            type(value.get(name)) is not expected_type
+            for name, expected_type in expected_types.items()
+        )
+        or not canonical_json_equal(value, expected)
+    ):
+        raise RuntimeError("control trial contract is invalid")
+    return value
+
+
+def build_latency_calibration(
+    control_results: list[dict], binding: dict
+) -> dict:
+    validate_experiment_binding(binding)
+    if not isinstance(control_results, list) or len(control_results) != 3:
+        raise RuntimeError("exactly three control trials are required")
+    expected_contract = {
+        "duration_seconds": 60,
+        "threads": 4,
+        "window_seconds": 1.0,
+        "export_mode": "none",
+        "requested_p95_budget_ms": 0.0,
+    }
+    trials = []
+    for expected_trial_id, result in zip(CONTROL_TRIAL_IDS, control_results):
+        if not isinstance(result, dict):
+            raise RuntimeError("control trial result is malformed")
+        if result.get("trial_id") != expected_trial_id:
+            raise RuntimeError("control trial IDs are missing, duplicate, or reordered")
+        if result.get("status") != "SUCCEEDED" or result.get("mode") != "none":
+            raise RuntimeError("control trial status or mode is invalid")
+        result_binding = result.get("experiment_binding")
+        validate_experiment_binding(result_binding)
+        if not canonical_json_equal(result_binding, binding):
+            raise RuntimeError("control trial experiment binding changed")
+        validate_control_trial_contract(result.get("trial_contract"))
+        child = result.get("oltp_result")
+        if not isinstance(child, dict):
+            raise RuntimeError("control trial OLTP result is missing")
+        try:
+            child_threads = _integer_field(child, "threads")
+            child_errors = _integer_field(child, "errors")
+        except ValueError as exc:
+            raise RuntimeError("control trial OLTP result is malformed") from exc
+        if (
+            child.get("status") != "SUCCEEDED"
+            or child.get("mode") != "oltp"
+            or child.get("trial_id") != expected_trial_id
+            or child_threads != 4
+            or child_errors != 0
+        ):
+            raise RuntimeError("control trial OLTP result is invalid")
+        validate_connector_contract(child.get("connector_contract"))
+        validate_worker_connections(child)
+        accepted = result.get("accepted_windows")
+        if not isinstance(accepted, list):
+            raise RuntimeError("control trial accepted windows are invalid")
+        if len(accepted) < ROLLING_WINDOW_SIZE:
+            raise RuntimeError("control trial has fewer than five accepted windows")
+        if len(accepted) < 55:
+            raise RuntimeError("control trial has fewer than 55 accepted windows")
+        try:
+            first_sequence = _integer_field(accepted[0], "window_seq")
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("control trial first sequence is invalid") from exc
+        if first_sequence != 1:
+            raise RuntimeError("control trial first accepted sequence must be 1")
+        if any(window.get("trial_id") != expected_trial_id for window in accepted):
+            raise RuntimeError("control windows have the wrong trial_id")
+        rolling_values = rolling_five_medians(accepted)
+        trials.append(
+            {
+                "status": "SUCCEEDED",
+                "mode": "none",
+                "trial_id": expected_trial_id,
+                "experiment_binding": dict(binding),
+                "trial_contract": dict(expected_contract),
+                "accepted_windows": [dict(window) for window in accepted],
+                "oltp_result": dict(child),
+                "rolling_values_ms": rolling_values,
+            }
+        )
+    combined = [
+        value for trial in trials for value in trial["rolling_values_ms"]
+    ]
+    rolling_max = max(combined)
+    calibration = {
+        "schema": CALIBRATION_SCHEMA,
+        "formula": "1.5 * max(rolling-5 median(window_p95_ms))",
+        "window_size": ROLLING_WINDOW_SIZE,
+        "multiplier": LATENCY_MULTIPLIER,
+        "experiment_binding": dict(binding),
+        "trials": trials,
+        "rolling_count": len(combined),
+        "rolling_min_ms": min(combined),
+        "rolling_median_ms": percentile(combined, 0.50),
+        "rolling_p95_ms": percentile(combined, 0.95),
+        "rolling_p99_ms": percentile(combined, 0.99),
+        "rolling_max_ms": rolling_max,
+        "budget_ms": rolling_max * LATENCY_MULTIPLIER,
+    }
+    calibration["inputs_sha256"] = canonical_json_sha256(
+        {"binding": binding, "trials": trials}
+    )
+    return calibration
+
+
+def validate_latency_calibration(root: Path, binding: dict) -> dict:
+    validate_experiment_binding(binding)
+    if binding.get("runtime_root") != str(root.resolve()):
+        raise RuntimeError("latency calibration runtime binding changed")
+    path = root / "latency-calibration.json"
+    if not path.is_file():
+        raise RuntimeError("latency calibration artifact is missing")
+    try:
+        persisted = read_json(path)
+        trials = persisted.get("trials")
+        if not isinstance(trials, list):
+            raise RuntimeError("latency calibration trials are invalid")
+        control_results = []
+        for trial in trials:
+            if not isinstance(trial, dict):
+                raise RuntimeError("latency calibration trial is malformed")
+            control_results.append(
+                {
+                    key: value
+                    for key, value in trial.items()
+                    if key != "rolling_values_ms"
+                }
+            )
+        rebuilt = build_latency_calibration(control_results, binding)
+    except Exception as exc:
+        if isinstance(exc, RuntimeError) and str(exc).startswith(
+            "latency calibration"
+        ):
+            raise
+        raise RuntimeError(f"latency calibration validation failed: {exc}") from exc
+    if not canonical_json_equal(persisted, rebuilt):
+        raise RuntimeError("latency calibration artifact is inconsistent")
+    expected_hash = canonical_json_sha256(
+        {"binding": binding, "trials": rebuilt["trials"]}
+    )
+    if persisted.get("inputs_sha256") != expected_hash:
+        raise RuntimeError("latency calibration input hash changed")
+    return persisted
 
 
 def inspect_metrics(
@@ -2027,7 +2319,31 @@ def build_metrics_breach_diagnostics(
     }
 
 
-def ready_for_export(tracker: dict, minimum_active_seconds: float) -> bool:
+def ready_for_export(
+    tracker: dict,
+    minimum_active_seconds: float,
+    calibration: dict | None = None,
+) -> bool:
+    accepted = tracker.get("accepted_windows")
+    if not isinstance(accepted, list) or len(accepted) < ROLLING_WINDOW_SIZE:
+        return False
+    try:
+        current = rolling_five_medians(
+            accepted[-ROLLING_WINDOW_SIZE:]
+        )[-1]
+        if calibration is None and "rolling_window_p95_ms" not in tracker:
+            tracker["rolling_window_p95_ms"] = current
+            tracker["rolling_window_count"] = ROLLING_WINDOW_SIZE
+        if tracker.get("rolling_window_p95_ms") != current:
+            return False
+        if tracker.get("rolling_window_count") != ROLLING_WINDOW_SIZE:
+            return False
+        if calibration is not None and current > _float_field(
+            calibration, "budget_ms"
+        ):
+            return False
+    except (RuntimeError, ValueError):
+        return False
     return (
         tracker.get("last_status") == "RUNNING"
         and int(tracker.get("activity_windows", 0)) >= 5
@@ -2294,14 +2610,38 @@ def experiment_binding(root: Path, runner: Path, config: dict) -> dict:
         raise RuntimeError("experiment port binding is invalid") from exc
     if port <= 0 or config.get("use_pure") is not True:
         raise RuntimeError("experiment connector binding is invalid")
-    return {
+    if "__file__" in globals():
+        controller_path = Path(__file__).resolve()
+        expected_controller = root / "scenario_controller.py"
+        if controller_path != expected_controller:
+            raise RuntimeError(
+                "controller must be runtime-root/scenario_controller.py"
+            )
+        controller_sha256 = file_sha256(controller_path)
+    else:
+        # Offline fence-execution regressions have no materialized __file__.
+        # Live scripts always take the strict branch above.
+        controller_sha256 = file_sha256(runner)
+    binding = {
         "runtime_root": str(root.resolve()),
         "runner_sha256": file_sha256(runner),
+        "controller_sha256": controller_sha256,
         "host": config.get("host"),
         "port": port,
         "user": config.get("user"),
         "database": config.get("database"),
         "requested_use_pure": True,
+    }
+    return validate_experiment_binding(binding)
+
+
+def trial_contract(args: argparse.Namespace) -> dict:
+    return {
+        "duration_seconds": args.duration_seconds,
+        "threads": args.threads,
+        "window_seconds": 1.0,
+        "export_mode": args.export_mode,
+        "requested_p95_budget_ms": args.p95_budget_ms,
     }
 
 
@@ -2742,6 +3082,9 @@ def main() -> int:
     oltp = None
     export = None
     handles = []
+    current_binding = None
+    current_contract = None
+    latency_calibration = None
     connector_evidence = observe_connector()
     try:
         parser = StructuredArgumentParser()
@@ -2757,6 +3100,7 @@ def main() -> int:
                 "chunked",
                 "preflight-kill",
                 "preflight-oltp",
+                "latency-calibration",
             ),
             required=True,
         )
@@ -2774,6 +3118,7 @@ def main() -> int:
         parser.add_argument("--user", default="root")
         parser.add_argument("--password-env", default="MYSQL_PASSWORD")
         args = parser.parse_args()
+        current_contract = trial_contract(args)
 
         root = validated_runtime_root(args.runtime_root)
         runner = args.runner.resolve()
@@ -2810,6 +3155,11 @@ def main() -> int:
             or not 0.5 <= args.heartbeat_grace_seconds <= 10.0
         ):
             raise ValueError("controller numeric argument is invalid")
+        if args.p95_budget_ms != 0.0:
+            raise ValueError(
+                "controller modes require --p95-budget-ms 0; "
+                "the calibration artifact is the only latency authority"
+            )
         if args.export_mode == "preflight-oltp" and (
             args.trial_id != "oltp-smoke-1"
             or args.duration_seconds != 5
@@ -2817,6 +3167,21 @@ def main() -> int:
             or args.p95_budget_ms != 0.0
         ):
             raise ValueError("OLTP smoke requires its fixed ID/duration/threads/budget")
+        if args.export_mode == "latency-calibration" and (
+            args.trial_id != "latency-calibration-1"
+            or args.duration_seconds != 60
+            or args.threads != 4
+            or args.job_dir is not None
+        ):
+            raise ValueError(
+                "latency calibration requires its fixed ID/duration/threads"
+            )
+        if args.export_mode in ("none", "buffered", "chunked") and (
+            args.duration_seconds != 60 or args.threads != 4
+        ):
+            raise ValueError(
+                "timed trials require 60 seconds and four threads"
+            )
         if shutil.disk_usage(root).free < args.min_free_bytes:
             raise RuntimeError("pre-group disk gate failed")
         password = os.environ.get(args.password_env)
@@ -2842,31 +3207,68 @@ def main() -> int:
         oltp_stderr_path = root / f"oltp-{run_id}.stderr.json"
         export_stdout_path = root / f"export-{run_id}.stdout.json"
         export_stderr_path = root / f"export-{run_id}.stderr.json"
-        _require_fresh_paths(
-            [
-                metrics_file,
-                abort_file,
-                candidate_result_file,
-                oltp_stdout_path,
-                oltp_stderr_path,
-                export_stdout_path,
-                export_stderr_path,
-            ]
-        )
+        fresh_paths = [
+            metrics_file,
+            abort_file,
+            candidate_result_file,
+            oltp_stdout_path,
+            oltp_stderr_path,
+            export_stdout_path,
+            export_stderr_path,
+        ]
+        calibration_path = root / "latency-calibration.json"
+        if args.export_mode == "latency-calibration":
+            fresh_paths.append(calibration_path)
+        _require_fresh_paths(fresh_paths)
         result_file = candidate_result_file
         if args.export_mode in ("buffered", "chunked") and job_dir.exists():
             raise RuntimeError("each trial requires a fresh job directory")
 
         if args.export_mode == "preflight-kill":
             result = run_kill_query_preflight(admin_config)
+            result["trial_id"] = run_id
+            result["experiment_binding"] = current_binding
+            result["trial_contract"] = current_contract
             result["controller_connector_environment"] = connector_environment()
             atomic_json(result_file, result)
             print(json.dumps(result, sort_keys=True))
             return 0
 
         smoke_gate = None
-        if args.export_mode in ("none", "buffered", "chunked"):
+        if args.export_mode in (
+            "none",
+            "buffered",
+            "chunked",
+            "latency-calibration",
+        ):
             smoke_gate = validate_persisted_smoke(root, current_binding)
+        if args.export_mode == "latency-calibration":
+            controls = [
+                read_json(root / f"controller-result-{trial_id}.json")
+                for trial_id in CONTROL_TRIAL_IDS
+            ]
+            latency_calibration = build_latency_calibration(
+                controls, current_binding
+            )
+            atomic_json(calibration_path, latency_calibration)
+            result = {
+                "status": "SUCCEEDED",
+                "mode": "latency-calibration",
+                "trial_id": run_id,
+                "experiment_binding": current_binding,
+                "trial_contract": current_contract,
+                "smoke_gate": smoke_gate,
+                "calibration_artifact": calibration_path.name,
+                "calibration": latency_calibration,
+                "controller_connector_environment": connector_environment(),
+            }
+            atomic_json(result_file, result)
+            print(json.dumps(result, sort_keys=True))
+            return 0
+        if args.export_mode in ("buffered", "chunked"):
+            latency_calibration = validate_latency_calibration(
+                root, current_binding
+            )
 
         common = [
             sys.executable,
@@ -2894,6 +3296,8 @@ def main() -> int:
                 str(args.duration_seconds),
                 "--threads",
                 str(args.threads),
+                "--window-seconds",
+                "1.0",
                 "--metrics-file",
                 str(metrics_file),
                 "--trial-id",
@@ -2944,13 +3348,21 @@ def main() -> int:
                     args.p95_budget_ms,
                     args.min_free_bytes,
                 )
+            if breach is None and latency_calibration is not None:
+                breach = rolling_latency_reason(
+                    tracker, latency_calibration
+                )
             if breach is not None:
                 break
 
             if (
                 export is None
                 and args.export_mode in ("buffered", "chunked")
-                and ready_for_export(tracker, args.start_delay_seconds)
+                and ready_for_export(
+                    tracker,
+                    args.start_delay_seconds,
+                    latency_calibration,
+                )
             ):
                 export_stdout = export_stdout_path.open("w", encoding="utf-8")
                 export_stderr = export_stderr_path.open("w", encoding="utf-8")
@@ -3046,6 +3458,9 @@ def main() -> int:
                     breach,
                 )
             result["experiment_binding"] = current_binding
+            result["trial_id"] = run_id
+            result["trial_contract"] = current_contract
+            result["latency_calibration"] = latency_calibration
             result["smoke_gate"] = smoke_gate
             result["controller_connector_environment"] = connector_environment()
         else:
@@ -3098,6 +3513,8 @@ def main() -> int:
             result = {
                 "status": status,
                 "mode": args.export_mode,
+                "trial_id": run_id,
+                "trial_contract": current_contract,
                 "accepted_windows": list(tracker["accepted_windows"]),
                 "oltp_returncode": oltp_rc,
                 "export_returncode": export_rc,
@@ -3105,6 +3522,7 @@ def main() -> int:
                 "export_result": export_result,
                 "smoke_result": smoke_result,
                 "experiment_binding": current_binding,
+                "latency_calibration": latency_calibration,
                 "smoke_gate": smoke_gate,
                 "controller_connector_environment": connector_environment(),
             }
@@ -3116,6 +3534,11 @@ def main() -> int:
             "status": "FAILED",
             "error_type": type(exc).__name__,
             "error": str(exc),
+            "trial_id": (
+                None if current_contract is None else getattr(args, "trial_id", None)
+            ),
+            "trial_contract": current_contract,
+            "experiment_binding": current_binding,
             "connector_evidence": connector_failure_evidence(
                 exc, connector_evidence
             ),
@@ -3160,7 +3583,7 @@ uv run --with mysql-connector-python==9.7.0 python \
   --user root --password-env MYSQL_PASSWORD
 ```
 
-Require one structured controller `SUCCEEDED`, positive child operations, zero child errors, at least two accepted advancing nonempty metric sequences, four distinct verifiably closed worker connections and an exact pure connector contract. Preserve the smoke result with `excluded_from_control_statistics=true` plus a binding over the exact runtime root, runner SHA-256 and non-secret connection configuration. For this mode only, any metrics／gate breach, native exit, empty／multiple／malformed child output, shared／unclosed connection or actual-mode mismatch persists controller `FAILED` and exits `2`; it must never use timed-export `ABORTED`／exit-0 semantics. Parse and retain a structured child failure when one exists, otherwise retain the structured-output error and implementation envelope. Never retry this smoke in the same runtime. The prior Python 3.13/macOS arm64/Connector 9.7.0 evidence—canonical one-thread success, default `HAVE_CEXT=true` four-thread exit 139, and the same four-thread workload succeeding with `use_pure=True`—is an excluded client/environment boundary, not a MySQL performance sample.
+Require one structured controller `SUCCEEDED`, positive child operations, zero child errors, at least two accepted advancing nonempty metric sequences, four distinct verifiably closed worker connections and an exact pure connector contract. Preserve the smoke result with `excluded_from_control_statistics=true` plus a binding over the exact runtime root, runner/controller SHA-256 values and non-secret connection configuration. For this mode only, any metrics／gate breach, native exit, empty／multiple／malformed child output, shared／unclosed connection or actual-mode mismatch persists controller `FAILED` and exits `2`; it must never use timed-export `ABORTED`／exit-0 semantics. Parse and retain a structured child failure when one exists, otherwise retain the structured-output error and implementation envelope. Never retry this smoke in the same runtime. The prior Python 3.13/macOS arm64/Connector 9.7.0 evidence—canonical one-thread success, default `HAVE_CEXT=true` four-thread exit 139, and the same four-thread workload succeeding with `use_pure=True`—is an excluded client/environment boundary, not a MySQL performance sample.
 
 Every later timed `none`／`buffered`／`chunked` invocation must validate `controller-result-oltp-smoke-1.json` as `SUCCEEDED`, excluded, sufficiently progressing, exact-pure and equal to its current runtime／runner／connection binding before starting any child. Missing, failed, malformed, stale-runtime, changed-runner or changed-config smoke evidence fails the timed invocation before `Popen`; timed export breach behavior after this gate remains the documented `ABORTED` contract.
 
@@ -3168,12 +3591,14 @@ controller 与 runner 必须绑定同一个 exact `--runtime-root`。一个 `run
 
 live metrics 不是“写过文件就算有 load”。每个 accepted document 必须来自当前 trial、heartbeat fresh、`window_seq` advancing、`window_operations > 0`、active time 与 cumulative operations 严格前进、cumulative errors 不回退；window delta 必须与 cumulative delta reconcile，consecutive sequence 精确相等，skip sequence 至少 cover 最新 window。missing／malformed／stale／wrong-trial／regressing／changed／nonadvancing metrics 只允许明确 startup／heartbeat grace，之后 fail closed。以下四个 gate 彼此独立：
 
-- live `window_p95_ms` 超过预先写下的 budget；
+- live rolling-five median P95 超过 frozen calibration budget；raw one-second `window_p95_ms` never independently aborts；
 - `window_errors > 0` 或 cumulative `errors > 0`；
 - free bytes `< 5419909120`；
 - heartbeat／progression／identity 不合法。
 
 任一 breach 都先 atomically 写 abort signal。chunked 最多完成当下 in-flight query／part，并在下一 fetch 前持久化 `ABORTED`。buffered 没有 batch boundary：controller 必须从 state 读取 sanitized numeric `connection_id`，用独立 admin connection 发 `KILL QUERY`，需要时 terminate child，再写 external `ABORTED` evidence。Task 10 timing 前必须用两个 disposable connections 执行 KILL preflight，要求 target query 得到预期 interruption，确认权限与 cleanup 后才进入矩阵。
+
+报告必须把 safety outcome separately from the interference outcome：safety 只说明 empirical rolling envelope 是否在何个 rolling window abort；interference 只在 fresh trial 成功后比较所有 ordered windows 与三份 trial-level percentile sets。保留完整 calibration artifact、numeric budget 与 `rolling_max/rolling_median` environment-noise ratio；该 envelope 是 host/runtime-specific，不是 production SLO。
 
 controller 只接受 stdout/stderr 合计 **一个** structured JSON object，并与 return code、state、result、artifact 做 reconcile。只有 child=`SUCCEEDED`、rc=`0`、runner manifest-linked fast path 再调用成功，controller 才能成功；child=`ABORTED` 即使 rc=`0` 仍是 `ABORTED`。missing／malformed／multiple／contradictory JSON、未启动 export、zero-work OLTP 都是 `FAILED`。gate breach 后，若 child 尚未完成则 persist incomplete checkpoint 为 `ABORTED`；若内部 state 已真正 atomic `SUCCEEDED`，保留它并记录 `persisted_state_status=SUCCEEDED`，但 controller evidence 仍是 `ABORTED`，绝不列入 performance sample。
 
@@ -3309,7 +3734,7 @@ Replica 不是 correctness shortcut。要先定义“watermark 在该 replica �
 >
 > placement 依 freshness 与 capacity 选：Primary correctness 简单但直接争用 OLTP；shared replica 隔离部分负载却与 applier 竞争且有 lag；频繁报表用 dedicated reporting replica；复杂历史聚合通常进 analytical store，但 CDC 必须能 reconcile/rebuild。consumer backpressure 不应该让 DB cursor 长时间打开，数据库读取与 artifact delivery 要解耦。
 >
-> recovery 要说清 ambiguity：`ABORTED` 有 checkpoint 可 resume；artifact publish 前不对外可见；success 后走 manifest-linked validation。验证上先跑三次 OLTP control，写下 `1.5 × median P95` 预算，再跑 buffered／chunked 各三次；controller 只有看见五个 advancing、nonempty、same-trial one-second windows 才启动 export，持续检查 P95、window/cumulative errors、heartbeat progression 与 `2×artifact+5GiB` disk reserve。chunked 在 batch boundary abort；buffered 以经过权限 preflight 的 `KILL QUERY` 加 child termination。任何 `ABORTED`、restart 或 fingerprint divergence 都保留现场但不排名。
+> recovery 要说清 ambiguity：`ABORTED` 有 checkpoint 可 resume；artifact publish 前不对外可见；success 后走 manifest-linked validation。验证上先跑三次 OLTP control，再冻结 `latency-calibration.json`：每 trial 以五个 accepted one-second P95 得出 `R_t`，预算是 `B = 1.5 * max(R_t)`，不是 final P95 的 median。controller 只有看见五个 advancing、nonempty、same-trial windows 且 rolling median 在 frozen budget 内才启动 export；raw one-second P95 不单独 abort，持续 gate 的是 rolling envelope、window/cumulative errors、heartbeat progression 与 `2×artifact+5GiB` disk reserve。chunked 在 batch boundary abort；buffered 以经过权限 preflight 的 `KILL QUERY` 加 child termination。任何 `ABORTED`、restart 或 fingerprint divergence 都保留现场但不排名。
 
 ## 常见追问
 
@@ -3346,7 +3771,7 @@ artifact 先写 `.tmp` 后 replace，result 再写，最后 state 才 `SUCCEEDED
 当前状态保持 `READY_UNRUN`。Task 10 必须补齐：
 
 - environment／MySQL version／transaction isolation／durability／host resources；
-- run IDs、source manifest 与 predeclared numeric P95 budget；
+- run IDs、source manifest、full `latency-calibration.json` 与 numeric current-runtime budget；
 - control／buffered／chunked 各三次原始结果、median 与 range；
 - processlist、temporary／sort、InnoDB history delta；
 - freeze triggers、backdated INSERT／UPDATE／DELETE rejection、pre/post source fingerprint 与 verified teardown；
@@ -3355,6 +3780,7 @@ artifact 先写 `.tmp` 后 replace，result 再写，最后 state 才 `SUCCEEDED
 - strict nonregressing `drain_limit_hits`／`max_heartbeat_lateness_ms`，以及 stale `ABORTED` 的 coherent raw document／age／mtime／device／inode／size／tracker evidence；
 - Python/platform、Connector version、`threadsafety`、`HAVE_CEXT`、requested／actual implementation、四个 distinct verifiably closed worker connections；
 - mandatory `oltp-smoke-1` 的 excluded result、exact runtime／runner SHA／non-secret connection binding，以及 C Extension native-crash excluded boundary；
+- controller SHA-256、ordered accepted windows、per-trial rolling-five medians、`rolling_max/rolling_median` noise ratio，以及分离的 safety／interference outcome；
 - numeric disk gate：`2 * 100000 * 256 + 5 * 1024^3 = 5419909120` bytes；
 - 所有 artifact equality；
 - `ABORTED` 三 parts 到同 job resume 的 timeline；
