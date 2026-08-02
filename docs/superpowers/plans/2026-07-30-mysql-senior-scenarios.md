@@ -2095,8 +2095,17 @@ def run_chunked(connection, connector_contract: dict, job_dir: Path, batch_size:
 def run_buffered(connection, connector_contract: dict, job_dir: Path) -> dict:
     """Use one buffered full-boundary query, fetch all rows, write one artifact and report max RSS."""
 
+def history_limit(duration_seconds: int, window_seconds: float) -> int:
+    """Return the immutable per-trial authoritative-history bound."""
+
+def build_window_record(status: str, trial_id: str, heartbeat_at_epoch: float, window_seq: int, window_operations: int, window_errors: int, window_p95_ms: float, operations: int, errors: int, active_elapsed_seconds: float, drain_limit_hits: int, max_heartbeat_lateness_ms: float) -> dict:
+    """Build one exact twelve-field authoritative window record."""
+
+def append_window_record(history: list[dict], record: dict, limit: int) -> None:
+    """Append one consecutive record without exceeding the trial bound."""
+
 def run_oltp(config: dict, duration: int, threads: int, metrics_file: Path | None, window_seconds: float, trial_id: str) -> dict:
-    """Emit trial-bound heartbeat/window/cumulative metrics and final percentiles."""
+    """Emit bounded authoritative history plus final percentiles."""
 ```
 
 ```python
@@ -2130,6 +2139,7 @@ RUNTIME_PREFIX = "mysql-senior-scenarios."
 # targets, and do not relax the controller's 2.5-second heartbeat gate.
 OLTP_DRAIN_MAX_EVENTS = 256
 OLTP_DRAIN_MAX_SECONDS = 0.010
+WINDOW_HISTORY_SCHEMA = "oltp-window-history-v1"
 EXPORT_SQL = """
 SELECT o.created_at, o.id, o.tenant_id, o.status,
        SUM(i.qty * i.unit_price) AS total_amount,
@@ -2822,6 +2832,61 @@ def drain_oltp_event_slice(
     }
 
 
+def history_limit(duration_seconds: int, window_seconds: float) -> int:
+    if (
+        isinstance(duration_seconds, bool)
+        or not isinstance(duration_seconds, int)
+        or duration_seconds < 1
+        or isinstance(window_seconds, bool)
+        or not isinstance(window_seconds, float)
+        or not math.isfinite(window_seconds)
+        or window_seconds <= 0.0
+    ):
+        raise ValueError("window history contract is invalid")
+    return math.ceil(duration_seconds / window_seconds) + 1
+
+
+def build_window_record(
+    status: str,
+    trial_id: str,
+    heartbeat_at_epoch: float,
+    window_seq: int,
+    window_operations: int,
+    window_errors: int,
+    window_p95_ms: float,
+    operations: int,
+    errors: int,
+    active_elapsed_seconds: float,
+    drain_limit_hits: int,
+    max_heartbeat_lateness_ms: float,
+) -> dict:
+    return {
+        "status": status,
+        "trial_id": trial_id,
+        "heartbeat_at_epoch": heartbeat_at_epoch,
+        "window_seq": window_seq,
+        "window_operations": window_operations,
+        "window_errors": window_errors,
+        "window_p95_ms": window_p95_ms,
+        "operations": operations,
+        "errors": errors,
+        "active_elapsed_seconds": active_elapsed_seconds,
+        "drain_limit_hits": drain_limit_hits,
+        "max_heartbeat_lateness_ms": max_heartbeat_lateness_ms,
+    }
+
+
+def append_window_record(
+    history: list[dict], record: dict, limit: int
+) -> None:
+    expected_sequence = len(history) + 1
+    if record.get("window_seq") != expected_sequence:
+        raise RuntimeError("runner window history is not consecutive")
+    if len(history) >= limit:
+        raise RuntimeError("runner window history exceeded its trial bound")
+    history.append(record)
+
+
 def close_oltp_resources(cursor, connection) -> dict:
     failures = []
     if cursor is not None:
@@ -2923,9 +2988,11 @@ def run_oltp(
     all_errors = 0
     window_latencies = []
     window_errors = 0
-    sequence = 0
+    window_history = []
+    limit = history_limit(duration, window_seconds)
     diagnostics["drain_limit_hits"] = 0
     diagnostics["max_heartbeat_lateness_ms"] = 0.0
+    diagnostics["window_history"] = window_history
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as pool:
         futures = [
             pool.submit(oltp_worker, config, deadline, seed, events)
@@ -2938,24 +3005,30 @@ def run_oltp(
                     diagnostics["max_heartbeat_lateness_ms"],
                     max(0.0, (now - next_window) * 1000.0),
                 )
-                sequence += 1
+                record = build_window_record(
+                    status="RUNNING",
+                    trial_id=trial_id,
+                    heartbeat_at_epoch=time.time(),
+                    window_seq=len(window_history) + 1,
+                    window_operations=len(window_latencies),
+                    window_errors=window_errors,
+                    window_p95_ms=percentile(window_latencies, 0.95),
+                    operations=len(all_latencies),
+                    errors=all_errors,
+                    active_elapsed_seconds=now - started,
+                    drain_limit_hits=diagnostics["drain_limit_hits"],
+                    max_heartbeat_lateness_ms=diagnostics[
+                        "max_heartbeat_lateness_ms"
+                    ],
+                )
+                append_window_record(window_history, record, limit)
                 if metrics_file is not None:
                     atomic_json(
                         metrics_file,
                         {
-                            "status": "RUNNING",
-                            "trial_id": trial_id,
-                            "heartbeat_at_epoch": time.time(),
-                            "window_seq": sequence,
-                            "window_operations": len(window_latencies),
-                            "window_errors": window_errors,
-                            "window_p95_ms": percentile(window_latencies, 0.95),
-                            "operations": len(all_latencies),
-                            "errors": all_errors,
-                            "active_elapsed_seconds": now - started,
-                            "drain_limit_hits": diagnostics["drain_limit_hits"],
-                            "max_heartbeat_lateness_ms": diagnostics[
-                                "max_heartbeat_lateness_ms"
+                            **record,
+                            "window_history": [
+                                dict(item) for item in window_history
                             ],
                         },
                     )
@@ -3018,12 +3091,41 @@ def run_oltp(
         for item in worker_connections
     ):
         raise RuntimeError("OLTP worker connector contracts differ")
+    publish_status = (
+        "SUCCEEDED"
+        if all_errors == 0 and len(all_latencies) > 0
+        else "FAILED"
+    )
+    if window_latencies or window_errors:
+        record = build_window_record(
+            status=publish_status,
+            trial_id=trial_id,
+            heartbeat_at_epoch=time.time(),
+            window_seq=len(window_history) + 1,
+            window_operations=len(window_latencies),
+            window_errors=window_errors,
+            window_p95_ms=percentile(window_latencies, 0.95),
+            operations=len(all_latencies),
+            errors=all_errors,
+            active_elapsed_seconds=time.perf_counter() - started,
+            drain_limit_hits=diagnostics["drain_limit_hits"],
+            max_heartbeat_lateness_ms=diagnostics[
+                "max_heartbeat_lateness_ms"
+            ],
+        )
+        append_window_record(window_history, record, limit)
+        if metrics_file is not None:
+            atomic_json(
+                metrics_file,
+                {
+                    **record,
+                    "window_history": [
+                        dict(item) for item in window_history
+                    ],
+                },
+            )
     result = {
-        "status": (
-            "SUCCEEDED"
-            if all_errors == 0 and len(all_latencies) > 0
-            else "FAILED"
-        ),
+        "status": publish_status,
         "mode": "oltp",
         "trial_id": trial_id,
         "operations": len(all_latencies),
@@ -3038,25 +3140,9 @@ def run_oltp(
         ],
         "connector_contract": connector_contract,
         "worker_connections": worker_connections,
+        "window_history_schema": WINDOW_HISTORY_SCHEMA,
+        "window_history": [dict(record) for record in window_history],
     }
-    if metrics_file is not None and (window_latencies or window_errors):
-        atomic_json(
-            metrics_file,
-            {
-                **result,
-                "trial_id": trial_id,
-                "heartbeat_at_epoch": time.time(),
-                "window_seq": sequence + 1,
-                "window_operations": len(window_latencies),
-                "window_errors": window_errors,
-                "window_p95_ms": percentile(window_latencies, 0.95),
-                "active_elapsed_seconds": time.perf_counter() - started,
-                "drain_limit_hits": diagnostics["drain_limit_hits"],
-                "max_heartbeat_lateness_ms": diagnostics[
-                    "max_heartbeat_lateness_ms"
-                ],
-            },
-        )
     return result
 
 
@@ -3073,6 +3159,7 @@ def main() -> int:
     oltp_diagnostics = {
         "drain_limit_hits": 0,
         "max_heartbeat_lateness_ms": 0.0,
+        "window_history": [],
     }
     try:
         parser = StructuredArgumentParser()
@@ -3192,7 +3279,14 @@ def main() -> int:
                     "status": "FAILED",
                     **failure_identity,
                     **(
-                        oltp_diagnostics
+                        {
+                            **oltp_diagnostics,
+                            "window_history_schema": WINDOW_HISTORY_SCHEMA,
+                            "window_history": [
+                                dict(record)
+                                for record in oltp_diagnostics["window_history"]
+                            ],
+                        }
                         if failure_identity.get("mode") == "oltp"
                         else {}
                     ),
@@ -3234,7 +3328,7 @@ Run groups, each three times with a fresh job directory:
 | buffered | 60 s, 4 threads | one buffered query／artifact |
 | chunked | 60 s, 4 threads | batch=1000, sleep=20 ms |
 
-Start OLTP before export, but do not use wall time alone as proof of load. OLTP atomically replaces a trial-bound heartbeat containing `trial_id`, epoch timestamp, advancing `window_seq`, positive one-second operations, window errors／P95, cumulative operations／errors and active elapsed time. Each accepted sequence must have positive operations and active time; cumulative operations and active time strictly advance, cumulative errors never decrease, and window deltas reconcile with the cumulative deltas (exactly for consecutive sequences, at least covered when observations skip sequences). The controller rejects contradictory or pre-existing trial files and launches export only after observing at least five fresh, advancing, nonempty same-trial windows covering at least five active seconds and positive cumulative work.
+Start OLTP before export, but do not use wall time alone as proof of load. OLTP atomically replaces a trial-bound heartbeat whose latest fields are backed by the complete bounded `oltp-window-history-v1` prefix. Every record carries `trial_id`, epoch timestamp, consecutive `window_seq`, positive one-second operations, window errors／P95, cumulative operations／errors, active elapsed time and nonregressing drain diagnostics. The controller validates the exact record shape, sequence from 1, cumulative deltas and immutable already-accepted prefix before ingesting every unseen record. Polling may skip replaced snapshots but must never skip a runner window. It launches export only after at least five fresh, advancing, nonempty same-trial windows cover at least five active seconds and positive cumulative work.
 
 Before and throughout export, missing／malformed／stale／wrong-trial／regressing／changed or nonadvancing metrics fail closed after only the declared startup／heartbeat grace. Cumulative errors cannot be masked by a zero-error latest window; cumulative errors, window errors, rolling-five P95 and live disk each remain independent stop gates, while raw one-second P95 never independently stops a trial. The final OLTP child result must also report positive cumulative operations and zero errors to be `SUCCEEDED`; a zero-work early exit cannot make a control trial pass. Record final OLTP p50／p95／p99／errors, every accepted live window, export active time／rows-per-active-second／max RSS, MySQL processlist／temporary-table／sort deltas and exact artifact correctness.
 
@@ -3248,7 +3342,7 @@ MIN_FREE_BYTES = 2 * EXPECTED_ARTIFACT_BYTES + 5 * 1024^3
 
 The controller checks `MIN_FREE_BYTES` before each group and throughout the live 60-second window. Chunked mode also checks it itself before issuing every new batch. A rolling-five P95／error／disk breach atomically writes an abort signal; raw one-second latency never independently aborts. Chunked finishes at most its in-flight query/part and persists `ABORTED` before the next fetch; buffered has no batch boundary, so the controller reads its persisted connection ID, issues sanitized `KILL QUERY`, terminates the child if needed and writes separate external `ABORTED` evidence. After the child is known stopped, an incomplete checkpoint is persisted as `ABORTED`; if the runner had already atomically completed, its genuine `SUCCEEDED` checkpoint is preserved, but the controller's gate-breach evidence remains `ABORTED` and the trial can never become a performance success.
 
-On normal child exit, the controller accepts exactly one structured JSON object across stdout／stderr and reconciles it with return code and persisted state. Only child `SUCCEEDED`, return code `0`, and consistent state／result／artifact integrity can produce controller success; `ABORTED` with exit code 0 remains `ABORTED`, an unstarted export is never success, and missing／malformed／multiple／contradictory child output is `FAILED`. The successful export is re-invoked through the runner's manifest-linked fast path before evidence is accepted. MySQL restart or fingerprint divergence also invalidates the trial. Never rank `ABORTED` or planned-resume correctness runs as steady-state throughput.
+On normal child exit, the controller closes and flushes child output handles, performs one mandatory final metrics-snapshot read, ingests any terminal history suffix and applies all immediate and rolling gates before accepting exactly one structured JSON object across stdout／stderr. The child's schema-tagged complete history must canonically equal the controller's accepted history. Only child `SUCCEEDED`, return code `0`, and consistent state／result／artifact integrity can produce controller success; `ABORTED` with exit code 0 remains `ABORTED`, an unstarted export is never success, and missing／malformed／multiple／contradictory child output is `FAILED`. The successful export is re-invoked through the runner's manifest-linked fast path before evidence is accepted. MySQL restart or fingerprint divergence also invalidates the trial. Never rank `ABORTED` or planned-resume correctness runs as steady-state throughput.
 
 The client implementation is a measured boundary, not an invisible default. A native/nonstructured client exit, missing or contradictory connector identity, a non-pure actual class, a shared worker connection or a connection that is not closed invalidates the run. The later Task 10 capacity/interference result includes the cost of the pinned pure-Python client and cannot be presented as MySQL-only capacity or a C Extension result.
 
@@ -3295,12 +3389,38 @@ git commit -m "docs(mysql): define report export isolation scenario"
 
 - [ ] **Step 1: Preflight and materialize both canonical temp programs**
 
-Repeat base-lab ownership／health, MySQL version／durability, transaction isolation, free disk and host resource checks. Set `MYSQL_SCENARIO_PORT=33306` for the owned dedicated container and verify that exact port/container label before use. Create the runtime directory with `MYSQL_SCENARIO_RUN_DIR=$(mktemp -d /private/tmp/mysql-senior-scenarios.XXXXXX)`. Copy the Task 9 runner block to `$MYSQL_SCENARIO_RUN_DIR/export_runner.py` and the controller block below to `$MYSQL_SCENARIO_RUN_DIR/scenario_controller.py`. Obtain the password outside committed snippets and export it only in the invoking shell as `MYSQL_PASSWORD`.
+Repeat base-lab ownership／health, MySQL version／durability, transaction isolation, free disk and host resource checks. Set `MYSQL_SCENARIO_PORT=33306` for the owned dedicated container and verify that exact port/container label before use. Leave every stopped first-through-sixth runtime immutable and create the seventh runtime with `MYSQL_SCENARIO_RUN_DIR=$(mktemp -d /private/tmp/mysql-senior-scenarios.XXXXXX)`. Copy the Task 9 runner block to `$MYSQL_SCENARIO_RUN_DIR/export_runner.py` and the controller block below to `$MYSQL_SCENARIO_RUN_DIR/scenario_controller.py`. Obtain the password outside committed snippets and export it only in the invoking shell as `MYSQL_PASSWORD`.
 
 ```bash
 uv run --with mysql-connector-python==9.7.0 python -m py_compile \
   "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
   "$MYSQL_SCENARIO_RUN_DIR/scenario_controller.py"
+```
+
+Create the seventh runtime's one-shot invocation ledger before live preflight.
+Every controller or direct-runner command in Steps 3–6 is executed through
+`invoke_once <unique-ledger-id> ...`, never by running its shown `uv` body
+directly. The `.started` marker is created before launch and therefore also
+blocks retry after failure; the separate `.exit` record preserves its status.
+
+```bash
+MYSQL_SCENARIO_INVOCATION_LEDGER="$MYSQL_SCENARIO_RUN_DIR/invocation-ledger"
+mkdir -p "$MYSQL_SCENARIO_INVOCATION_LEDGER"
+
+invoke_once() {
+  ledger_id="$1"
+  shift
+  case "$ledger_id" in
+    *[!A-Za-z0-9_-]*|'') return 125 ;;
+  esac
+  started="$MYSQL_SCENARIO_INVOCATION_LEDGER/$ledger_id.started"
+  exit_record="$MYSQL_SCENARIO_INVOCATION_LEDGER/$ledger_id.exit"
+  (set -C; : > "$started") 2>/dev/null || return 125
+  "$@"
+  invocation_status="$?"
+  printf '%s\n' "$invocation_status" > "$exit_record"
+  return "$invocation_status"
+}
 ```
 
 The second embedded block is the one canonical temporary controller source:
@@ -3339,6 +3459,13 @@ ROLLING_WINDOW_SIZE = 5
 LATENCY_MULTIPLIER = 1.5
 CALIBRATION_SCHEMA = "report-latency-calibration-v1"
 CONTROL_TRIAL_IDS = ("control-1", "control-2", "control-3")
+WINDOW_HISTORY_SCHEMA = "oltp-window-history-v1"
+WINDOW_RECORD_FIELDS = {
+    "status", "trial_id", "heartbeat_at_epoch", "window_seq",
+    "window_operations", "window_errors", "window_p95_ms",
+    "operations", "errors", "active_elapsed_seconds",
+    "drain_limit_hits", "max_heartbeat_lateness_ms",
+}
 
 
 MetricsSnapshot = namedtuple(
@@ -3579,6 +3706,8 @@ def new_metrics_tracker() -> dict:
         "last_status": None,
         "sequence_payload": None,
         "accepted_windows": [],
+        "rolling_evaluated_windows": 0,
+        "rolling_breach_window_seq": None,
     }
 
 
@@ -3597,6 +3726,111 @@ def _float_field(metrics: dict, name: str) -> float:
     if not math.isfinite(parsed) or parsed < 0:
         raise ValueError(f"{name} must be finite and nonnegative")
     return parsed
+
+
+def validate_window_history(
+    value, trial_id: str, limit: int
+) -> list[dict]:
+    if not isinstance(value, list):
+        raise ValueError("OLTP window history is missing or not a list")
+    if (
+        isinstance(limit, bool)
+        or not isinstance(limit, int)
+        or limit < 1
+    ):
+        raise ValueError("OLTP window history bound is invalid")
+    if len(value) > limit:
+        raise ValueError("OLTP window history exceeded its trial bound")
+    validated = []
+    previous_operations = 0
+    previous_errors = 0
+    previous_active_elapsed = 0.0
+    previous_drain_limit_hits = 0
+    previous_max_heartbeat_lateness_ms = 0.0
+    for expected_sequence, item in enumerate(value, 1):
+        if not isinstance(item, dict) or set(item) != WINDOW_RECORD_FIELDS:
+            raise ValueError("OLTP window history record fields are invalid")
+        if item.get("status") not in ("RUNNING", "SUCCEEDED", "FAILED"):
+            raise ValueError("OLTP window history status is invalid")
+        if item.get("trial_id") != trial_id:
+            raise ValueError("OLTP window history trial_id mismatch")
+        try:
+            _float_field(item, "heartbeat_at_epoch")
+            sequence = _integer_field(item, "window_seq")
+            window_operations = _integer_field(item, "window_operations")
+            window_errors = _integer_field(item, "window_errors")
+            _float_field(item, "window_p95_ms")
+            operations = _integer_field(item, "operations")
+            errors = _integer_field(item, "errors")
+            active_elapsed = _float_field(item, "active_elapsed_seconds")
+            drain_limit_hits = _integer_field(item, "drain_limit_hits")
+            max_heartbeat_lateness_ms = _float_field(
+                item, "max_heartbeat_lateness_ms"
+            )
+        except ValueError as exc:
+            raise ValueError(
+                f"OLTP window history record is malformed: {exc}"
+            ) from exc
+        if sequence != expected_sequence:
+            raise ValueError("OLTP window history is not consecutive")
+        if window_operations < 1:
+            raise ValueError("OLTP window history contains an empty window")
+        if operations - previous_operations != window_operations:
+            raise ValueError(
+                "OLTP window history cumulative operations are inconsistent"
+            )
+        if errors - previous_errors != window_errors:
+            raise ValueError(
+                "OLTP window history cumulative errors are inconsistent"
+            )
+        if active_elapsed <= previous_active_elapsed:
+            raise ValueError(
+                "OLTP window history active elapsed time did not advance"
+            )
+        if drain_limit_hits < previous_drain_limit_hits:
+            raise ValueError("OLTP window history drain_limit_hits regressed")
+        if max_heartbeat_lateness_ms < previous_max_heartbeat_lateness_ms:
+            raise ValueError(
+                "OLTP window history max_heartbeat_lateness_ms regressed"
+            )
+        validated.append(dict(item))
+        previous_operations = operations
+        previous_errors = errors
+        previous_active_elapsed = active_elapsed
+        previous_drain_limit_hits = drain_limit_hits
+        previous_max_heartbeat_lateness_ms = max_heartbeat_lateness_ms
+    return validated
+
+
+def ingest_window_history(
+    history: list[dict], tracker: dict, now_monotonic: float
+) -> tuple[dict, str | None]:
+    accepted = tracker["accepted_windows"]
+    if len(history) < len(accepted):
+        return dict(tracker), "OLTP window history truncated"
+    if not canonical_json_equal(history[:len(accepted)], accepted):
+        return dict(tracker), "OLTP window history prefix changed"
+    if len(history) == len(accepted):
+        return dict(tracker), None
+    updated = dict(tracker)
+    updated["accepted_windows"] = [dict(item) for item in history]
+    updated["activity_windows"] = sum(
+        1 for item in history if item["status"] == "RUNNING"
+    )
+    latest = history[-1]
+    updated["window_seq"] = latest["window_seq"]
+    updated["last_advance_monotonic"] = now_monotonic
+    updated["operations"] = latest["operations"]
+    updated["errors"] = latest["errors"]
+    updated["active_elapsed_seconds"] = latest["active_elapsed_seconds"]
+    updated["drain_limit_hits"] = latest["drain_limit_hits"]
+    updated["max_heartbeat_lateness_ms"] = latest[
+        "max_heartbeat_lateness_ms"
+    ]
+    updated["last_window_operations"] = latest["window_operations"]
+    updated["last_status"] = latest["status"]
+    updated["sequence_payload"] = dict(latest)
+    return updated, None
 
 
 def percentile(values: list[float], fraction: float) -> float:
@@ -3656,17 +3890,30 @@ def rolling_latency_reason(
     accepted = tracker.get("accepted_windows")
     if not isinstance(accepted, list):
         raise RuntimeError("accepted windows are invalid")
-    if len(accepted) < ROLLING_WINDOW_SIZE:
-        return None
-    current = rolling_five_medians(accepted[-ROLLING_WINDOW_SIZE:])[-1]
-    tracker["rolling_window_p95_ms"] = current
-    tracker["rolling_window_count"] = ROLLING_WINDOW_SIZE
     try:
         budget = _float_field(calibration, "budget_ms")
     except ValueError as exc:
         raise RuntimeError("latency calibration budget is invalid") from exc
-    if current > budget:
-        return f"OLTP rolling-five median P95 {current} exceeded {budget}"
+    start = max(
+        ROLLING_WINDOW_SIZE,
+        int(tracker["rolling_evaluated_windows"]) + 1,
+    )
+    for end in range(start, len(accepted) + 1):
+        current = rolling_five_medians(
+            accepted[end - ROLLING_WINDOW_SIZE:end]
+        )[-1]
+        tracker["rolling_evaluated_windows"] = end
+        tracker["rolling_window_p95_ms"] = current
+        tracker["rolling_window_count"] = ROLLING_WINDOW_SIZE
+        if current > budget:
+            tracker["rolling_breach_window_seq"] = accepted[end - 1][
+                "window_seq"
+            ]
+            return (
+                "OLTP rolling-five median P95 "
+                f"{current} exceeded {budget} at "
+                f"window_seq={accepted[end - 1]['window_seq']}"
+            )
     return None
 
 
@@ -3787,6 +4034,27 @@ def build_latency_calibration(
         accepted = result.get("accepted_windows")
         if not isinstance(accepted, list):
             raise RuntimeError("control trial accepted windows are invalid")
+        try:
+            accepted = validate_window_history(
+                accepted,
+                expected_trial_id,
+                math.ceil(60 / 1.0) + 1,
+            )
+            child_history = validate_window_history(
+                child.get("window_history"),
+                expected_trial_id,
+                math.ceil(60 / 1.0) + 1,
+            )
+        except ValueError as exc:
+            raise RuntimeError(
+                f"control trial window history is invalid: {exc}"
+            ) from exc
+        if child.get("window_history_schema") != WINDOW_HISTORY_SCHEMA:
+            raise RuntimeError("control trial window history schema is invalid")
+        if not canonical_json_equal(child_history, accepted):
+            raise RuntimeError(
+                "control trial child window history does not match accepted history"
+            )
         if len(accepted) < ROLLING_WINDOW_SIZE:
             raise RuntimeError("control trial has fewer than five accepted windows")
         if len(accepted) < 55:
@@ -3885,6 +4153,8 @@ def inspect_metrics(
     tracker: dict,
     heartbeat_grace_seconds: float,
     require_present: bool,
+    duration_seconds: int,
+    window_seconds: float,
 ) -> tuple[dict, str | None]:
     if metrics is None:
         return (
@@ -3901,21 +4171,16 @@ def inspect_metrics(
         if metrics.get("trial_id") != trial_id:
             return dict(tracker), "OLTP metrics trial_id mismatch"
         heartbeat = _float_field(metrics, "heartbeat_at_epoch")
-        sequence = _integer_field(metrics, "window_seq")
-        if sequence < 1:
-            raise ValueError("window_seq must be positive")
-        window_operations = _integer_field(metrics, "window_operations")
-        if window_operations < 1:
-            raise ValueError("window_operations must be positive")
-        window_errors = _integer_field(metrics, "window_errors")
-        window_p95 = _float_field(metrics, "window_p95_ms")
-        operations = _integer_field(metrics, "operations")
-        errors = _integer_field(metrics, "errors")
-        active_elapsed = _float_field(metrics, "active_elapsed_seconds")
-        drain_limit_hits = _integer_field(metrics, "drain_limit_hits")
-        max_heartbeat_lateness_ms = _float_field(
-            metrics, "max_heartbeat_lateness_ms"
-        )
+        if (
+            isinstance(duration_seconds, bool)
+            or not isinstance(duration_seconds, int)
+            or duration_seconds < 1
+            or isinstance(window_seconds, bool)
+            or not isinstance(window_seconds, float)
+            or not math.isfinite(window_seconds)
+            or window_seconds <= 0.0
+        ):
+            raise ValueError("window history contract is invalid")
     except (TypeError, ValueError) as exc:
         return dict(tracker), f"OLTP metrics malformed: {exc}"
 
@@ -3923,122 +4188,37 @@ def inspect_metrics(
         return dict(tracker), "OLTP metrics heartbeat is in the future"
     if now_epoch - heartbeat > heartbeat_grace_seconds:
         return dict(tracker), "OLTP metrics heartbeat is stale"
-
-    previous_sequence = int(tracker["window_seq"])
-    if sequence < previous_sequence:
-        return dict(tracker), "OLTP metrics sequence regressed"
-    sequence_payload = (
-        metrics["status"],
-        heartbeat,
-        sequence,
-        window_operations,
-        window_errors,
-        window_p95,
-        operations,
-        errors,
-        active_elapsed,
-        drain_limit_hits,
-        max_heartbeat_lateness_ms,
+    try:
+        history = validate_window_history(
+            metrics.get("window_history"),
+            trial_id,
+            math.ceil(duration_seconds / window_seconds) + 1,
+        )
+    except ValueError as exc:
+        return dict(tracker), str(exc)
+    if not history:
+        return dict(tracker), "OLTP window history is empty"
+    latest_fields = {
+        field: metrics.get(field) for field in WINDOW_RECORD_FIELDS
+    }
+    if not canonical_json_equal(latest_fields, history[-1]):
+        return (
+            dict(tracker),
+            "OLTP metrics latest record does not match window history",
+        )
+    previous_length = len(tracker["accepted_windows"])
+    updated, reason = ingest_window_history(
+        history, tracker, now_monotonic
     )
-    if sequence == previous_sequence:
-        if sequence_payload != tracker.get("sequence_payload"):
-            return dict(tracker), "OLTP metrics sequence payload changed"
-        last_advance = tracker.get("last_advance_monotonic")
+    if reason is not None:
+        return updated, reason
+    if len(history) == previous_length:
+        last_advance = updated.get("last_advance_monotonic")
         if (
             last_advance is not None
             and now_monotonic - float(last_advance) > heartbeat_grace_seconds
         ):
-            return dict(tracker), "OLTP metrics sequence is nonadvancing"
-        return dict(tracker), None
-    previous_operations = int(tracker["operations"])
-    previous_errors = int(tracker["errors"])
-    previous_active_elapsed = float(tracker["active_elapsed_seconds"])
-    previous_drain_limit_hits = int(tracker["drain_limit_hits"])
-    previous_max_heartbeat_lateness_ms = float(
-        tracker["max_heartbeat_lateness_ms"]
-    )
-    if previous_sequence == 0:
-        if operations < window_operations:
-            return dict(tracker), (
-                "OLTP metrics window operations exceed cumulative operations"
-            )
-        if errors < window_errors:
-            return dict(tracker), (
-                "OLTP metrics window errors exceed cumulative errors"
-            )
-        if active_elapsed <= 0.0:
-            return dict(tracker), (
-                "OLTP metrics active elapsed time must be positive"
-            )
-    else:
-        if operations <= previous_operations:
-            return dict(tracker), (
-                "OLTP metrics cumulative operations did not advance"
-            )
-        if errors < previous_errors:
-            return dict(tracker), "OLTP metrics cumulative errors regressed"
-        if active_elapsed <= previous_active_elapsed:
-            return dict(tracker), (
-                "OLTP metrics active elapsed time did not advance"
-            )
-        if drain_limit_hits < previous_drain_limit_hits:
-            return dict(tracker), "OLTP metrics drain_limit_hits regressed"
-        if max_heartbeat_lateness_ms < previous_max_heartbeat_lateness_ms:
-            return (
-                dict(tracker),
-                "OLTP metrics max_heartbeat_lateness_ms regressed",
-            )
-        operation_delta = operations - previous_operations
-        error_delta = errors - previous_errors
-        if operation_delta < window_operations:
-            return dict(tracker), (
-                "OLTP metrics window operations exceed cumulative delta"
-            )
-        if error_delta < window_errors:
-            return dict(tracker), (
-                "OLTP metrics window errors exceed cumulative delta"
-            )
-        if sequence == previous_sequence + 1:
-            if operation_delta != window_operations:
-                return dict(tracker), (
-                    "OLTP metrics consecutive operation delta is inconsistent"
-                )
-            if error_delta != window_errors:
-                return dict(tracker), (
-                    "OLTP metrics consecutive error delta is inconsistent"
-                )
-
-    updated = dict(tracker)
-    updated["window_seq"] = sequence
-    updated["last_advance_monotonic"] = now_monotonic
-    updated["operations"] = operations
-    updated["errors"] = errors
-    updated["active_elapsed_seconds"] = active_elapsed
-    updated["drain_limit_hits"] = drain_limit_hits
-    updated["max_heartbeat_lateness_ms"] = max_heartbeat_lateness_ms
-    updated["last_window_operations"] = window_operations
-    updated["last_status"] = metrics["status"]
-    updated["sequence_payload"] = sequence_payload
-    accepted_windows = list(updated["accepted_windows"])
-    accepted_windows.append(
-        {
-            "status": metrics["status"],
-            "trial_id": trial_id,
-            "heartbeat_at_epoch": heartbeat,
-            "window_seq": sequence,
-            "window_operations": window_operations,
-            "window_errors": window_errors,
-            "window_p95_ms": window_p95,
-            "operations": operations,
-            "errors": errors,
-            "active_elapsed_seconds": active_elapsed,
-            "drain_limit_hits": drain_limit_hits,
-            "max_heartbeat_lateness_ms": max_heartbeat_lateness_ms,
-        }
-    )
-    updated["accepted_windows"] = accepted_windows
-    if metrics["status"] == "RUNNING":
-        updated["activity_windows"] = int(updated["activity_windows"]) + 1
+            return updated, "OLTP metrics sequence is nonadvancing"
     return updated, None
 
 
@@ -4089,7 +4269,7 @@ def ready_for_export(
         current = rolling_five_medians(
             accepted[-ROLLING_WINDOW_SIZE:]
         )[-1]
-        if calibration is None and "rolling_window_p95_ms" not in tracker:
+        if calibration is None:
             tracker["rolling_window_p95_ms"] = current
             tracker["rolling_window_count"] = ROLLING_WINDOW_SIZE
         if tracker.get("rolling_window_p95_ms") != current:
@@ -4269,10 +4449,28 @@ def reconcile_oltp_result(
     returncode: int,
     child: dict,
     trial_id: str,
-    tracker: dict | None = None,
+    tracker: dict | None,
+    duration_seconds: int,
+    window_seconds: float,
 ) -> dict:
     if child.get("mode") != "oltp" or child.get("trial_id") != trial_id:
         raise RuntimeError("OLTP child identity is invalid")
+    if child.get("window_history_schema") != WINDOW_HISTORY_SCHEMA:
+        raise RuntimeError("OLTP child window history schema is invalid")
+    try:
+        child_history = validate_window_history(
+            child.get("window_history"),
+            trial_id,
+            math.ceil(duration_seconds / window_seconds) + 1,
+        )
+    except (TypeError, ValueError, ZeroDivisionError) as exc:
+        raise RuntimeError(f"OLTP child window history is invalid: {exc}") from exc
+    if tracker is None or not canonical_json_equal(
+        child_history, tracker.get("accepted_windows")
+    ):
+        raise RuntimeError(
+            "OLTP child window history does not match controller history"
+        )
     validate_oltp_diagnostics(child, tracker)
     if child.get("status") == "FAILED":
         if returncode == 0:
@@ -4476,7 +4674,9 @@ def build_smoke_failure(
             returncode if returncode is not None else -1,
             child,
             trial_id,
-            tracker=tracker,
+            tracker,
+            5,
+            1.0,
         )
     except Exception as exc:
         result["child_reconciliation_error"] = f"{type(exc).__name__}: {exc}"
@@ -5098,6 +5298,8 @@ def main() -> int:
                 tracker,
                 args.heartbeat_grace_seconds,
                 require_metrics,
+                args.duration_seconds,
+                1.0,
             )
             if breach is None:
                 breach = gate_reason(
@@ -5226,12 +5428,44 @@ def main() -> int:
             export_rc = export.wait() if export is not None else None
             for handle in handles:
                 handle.close()
+            final_snapshot = load_metrics_snapshot(metrics_file)
+            final_metrics = (
+                None if final_snapshot is None else final_snapshot.document
+            )
+            tracker, terminal_breach = inspect_metrics(
+                final_metrics,
+                run_id,
+                time.time(),
+                time.monotonic(),
+                tracker,
+                args.heartbeat_grace_seconds,
+                True,
+                args.duration_seconds,
+                1.0,
+            )
+            if terminal_breach is None:
+                terminal_breach = gate_reason(
+                    final_metrics,
+                    shutil.disk_usage(root).free,
+                    args.p95_budget_ms,
+                    args.min_free_bytes,
+                )
+            if terminal_breach is None and latency_calibration is not None:
+                terminal_breach = rolling_latency_reason(
+                    tracker, latency_calibration
+                )
+            if terminal_breach is not None:
+                raise RuntimeError(
+                    f"terminal OLTP metrics breach: {terminal_breach}"
+                )
             oltp_child = read_child_result(oltp_stdout_path, oltp_stderr_path)
             oltp_result = reconcile_oltp_result(
                 oltp_rc,
                 oltp_child,
                 run_id,
-                tracker=tracker,
+                tracker,
+                args.duration_seconds,
+                1.0,
             )
             smoke_result = None
             if args.export_mode in ("none", "preflight-oltp"):
@@ -5328,6 +5562,15 @@ code-level hypothesis consistent with the pre-write delay, not a proven unique
 cause; scheduler or other pre-write stalls remain possible. This correction
 does not increase the `2.5 s` heartbeat grace.
 
+The sixth fresh runtime exposed a different evidence defect: the controller
+polled a later atomically replaced snapshot after one or more earlier snapshots
+had already been replaced, so the old latest-observation tracker omitted runner
+windows that had actually completed. That run established a latest-snapshot
+**observation gap**, not a latency-threshold breach or a valid control result.
+Its controls must not be upgraded, recalibrated or reused. All six stopped
+runtime trees and their results are immutable historical failure evidence; no
+file in any of them may be patched or continued.
+
 The runner checks a due publication before every bounded drain slice. A slice
 consumes at most `256` events and at most `10 ms` monotonic wall time; hitting
 either bound returns immediately to the publication check and skips the idle
@@ -5350,6 +5593,17 @@ size metadata come from one immutable snapshot read through the same opened
 file descriptor before termination. The controller therefore persists a
 coherent document, heartbeat age, file identity and full tracker/accepted-
 window evidence even if termination triggers a later atomic replacement.
+
+The full-history prefix is now authoritative: polling may miss intermediate
+file replacements, but the next coherent snapshot recovers every runner window
+and validates the entire already-accepted prefix. Normal exit closes the child
+handles, reads one final coherent snapshot, ingests its unseen suffix, applies
+immediate and rolling gates, then requires exact canonical equality with the
+child's schema-tagged history. The matrix therefore requires a seventh fresh
+runtime. Until every required seventh-runtime invocation and audit completes,
+the report/export scenario remains `READY_UNRUN`; safety evidence and measured
+interference remain separate, and the empirical rolling envelope remains a
+host/runtime-specific non-SLO boundary.
 
 Expected: both syntax exits `0`; no global MySQL variable changes. The controller is temporary-only and is not added as a repository script. Every trial ID owns fresh metrics／abort／controller-result／stdout／stderr files; any pre-existing path is rejected before a child starts. Normal completion is based on the single structured child JSON plus persisted integrity, never return code alone. Materialized programs must retain the explicit `use_pure=True` configuration and exact-type `MySQLConnection` gate. Before live work, record Python/platform, Connector version, `threadsafety`, `HAVE_CEXT` and the requested pure mode; successful results add the exact pure class, while every `FAILED` JSON retains the observed implementation envelope including unknown／mismatched actual class. OLTP cleanup always attempts connection close even when cursor close fails and accepts `closed=true` only after `is_connected() is False`; missing proof or either close error fails closed. Child thread, worker and connection IDs are exact JSON integers—strings and booleans are invalid.
 
@@ -5488,7 +5742,8 @@ The equality is binding: `MIN_FREE_BYTES = 2 * 100000 * 256 + 5 * 1024^3 = 5,419
 Before any timed control or buffered trial, prove that the controller identity can interrupt a different connection. This mode opens two disposable, explicitly pure connections. The victim creates connection-local temporary table `kill_preflight_probe`, inserts one row, then executes exact marked row query `SELECT /* mysql_senior_kill_preflight */ 1 FROM kill_preflight_probe WHERE SLEEP(30)=0`. The killer polls `information_schema.PROCESSLIST` for the validated positive victim ID and requires the returned ID and full SQL to equal that exact query; a fixed sleep or an event set before `execute()` is not proof that the statement is active. Only after this bounded five-second poll succeeds may it issue `KILL QUERY <validated-positive-connection-id>`, require victim Connector errno `1317`, and close both connections so the temporary table is discarded. Never-active, wrong-ID/query, actual-mode mismatch, poll/permission error or normal query return fails closed without claiming cancellation. MySQL documents that interrupted standalone `SLEEP()` returns `1` without a query error, while its row-query example with `SLEEP()` in `WHERE` produces error `1317`. [MySQL 8.0 `SLEEP()`](https://dev.mysql.com/doc/refman/8.0/en/miscellaneous-functions.html)
 
 ```bash
-uv run --with mysql-connector-python==9.7.0 python \
+invoke_once kill-preflight-1 \
+  uv run --with mysql-connector-python==9.7.0 python \
   "$MYSQL_SCENARIO_RUN_DIR/scenario_controller.py" \
   --runner "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
   --runtime-root "$MYSQL_SCENARIO_RUN_DIR" \
@@ -5505,7 +5760,8 @@ Before the live preflight, injected offline contract tests must also require tha
 After the KILL preflight and before `control-1`, run one mandatory client-concurrency smoke with the same canonical runner and the same four-thread OLTP shape, but only five seconds:
 
 ```bash
-uv run --with mysql-connector-python==9.7.0 python \
+invoke_once oltp-smoke-1 \
+  uv run --with mysql-connector-python==9.7.0 python \
   "$MYSQL_SCENARIO_RUN_DIR/scenario_controller.py" \
   --runner "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
   --runtime-root "$MYSQL_SCENARIO_RUN_DIR" \
@@ -5523,7 +5779,8 @@ Every later timed `none`／`buffered`／`chunked` invocation must validate `cont
 Run the controller three times with unique trial IDs `control-1..3`, `--export-mode none`, `--duration-seconds 60`, `--threads 4`, `--p95-budget-ms 0` and `--min-free-bytes "$MIN_FREE_BYTES"`. Example for the first trial:
 
 ```bash
-uv run --with mysql-connector-python==9.7.0 python \
+invoke_once control-1 \
+  uv run --with mysql-connector-python==9.7.0 python \
   "$MYSQL_SCENARIO_RUN_DIR/scenario_controller.py" \
   --runner "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
   --runtime-root "$MYSQL_SCENARIO_RUN_DIR" \
@@ -5537,7 +5794,8 @@ uv run --with mysql-connector-python==9.7.0 python \
 Record operation count, final p50／p95／p99, every one-second live window and errors. Require all control errors=`0`. After all three controls and before any export, run the fixed calibration mode exactly once:
 
 ```bash
-uv run --with mysql-connector-python==9.7.0 python \
+invoke_once latency-calibration-1 \
+  uv run --with mysql-connector-python==9.7.0 python \
   "$MYSQL_SCENARIO_RUN_DIR/scenario_controller.py" \
   --runner "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
   --runtime-root "$MYSQL_SCENARIO_RUN_DIR" \
@@ -5548,7 +5806,7 @@ uv run --with mysql-connector-python==9.7.0 python \
   --user root --password-env MYSQL_PASSWORD
 ```
 
-Require `controller-result-latency-calibration-1.json` and the full atomic `latency-calibration.json`. Preserve the complete calibration artifact and its numeric current-runtime budget before any buffered／chunked invocation. It contains each control's ordered accepted windows, per-trial rolling-five medians, combined statistics and canonical input SHA-256. The fixed budget is `1.5 * max(all control rolling-five medians)`; the removed `1.5 * median(final control P95)` command is invalid because it calibrates and enforces different statistical units. The stopped fifth-runtime value is historical regression evidence only and must never be reused as the current runtime's budget.
+Require `controller-result-latency-calibration-1.json` and the full atomic `latency-calibration.json`. Preserve the complete calibration artifact and its numeric current-runtime budget before any buffered／chunked invocation. It contains each control's ordered accepted windows, per-trial rolling-five medians, combined statistics and canonical input SHA-256. The fixed budget is `1.5 * max(all control rolling-five medians)`; the removed `1.5 * median(final control P95)` command is invalid because it calibrates and enforces different statistical units. Values from every stopped first-through-sixth runtime are historical regression evidence only and must never be reused as the seventh runtime's budget.
 
 - [ ] **Step 4: Run buffered export with concurrent OLTP three times**
 
@@ -5563,7 +5821,8 @@ For each trial:
 Example:
 
 ```bash
-uv run --with mysql-connector-python==9.7.0 python \
+invoke_once buffered-1 \
+  uv run --with mysql-connector-python==9.7.0 python \
   "$MYSQL_SCENARIO_RUN_DIR/scenario_controller.py" \
   --runner "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
   --runtime-root "$MYSQL_SCENARIO_RUN_DIR" \
@@ -5582,7 +5841,8 @@ On a live rolling-five P95／error／disk breach, the controller writes the abor
 Repeat with unique `chunked-1..3` job/trial IDs, `--batch-size 1000 --sleep-ms 20`. The controller checks live window metrics/disk, and the runner independently checks disk plus abort signal **before every fetch**. On breach, the in-flight query/part may finish, but the next batch must not be issued; state becomes `ABORTED` with resumable manifest and reason.
 
 ```bash
-uv run --with mysql-connector-python==9.7.0 python \
+invoke_once chunked-1 \
+  uv run --with mysql-connector-python==9.7.0 python \
   "$MYSQL_SCENARIO_RUN_DIR/scenario_controller.py" \
   --runner "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
   --runtime-root "$MYSQL_SCENARIO_RUN_DIR" \
@@ -5602,7 +5862,8 @@ Record manifest progression, active throughput, max RSS and live abort boundary.
 Use a separate job directory:
 
 ```bash
-uv run --with mysql-connector-python==9.7.0 python "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
+invoke_once resume-partial \
+  uv run --with mysql-connector-python==9.7.0 python "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
   --mode chunked --runtime-root "$MYSQL_SCENARIO_RUN_DIR" \
   --job-dir "$MYSQL_SCENARIO_RUN_DIR/job-resume" \
   --batch-size 1000 --sleep-ms 20 --max-batches 3 \
@@ -5610,7 +5871,8 @@ uv run --with mysql-connector-python==9.7.0 python "$MYSQL_SCENARIO_RUN_DIR/expo
   --host 127.0.0.1 --port "$MYSQL_SCENARIO_PORT" \
   --user root --password-env MYSQL_PASSWORD
 
-uv run --with mysql-connector-python==9.7.0 python "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
+invoke_once resume-finish \
+  uv run --with mysql-connector-python==9.7.0 python "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
   --mode chunked --runtime-root "$MYSQL_SCENARIO_RUN_DIR" \
   --job-dir "$MYSQL_SCENARIO_RUN_DIR/job-resume" \
   --batch-size 1000 --sleep-ms 20 --max-batches 0 \
