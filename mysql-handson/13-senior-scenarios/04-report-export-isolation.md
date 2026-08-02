@@ -286,6 +286,7 @@ RUNTIME_PREFIX = "mysql-senior-scenarios."
 # targets, and do not relax the controller's 2.5-second heartbeat gate.
 OLTP_DRAIN_MAX_EVENTS = 256
 OLTP_DRAIN_MAX_SECONDS = 0.010
+WINDOW_HISTORY_SCHEMA = "oltp-window-history-v1"
 EXPORT_SQL = """
 SELECT o.created_at, o.id, o.tenant_id, o.status,
        SUM(i.qty * i.unit_price) AS total_amount,
@@ -978,6 +979,61 @@ def drain_oltp_event_slice(
     }
 
 
+def history_limit(duration_seconds: int, window_seconds: float) -> int:
+    if (
+        isinstance(duration_seconds, bool)
+        or not isinstance(duration_seconds, int)
+        or duration_seconds < 1
+        or isinstance(window_seconds, bool)
+        or not isinstance(window_seconds, float)
+        or not math.isfinite(window_seconds)
+        or window_seconds <= 0.0
+    ):
+        raise ValueError("window history contract is invalid")
+    return math.ceil(duration_seconds / window_seconds) + 1
+
+
+def build_window_record(
+    status: str,
+    trial_id: str,
+    heartbeat_at_epoch: float,
+    window_seq: int,
+    window_operations: int,
+    window_errors: int,
+    window_p95_ms: float,
+    operations: int,
+    errors: int,
+    active_elapsed_seconds: float,
+    drain_limit_hits: int,
+    max_heartbeat_lateness_ms: float,
+) -> dict:
+    return {
+        "status": status,
+        "trial_id": trial_id,
+        "heartbeat_at_epoch": heartbeat_at_epoch,
+        "window_seq": window_seq,
+        "window_operations": window_operations,
+        "window_errors": window_errors,
+        "window_p95_ms": window_p95_ms,
+        "operations": operations,
+        "errors": errors,
+        "active_elapsed_seconds": active_elapsed_seconds,
+        "drain_limit_hits": drain_limit_hits,
+        "max_heartbeat_lateness_ms": max_heartbeat_lateness_ms,
+    }
+
+
+def append_window_record(
+    history: list[dict], record: dict, limit: int
+) -> None:
+    expected_sequence = len(history) + 1
+    if record.get("window_seq") != expected_sequence:
+        raise RuntimeError("runner window history is not consecutive")
+    if len(history) >= limit:
+        raise RuntimeError("runner window history exceeded its trial bound")
+    history.append(record)
+
+
 def close_oltp_resources(cursor, connection) -> dict:
     failures = []
     if cursor is not None:
@@ -1079,9 +1135,11 @@ def run_oltp(
     all_errors = 0
     window_latencies = []
     window_errors = 0
-    sequence = 0
+    window_history = []
+    limit = history_limit(duration, window_seconds)
     diagnostics["drain_limit_hits"] = 0
     diagnostics["max_heartbeat_lateness_ms"] = 0.0
+    diagnostics["window_history"] = window_history
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as pool:
         futures = [
             pool.submit(oltp_worker, config, deadline, seed, events)
@@ -1094,24 +1152,30 @@ def run_oltp(
                     diagnostics["max_heartbeat_lateness_ms"],
                     max(0.0, (now - next_window) * 1000.0),
                 )
-                sequence += 1
+                record = build_window_record(
+                    status="RUNNING",
+                    trial_id=trial_id,
+                    heartbeat_at_epoch=time.time(),
+                    window_seq=len(window_history) + 1,
+                    window_operations=len(window_latencies),
+                    window_errors=window_errors,
+                    window_p95_ms=percentile(window_latencies, 0.95),
+                    operations=len(all_latencies),
+                    errors=all_errors,
+                    active_elapsed_seconds=now - started,
+                    drain_limit_hits=diagnostics["drain_limit_hits"],
+                    max_heartbeat_lateness_ms=diagnostics[
+                        "max_heartbeat_lateness_ms"
+                    ],
+                )
+                append_window_record(window_history, record, limit)
                 if metrics_file is not None:
                     atomic_json(
                         metrics_file,
                         {
-                            "status": "RUNNING",
-                            "trial_id": trial_id,
-                            "heartbeat_at_epoch": time.time(),
-                            "window_seq": sequence,
-                            "window_operations": len(window_latencies),
-                            "window_errors": window_errors,
-                            "window_p95_ms": percentile(window_latencies, 0.95),
-                            "operations": len(all_latencies),
-                            "errors": all_errors,
-                            "active_elapsed_seconds": now - started,
-                            "drain_limit_hits": diagnostics["drain_limit_hits"],
-                            "max_heartbeat_lateness_ms": diagnostics[
-                                "max_heartbeat_lateness_ms"
+                            **record,
+                            "window_history": [
+                                dict(item) for item in window_history
                             ],
                         },
                     )
@@ -1174,12 +1238,41 @@ def run_oltp(
         for item in worker_connections
     ):
         raise RuntimeError("OLTP worker connector contracts differ")
+    publish_status = (
+        "SUCCEEDED"
+        if all_errors == 0 and len(all_latencies) > 0
+        else "FAILED"
+    )
+    if window_latencies or window_errors:
+        record = build_window_record(
+            status=publish_status,
+            trial_id=trial_id,
+            heartbeat_at_epoch=time.time(),
+            window_seq=len(window_history) + 1,
+            window_operations=len(window_latencies),
+            window_errors=window_errors,
+            window_p95_ms=percentile(window_latencies, 0.95),
+            operations=len(all_latencies),
+            errors=all_errors,
+            active_elapsed_seconds=time.perf_counter() - started,
+            drain_limit_hits=diagnostics["drain_limit_hits"],
+            max_heartbeat_lateness_ms=diagnostics[
+                "max_heartbeat_lateness_ms"
+            ],
+        )
+        append_window_record(window_history, record, limit)
+        if metrics_file is not None:
+            atomic_json(
+                metrics_file,
+                {
+                    **record,
+                    "window_history": [
+                        dict(item) for item in window_history
+                    ],
+                },
+            )
     result = {
-        "status": (
-            "SUCCEEDED"
-            if all_errors == 0 and len(all_latencies) > 0
-            else "FAILED"
-        ),
+        "status": publish_status,
         "mode": "oltp",
         "trial_id": trial_id,
         "operations": len(all_latencies),
@@ -1194,25 +1287,9 @@ def run_oltp(
         ],
         "connector_contract": connector_contract,
         "worker_connections": worker_connections,
+        "window_history_schema": WINDOW_HISTORY_SCHEMA,
+        "window_history": [dict(record) for record in window_history],
     }
-    if metrics_file is not None and (window_latencies or window_errors):
-        atomic_json(
-            metrics_file,
-            {
-                **result,
-                "trial_id": trial_id,
-                "heartbeat_at_epoch": time.time(),
-                "window_seq": sequence + 1,
-                "window_operations": len(window_latencies),
-                "window_errors": window_errors,
-                "window_p95_ms": percentile(window_latencies, 0.95),
-                "active_elapsed_seconds": time.perf_counter() - started,
-                "drain_limit_hits": diagnostics["drain_limit_hits"],
-                "max_heartbeat_lateness_ms": diagnostics[
-                    "max_heartbeat_lateness_ms"
-                ],
-            },
-        )
     return result
 
 
@@ -1229,6 +1306,7 @@ def main() -> int:
     oltp_diagnostics = {
         "drain_limit_hits": 0,
         "max_heartbeat_lateness_ms": 0.0,
+        "window_history": [],
     }
     try:
         parser = StructuredArgumentParser()
@@ -1348,7 +1426,14 @@ def main() -> int:
                     "status": "FAILED",
                     **failure_identity,
                     **(
-                        oltp_diagnostics
+                        {
+                            **oltp_diagnostics,
+                            "window_history_schema": WINDOW_HISTORY_SCHEMA,
+                            "window_history": [
+                                dict(record)
+                                for record in oltp_diagnostics["window_history"]
+                            ],
+                        }
                         if failure_identity.get("mode") == "oltp"
                         else {}
                     ),
@@ -1391,6 +1476,10 @@ if __name__ == "__main__":
 
 `--mode oltp` 的每个 operation 是随机 primary-key `SELECT counter` 加一个 autocommit `UPDATE counter=counter+1`。final JSON 报告 trial identity、成功 operation count、compound operation 的 p50／p95／p99、error count 与 strict drain／heartbeat-lateness diagnostics；live metrics 每约一秒 atomically replace 同 trial 的 heartbeat。probe 是干扰量尺，不是业务 workload 的替身。
 
+Start OLTP before export, but do not use wall time alone as proof of load. OLTP atomically replaces a trial-bound heartbeat whose latest fields are backed by the complete bounded `oltp-window-history-v1` prefix. Every record carries `trial_id`, epoch timestamp, consecutive `window_seq`, positive one-second operations, window errors／P95, cumulative operations／errors, active elapsed time and nonregressing drain diagnostics. The controller validates the exact record shape, sequence from 1, cumulative deltas and immutable already-accepted prefix before ingesting every unseen record. Polling may skip snapshots but never runner windows. It launches export only after at least five fresh, advancing, nonempty same-trial windows cover at least five active seconds and positive cumulative work.
+
+Before and throughout export, missing／malformed／stale／wrong-trial／regressing／changed or nonadvancing metrics fail closed after only the declared startup／heartbeat grace. Cumulative errors cannot be masked by a zero-error latest window; cumulative errors, window errors, rolling-five P95 and live disk each remain independent stop gates, while raw one-second P95 never independently stops a trial. The final OLTP child result must also report positive cumulative operations and zero errors to be `SUCCEEDED`; a zero-work early exit cannot make a control trial pass. Record final OLTP p50／p95／p99／errors, every accepted live window, export active time／rows-per-active-second／max RSS, MySQL processlist／temporary-table／sort deltas and exact artifact correctness.
+
 每组必须跑三次，每个 export trial 使用 fresh job directory：
 
 | Group | OLTP probe | Export |
@@ -1403,7 +1492,7 @@ if __name__ == "__main__":
 
 1. 先独立跑三次 control，要求三次 `errors=0`。
 2. control 完成后、任一 export 前，固定执行一次 `latency-calibration-1`；它只读取三份 current-runtime control evidence，原子写入 `latency-calibration.json` 与 `controller-result-latency-calibration-1.json`，不启动 child process。
-3. 令每个 control trial 的第 `t` 个 five-window rolling median 为 `R_t`。固定 budget 是 `B = 1.5 * max(all control R_t)`，artifact 同时保存 ordered accepted windows、每 trial 的 rolling medians、combined statistics 与 canonical input SHA-256。不得用 `1.5 * median(final control P95)` 混合不同统计单位；stopped fifth-runtime 数字只作 historical regression evidence，**must never be reused as the current runtime's budget**。
+3. 令每个 control trial 的第 `t` 个 five-window rolling median 为 `R_t`。固定 budget 是 `B = 1.5 * max(all control R_t)`，artifact 同时保存 ordered accepted windows、每 trial 的 rolling medians、combined statistics 与 canonical input SHA-256。不得用 `1.5 * median(final control P95)` 混合不同统计单位；Values from every stopped first-through-sixth runtime are historical regression evidence only and must never be reused as the seventh runtime's budget.
 4. 每个 concurrent trial 先启动 OLTP；controller 必须观察到同一 `trial_id` 至少五个 fresh、advancing、nonempty window，覆盖至少五秒 active time且 cumulative work 为正，且最新 rolling median 在 frozen `B` 内，才启动 export。只等 wall clock 五秒不算证据。
 5. export 前后各 capture MySQL status；OLTP 与 export 都结束后才归档 final JSON、所有 accepted live windows、state、manifest 与 artifact audit。
 6. 同组后续 trial 是否继续，由停止条件决定，不可跑完后才补一个预算。
@@ -1581,6 +1670,13 @@ ROLLING_WINDOW_SIZE = 5
 LATENCY_MULTIPLIER = 1.5
 CALIBRATION_SCHEMA = "report-latency-calibration-v1"
 CONTROL_TRIAL_IDS = ("control-1", "control-2", "control-3")
+WINDOW_HISTORY_SCHEMA = "oltp-window-history-v1"
+WINDOW_RECORD_FIELDS = {
+    "status", "trial_id", "heartbeat_at_epoch", "window_seq",
+    "window_operations", "window_errors", "window_p95_ms",
+    "operations", "errors", "active_elapsed_seconds",
+    "drain_limit_hits", "max_heartbeat_lateness_ms",
+}
 
 
 MetricsSnapshot = namedtuple(
@@ -1821,6 +1917,8 @@ def new_metrics_tracker() -> dict:
         "last_status": None,
         "sequence_payload": None,
         "accepted_windows": [],
+        "rolling_evaluated_windows": 0,
+        "rolling_breach_window_seq": None,
     }
 
 
@@ -1839,6 +1937,111 @@ def _float_field(metrics: dict, name: str) -> float:
     if not math.isfinite(parsed) or parsed < 0:
         raise ValueError(f"{name} must be finite and nonnegative")
     return parsed
+
+
+def validate_window_history(
+    value, trial_id: str, limit: int
+) -> list[dict]:
+    if not isinstance(value, list):
+        raise ValueError("OLTP window history is missing or not a list")
+    if (
+        isinstance(limit, bool)
+        or not isinstance(limit, int)
+        or limit < 1
+    ):
+        raise ValueError("OLTP window history bound is invalid")
+    if len(value) > limit:
+        raise ValueError("OLTP window history exceeded its trial bound")
+    validated = []
+    previous_operations = 0
+    previous_errors = 0
+    previous_active_elapsed = 0.0
+    previous_drain_limit_hits = 0
+    previous_max_heartbeat_lateness_ms = 0.0
+    for expected_sequence, item in enumerate(value, 1):
+        if not isinstance(item, dict) or set(item) != WINDOW_RECORD_FIELDS:
+            raise ValueError("OLTP window history record fields are invalid")
+        if item.get("status") not in ("RUNNING", "SUCCEEDED", "FAILED"):
+            raise ValueError("OLTP window history status is invalid")
+        if item.get("trial_id") != trial_id:
+            raise ValueError("OLTP window history trial_id mismatch")
+        try:
+            _float_field(item, "heartbeat_at_epoch")
+            sequence = _integer_field(item, "window_seq")
+            window_operations = _integer_field(item, "window_operations")
+            window_errors = _integer_field(item, "window_errors")
+            _float_field(item, "window_p95_ms")
+            operations = _integer_field(item, "operations")
+            errors = _integer_field(item, "errors")
+            active_elapsed = _float_field(item, "active_elapsed_seconds")
+            drain_limit_hits = _integer_field(item, "drain_limit_hits")
+            max_heartbeat_lateness_ms = _float_field(
+                item, "max_heartbeat_lateness_ms"
+            )
+        except ValueError as exc:
+            raise ValueError(
+                f"OLTP window history record is malformed: {exc}"
+            ) from exc
+        if sequence != expected_sequence:
+            raise ValueError("OLTP window history is not consecutive")
+        if window_operations < 1:
+            raise ValueError("OLTP window history contains an empty window")
+        if operations - previous_operations != window_operations:
+            raise ValueError(
+                "OLTP window history cumulative operations are inconsistent"
+            )
+        if errors - previous_errors != window_errors:
+            raise ValueError(
+                "OLTP window history cumulative errors are inconsistent"
+            )
+        if active_elapsed <= previous_active_elapsed:
+            raise ValueError(
+                "OLTP window history active elapsed time did not advance"
+            )
+        if drain_limit_hits < previous_drain_limit_hits:
+            raise ValueError("OLTP window history drain_limit_hits regressed")
+        if max_heartbeat_lateness_ms < previous_max_heartbeat_lateness_ms:
+            raise ValueError(
+                "OLTP window history max_heartbeat_lateness_ms regressed"
+            )
+        validated.append(dict(item))
+        previous_operations = operations
+        previous_errors = errors
+        previous_active_elapsed = active_elapsed
+        previous_drain_limit_hits = drain_limit_hits
+        previous_max_heartbeat_lateness_ms = max_heartbeat_lateness_ms
+    return validated
+
+
+def ingest_window_history(
+    history: list[dict], tracker: dict, now_monotonic: float
+) -> tuple[dict, str | None]:
+    accepted = tracker["accepted_windows"]
+    if len(history) < len(accepted):
+        return dict(tracker), "OLTP window history truncated"
+    if not canonical_json_equal(history[:len(accepted)], accepted):
+        return dict(tracker), "OLTP window history prefix changed"
+    if len(history) == len(accepted):
+        return dict(tracker), None
+    updated = dict(tracker)
+    updated["accepted_windows"] = [dict(item) for item in history]
+    updated["activity_windows"] = sum(
+        1 for item in history if item["status"] == "RUNNING"
+    )
+    latest = history[-1]
+    updated["window_seq"] = latest["window_seq"]
+    updated["last_advance_monotonic"] = now_monotonic
+    updated["operations"] = latest["operations"]
+    updated["errors"] = latest["errors"]
+    updated["active_elapsed_seconds"] = latest["active_elapsed_seconds"]
+    updated["drain_limit_hits"] = latest["drain_limit_hits"]
+    updated["max_heartbeat_lateness_ms"] = latest[
+        "max_heartbeat_lateness_ms"
+    ]
+    updated["last_window_operations"] = latest["window_operations"]
+    updated["last_status"] = latest["status"]
+    updated["sequence_payload"] = dict(latest)
+    return updated, None
 
 
 def percentile(values: list[float], fraction: float) -> float:
@@ -1898,17 +2101,30 @@ def rolling_latency_reason(
     accepted = tracker.get("accepted_windows")
     if not isinstance(accepted, list):
         raise RuntimeError("accepted windows are invalid")
-    if len(accepted) < ROLLING_WINDOW_SIZE:
-        return None
-    current = rolling_five_medians(accepted[-ROLLING_WINDOW_SIZE:])[-1]
-    tracker["rolling_window_p95_ms"] = current
-    tracker["rolling_window_count"] = ROLLING_WINDOW_SIZE
     try:
         budget = _float_field(calibration, "budget_ms")
     except ValueError as exc:
         raise RuntimeError("latency calibration budget is invalid") from exc
-    if current > budget:
-        return f"OLTP rolling-five median P95 {current} exceeded {budget}"
+    start = max(
+        ROLLING_WINDOW_SIZE,
+        int(tracker["rolling_evaluated_windows"]) + 1,
+    )
+    for end in range(start, len(accepted) + 1):
+        current = rolling_five_medians(
+            accepted[end - ROLLING_WINDOW_SIZE:end]
+        )[-1]
+        tracker["rolling_evaluated_windows"] = end
+        tracker["rolling_window_p95_ms"] = current
+        tracker["rolling_window_count"] = ROLLING_WINDOW_SIZE
+        if current > budget:
+            tracker["rolling_breach_window_seq"] = accepted[end - 1][
+                "window_seq"
+            ]
+            return (
+                "OLTP rolling-five median P95 "
+                f"{current} exceeded {budget} at "
+                f"window_seq={accepted[end - 1]['window_seq']}"
+            )
     return None
 
 
@@ -2029,6 +2245,27 @@ def build_latency_calibration(
         accepted = result.get("accepted_windows")
         if not isinstance(accepted, list):
             raise RuntimeError("control trial accepted windows are invalid")
+        try:
+            accepted = validate_window_history(
+                accepted,
+                expected_trial_id,
+                math.ceil(60 / 1.0) + 1,
+            )
+            child_history = validate_window_history(
+                child.get("window_history"),
+                expected_trial_id,
+                math.ceil(60 / 1.0) + 1,
+            )
+        except ValueError as exc:
+            raise RuntimeError(
+                f"control trial window history is invalid: {exc}"
+            ) from exc
+        if child.get("window_history_schema") != WINDOW_HISTORY_SCHEMA:
+            raise RuntimeError("control trial window history schema is invalid")
+        if not canonical_json_equal(child_history, accepted):
+            raise RuntimeError(
+                "control trial child window history does not match accepted history"
+            )
         if len(accepted) < ROLLING_WINDOW_SIZE:
             raise RuntimeError("control trial has fewer than five accepted windows")
         if len(accepted) < 55:
@@ -2127,6 +2364,8 @@ def inspect_metrics(
     tracker: dict,
     heartbeat_grace_seconds: float,
     require_present: bool,
+    duration_seconds: int,
+    window_seconds: float,
 ) -> tuple[dict, str | None]:
     if metrics is None:
         return (
@@ -2143,21 +2382,16 @@ def inspect_metrics(
         if metrics.get("trial_id") != trial_id:
             return dict(tracker), "OLTP metrics trial_id mismatch"
         heartbeat = _float_field(metrics, "heartbeat_at_epoch")
-        sequence = _integer_field(metrics, "window_seq")
-        if sequence < 1:
-            raise ValueError("window_seq must be positive")
-        window_operations = _integer_field(metrics, "window_operations")
-        if window_operations < 1:
-            raise ValueError("window_operations must be positive")
-        window_errors = _integer_field(metrics, "window_errors")
-        window_p95 = _float_field(metrics, "window_p95_ms")
-        operations = _integer_field(metrics, "operations")
-        errors = _integer_field(metrics, "errors")
-        active_elapsed = _float_field(metrics, "active_elapsed_seconds")
-        drain_limit_hits = _integer_field(metrics, "drain_limit_hits")
-        max_heartbeat_lateness_ms = _float_field(
-            metrics, "max_heartbeat_lateness_ms"
-        )
+        if (
+            isinstance(duration_seconds, bool)
+            or not isinstance(duration_seconds, int)
+            or duration_seconds < 1
+            or isinstance(window_seconds, bool)
+            or not isinstance(window_seconds, float)
+            or not math.isfinite(window_seconds)
+            or window_seconds <= 0.0
+        ):
+            raise ValueError("window history contract is invalid")
     except (TypeError, ValueError) as exc:
         return dict(tracker), f"OLTP metrics malformed: {exc}"
 
@@ -2165,122 +2399,37 @@ def inspect_metrics(
         return dict(tracker), "OLTP metrics heartbeat is in the future"
     if now_epoch - heartbeat > heartbeat_grace_seconds:
         return dict(tracker), "OLTP metrics heartbeat is stale"
-
-    previous_sequence = int(tracker["window_seq"])
-    if sequence < previous_sequence:
-        return dict(tracker), "OLTP metrics sequence regressed"
-    sequence_payload = (
-        metrics["status"],
-        heartbeat,
-        sequence,
-        window_operations,
-        window_errors,
-        window_p95,
-        operations,
-        errors,
-        active_elapsed,
-        drain_limit_hits,
-        max_heartbeat_lateness_ms,
+    try:
+        history = validate_window_history(
+            metrics.get("window_history"),
+            trial_id,
+            math.ceil(duration_seconds / window_seconds) + 1,
+        )
+    except ValueError as exc:
+        return dict(tracker), str(exc)
+    if not history:
+        return dict(tracker), "OLTP window history is empty"
+    latest_fields = {
+        field: metrics.get(field) for field in WINDOW_RECORD_FIELDS
+    }
+    if not canonical_json_equal(latest_fields, history[-1]):
+        return (
+            dict(tracker),
+            "OLTP metrics latest record does not match window history",
+        )
+    previous_length = len(tracker["accepted_windows"])
+    updated, reason = ingest_window_history(
+        history, tracker, now_monotonic
     )
-    if sequence == previous_sequence:
-        if sequence_payload != tracker.get("sequence_payload"):
-            return dict(tracker), "OLTP metrics sequence payload changed"
-        last_advance = tracker.get("last_advance_monotonic")
+    if reason is not None:
+        return updated, reason
+    if len(history) == previous_length:
+        last_advance = updated.get("last_advance_monotonic")
         if (
             last_advance is not None
             and now_monotonic - float(last_advance) > heartbeat_grace_seconds
         ):
-            return dict(tracker), "OLTP metrics sequence is nonadvancing"
-        return dict(tracker), None
-    previous_operations = int(tracker["operations"])
-    previous_errors = int(tracker["errors"])
-    previous_active_elapsed = float(tracker["active_elapsed_seconds"])
-    previous_drain_limit_hits = int(tracker["drain_limit_hits"])
-    previous_max_heartbeat_lateness_ms = float(
-        tracker["max_heartbeat_lateness_ms"]
-    )
-    if previous_sequence == 0:
-        if operations < window_operations:
-            return dict(tracker), (
-                "OLTP metrics window operations exceed cumulative operations"
-            )
-        if errors < window_errors:
-            return dict(tracker), (
-                "OLTP metrics window errors exceed cumulative errors"
-            )
-        if active_elapsed <= 0.0:
-            return dict(tracker), (
-                "OLTP metrics active elapsed time must be positive"
-            )
-    else:
-        if operations <= previous_operations:
-            return dict(tracker), (
-                "OLTP metrics cumulative operations did not advance"
-            )
-        if errors < previous_errors:
-            return dict(tracker), "OLTP metrics cumulative errors regressed"
-        if active_elapsed <= previous_active_elapsed:
-            return dict(tracker), (
-                "OLTP metrics active elapsed time did not advance"
-            )
-        if drain_limit_hits < previous_drain_limit_hits:
-            return dict(tracker), "OLTP metrics drain_limit_hits regressed"
-        if max_heartbeat_lateness_ms < previous_max_heartbeat_lateness_ms:
-            return (
-                dict(tracker),
-                "OLTP metrics max_heartbeat_lateness_ms regressed",
-            )
-        operation_delta = operations - previous_operations
-        error_delta = errors - previous_errors
-        if operation_delta < window_operations:
-            return dict(tracker), (
-                "OLTP metrics window operations exceed cumulative delta"
-            )
-        if error_delta < window_errors:
-            return dict(tracker), (
-                "OLTP metrics window errors exceed cumulative delta"
-            )
-        if sequence == previous_sequence + 1:
-            if operation_delta != window_operations:
-                return dict(tracker), (
-                    "OLTP metrics consecutive operation delta is inconsistent"
-                )
-            if error_delta != window_errors:
-                return dict(tracker), (
-                    "OLTP metrics consecutive error delta is inconsistent"
-                )
-
-    updated = dict(tracker)
-    updated["window_seq"] = sequence
-    updated["last_advance_monotonic"] = now_monotonic
-    updated["operations"] = operations
-    updated["errors"] = errors
-    updated["active_elapsed_seconds"] = active_elapsed
-    updated["drain_limit_hits"] = drain_limit_hits
-    updated["max_heartbeat_lateness_ms"] = max_heartbeat_lateness_ms
-    updated["last_window_operations"] = window_operations
-    updated["last_status"] = metrics["status"]
-    updated["sequence_payload"] = sequence_payload
-    accepted_windows = list(updated["accepted_windows"])
-    accepted_windows.append(
-        {
-            "status": metrics["status"],
-            "trial_id": trial_id,
-            "heartbeat_at_epoch": heartbeat,
-            "window_seq": sequence,
-            "window_operations": window_operations,
-            "window_errors": window_errors,
-            "window_p95_ms": window_p95,
-            "operations": operations,
-            "errors": errors,
-            "active_elapsed_seconds": active_elapsed,
-            "drain_limit_hits": drain_limit_hits,
-            "max_heartbeat_lateness_ms": max_heartbeat_lateness_ms,
-        }
-    )
-    updated["accepted_windows"] = accepted_windows
-    if metrics["status"] == "RUNNING":
-        updated["activity_windows"] = int(updated["activity_windows"]) + 1
+            return updated, "OLTP metrics sequence is nonadvancing"
     return updated, None
 
 
@@ -2331,7 +2480,7 @@ def ready_for_export(
         current = rolling_five_medians(
             accepted[-ROLLING_WINDOW_SIZE:]
         )[-1]
-        if calibration is None and "rolling_window_p95_ms" not in tracker:
+        if calibration is None:
             tracker["rolling_window_p95_ms"] = current
             tracker["rolling_window_count"] = ROLLING_WINDOW_SIZE
         if tracker.get("rolling_window_p95_ms") != current:
@@ -2511,10 +2660,28 @@ def reconcile_oltp_result(
     returncode: int,
     child: dict,
     trial_id: str,
-    tracker: dict | None = None,
+    tracker: dict | None,
+    duration_seconds: int,
+    window_seconds: float,
 ) -> dict:
     if child.get("mode") != "oltp" or child.get("trial_id") != trial_id:
         raise RuntimeError("OLTP child identity is invalid")
+    if child.get("window_history_schema") != WINDOW_HISTORY_SCHEMA:
+        raise RuntimeError("OLTP child window history schema is invalid")
+    try:
+        child_history = validate_window_history(
+            child.get("window_history"),
+            trial_id,
+            math.ceil(duration_seconds / window_seconds) + 1,
+        )
+    except (TypeError, ValueError, ZeroDivisionError) as exc:
+        raise RuntimeError(f"OLTP child window history is invalid: {exc}") from exc
+    if tracker is None or not canonical_json_equal(
+        child_history, tracker.get("accepted_windows")
+    ):
+        raise RuntimeError(
+            "OLTP child window history does not match controller history"
+        )
     validate_oltp_diagnostics(child, tracker)
     if child.get("status") == "FAILED":
         if returncode == 0:
@@ -2718,7 +2885,9 @@ def build_smoke_failure(
             returncode if returncode is not None else -1,
             child,
             trial_id,
-            tracker=tracker,
+            tracker,
+            5,
+            1.0,
         )
     except Exception as exc:
         result["child_reconciliation_error"] = f"{type(exc).__name__}: {exc}"
@@ -3340,6 +3509,8 @@ def main() -> int:
                 tracker,
                 args.heartbeat_grace_seconds,
                 require_metrics,
+                args.duration_seconds,
+                1.0,
             )
             if breach is None:
                 breach = gate_reason(
@@ -3468,12 +3639,44 @@ def main() -> int:
             export_rc = export.wait() if export is not None else None
             for handle in handles:
                 handle.close()
+            final_snapshot = load_metrics_snapshot(metrics_file)
+            final_metrics = (
+                None if final_snapshot is None else final_snapshot.document
+            )
+            tracker, terminal_breach = inspect_metrics(
+                final_metrics,
+                run_id,
+                time.time(),
+                time.monotonic(),
+                tracker,
+                args.heartbeat_grace_seconds,
+                True,
+                args.duration_seconds,
+                1.0,
+            )
+            if terminal_breach is None:
+                terminal_breach = gate_reason(
+                    final_metrics,
+                    shutil.disk_usage(root).free,
+                    args.p95_budget_ms,
+                    args.min_free_bytes,
+                )
+            if terminal_breach is None and latency_calibration is not None:
+                terminal_breach = rolling_latency_reason(
+                    tracker, latency_calibration
+                )
+            if terminal_breach is not None:
+                raise RuntimeError(
+                    f"terminal OLTP metrics breach: {terminal_breach}"
+                )
             oltp_child = read_child_result(oltp_stdout_path, oltp_stderr_path)
             oltp_result = reconcile_oltp_result(
                 oltp_rc,
                 oltp_child,
                 run_id,
-                tracker=tracker,
+                tracker,
+                args.duration_seconds,
+                1.0,
             )
             smoke_result = None
             if args.export_mode in ("none", "preflight-oltp"):
@@ -3561,11 +3764,59 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-The fourth fresh run observed a pause at the OLTP metrics publication/process boundary: window 26 was the last complete document, the next zero-byte atomic-write temporary file appeared only at the controller's termination boundary, and no child stack or queue-depth sample was retained. The former unbounded `get_nowait()` drain is therefore the strongest code-level hypothesis consistent with the pre-write delay, not a proven unique cause; scheduler or other pre-write stalls remain possible. This correction does not increase the `2.5 s` heartbeat grace.
+The fourth fresh run observed a pause at the OLTP metrics
+publication/process boundary: window 26 was the last complete document, the
+next zero-byte atomic-write temporary file appeared only at the controller's
+termination boundary, and no child stack or queue-depth sample was retained.
+The former unbounded `get_nowait()` drain is therefore the strongest
+code-level hypothesis consistent with the pre-write delay, not a proven unique
+cause; scheduler or other pre-write stalls remain possible. This correction
+does not increase the `2.5 s` heartbeat grace.
 
-The runner checks a due publication before every bounded drain slice. A slice consumes at most `256` events and at most `10 ms` monotonic wall time; hitting either bound returns immediately to the publication check and skips the idle sleep while backlog may remain. When all futures finish, slices continue until the queue is observed empty, so cumulative operation/error totals neither lose nor duplicate events. Window membership is explicitly observation-based: an event belongs to the window in which the controller thread consumes it. Thus an event completed by a worker before a publication boundary but still queued is honestly counted in the next window; cumulative totals remain exact.
+The sixth fresh runtime exposed a different evidence defect: the controller
+polled a later atomically replaced snapshot after one or more earlier snapshots
+had already been replaced, so the old latest-observation tracker omitted runner
+windows that had actually completed. That run established a latest-snapshot
+**observation gap**, not a latency-threshold breach or a valid control result.
+Its controls must not be upgraded, recalibrated or reused. All six stopped
+runtime trees and their results are immutable historical failure evidence; no
+file in any of them may be patched or continued.
 
-Every current runner metrics/result document, including the generic OLTP `FAILED` envelope, must contain strict `drain_limit_hits` and `max_heartbeat_lateness_ms` fields. The runner updates a shared in-process diagnostics envelope as work progresses. The controller validates it before returning either `FAILED` or `SUCCEEDED` and rejects missing, coercible, malformed or tracker-regressing values; there is no legacy-absence default in the current contract. On an exact stale-heartbeat breach it retains timed-mode `ABORTED` semantics. The last raw metrics document and its mtime/device/inode/size metadata come from one immutable snapshot read through the same opened file descriptor before termination. The controller therefore persists a coherent document, heartbeat age, file identity and full tracker/accepted-window evidence even if termination triggers a later atomic replacement.
+/private/tmp/mysql-senior-scenarios.LjCY6E is immutable sixth-run failed evidence; it must never be resumed, rewritten, upgraded into calibration inputs, or used as a latency budget. No partial performance claim may be made from a stopped runtime.
+
+The runner checks a due publication before every bounded drain slice. A slice
+consumes at most `256` events and at most `10 ms` monotonic wall time; hitting
+either bound returns immediately to the publication check and skips the idle
+sleep while backlog may remain. When all futures finish, slices continue until
+the queue is observed empty, so cumulative operation/error totals neither lose
+nor duplicate events. Window membership is explicitly observation-based: an
+event belongs to the window in which the controller thread consumes it. Thus an
+event completed by a worker before a publication boundary but still queued is
+honestly counted in the next window; cumulative totals remain exact.
+
+Every current runner metrics/result document, including the generic OLTP
+`FAILED` envelope, must contain strict `drain_limit_hits` and
+`max_heartbeat_lateness_ms` fields. The runner updates a shared in-process
+diagnostics envelope as work progresses. The controller validates it before
+returning either `FAILED` or `SUCCEEDED` and rejects missing, coercible,
+malformed or tracker-regressing values; there is no legacy-absence default in
+the current contract. On an exact stale-heartbeat breach it retains timed-mode
+`ABORTED` semantics. The last raw metrics document and its mtime/device/inode/
+size metadata come from one immutable snapshot read through the same opened
+file descriptor before termination. The controller therefore persists a
+coherent document, heartbeat age, file identity and full tracker/accepted-
+window evidence even if termination triggers a later atomic replacement.
+
+The full-history prefix is now authoritative: polling may miss intermediate
+file replacements, but the next coherent snapshot recovers every runner window
+and validates the entire already-accepted prefix. Normal exit closes the child
+handles, reads one final atomic snapshot, ingests its unseen suffix, applies
+immediate and rolling gates, then requires exact canonical equality with the
+child's schema-tagged history. The matrix therefore requires a seventh fresh
+runtime. Until every required seventh-runtime invocation and audit completes,
+the report/export scenario remains `READY_UNRUN`; safety evidence and measured
+interference remain separate, and the empirical rolling envelope remains a
+host/runtime-specific non-SLO boundary.
 
 Materialized runner／controller 必须保留 explicit `use_pure=True` 与 exact-type `MySQLConnection` gate。live work 前记录 Python/platform、Connector version、`threadsafety`、`HAVE_CEXT` 与 requested pure mode；successful result 加 exact pure class，所有 `FAILED` JSON 也保留 observed implementation envelope，包括 unknown／mismatched actual class。OLTP cleanup 即使 cursor close 失败也必须继续尝试 connection close；只有 `is_connected() is False` 才能记录 `closed=true`，缺 proof 或任一 close error 都 fail closed。child thread、worker 与 connection ID 是 exact JSON integer；string／boolean 都不接受。
 
