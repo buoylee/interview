@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -24,10 +25,42 @@ from evidence_contract import (
 
 
 SCENARIO = Path("/opt/scenario.md")
+RUN_SCRIPT = Path("/opt/run-containerized.sh")
 
 
 def sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+class ShellPolicyTests(unittest.TestCase):
+    def test_exact_owned_names_and_limits(self):
+        text = RUN_SCRIPT.read_text(encoding="utf-8")
+        for value in (
+            "mysql-senior-scenarios-mysql",
+            "mysql-senior-scenarios-harness",
+            "mysql-senior-scenarios-net",
+            "mysql-senior-scenarios-data",
+            "mysql-senior-scenarios-evidence-v1",
+            "--cpus 2",
+            "--memory 2g",
+            "--pids-limit 256",
+            "com.openai.codex.scope=mysql-senior-scenarios",
+        ):
+            self.assertIn(value, text)
+
+    def test_no_host_runtime_or_bind_mount(self):
+        text = RUN_SCRIPT.read_text(encoding="utf-8")
+        for forbidden in (
+            "127.0.0.1:33306",
+            "--mount type=bind",
+            "-v $",
+            "docker compose down",
+            "docker volume rm",
+        ):
+            self.assertNotIn(forbidden, text)
+        self.assertIsNone(
+            re.search(r"(?m)^(?:uv|python|python3|pip|pip3|mysql)\\s", text)
+        )
 
 
 class ExtractionTests(unittest.TestCase):
