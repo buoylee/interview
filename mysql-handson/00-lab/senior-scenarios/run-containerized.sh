@@ -180,6 +180,18 @@ copy_verifier_inputs() {
   docker cp "$SCRIPT_DIR/container_verifier.py" "$name:/opt/container_verifier.py"
 }
 
+sanitized_container_inspect() {
+  docker inspect --format '{"Name":{{json .Name}},"Id":{{json .Id}},"Image":{{json .Image}},"Config":{"Labels":{"com.openai.codex.scope":{{json (index .Config.Labels "com.openai.codex.scope")}}}},"HostConfig":{"NanoCpus":{{json .HostConfig.NanoCpus}},"Memory":{{json .HostConfig.Memory}},"PidsLimit":{{json .HostConfig.PidsLimit}}},"Mounts":[{{range $index, $mount := .Mounts}}{{if $index}},{{end}}{"Type":{{json $mount.Type}},"Name":{{json $mount.Name}},"Destination":{{json $mount.Destination}}}{{end}}],"NetworkSettings":{"Networks":{ {{with index .NetworkSettings.Networks "mysql-senior-scenarios-net"}}"mysql-senior-scenarios-net":{}{{end}} }}}' "$1"
+}
+
+stream_bootstrap_inspect() {
+  printf '[\n'
+  sanitized_container_inspect "$HARNESS_CONTAINER"
+  printf ',\n'
+  sanitized_container_inspect "$MYSQL_CONTAINER"
+  printf ']\n'
+}
+
 offline_test() {
   preflight_offline_inputs
   remove_owned_transient "$OFFLINE_TEST_CONTAINER"
@@ -247,13 +259,9 @@ run_live_harness() {
   }
   remove_owned_transient "$HARNESS_CONTAINER"
   scenario_commit=$(git -C "$REPO_ROOT" rev-parse HEAD)
-  docker create --name "$HARNESS_CONTAINER" --label "$SCOPE_LABEL" --network "$NETWORK" --cpus 2 --memory 2g --pids-limit 256 --env MYSQL_PASSWORD --mount type=volume,src=mysql-senior-scenarios-evidence-v1,dst=/private/tmp "$PYTHON_IMAGE" sh -c 'python -m pip install --no-cache-dir mysql-connector-python==9.7.0 && exec python /opt/container_harness.py run-all --scenario /opt/scenario.md --expected-commit "$1"' sh "$scenario_commit"
+  docker create --name "$HARNESS_CONTAINER" -i --label "$SCOPE_LABEL" --network "$NETWORK" --cpus 2 --memory 2g --pids-limit 256 --env MYSQL_PASSWORD --mount type=volume,src=mysql-senior-scenarios-evidence-v1,dst=/private/tmp "$PYTHON_IMAGE" sh -c 'umask 077; cat > /opt/bootstrap-inspect.json && python -m pip install --no-cache-dir mysql-connector-python==9.7.0 && exec python /opt/container_harness.py run-all --scenario /opt/scenario.md --expected-commit "$1"' sh "$scenario_commit"
   copy_harness_inputs "$HARNESS_CONTAINER"
-  bootstrap_inspect=$(mktemp)
-  docker inspect "$HARNESS_CONTAINER" "$MYSQL_CONTAINER" > "$bootstrap_inspect"
-  docker cp "$bootstrap_inspect" "$HARNESS_CONTAINER:/opt/bootstrap-inspect.json"
-  rm -f "$bootstrap_inspect"
-  docker start -a "$HARNESS_CONTAINER"
+  stream_bootstrap_inspect | docker start -a -i "$HARNESS_CONTAINER"
 }
 
 verify_evidence() {

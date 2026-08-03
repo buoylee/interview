@@ -3,6 +3,7 @@ import json
 import math
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -187,6 +188,190 @@ class ShellPolicyTests(unittest.TestCase):
         )
         self.assertIn("--env MYSQL_PASSWORD", create_line)
         self.assertNotIn("MYSQL_PASSWORD=", create_line)
+
+    def test_live_bootstrap_inspect_is_streamed_sanitized_and_host_file_free(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            repository = root / "repository"
+            script_directory = (
+                repository / "mysql-handson" / "00-lab" / "senior-scenarios"
+            )
+            scenario_directory = repository / "mysql-handson" / "13-senior-scenarios"
+            fake_bin = root / "bin"
+            script_directory.mkdir(parents=True)
+            scenario_directory.mkdir(parents=True)
+            fake_bin.mkdir()
+
+            script = script_directory / "run-containerized.sh"
+            script.write_bytes(RUN_SCRIPT.read_bytes())
+            script.chmod(0o755)
+            (scenario_directory / "04-report-export-isolation.md").write_bytes(
+                SCENARIO.read_bytes()
+            )
+            for name in (
+                "evidence_contract.py",
+                "test_evidence_contract.py",
+                "container_harness.py",
+                "container_verifier.py",
+            ):
+                (script_directory / name).write_bytes((Path("/opt") / name).read_bytes())
+
+            calls = root / "calls.log"
+            bootstrap_payload = root / "bootstrap-inspect.json"
+            host_inspect = root / "host-inspect.json"
+            fake_docker = fake_bin / "docker"
+            fake_docker.write_text(
+                """#!/bin/sh
+set -eu
+printf '%s\\n' "$*" >> "$FAKE_CALLS"
+
+if test "${1-}" = container && test "${2-}" = inspect; then
+  exit 1
+fi
+if test "${1-}" = network && test "${2-}" = inspect; then
+  exit 0
+fi
+if test "${1-}" = volume && test "${2-}" = inspect; then
+  exit 0
+fi
+if test "${1-}" = create; then
+  open_stdin=false
+  for argument in "$@"; do
+    if test "$argument" = -i || test "$argument" = --interactive; then
+      open_stdin=true
+    fi
+  done
+  printf '%s\n' "$open_stdin" > "$FAKE_OPEN_STDIN"
+  exit 0
+fi
+if test "${1-}" = exec; then
+  printf '%s\\n' 'cannot exec in a stopped container' >&2
+  exit 1
+fi
+if test "${1-}" = start && test "${2-}" = -a && test "${3-}" = -i; then
+  if test "$(cat "$FAKE_OPEN_STDIN")" != true; then
+    printf '%s\\n' 'container was created without open stdin' >&2
+    exit 1
+  fi
+  cat > "$FAKE_BOOTSTRAP_PAYLOAD"
+  exit 0
+fi
+if test "${1-}" = cp && test "${3-}" = mysql-senior-scenarios-harness:/opt/bootstrap-inspect.json; then
+  cp "$2" "$FAKE_BOOTSTRAP_PAYLOAD"
+  exit 0
+fi
+if test "${1-}" = inspect && test "${2-}" = --format; then
+  format=$3
+  target=$4
+  case "$format" in
+    *'com.openai.codex.scope'*'NetworkSettings'*)
+      if test "$target" = mysql-senior-scenarios-harness; then
+        printf '%s\\n' '{"Name":"/mysql-senior-scenarios-harness","Id":"harness-id","Image":"sha256:harness","Config":{"Labels":{"com.openai.codex.scope":"mysql-senior-scenarios"}},"HostConfig":{"NanoCpus":2000000000,"Memory":2147483648,"PidsLimit":256},"Mounts":[{"Type":"volume","Name":"mysql-senior-scenarios-evidence-v1","Destination":"/private/tmp"}],"NetworkSettings":{"Networks":{"mysql-senior-scenarios-net":{}}}}'
+      else
+        printf '%s\\n' '{"Name":"/mysql-senior-scenarios-mysql","Id":"mysql-id","Image":"sha256:mysql","Config":{"Labels":{"com.openai.codex.scope":"mysql-senior-scenarios"}},"HostConfig":{"NanoCpus":2000000000,"Memory":2147483648,"PidsLimit":256},"Mounts":[{"Type":"volume","Name":"mysql-senior-scenarios-data","Destination":"/var/lib/mysql"}],"NetworkSettings":{"Networks":{"mysql-senior-scenarios-net":{}}}}'
+      fi
+      exit 0
+      ;;
+    *'.Config.Labels'*) printf '%s\\n' mysql-senior-scenarios ;;
+    *'.Labels'*) printf '%s\\n' mysql-senior-scenarios ;;
+    *'.Config.Image'*) printf '%s\\n' mysql:8.0.36 ;;
+    *'.HostConfig.NanoCpus'*) printf '%s\\n' '2000000000|2147483648|256' ;;
+    *'.State.Health.Status'*) printf '%s\\n' healthy ;;
+    *'.State.Running'*) printf '%s\\n' true ;;
+    *'.NetworkSettings.Networks'*) printf '%s\\n' network-id ;;
+    *'.Mounts'*) printf '%s\\n' volume:mysql-senior-scenarios-data:/var/lib/mysql ;;
+    *'json .State'*) printf '%s\\n' '{"Running":false}' ;;
+    *'.Image}}|'*) printf '%s\\n' 'sha256:mysql|mysql:8.0.36|no|volume:mysql-senior-scenarios-data:/var/lib/mysql' ;;
+    *) printf '%s\\n' unexpected-format; exit 1 ;;
+  esac
+  exit 0
+fi
+if test "${1-}" = inspect; then
+  printf '%s\\n' '[{"Name":"/mysql-senior-scenarios-harness","Config":{"Env":["MYSQL_PASSWORD=FAKE_SECRET_MARKER"],"Healthcheck":{"Test":["CMD-SHELL","mysqladmin -pFAKE_SECRET_MARKER"]}}},{"Name":"/mysql-senior-scenarios-mysql","Config":{"Env":["MYSQL_ROOT_PASSWORD=FAKE_SECRET_MARKER"]}}]'
+fi
+exit 0
+""",
+                encoding="utf-8",
+            )
+            fake_docker.chmod(0o755)
+            fake_git = fake_bin / "git"
+            fake_git.write_text(
+                "#!/bin/sh\nprintf '%064d\\n' 0\n", encoding="utf-8"
+            )
+            fake_git.chmod(0o755)
+            fake_mktemp = fake_bin / "mktemp"
+            fake_mktemp.write_text(
+                "#!/bin/sh\nprintf '%s\\n' mktemp >> \"$FAKE_CALLS\"\nprintf '%s\\n' \"$FAKE_HOST_INSPECT\"\n",
+                encoding="utf-8",
+            )
+            fake_mktemp.chmod(0o755)
+
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "PATH": f"{fake_bin}:/usr/bin:/bin",
+                    "MYSQL_PASSWORD": "FAKE_SECRET_MARKER",
+                    "FAKE_CALLS": str(calls),
+                    "FAKE_BOOTSTRAP_PAYLOAD": str(bootstrap_payload),
+                    "FAKE_HOST_INSPECT": str(host_inspect),
+                    "FAKE_OPEN_STDIN": str(root / "open-stdin"),
+                }
+            )
+            result = subprocess.run(
+                [str(script), "run"],
+                cwd=script_directory,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+
+            observed_calls = calls.read_text(encoding="utf-8")
+            harness_create = next(
+                call
+                for call in observed_calls.splitlines()
+                if call.startswith("create --name mysql-senior-scenarios-harness ")
+            )
+            self.assertIn(" -i ", f" {harness_create} ")
+            self.assertNotIn("mktemp\n", observed_calls)
+            self.assertNotIn(
+                "inspect mysql-senior-scenarios-harness mysql-senior-scenarios-mysql",
+                observed_calls,
+            )
+            self.assertNotIn(
+                f"cp {host_inspect} mysql-senior-scenarios-harness:/opt/bootstrap-inspect.json",
+                observed_calls,
+            )
+            self.assertIn(
+                "start -a -i mysql-senior-scenarios-harness",
+                observed_calls,
+            )
+            self.assertNotIn("exec -i", observed_calls)
+            self.assertNotIn(".Config.Env", observed_calls)
+            self.assertNotIn("Healthcheck", observed_calls)
+
+            payload_text = bootstrap_payload.read_text(encoding="utf-8")
+            self.assertNotIn("FAKE_SECRET_MARKER", payload_text)
+            payload = json.loads(payload_text)
+            self.assertEqual(2, len(payload))
+            allowed_keys = {
+                "Name",
+                "Id",
+                "Image",
+                "Config",
+                "HostConfig",
+                "Mounts",
+                "NetworkSettings",
+            }
+            for container in payload:
+                self.assertEqual(allowed_keys, set(container))
+                self.assertEqual(
+                    {"Labels": {"com.openai.codex.scope": "mysql-senior-scenarios"}},
+                    container["Config"],
+                )
+                self.assertNotIn("Env", container["Config"])
+                self.assertNotIn("Healthcheck", container["Config"])
 
 
 class DocumentationContractTests(unittest.TestCase):
