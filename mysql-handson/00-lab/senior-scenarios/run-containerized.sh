@@ -144,6 +144,7 @@ preflight_harness_inputs() {
 preflight_offline_inputs() {
   preflight_common_inputs
   require_input_file "$SCRIPT_DIR/container_harness.py"
+  require_input_file "$SCRIPT_DIR/container_verifier.py"
 }
 
 preflight_verifier_inputs() {
@@ -169,6 +170,7 @@ copy_offline_inputs() {
   name=$1
   copy_common_inputs "$name"
   docker cp "$SCRIPT_DIR/container_harness.py" "$name:/opt/container_harness.py"
+  docker cp "$SCRIPT_DIR/container_verifier.py" "$name:/opt/container_verifier.py"
 }
 
 copy_verifier_inputs() {
@@ -180,9 +182,23 @@ copy_verifier_inputs() {
 offline_test() {
   preflight_offline_inputs
   remove_owned_transient "$OFFLINE_TEST_CONTAINER"
-  docker create --name "$OFFLINE_TEST_CONTAINER" --label "$SCOPE_LABEL" --cpus 2 --memory 2g --pids-limit 256 "$PYTHON_IMAGE" sh -c 'python -m pip install --no-cache-dir mysql-connector-python==9.7.0 && python -m unittest -v /opt/test_evidence_contract.py && python /opt/container_harness.py offline-check --scenario /opt/scenario.md --python-input /opt/evidence_contract.py --python-input /opt/test_evidence_contract.py --python-input /opt/container_harness.py && sh -n /opt/run-containerized.sh'
+  docker create --name "$OFFLINE_TEST_CONTAINER" --label "$SCOPE_LABEL" --network none --cpus 2 --memory 2g --pids-limit 256 "$PYTHON_IMAGE" sh -c 'python -m unittest -v /opt/test_evidence_contract.py && python -m py_compile /opt/evidence_contract.py /opt/test_evidence_contract.py /opt/container_harness.py /opt/container_verifier.py && sh -n /opt/run-containerized.sh'
   copy_offline_inputs "$OFFLINE_TEST_CONTAINER"
   docker start -a "$OFFLINE_TEST_CONTAINER"
+}
+
+require_verifier_isolation() {
+  require_scope_label container "$VERIFIER_CONTAINER"
+  isolation=$(docker inspect --format '{{.HostConfig.NetworkMode}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.Memory}}|{{.HostConfig.PidsLimit}}' "$VERIFIER_CONTAINER")
+  test "$isolation" = 'none|2000000000|2147483648|256' || {
+    printf '%s has unexpected network or limits: %s\n' "$VERIFIER_CONTAINER" "$isolation" >&2
+    exit 1
+  }
+  mounts=$(docker inspect --format '{{range .Mounts}}{{.Type}}:{{.Name}}:{{.Destination}}:{{.RW}}{{end}}' "$VERIFIER_CONTAINER")
+  test "$mounts" = "volume:$EVIDENCE_VOLUME:/private/tmp:false" || {
+    printf '%s has writable, MySQL-data, host, or unexpected mounts: %s\n' "$VERIFIER_CONTAINER" "$mounts" >&2
+    exit 1
+  }
 }
 
 wait_for_healthy() {
@@ -243,8 +259,10 @@ verify_evidence() {
   preflight_verifier_inputs
   require_existing_owned_evidence_volume
   remove_owned_transient "$VERIFIER_CONTAINER"
-  docker create --name "$VERIFIER_CONTAINER" --label "$SCOPE_LABEL" --cpus 2 --memory 2g --pids-limit 256 --mount type=volume,src=mysql-senior-scenarios-evidence-v1,dst=/private/tmp,readonly "$PYTHON_IMAGE" python /opt/container_verifier.py verify --scenario /opt/scenario.md
+  SCENARIO_COMMIT=$(git -C "$REPO_ROOT" rev-parse HEAD)
+  docker create --name "$VERIFIER_CONTAINER" --label "$SCOPE_LABEL" --network none --cpus 2 --memory 2g --pids-limit 256 --mount type=volume,src=mysql-senior-scenarios-evidence-v1,dst=/private/tmp,readonly "$PYTHON_IMAGE" python /opt/container_verifier.py --volume-root /private/tmp --scenario /opt/scenario.md --expected-commit "$SCENARIO_COMMIT"
   copy_verifier_inputs "$VERIFIER_CONTAINER"
+  require_verifier_isolation
   docker start -a "$VERIFIER_CONTAINER"
 }
 

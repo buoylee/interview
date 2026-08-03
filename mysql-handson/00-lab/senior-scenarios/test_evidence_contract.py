@@ -38,6 +38,7 @@ from container_harness import (
     FREEZE_TRIGGER_SQL,
     ITEM_CRC32_SQL,
     INVOCATIONS,
+    NEGATIVE_PROBE_SQL,
     ORDER_CRC32_SQL,
     SEVENTH_RUNTIME_FILENAME,
     BootstrapBoundary,
@@ -59,6 +60,7 @@ from container_harness import (
     validate_seed_baseline,
     verify_internal_identity,
 )
+from container_verifier import verify_evidence
 
 
 SCENARIO = Path("/opt/scenario.md")
@@ -113,6 +115,35 @@ class ShellPolicyTests(unittest.TestCase):
         self.assertIn("require_existing_owned_evidence_volume", verify)
         self.assertNotIn("require_owned_evidence_volume", verify)
 
+    def test_offline_suite_is_networkless_copy_only_and_compiles_verifier(self):
+        text = RUN_SCRIPT.read_text(encoding="utf-8")
+        offline = text.split("offline_test() {", 1)[1].split("\n}\n", 1)[0]
+        create_line = next(
+            line for line in offline.splitlines() if "docker create" in line
+        )
+        self.assertIn("--network none", create_line)
+        self.assertNotIn("pip install", offline)
+        self.assertIn("/opt/container_verifier.py", offline)
+        self.assertIn("python -m py_compile", offline)
+
+    def test_verify_inspects_network_mounts_and_limits_before_start(self):
+        text = RUN_SCRIPT.read_text(encoding="utf-8")
+        verify = text.split("verify_evidence() {", 1)[1].split("\n}\n", 1)[0]
+        create_line = next(
+            line for line in verify.splitlines() if "docker create" in line
+        )
+        self.assertIn("--network none", create_line)
+        self.assertIn(
+            "--mount type=volume,src=mysql-senior-scenarios-evidence-v1,dst=/private/tmp,readonly",
+            create_line,
+        )
+        self.assertIn("--volume-root /private/tmp", create_line)
+        self.assertIn('--expected-commit "$SCENARIO_COMMIT"', create_line)
+        self.assertLess(
+            verify.index("require_verifier_isolation"),
+            verify.index('docker start -a "$VERIFIER_CONTAINER"'),
+        )
+
     def test_live_paths_preflight_inputs_before_docker_mutation(self):
         text = RUN_SCRIPT.read_text(encoding="utf-8")
         run = text.split("run_live_harness() {", 1)[1].split("\n}\n", 1)[0]
@@ -147,6 +178,609 @@ class ShellPolicyTests(unittest.TestCase):
         )
         self.assertIn("--env MYSQL_PASSWORD", create_line)
         self.assertNotIn("MYSQL_PASSWORD=", create_line)
+
+
+class ContainerVerifierTests(unittest.TestCase):
+    read_only_mountinfo = (
+        "36 25 0:32 / /private/tmp ro,nosuid,nodev - local /dev rw\n"
+    )
+
+    def _write_json(self, path: Path, value: object) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            + "\n",
+            encoding="utf-8",
+        )
+
+    def _canonical_sha(self, value: object) -> str:
+        return hashlib.sha256(
+            json.dumps(
+                value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+        ).hexdigest()
+
+    def _window(self, trial_id: str, sequence: int, p95: float) -> dict:
+        return {
+            "active_elapsed_seconds": float(sequence),
+            "drain_limit_hits": 0,
+            "errors": 0,
+            "heartbeat_at_epoch": 1_700_000_000.0 + sequence,
+            "max_heartbeat_lateness_ms": float(sequence),
+            "operations": sequence * 10,
+            "status": "SUCCEEDED" if sequence == 5 else "RUNNING",
+            "trial_id": trial_id,
+            "window_errors": 0,
+            "window_operations": 10,
+            "window_p95_ms": p95,
+            "window_seq": sequence,
+        }
+
+    def _experiment_binding(self, runtime_root: Path, programs: dict[str, str]) -> dict:
+        return {
+            "controller_sha256": sha256(programs["scenario_controller.py"]),
+            "database": "mysql_senior_scenarios",
+            "host": EXPECTED_HOST,
+            "port": EXPECTED_PORT,
+            "requested_use_pure": True,
+            "runner_sha256": sha256(programs["export_runner.py"]),
+            "runtime_root": str(runtime_root),
+            "user": "root",
+        }
+
+    def _controller_result(
+        self,
+        trial_id: str,
+        mode: str,
+        binding: dict,
+        windows: list[dict],
+    ) -> dict:
+        child = {
+            "errors": 0,
+            "mode": "oltp",
+            "status": "SUCCEEDED",
+            "threads": 4,
+            "trial_id": trial_id,
+            "window_history": windows,
+            "window_history_schema": "oltp-window-history-v1",
+        }
+        return {
+            "accepted_windows": windows,
+            "experiment_binding": binding,
+            "export_result": None,
+            "mode": mode,
+            "oltp_result": child,
+            "status": "SUCCEEDED",
+            "trial_contract": {
+                "duration_seconds": 60,
+                "export_mode": mode,
+                "requested_p95_budget_ms": 0.0,
+                "threads": 4,
+                "window_seconds": 1.0,
+            },
+            "trial_id": trial_id,
+        }
+
+    def _refresh_manifests(self, runtime_root: Path, binding: EvidenceBinding) -> None:
+        for phase in PHASES:
+            path = runtime_root / f"phase-manifest-{phase}.json"
+            if path.exists():
+                path.unlink()
+        for phase in PHASES:
+            create_phase_manifest(runtime_root, phase, binding)
+
+    def _build_tree(self, volume_root: Path) -> dict[str, object]:
+        scenario_text = SCENARIO.read_text(encoding="utf-8")
+        programs = extract_programs(scenario_text)
+        program_hashes = {name: sha256(source) for name, source in programs.items()}
+        runtime_root = volume_root / "mysql-senior-scenarios.miniature"
+        runtime_root.mkdir()
+        for name, source in programs.items():
+            (runtime_root / name).write_text(source, encoding="utf-8")
+
+        expected_commit = "1" * 40
+        binding = EvidenceBinding(
+            scenario_commit=expected_commit,
+            scenario_sha256=sha256(scenario_text),
+            mysql_image_id="sha256:mysql-image",
+            mysql_container_id="mysql-container-id",
+            harness_image_id="sha256:harness-image",
+            network_name=EXPECTED_NETWORK,
+            volume_name=EXPECTED_VOLUME,
+            cpu_limit="2",
+            memory_limit_bytes=EXPECTED_MEMORY,
+            pids_limit=EXPECTED_PIDS,
+            program_sha256=program_hashes,
+        )
+        self._write_json(
+            volume_root / "historical-evidence-loss.json",
+            {
+                "current_raw_verification": False,
+                "historical_paths": list(HISTORICAL_PATHS),
+                "status": HISTORICAL_LOSS_STATUS,
+            },
+        )
+        internal_identity = {
+            "container_id": "harness-container-id",
+            "cpu_max": "200000 100000",
+            "dns_addresses": ["172.20.0.3"],
+            "harness_image_id_process_lifetime": binding.harness_image_id,
+            "hostname": "harness-container",
+            "memory_max": str(EXPECTED_MEMORY),
+            "mountinfo_sha256": "a" * 64,
+            "pids_max": str(EXPECTED_PIDS),
+            "private_tmp_mount": "volume /private/tmp rw",
+        }
+        self._write_json(
+            volume_root / SEVENTH_RUNTIME_FILENAME,
+            {
+                "created_at": "2026-08-02T12:00:00Z",
+                "internal_identity": internal_identity,
+                "program_sha256": program_hashes,
+                "runtime_path": str(runtime_root),
+                "scenario_commit": expected_commit,
+                "scenario_sha256": binding.scenario_sha256,
+                "suffix": "miniature",
+            },
+        )
+
+        seed = {
+            "high_cursor": ["2026-01-01 00:00:03.000000", 3],
+            "item_count_fingerprint": 6,
+            "item_crc32_sum": 222,
+            "item_orders": 3,
+            "items": 6,
+            "max_items_per_order": 2,
+            "min_cursor": ["2026-01-01 00:00:01.000000", 1],
+            "min_items_per_order": 2,
+            "order_crc32_sum": 111,
+            "orders": 3,
+            "probe_counter_sum": 0,
+            "probes": 2,
+            "report_rows": 3,
+            "total_amount_fingerprint": "60.00",
+        }
+        probe_schema = [
+            {"values": ["COLUMN", "id", 1, "bigint unsigned", "NO", None, ""]},
+            {"values": ["COLUMN", "counter", 2, "bigint unsigned", "NO", "0", ""]},
+        ]
+        freeze = {
+            "oltp_probe": {
+                "counter_advanced": True,
+                "counter_sum_after": 30,
+                "counter_sum_before": 0,
+                "rows": 2,
+                "schema_matches": True,
+            },
+            "source_matches_baseline": True,
+        }
+        triggers = [
+            {"name": name, "statement": f"CREATE TRIGGER {name}"}
+            for name in sorted(FREEZE_TRIGGER_NAMES)
+        ]
+        self._write_json(runtime_root / "seed-manifest.json", seed)
+        self._write_json(runtime_root / "probe-schema.json", probe_schema)
+        self._write_json(runtime_root / "seed-freeze-audit.json", freeze)
+        self._write_json(runtime_root / "freeze-triggers.json", triggers)
+        self._write_json(runtime_root / "global-variables.json", [1, 2, 3, "RR", 0, 0])
+        self._write_json(
+            runtime_root / "freeze-negative-probes.json",
+            [
+                {"message": "report source is frozen for mysql senior scenario", "rejected": True, "sql": statement, "sqlstate": "45000"}
+                for statement in NEGATIVE_PROBE_SQL
+            ],
+        )
+        self._write_json(
+            runtime_root / "bootstrap-connector.json",
+            {
+                "actual_connection_class": "mysql.connector.connection.MySQLConnection",
+                "actual_pure": True,
+                "connector_version": "9.7.0",
+                "have_cext": False,
+                "requested_use_pure": True,
+                "threadsafety": 1,
+            },
+        )
+        for phase in PHASES[1:-1]:
+            self._write_json(
+                runtime_root / f"source-audit-{phase}.json",
+                {"freeze": freeze, "triggers": triggers},
+            )
+
+        experiment_binding = self._experiment_binding(runtime_root, programs)
+        result_by_id: dict[str, dict] = {}
+        artifact_bytes = (
+            b"2026-01-01 00:00:01.000000\t1\t1\t0\t10.00\t2\n"
+            b"2026-01-01 00:00:02.000000\t2\t1\t0\t20.00\t2\n"
+            b"2026-01-01 00:00:03.000000\t3\t1\t0\t30.00\t2\n"
+        )
+        artifact_sha = hashlib.sha256(artifact_bytes).hexdigest()
+        control_p95 = {
+            "control-1": [1.0, 2.0, 3.0, 4.0, 5.0],
+            "control-2": [2.0, 3.0, 4.0, 5.0, 6.0],
+            "control-3": [3.0, 4.0, 5.0, 6.0, 7.0],
+        }
+        for invocation_id in INVOCATIONS:
+            if invocation_id == "latency-calibration-1":
+                continue
+            if invocation_id.startswith("resume-"):
+                result = (
+                    {
+                        "high_cursor": seed["high_cursor"],
+                        "job_id": "resume-1",
+                        "last_cursor": [seed["min_cursor"][0], seed["min_cursor"][1]],
+                        "mode": "chunked",
+                        "parts": 1,
+                        "rows": 1,
+                        "status": "ABORTED",
+                    }
+                    if invocation_id == "resume-interrupt-1"
+                    else {
+                        "high_cursor": seed["high_cursor"],
+                        "job_id": "resume-1",
+                        "last_cursor": seed["high_cursor"],
+                        "mode": "chunked",
+                        "rows": 3,
+                        "sha256": artifact_sha,
+                        "status": "SUCCEEDED",
+                    }
+                )
+                result_by_id[invocation_id] = result
+                (runtime_root / f"harness-{invocation_id}.stdout.json").write_text(
+                    json.dumps(result, sort_keys=True) + "\n", encoding="utf-8"
+                )
+                continue
+            mode = (
+                "none"
+                if invocation_id.startswith("control-")
+                else "chunked"
+                if invocation_id.startswith(("chunked-", "resume-"))
+                else "buffered"
+                if invocation_id.startswith("buffered-")
+                else "preflight"
+            )
+            values = control_p95.get(invocation_id, [1.0, 1.0, 1.0, 1.0, 1.0])
+            windows = [
+                self._window(invocation_id, sequence, value)
+                for sequence, value in enumerate(values, 1)
+            ]
+            result = self._controller_result(
+                invocation_id, mode, experiment_binding, windows
+            )
+            result_by_id[invocation_id] = result
+            self._write_json(
+                runtime_root / f"controller-result-{invocation_id}.json", result
+            )
+
+        trials = []
+        for trial_id, rolling_value in (
+            ("control-1", 3.0),
+            ("control-2", 4.0),
+            ("control-3", 5.0),
+        ):
+            source = result_by_id[trial_id]
+            trial = {
+                "accepted_windows": source["accepted_windows"],
+                "experiment_binding": source["experiment_binding"],
+                "mode": source["mode"],
+                "oltp_result": source["oltp_result"],
+                "status": source["status"],
+                "trial_contract": source["trial_contract"],
+                "trial_id": source["trial_id"],
+            }
+            trial["rolling_values_ms"] = [rolling_value]
+            trials.append(trial)
+        calibration = {
+            "budget_ms": 7.5,
+            "experiment_binding": experiment_binding,
+            "formula": "1.5 * max(rolling-5 median(window_p95_ms))",
+            "multiplier": 1.5,
+            "rolling_count": 3,
+            "rolling_max_ms": 5.0,
+            "rolling_median_ms": 4.0,
+            "rolling_min_ms": 3.0,
+            "rolling_p95_ms": 5.0,
+            "rolling_p99_ms": 5.0,
+            "schema": "report-latency-calibration-v1",
+            "trials": trials,
+            "window_size": 5,
+        }
+        calibration["inputs_sha256"] = self._canonical_sha(
+            {"binding": experiment_binding, "trials": trials}
+        )
+        self._write_json(runtime_root / "latency-calibration.json", calibration)
+        calibration_result = {
+            "calibration": calibration,
+            "experiment_binding": experiment_binding,
+            "mode": "latency-calibration",
+            "status": "SUCCEEDED",
+            "trial_id": "latency-calibration-1",
+        }
+        result_by_id["latency-calibration-1"] = calibration_result
+        self._write_json(
+            runtime_root / "controller-result-latency-calibration-1.json",
+            calibration_result,
+        )
+
+        phase_invocations = {
+            "10-kill-smoke": INVOCATIONS[0:2],
+            "20-controls-calibration": INVOCATIONS[2:6],
+            "30-buffered": INVOCATIONS[6:9],
+            "40-chunked": INVOCATIONS[9:12],
+            "50-resume-audit": INVOCATIONS[12:14],
+        }
+        ledger_for: dict[str, Path] = {}
+        for phase, invocation_ids in phase_invocations.items():
+            ledger_path = runtime_root / f"invocations-{phase}.jsonl"
+            with ledger_path.open("w", encoding="utf-8") as output:
+                for invocation_id in invocation_ids:
+                    ledger_for[invocation_id] = ledger_path
+                    output.write(
+                        json.dumps(
+                            {
+                                "invocation_id": invocation_id,
+                                "state": "STARTING",
+                                "timestamp": "2026-08-02T12:00:00Z",
+                            },
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        )
+                        + "\n"
+                    )
+                    output.write(
+                        json.dumps(
+                            {
+                                "detail": result_by_id[invocation_id],
+                                "invocation_id": invocation_id,
+                                "state": (
+                                    "ABORTED"
+                                    if invocation_id == "resume-interrupt-1"
+                                    else "SUCCEEDED"
+                                ),
+                                "timestamp": "2026-08-02T12:01:00Z",
+                            },
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        )
+                        + "\n"
+                    )
+
+        job_names = [
+            *(f"job-buffered-{index}" for index in range(1, 4)),
+            *(f"job-chunked-{index}" for index in range(1, 4)),
+            "job-resume-1",
+        ]
+        audit_signatures = []
+        for job_name in job_names:
+            job = runtime_root / job_name
+            job.mkdir()
+            (job / "artifact.tsv").write_bytes(artifact_bytes)
+            mode = "buffered" if job_name.startswith("job-buffered") else "chunked"
+            state = {
+                "artifact_rows": 3,
+                "artifact_sha256": artifact_sha,
+                "expected_rows": 3,
+                "high_created_at": seed["high_cursor"][0],
+                "high_id": seed["high_cursor"][1],
+                "job_id": job_name.removeprefix("job-"),
+                "last_created_at": seed["high_cursor"][0],
+                "last_id": seed["high_cursor"][1],
+                "mode": mode,
+                "rows_written": 3,
+                "status": "SUCCEEDED",
+            }
+            result = {
+                "high_cursor": seed["high_cursor"],
+                "job_id": state["job_id"],
+                "last_cursor": seed["high_cursor"],
+                "mode": mode,
+                "rows": 3,
+                "sha256": artifact_sha,
+                "status": "SUCCEEDED",
+            }
+            self._write_json(job / "state.json", state)
+            self._write_json(job / "result.json", result)
+            audit_signatures.append(
+                {"job": job_name, "rows": 3, "sha256": artifact_sha}
+            )
+        self._write_json(
+            runtime_root / "external-artifact-audit.json",
+            {"artifacts": audit_signatures, "status": "COMPLETE"},
+        )
+        self._write_json(
+            runtime_root / "controlled-stop.json",
+            {
+                "active_processes": [],
+                "after_drop_audit": freeze,
+                "before_drop_audit": freeze,
+                "errors": [],
+                "requested_success": True,
+                "status": "COMPLETE",
+                "timestamp": "2026-08-02T12:02:00Z",
+                "triggers_after_drop": [],
+                "triggers_before_drop": triggers,
+                "triggers_dropped": list(FREEZE_TRIGGER_NAMES),
+            },
+        )
+        self._refresh_manifests(runtime_root, binding)
+        return {
+            "binding": binding,
+            "expected_commit": expected_commit,
+            "ledger_for": ledger_for,
+            "probe_schema": probe_schema,
+            "runtime_root": runtime_root,
+            "seed": seed,
+        }
+
+    def _verify(self, volume_root: Path, fixture: dict[str, object]) -> dict:
+        return verify_evidence(
+            volume_root=volume_root,
+            scenario_path=SCENARIO,
+            expected_commit=fixture["expected_commit"],
+            mountinfo_text=self.read_only_mountinfo,
+            expected_seed_manifest=fixture["seed"],
+            expected_probe_schema=fixture["probe_schema"],
+            minimum_control_windows=5,
+        )
+
+    def _snapshot(self, root: Path) -> tuple[list[tuple[str, str]], dict[str, int]]:
+        files = sorted(path for path in root.rglob("*") if path.is_file())
+        digests = [
+            (path.relative_to(root).as_posix(), hashlib.sha256(path.read_bytes()).hexdigest())
+            for path in files
+        ]
+        mtimes = {
+            path.relative_to(root).as_posix(): path.stat().st_mtime_ns for path in files
+        }
+        return digests, mtimes
+
+    def test_verifier_accepts_complete_read_only_tree(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fixture = self._build_tree(root)
+            result = self._verify(root, fixture)
+            final_manifest = json.loads(
+                (fixture["runtime_root"] / "phase-manifest-60-final.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(result["status"], "VERIFIED")
+            self.assertEqual(result["checked"]["phases"], 7)
+            self.assertEqual(result["final_tree_hash"], final_manifest["tree_hash"])
+
+    def test_verifier_rejects_missing_final_manifest(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fixture = self._build_tree(root)
+            (fixture["runtime_root"] / "phase-manifest-60-final.json").unlink()
+            with self.assertRaises(ValueError):
+                self._verify(root, fixture)
+
+    def test_verifier_rejects_changed_authoritative_history(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fixture = self._build_tree(root)
+            runtime_root = fixture["runtime_root"]
+            path = runtime_root / "controller-result-control-1.json"
+            result = json.loads(path.read_text(encoding="utf-8"))
+            result["oltp_result"]["window_history"][2]["window_seq"] = 99
+            self._write_json(path, result)
+            ledger_path = fixture["ledger_for"]["control-1"]
+            records = [json.loads(line) for line in ledger_path.read_text().splitlines()]
+            next(
+                record
+                for record in records
+                if record["invocation_id"] == "control-1" and "detail" in record
+            )["detail"] = result
+            ledger_path.write_text(
+                "".join(
+                    json.dumps(item, sort_keys=True, separators=(",", ":")) + "\n"
+                    for item in records
+                ),
+                encoding="utf-8",
+            )
+            self._refresh_manifests(runtime_root, fixture["binding"])
+            with self.assertRaisesRegex(ValueError, "sequence"):
+                self._verify(root, fixture)
+
+    def test_verifier_rejects_calibration_derivative_mismatch(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fixture = self._build_tree(root)
+            runtime_root = fixture["runtime_root"]
+            calibration_path = runtime_root / "latency-calibration.json"
+            calibration = json.loads(calibration_path.read_text(encoding="utf-8"))
+            calibration["budget_ms"] = 999.0
+            self._write_json(calibration_path, calibration)
+            result_path = runtime_root / "controller-result-latency-calibration-1.json"
+            result = json.loads(result_path.read_text(encoding="utf-8"))
+            result["calibration"] = calibration
+            self._write_json(result_path, result)
+            ledger_path = fixture["ledger_for"]["latency-calibration-1"]
+            records = [json.loads(line) for line in ledger_path.read_text().splitlines()]
+            next(
+                record
+                for record in records
+                if record["invocation_id"] == "latency-calibration-1"
+                and "detail" in record
+            )["detail"] = result
+            ledger_path.write_text(
+                "".join(
+                    json.dumps(item, sort_keys=True, separators=(",", ":")) + "\n"
+                    for item in records
+                ),
+                encoding="utf-8",
+            )
+            self._refresh_manifests(runtime_root, fixture["binding"])
+            with self.assertRaisesRegex(ValueError, "calibration"):
+                self._verify(root, fixture)
+
+    def test_verifier_rejects_artifact_row_order_or_sha_mismatch(self):
+        for corruption in ("order", "sha"):
+            with self.subTest(corruption=corruption), tempfile.TemporaryDirectory() as temporary_directory:
+                root = Path(temporary_directory)
+                fixture = self._build_tree(root)
+                runtime_root = fixture["runtime_root"]
+                job = runtime_root / "job-buffered-1"
+                if corruption == "order":
+                    lines = (job / "artifact.tsv").read_bytes().splitlines(keepends=True)
+                    (job / "artifact.tsv").write_bytes(lines[1] + lines[0] + lines[2])
+                else:
+                    state_path = job / "state.json"
+                    state = json.loads(state_path.read_text(encoding="utf-8"))
+                    state["artifact_sha256"] = "0" * 64
+                    self._write_json(state_path, state)
+                self._refresh_manifests(runtime_root, fixture["binding"])
+                with self.assertRaisesRegex(ValueError, corruption):
+                    self._verify(root, fixture)
+
+    def test_verifier_rejects_source_probe_or_binding_drift(self):
+        for corruption in ("source_probe", "binding"):
+            with self.subTest(corruption=corruption), tempfile.TemporaryDirectory() as temporary_directory:
+                root = Path(temporary_directory)
+                fixture = self._build_tree(root)
+                runtime_root = fixture["runtime_root"]
+                if corruption == "source_probe":
+                    path = runtime_root / "source-audit-10-kill-smoke.json"
+                    audit = json.loads(path.read_text(encoding="utf-8"))
+                    audit["freeze"]["oltp_probe"]["rows"] = 99
+                    self._write_json(path, audit)
+                else:
+                    path = runtime_root / "controller-result-buffered-1.json"
+                    result = json.loads(path.read_text(encoding="utf-8"))
+                    result["experiment_binding"]["runtime_root"] = "/private/tmp/drift"
+                    self._write_json(path, result)
+                    ledger_path = fixture["ledger_for"]["buffered-1"]
+                    records = [
+                        json.loads(line)
+                        for line in ledger_path.read_text(encoding="utf-8").splitlines()
+                    ]
+                    next(
+                        record
+                        for record in records
+                        if record["invocation_id"] == "buffered-1"
+                        and "detail" in record
+                    )["detail"] = result
+                    ledger_path.write_text(
+                        "".join(
+                            json.dumps(item, sort_keys=True, separators=(",", ":"))
+                            + "\n"
+                            for item in records
+                        ),
+                        encoding="utf-8",
+                    )
+                self._refresh_manifests(runtime_root, fixture["binding"])
+                with self.assertRaisesRegex(ValueError, corruption.replace("_", " ")):
+                    self._verify(root, fixture)
+
+    def test_verifier_writes_nothing_to_volume(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fixture = self._build_tree(root)
+            before = self._snapshot(root)
+            self._verify(root, fixture)
+            after = self._snapshot(root)
+            self.assertEqual(after, before)
 
 
 class ExtractionTests(unittest.TestCase):
