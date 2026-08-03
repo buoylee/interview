@@ -1,5 +1,6 @@
 import hashlib
 import json
+import math
 import os
 import re
 import sys
@@ -40,6 +41,7 @@ from container_harness import (
     INVOCATIONS,
     NEGATIVE_PROBE_SQL,
     ORDER_CRC32_SQL,
+    RESUME_INTERRUPTION_AUDIT,
     SEVENTH_RUNTIME_FILENAME,
     BootstrapBoundary,
     BootstrapContext,
@@ -58,7 +60,9 @@ from container_harness import (
     validate_freeze_trigger_rows,
     validate_negative_probe_error,
     validate_seed_baseline,
+    validate_resume_interruption_audit,
     verify_internal_identity,
+    write_resume_interruption_audit,
 )
 from container_verifier import verify_evidence
 
@@ -128,6 +132,11 @@ class ShellPolicyTests(unittest.TestCase):
 
     def test_verify_inspects_network_mounts_and_limits_before_start(self):
         text = RUN_SCRIPT.read_text(encoding="utf-8")
+        verifier_inputs = text.split("copy_verifier_inputs() {", 1)[1].split(
+            "\n}\n", 1
+        )[0]
+        self.assertIn("container_harness.py", verifier_inputs)
+        self.assertIn("container_verifier.py", verifier_inputs)
         verify = text.split("verify_evidence() {", 1)[1].split("\n}\n", 1)[0]
         create_line = next(
             line for line in verify.splitlines() if "docker create" in line
@@ -228,36 +237,88 @@ class ContainerVerifierTests(unittest.TestCase):
             "user": "root",
         }
 
-    def _controller_result(
-        self,
-        trial_id: str,
-        mode: str,
-        binding: dict,
-        windows: list[dict],
-    ) -> dict:
-        child = {
+    def _connector_environment(self) -> dict:
+        return {
+            "connector_version": "9.7.0",
+            "have_cext": False,
+            "platform": "Linux-miniature",
+            "python_version": "3.13.7",
+            "requested_use_pure": True,
+            "threadsafety": 1,
+        }
+
+    def _connector_contract(self) -> dict:
+        return {
+            **self._connector_environment(),
+            "actual_connection_class": "mysql.connector.connection.MySQLConnection",
+            "actual_pure": True,
+        }
+
+    def _oltp_child(self, trial_id: str, windows: list[dict]) -> dict:
+        connector = self._connector_contract()
+        return {
+            "connector_contract": connector,
+            "drain_limit_hits": 0,
             "errors": 0,
+            "max_heartbeat_lateness_ms": 5.0,
             "mode": "oltp",
+            "operations": 50,
+            "p50_ms": 1.0,
+            "p95_ms": 2.0,
+            "p99_ms": 3.0,
             "status": "SUCCEEDED",
             "threads": 4,
             "trial_id": trial_id,
             "window_history": windows,
             "window_history_schema": "oltp-window-history-v1",
+            "worker_connections": [
+                {
+                    **connector,
+                    "close_proof": "is_connected_false",
+                    "closed": True,
+                    "connection_id": 100 + worker,
+                    "worker": worker,
+                }
+                for worker in range(1, 5)
+            ],
         }
+
+    def _trial_contract(self, mode: str, duration: int = 60) -> dict:
+        return {
+            "duration_seconds": duration,
+            "export_mode": mode,
+            "requested_p95_budget_ms": 0.0,
+            "threads": 4,
+            "window_seconds": 1.0,
+        }
+
+    def _common_result(
+        self,
+        *,
+        trial_id: str,
+        mode: str,
+        binding: dict,
+        windows: list[dict],
+        duration: int,
+        export_result: dict | None,
+        smoke_result: dict | None,
+        smoke_gate: dict | None,
+        calibration: dict | None,
+    ) -> dict:
         return {
             "accepted_windows": windows,
+            "controller_connector_environment": self._connector_environment(),
             "experiment_binding": binding,
-            "export_result": None,
+            "export_result": export_result,
+            "export_returncode": 0 if export_result is not None else None,
+            "latency_calibration": calibration,
             "mode": mode,
-            "oltp_result": child,
+            "oltp_result": self._oltp_child(trial_id, windows),
+            "oltp_returncode": 0,
+            "smoke_gate": smoke_gate,
+            "smoke_result": smoke_result,
             "status": "SUCCEEDED",
-            "trial_contract": {
-                "duration_seconds": 60,
-                "export_mode": mode,
-                "requested_p95_budget_ms": 0.0,
-                "threads": 4,
-                "window_seconds": 1.0,
-            },
+            "trial_contract": self._trial_contract(mode, duration),
             "trial_id": trial_id,
         }
 
@@ -324,45 +385,65 @@ class ContainerVerifierTests(unittest.TestCase):
             },
         )
 
+        row_count = 3500
+        high_cursor = ["2026-01-01 00:58:20.000000", row_count]
         seed = {
-            "high_cursor": ["2026-01-01 00:00:03.000000", 3],
-            "item_count_fingerprint": 6,
+            "high_cursor": high_cursor,
+            "item_count_fingerprint": row_count * 3,
             "item_crc32_sum": 222,
-            "item_orders": 3,
-            "items": 6,
-            "max_items_per_order": 2,
+            "item_orders": row_count,
+            "items": row_count * 3,
+            "max_items_per_order": 3,
             "min_cursor": ["2026-01-01 00:00:01.000000", 1],
-            "min_items_per_order": 2,
+            "min_items_per_order": 3,
             "order_crc32_sum": 111,
-            "orders": 3,
+            "orders": row_count,
             "probe_counter_sum": 0,
-            "probes": 2,
-            "report_rows": 3,
-            "total_amount_fingerprint": "60.00",
+            "probes": 10_000,
+            "report_rows": row_count,
+            "total_amount_fingerprint": "3500.00",
         }
-        probe_schema = [
-            {"values": ["COLUMN", "id", 1, "bigint unsigned", "NO", None, ""]},
-            {"values": ["COLUMN", "counter", 2, "bigint unsigned", "NO", "0", ""]},
-        ]
+        probe_schema = list(EXPECTED_PROBE_SCHEMA)
         freeze = {
             "oltp_probe": {
                 "counter_advanced": True,
                 "counter_sum_after": 30,
                 "counter_sum_before": 0,
-                "rows": 2,
+                "rows": 10_000,
                 "schema_matches": True,
             },
             "source_matches_baseline": True,
         }
+        trigger_shape = {
+            "freeze_report_order_insert": ("INSERT", "report_order"),
+            "freeze_report_order_update": ("UPDATE", "report_order"),
+            "freeze_report_order_delete": ("DELETE", "report_order"),
+            "freeze_report_item_insert": ("INSERT", "report_item"),
+            "freeze_report_item_update": ("UPDATE", "report_item"),
+            "freeze_report_item_delete": ("DELETE", "report_item"),
+        }
+        trigger_action = (
+            "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT="
+            "'report source is frozen for mysql senior scenario'"
+        )
         triggers = [
-            {"name": name, "statement": f"CREATE TRIGGER {name}"}
+            {
+                "name": name,
+                "operation": trigger_shape[name][0],
+                "statement": trigger_action,
+                "table": trigger_shape[name][1],
+                "timing": "BEFORE",
+            }
             for name in sorted(FREEZE_TRIGGER_NAMES)
         ]
         self._write_json(runtime_root / "seed-manifest.json", seed)
         self._write_json(runtime_root / "probe-schema.json", probe_schema)
         self._write_json(runtime_root / "seed-freeze-audit.json", freeze)
         self._write_json(runtime_root / "freeze-triggers.json", triggers)
-        self._write_json(runtime_root / "global-variables.json", [1, 2, 3, "RR", 0, 0])
+        self._write_json(
+            runtime_root / "global-variables.json",
+            [134_217_728, 16_777_216, 16_777_216, "REPEATABLE-READ", 0, 0],
+        )
         self._write_json(
             runtime_root / "freeze-negative-probes.json",
             [
@@ -387,69 +468,169 @@ class ContainerVerifierTests(unittest.TestCase):
                 {"freeze": freeze, "triggers": triggers},
             )
 
-        experiment_binding = self._experiment_binding(runtime_root, programs)
-        result_by_id: dict[str, dict] = {}
-        artifact_bytes = (
-            b"2026-01-01 00:00:01.000000\t1\t1\t0\t10.00\t2\n"
-            b"2026-01-01 00:00:02.000000\t2\t1\t0\t20.00\t2\n"
-            b"2026-01-01 00:00:03.000000\t3\t1\t0\t30.00\t2\n"
+        artifact_bytes = b"".join(
+            (
+                f"2026-01-01 00:{order_id // 60:02d}:{order_id % 60:02d}.000000"
+                f"\t{order_id}\t1\t0\t1.00\t3\n"
+            ).encode("ascii")
+            for order_id in range(1, row_count + 1)
         )
         artifact_sha = hashlib.sha256(artifact_bytes).hexdigest()
+        job_names = [
+            *(f"job-buffered-{index}" for index in range(1, 4)),
+            *(f"job-chunked-{index}" for index in range(1, 4)),
+            "job-resume-1",
+        ]
+        job_results: dict[str, dict] = {}
+        audit_signatures = []
+        connector = self._connector_contract()
+        for job_offset, job_name in enumerate(job_names, 1):
+            job = runtime_root / job_name
+            job.mkdir()
+            (job / "artifact.tsv").write_bytes(artifact_bytes)
+            mode = "buffered" if job_name.startswith("job-buffered") else "chunked"
+            parts = []
+            if mode == "chunked":
+                parts_dir = job / "parts"
+                parts_dir.mkdir()
+                lines = artifact_bytes.splitlines(keepends=True)
+                for part_number in range(1, math.ceil(row_count / 1000) + 1):
+                    part_bytes = b"".join(
+                        lines[(part_number - 1) * 1000 : part_number * 1000]
+                    )
+                    part_name = f"part-{part_number:06d}.tsv"
+                    (parts_dir / part_name).write_bytes(part_bytes)
+                    first_id = (part_number - 1) * 1000 + 1
+                    last_id = min(part_number * 1000, row_count)
+                    parts.append(
+                        {
+                            "first_cursor": [
+                                f"2026-01-01 00:{first_id // 60:02d}:{first_id % 60:02d}.000000",
+                                first_id,
+                            ],
+                            "last_cursor": [
+                                f"2026-01-01 00:{last_id // 60:02d}:{last_id % 60:02d}.000000",
+                                last_id,
+                            ],
+                            "name": part_name,
+                            "number": part_number,
+                            "rows": last_id - first_id + 1,
+                            "sha256": hashlib.sha256(part_bytes).hexdigest(),
+                        }
+                    )
+            state = {
+                "abort_reason": None,
+                "active_seconds": 1.0,
+                "artifact_rows": row_count,
+                "artifact_sha256": artifact_sha,
+                "connection_id": 200 + job_offset,
+                "connector_contract": connector,
+                "expected_rows": row_count,
+                "high_created_at": high_cursor[0],
+                "high_id": high_cursor[1],
+                "job_id": job_name.removeprefix("job-"),
+                "last_created_at": high_cursor[0],
+                "last_id": high_cursor[1],
+                "mode": mode,
+                "next_part": len(parts) + 1,
+                "parts": parts,
+                "rows_written": row_count,
+                "status": "SUCCEEDED",
+            }
+            result = {
+                "active_seconds": 1.0,
+                "connector_contract": connector,
+                "high_cursor": high_cursor,
+                "job_id": state["job_id"],
+                "last_cursor": high_cursor,
+                "max_rss_bytes": 1_048_576,
+                "mode": mode,
+                **({"parts": len(parts)} if mode == "chunked" else {}),
+                "rows": row_count,
+                "rows_per_active_second": float(row_count),
+                "sha256": artifact_sha,
+                "status": "SUCCEEDED",
+            }
+            self._write_json(job / "state.json", state)
+            self._write_json(job / "result.json", result)
+            job_results[job_name] = result
+            audit_signatures.append(
+                {"job": job_name, "rows": row_count, "sha256": artifact_sha}
+            )
+
+        experiment_binding = self._experiment_binding(runtime_root, programs)
+        result_by_id: dict[str, dict] = {}
         control_p95 = {
             "control-1": [1.0, 2.0, 3.0, 4.0, 5.0],
             "control-2": [2.0, 3.0, 4.0, 5.0, 6.0],
             "control-3": [3.0, 4.0, 5.0, 6.0, 7.0],
         }
-        for invocation_id in INVOCATIONS:
-            if invocation_id == "latency-calibration-1":
-                continue
-            if invocation_id.startswith("resume-"):
-                result = (
-                    {
-                        "high_cursor": seed["high_cursor"],
-                        "job_id": "resume-1",
-                        "last_cursor": [seed["min_cursor"][0], seed["min_cursor"][1]],
-                        "mode": "chunked",
-                        "parts": 1,
-                        "rows": 1,
-                        "status": "ABORTED",
-                    }
-                    if invocation_id == "resume-interrupt-1"
-                    else {
-                        "high_cursor": seed["high_cursor"],
-                        "job_id": "resume-1",
-                        "last_cursor": seed["high_cursor"],
-                        "mode": "chunked",
-                        "rows": 3,
-                        "sha256": artifact_sha,
-                        "status": "SUCCEEDED",
-                    }
-                )
-                result_by_id[invocation_id] = result
-                (runtime_root / f"harness-{invocation_id}.stdout.json").write_text(
-                    json.dumps(result, sort_keys=True) + "\n", encoding="utf-8"
-                )
-                continue
-            mode = (
-                "none"
-                if invocation_id.startswith("control-")
-                else "chunked"
-                if invocation_id.startswith(("chunked-", "resume-"))
-                else "buffered"
-                if invocation_id.startswith("buffered-")
-                else "preflight"
-            )
-            values = control_p95.get(invocation_id, [1.0, 1.0, 1.0, 1.0, 1.0])
+        kill_connector = self._connector_contract()
+        result_by_id["kill-preflight-1"] = {
+            "active_polls": 1,
+            "active_query": "SELECT /* mysql_senior_kill_preflight */ 1 FROM kill_preflight_probe WHERE SLEEP(30)=0",
+            "cleanup_polls": 1,
+            "connection_id": 91,
+            "connector_connections": {
+                "killer": kill_connector,
+                "victim": kill_connector,
+            },
+            "connector_contract": kill_connector,
+            "controller_connector_environment": self._connector_environment(),
+            "experiment_binding": experiment_binding,
+            "mode": "preflight-kill",
+            "observed_errno": 1317,
+            "status": "SUCCEEDED",
+            "temporary_table_discarded": True,
+            "trial_contract": self._trial_contract("preflight-kill"),
+            "trial_id": "kill-preflight-1",
+            "victim_connection_absent": True,
+        }
+        smoke_windows = [
+            self._window("oltp-smoke-1", sequence, 1.0)
+            for sequence in range(1, 6)
+        ]
+        smoke_result = {
+            "accepted_windows": 5,
+            "connector_contract": self._connector_contract(),
+            "drain_limit_hits": 0,
+            "duration_seconds": 5,
+            "errors": 0,
+            "excluded_from_control_statistics": True,
+            "last_window_seq": 5,
+            "max_heartbeat_lateness_ms": 5.0,
+            "mode": "preflight-oltp",
+            "operations": 50,
+            "status": "SUCCEEDED",
+            "threads": 4,
+            "worker_connections": 4,
+        }
+        result_by_id["oltp-smoke-1"] = self._common_result(
+            trial_id="oltp-smoke-1",
+            mode="preflight-oltp",
+            binding=experiment_binding,
+            windows=smoke_windows,
+            duration=5,
+            export_result=None,
+            smoke_result=smoke_result,
+            smoke_gate=None,
+            calibration=None,
+        )
+        for trial_id in ("control-1", "control-2", "control-3"):
             windows = [
-                self._window(invocation_id, sequence, value)
-                for sequence, value in enumerate(values, 1)
+                self._window(trial_id, sequence, value)
+                for sequence, value in enumerate(control_p95[trial_id], 1)
             ]
-            result = self._controller_result(
-                invocation_id, mode, experiment_binding, windows
-            )
-            result_by_id[invocation_id] = result
-            self._write_json(
-                runtime_root / f"controller-result-{invocation_id}.json", result
+            result_by_id[trial_id] = self._common_result(
+                trial_id=trial_id,
+                mode="none",
+                binding=experiment_binding,
+                windows=windows,
+                duration=60,
+                export_result=None,
+                smoke_result=None,
+                smoke_gate=smoke_result,
+                calibration=None,
             )
 
         trials = []
@@ -490,17 +671,96 @@ class ContainerVerifierTests(unittest.TestCase):
         )
         self._write_json(runtime_root / "latency-calibration.json", calibration)
         calibration_result = {
+            "calibration_artifact": "latency-calibration.json",
             "calibration": calibration,
+            "controller_connector_environment": self._connector_environment(),
             "experiment_binding": experiment_binding,
             "mode": "latency-calibration",
+            "smoke_gate": smoke_result,
             "status": "SUCCEEDED",
+            "trial_contract": self._trial_contract("latency-calibration"),
             "trial_id": "latency-calibration-1",
         }
         result_by_id["latency-calibration-1"] = calibration_result
-        self._write_json(
-            runtime_root / "controller-result-latency-calibration-1.json",
-            calibration_result,
+        for prefix, mode in (("buffered", "buffered"), ("chunked", "chunked")):
+            for index in range(1, 4):
+                trial_id = f"{prefix}-{index}"
+                windows = [
+                    self._window(trial_id, sequence, 1.0)
+                    for sequence in range(1, 6)
+                ]
+                result_by_id[trial_id] = self._common_result(
+                    trial_id=trial_id,
+                    mode=mode,
+                    binding=experiment_binding,
+                    windows=windows,
+                    duration=60,
+                    export_result=job_results[f"job-{trial_id}"],
+                    smoke_result=None,
+                    smoke_gate=smoke_result,
+                    calibration=calibration,
+                )
+        resume_final_state = json.loads(
+            (runtime_root / "job-resume-1" / "state.json").read_text(
+                encoding="utf-8"
+            )
         )
+        checkpoint_parts = resume_final_state["parts"][:3]
+        checkpoint_state = {
+            **resume_final_state,
+            "abort_reason": "max_batches",
+            "artifact_rows": None,
+            "artifact_sha256": None,
+            "last_created_at": checkpoint_parts[-1]["last_cursor"][0],
+            "last_id": checkpoint_parts[-1]["last_cursor"][1],
+            "next_part": 4,
+            "parts": checkpoint_parts,
+            "rows_written": 3000,
+            "status": "ABORTED",
+        }
+        interruption_audit = {
+            "artifact_exists": False,
+            "checkpoint_state": checkpoint_state,
+            "checkpoint_state_sha256": hashlib.sha256(
+                (json.dumps(checkpoint_state, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+            ).hexdigest(),
+            "job_id": "resume-1",
+            "next_part": 4,
+            "part_count": 3,
+            "parts": checkpoint_parts,
+            "recorded_at": "2026-08-02T12:00:30Z",
+            "result_exists": False,
+            "rows_written": 3000,
+            "status": "ABORTED",
+        }
+        self._write_json(runtime_root / RESUME_INTERRUPTION_AUDIT, interruption_audit)
+        result_by_id["resume-interrupt-1"] = {
+            "active_seconds": 1.0,
+            "connector_contract": connector,
+            "high_cursor": high_cursor,
+            "job_id": "resume-1",
+            "last_cursor": checkpoint_parts[-1]["last_cursor"],
+            "max_rss_bytes": 1_048_576,
+            "mode": "chunked",
+            "parts": 3,
+            "reason": "max_batches",
+            "rows": 3000,
+            "rows_per_active_second": 3000.0,
+            "status": "ABORTED",
+        }
+        result_by_id["resume-complete-1"] = job_results["job-resume-1"]
+
+        for invocation_id, result in result_by_id.items():
+            if not invocation_id.startswith("resume-"):
+                self._write_json(
+                    runtime_root / f"controller-result-{invocation_id}.json", result
+                )
+            (runtime_root / f"harness-{invocation_id}.stdout.json").write_text(
+                json.dumps(result, sort_keys=True) + "\n", encoding="utf-8"
+            )
+            (runtime_root / f"harness-{invocation_id}.stderr.txt").write_text(
+                "", encoding="utf-8"
+            )
 
         phase_invocations = {
             "10-kill-smoke": INVOCATIONS[0:2],
@@ -530,7 +790,10 @@ class ContainerVerifierTests(unittest.TestCase):
                     output.write(
                         json.dumps(
                             {
-                                "detail": result_by_id[invocation_id],
+                                "detail": {
+                                    **result_by_id[invocation_id],
+                                    "returncode": 0,
+                                },
                                 "invocation_id": invocation_id,
                                 "state": (
                                     "ABORTED"
@@ -545,44 +808,6 @@ class ContainerVerifierTests(unittest.TestCase):
                         + "\n"
                     )
 
-        job_names = [
-            *(f"job-buffered-{index}" for index in range(1, 4)),
-            *(f"job-chunked-{index}" for index in range(1, 4)),
-            "job-resume-1",
-        ]
-        audit_signatures = []
-        for job_name in job_names:
-            job = runtime_root / job_name
-            job.mkdir()
-            (job / "artifact.tsv").write_bytes(artifact_bytes)
-            mode = "buffered" if job_name.startswith("job-buffered") else "chunked"
-            state = {
-                "artifact_rows": 3,
-                "artifact_sha256": artifact_sha,
-                "expected_rows": 3,
-                "high_created_at": seed["high_cursor"][0],
-                "high_id": seed["high_cursor"][1],
-                "job_id": job_name.removeprefix("job-"),
-                "last_created_at": seed["high_cursor"][0],
-                "last_id": seed["high_cursor"][1],
-                "mode": mode,
-                "rows_written": 3,
-                "status": "SUCCEEDED",
-            }
-            result = {
-                "high_cursor": seed["high_cursor"],
-                "job_id": state["job_id"],
-                "last_cursor": seed["high_cursor"],
-                "mode": mode,
-                "rows": 3,
-                "sha256": artifact_sha,
-                "status": "SUCCEEDED",
-            }
-            self._write_json(job / "state.json", state)
-            self._write_json(job / "result.json", result)
-            audit_signatures.append(
-                {"job": job_name, "rows": 3, "sha256": artifact_sha}
-            )
         self._write_json(
             runtime_root / "external-artifact-audit.json",
             {"artifacts": audit_signatures, "status": "COMPLETE"},
@@ -618,8 +843,7 @@ class ContainerVerifierTests(unittest.TestCase):
             scenario_path=SCENARIO,
             expected_commit=fixture["expected_commit"],
             mountinfo_text=self.read_only_mountinfo,
-            expected_seed_manifest=fixture["seed"],
-            expected_probe_schema=fixture["probe_schema"],
+            minimum_artifact_rows=3000,
             minimum_control_windows=5,
         )
 
@@ -633,6 +857,41 @@ class ContainerVerifierTests(unittest.TestCase):
             path.relative_to(root).as_posix(): path.stat().st_mtime_ns for path in files
         }
         return digests, mtimes
+
+    def _replace_invocation_result(
+        self,
+        fixture: dict[str, object],
+        invocation_id: str,
+        result: dict,
+        *,
+        returncode: object = 0,
+    ) -> None:
+        runtime_root = fixture["runtime_root"]
+        if not invocation_id.startswith("resume-"):
+            self._write_json(
+                runtime_root / f"controller-result-{invocation_id}.json", result
+            )
+        (runtime_root / f"harness-{invocation_id}.stdout.json").write_text(
+            json.dumps(result, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        ledger_path = fixture["ledger_for"][invocation_id]
+        records = [
+            json.loads(line)
+            for line in ledger_path.read_text(encoding="utf-8").splitlines()
+        ]
+        terminal = next(
+            record
+            for record in records
+            if record["invocation_id"] == invocation_id and "detail" in record
+        )
+        terminal["detail"] = {**result, "returncode": returncode}
+        ledger_path.write_text(
+            "".join(
+                json.dumps(item, sort_keys=True, separators=(",", ":")) + "\n"
+                for item in records
+            ),
+            encoding="utf-8",
+        )
 
     def test_verifier_accepts_complete_read_only_tree(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -664,21 +923,7 @@ class ContainerVerifierTests(unittest.TestCase):
             path = runtime_root / "controller-result-control-1.json"
             result = json.loads(path.read_text(encoding="utf-8"))
             result["oltp_result"]["window_history"][2]["window_seq"] = 99
-            self._write_json(path, result)
-            ledger_path = fixture["ledger_for"]["control-1"]
-            records = [json.loads(line) for line in ledger_path.read_text().splitlines()]
-            next(
-                record
-                for record in records
-                if record["invocation_id"] == "control-1" and "detail" in record
-            )["detail"] = result
-            ledger_path.write_text(
-                "".join(
-                    json.dumps(item, sort_keys=True, separators=(",", ":")) + "\n"
-                    for item in records
-                ),
-                encoding="utf-8",
-            )
+            self._replace_invocation_result(fixture, "control-1", result)
             self._refresh_manifests(runtime_root, fixture["binding"])
             with self.assertRaisesRegex(ValueError, "sequence"):
                 self._verify(root, fixture)
@@ -695,21 +940,8 @@ class ContainerVerifierTests(unittest.TestCase):
             result_path = runtime_root / "controller-result-latency-calibration-1.json"
             result = json.loads(result_path.read_text(encoding="utf-8"))
             result["calibration"] = calibration
-            self._write_json(result_path, result)
-            ledger_path = fixture["ledger_for"]["latency-calibration-1"]
-            records = [json.loads(line) for line in ledger_path.read_text().splitlines()]
-            next(
-                record
-                for record in records
-                if record["invocation_id"] == "latency-calibration-1"
-                and "detail" in record
-            )["detail"] = result
-            ledger_path.write_text(
-                "".join(
-                    json.dumps(item, sort_keys=True, separators=(",", ":")) + "\n"
-                    for item in records
-                ),
-                encoding="utf-8",
+            self._replace_invocation_result(
+                fixture, "latency-calibration-1", result
             )
             self._refresh_manifests(runtime_root, fixture["binding"])
             with self.assertRaisesRegex(ValueError, "calibration"):
@@ -749,28 +981,141 @@ class ContainerVerifierTests(unittest.TestCase):
                     path = runtime_root / "controller-result-buffered-1.json"
                     result = json.loads(path.read_text(encoding="utf-8"))
                     result["experiment_binding"]["runtime_root"] = "/private/tmp/drift"
-                    self._write_json(path, result)
-                    ledger_path = fixture["ledger_for"]["buffered-1"]
-                    records = [
-                        json.loads(line)
-                        for line in ledger_path.read_text(encoding="utf-8").splitlines()
-                    ]
-                    next(
-                        record
-                        for record in records
-                        if record["invocation_id"] == "buffered-1"
-                        and "detail" in record
-                    )["detail"] = result
-                    ledger_path.write_text(
-                        "".join(
-                            json.dumps(item, sort_keys=True, separators=(",", ":"))
-                            + "\n"
-                            for item in records
-                        ),
-                        encoding="utf-8",
-                    )
+                    self._replace_invocation_result(fixture, "buffered-1", result)
                 self._refresh_manifests(runtime_root, fixture["binding"])
                 with self.assertRaisesRegex(ValueError, corruption.replace("_", " ")):
+                    self._verify(root, fixture)
+
+    def test_verifier_rejects_source_baseline_drift(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fixture = self._build_tree(root)
+            path = fixture["runtime_root"] / "seed-manifest.json"
+            seed = json.loads(path.read_text(encoding="utf-8"))
+            seed["report_rows"] += 1
+            self._write_json(path, seed)
+            self._refresh_manifests(fixture["runtime_root"], fixture["binding"])
+            with self.assertRaisesRegex(ValueError, "source baseline"):
+                self._verify(root, fixture)
+
+    def test_verifier_rejects_probe_schema_drift(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fixture = self._build_tree(root)
+            path = fixture["runtime_root"] / "probe-schema.json"
+            schema = json.loads(path.read_text(encoding="utf-8"))
+            schema[0]["DATA_TYPE"] = "bigint"
+            self._write_json(path, schema)
+            self._refresh_manifests(fixture["runtime_root"], fixture["binding"])
+            with self.assertRaisesRegex(ValueError, "probe schema"):
+                self._verify(root, fixture)
+
+    def test_verifier_rejects_trigger_definition_drift(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fixture = self._build_tree(root)
+            path = fixture["runtime_root"] / "freeze-triggers.json"
+            triggers = json.loads(path.read_text(encoding="utf-8"))
+            triggers[0]["operation"] = "UPDATE"
+            self._write_json(path, triggers)
+            self._refresh_manifests(fixture["runtime_root"], fixture["binding"])
+            with self.assertRaisesRegex(ValueError, "trigger"):
+                self._verify(root, fixture)
+
+    def test_verifier_rejects_global_evidence_drift(self):
+        for changed in ([134_217_728], [134_217_728, 16_777_216, 16_777_216, "READ-COMMITTED", 0, 0], [True, 16_777_216, 16_777_216, "REPEATABLE-READ", 0, 0]):
+            with self.subTest(changed=changed), tempfile.TemporaryDirectory() as temporary_directory:
+                root = Path(temporary_directory)
+                fixture = self._build_tree(root)
+                self._write_json(fixture["runtime_root"] / "global-variables.json", changed)
+                self._refresh_manifests(fixture["runtime_root"], fixture["binding"])
+                with self.assertRaisesRegex(ValueError, "global"):
+                    self._verify(root, fixture)
+
+    def test_verifier_rejects_direct_resume_contract_drift(self):
+        for field, value in (("status", "SUCCEEDED"), ("rows", 2999), ("parts", 2), ("reason", "signal")):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as temporary_directory:
+                root = Path(temporary_directory)
+                fixture = self._build_tree(root)
+                path = fixture["runtime_root"] / "harness-resume-interrupt-1.stdout.json"
+                result = json.loads(path.read_text(encoding="utf-8"))
+                result[field] = value
+                self._replace_invocation_result(fixture, "resume-interrupt-1", result)
+                self._refresh_manifests(fixture["runtime_root"], fixture["binding"])
+                with self.assertRaisesRegex(ValueError, "resume interruption"):
+                    self._verify(root, fixture)
+
+    def test_verifier_rejects_resume_interruption_audit_drift(self):
+        for corruption in ("next_part", "part_prefix", "artifact_exists"):
+            with self.subTest(corruption=corruption), tempfile.TemporaryDirectory() as temporary_directory:
+                root = Path(temporary_directory)
+                fixture = self._build_tree(root)
+                path = fixture["runtime_root"] / RESUME_INTERRUPTION_AUDIT
+                audit = json.loads(path.read_text(encoding="utf-8"))
+                if corruption == "next_part":
+                    audit["next_part"] = 5
+                elif corruption == "part_prefix":
+                    audit["parts"][0]["sha256"] = "0" * 64
+                else:
+                    audit["artifact_exists"] = True
+                self._write_json(path, audit)
+                self._refresh_manifests(fixture["runtime_root"], fixture["binding"])
+                with self.assertRaisesRegex(ValueError, "resume interruption"):
+                    self._verify(root, fixture)
+
+    def test_verifier_rejects_each_ordinary_result_contract_drift(self):
+        corruptions = (
+            ("kill-preflight-1", "status", "FAILED"),
+            ("oltp-smoke-1", "mode", "none"),
+            ("control-1", "smoke_gate", None),
+            ("latency-calibration-1", "status", "FAILED"),
+            ("buffered-1", "export_result", None),
+            ("chunked-1", "export_returncode", 1),
+        )
+        for invocation_id, field, value in corruptions:
+            with self.subTest(invocation_id=invocation_id, field=field), tempfile.TemporaryDirectory() as temporary_directory:
+                root = Path(temporary_directory)
+                fixture = self._build_tree(root)
+                path = fixture["runtime_root"] / f"controller-result-{invocation_id}.json"
+                result = json.loads(path.read_text(encoding="utf-8"))
+                result[field] = value
+                self._replace_invocation_result(fixture, invocation_id, result)
+                self._refresh_manifests(fixture["runtime_root"], fixture["binding"])
+                with self.assertRaisesRegex(ValueError, "result contract|calibration"):
+                    self._verify(root, fixture)
+
+    def test_verifier_rejects_missing_duplicate_or_invalid_returncode_evidence(self):
+        for corruption in (
+            "missing",
+            "bool",
+            "missing_stdout",
+            "duplicate_stdout",
+            "extra_stdout",
+        ):
+            with self.subTest(corruption=corruption), tempfile.TemporaryDirectory() as temporary_directory:
+                root = Path(temporary_directory)
+                fixture = self._build_tree(root)
+                runtime_root = fixture["runtime_root"]
+                if corruption == "duplicate_stdout":
+                    path = runtime_root / "harness-control-1.stdout.json"
+                    path.write_text(path.read_text(encoding="utf-8") * 2, encoding="utf-8")
+                elif corruption == "extra_stdout":
+                    (runtime_root / "harness-control-copy.stdout.json").write_text(
+                        "{}\n", encoding="utf-8"
+                    )
+                elif corruption == "missing_stdout":
+                    (runtime_root / "harness-control-1.stdout.json").unlink()
+                else:
+                    ledger_path = fixture["ledger_for"]["control-1"]
+                    records = [json.loads(line) for line in ledger_path.read_text(encoding="utf-8").splitlines()]
+                    terminal = next(record for record in records if record["invocation_id"] == "control-1" and "detail" in record)
+                    if corruption == "missing":
+                        terminal["detail"].pop("returncode")
+                    else:
+                        terminal["detail"]["returncode"] = True
+                    ledger_path.write_text("".join(json.dumps(item, sort_keys=True, separators=(",", ":")) + "\n" for item in records), encoding="utf-8")
+                self._refresh_manifests(runtime_root, fixture["binding"])
+                with self.assertRaisesRegex(ValueError, "returncode|stdout"):
                     self._verify(root, fixture)
 
     def test_verifier_writes_nothing_to_volume(self):
@@ -950,13 +1295,31 @@ class HarnessStateTests(unittest.TestCase):
             if invocation_id == "resume-interrupt-1":
                 job = root / "job-resume-1"
                 job.mkdir()
+                parts_dir = job / "parts"
+                parts_dir.mkdir()
+                parts = []
+                for number in range(1, 4):
+                    content = b"checkpoint\n" * 1000
+                    name = f"part-{number:06d}.tsv"
+                    (parts_dir / name).write_bytes(content)
+                    parts.append(
+                        {
+                            "first_cursor": [f"2026-01-01 00:0{number}:00.000000", number],
+                            "last_cursor": [f"2026-01-01 00:0{number}:59.000000", number],
+                            "name": name,
+                            "number": number,
+                            "rows": 1000,
+                            "sha256": hashlib.sha256(content).hexdigest(),
+                        }
+                    )
                 (job / "state.json").write_text(
                     json.dumps(
                         {
+                            "job_id": "resume-1",
                             "status": "ABORTED",
                             "rows_written": 3000,
                             "next_part": 4,
-                            "parts": [{}, {}, {}],
+                            "parts": parts,
                         }
                     ),
                     encoding="utf-8",
@@ -1009,6 +1372,50 @@ class HarnessStateTests(unittest.TestCase):
             self.assertEqual(tuple(calls), INVOCATIONS)
             self.assertEqual(tuple(manifests), PHASES)
             self.assertEqual(teardowns, [True])
+
+    def test_planned_interruption_writes_exact_immutable_checkpoint_audit(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            calls = []
+            machine = self._machine(root, calls, [], [])
+
+            result = machine.execute("resume-interrupt-1")
+            audit = validate_resume_interruption_audit(root)
+
+            self.assertEqual(result["status"], "ABORTED")
+            self.assertEqual(set(audit), {
+                "artifact_exists", "checkpoint_state", "checkpoint_state_sha256",
+                "job_id", "next_part", "part_count", "parts", "recorded_at",
+                "result_exists", "rows_written", "status",
+            })
+            self.assertEqual(audit["next_part"], 4)
+            self.assertEqual(audit["part_count"], 3)
+            self.assertFalse(audit["artifact_exists"])
+            self.assertFalse(audit["result_exists"])
+            self.assertTrue((root / RESUME_INTERRUPTION_AUDIT).is_file())
+            with self.assertRaises(FileExistsError):
+                write_resume_interruption_audit(root, audit["checkpoint_state"])
+
+    def test_resume_revalidates_checkpoint_audit_before_launch(self):
+        for corruption in ("next_part", "part_bytes"):
+            with self.subTest(corruption=corruption), tempfile.TemporaryDirectory() as temporary_directory:
+                root = Path(temporary_directory)
+                calls = []
+                machine = self._machine(root, calls, [], [])
+                machine.execute("resume-interrupt-1")
+                if corruption == "next_part":
+                    state_path = root / "job-resume-1" / "state.json"
+                    state = json.loads(state_path.read_text(encoding="utf-8"))
+                    state["next_part"] = 5
+                    state_path.write_text(json.dumps(state), encoding="utf-8")
+                else:
+                    (root / "job-resume-1" / "parts" / "part-000001.tsv").write_bytes(
+                        b"tampered\n" * 1000
+                    )
+
+                with self.assertRaisesRegex(RuntimeError, "interruption"):
+                    machine.execute("resume-complete-1")
+                self.assertEqual(calls, ["resume-interrupt-1"])
 
     def test_failure_stops_later_phases_and_runs_teardown_once(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

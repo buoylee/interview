@@ -26,7 +26,10 @@ from container_harness import (
     INVOCATIONS,
     NEGATIVE_PROBE_SQL,
     PHASE_INVOCATIONS,
+    RESUME_INTERRUPTION_AUDIT,
+    RESUME_PART_FIELDS,
     SEVENTH_RUNTIME_FILENAME,
+    validate_freeze_trigger_rows,
 )
 from evidence_contract import (
     EvidenceBinding,
@@ -65,6 +68,23 @@ JOB_NAMES = (
     "job-chunked-3",
     "job-resume-1",
 )
+TIMED_IDS = ("oltp-smoke-1", *CONTROL_IDS, *INVOCATIONS[6:12])
+COMMON_RESULT_FIELDS = {
+    "accepted_windows",
+    "controller_connector_environment",
+    "experiment_binding",
+    "export_result",
+    "export_returncode",
+    "latency_calibration",
+    "mode",
+    "oltp_result",
+    "oltp_returncode",
+    "smoke_gate",
+    "smoke_result",
+    "status",
+    "trial_contract",
+    "trial_id",
+}
 
 
 def _fail(message: str) -> None:
@@ -84,6 +104,61 @@ def _number(value: object, field: str) -> float:
     if not math.isfinite(parsed) or parsed < 0:
         _fail(f"{field} must be an exact finite number")
     return parsed
+
+
+def _connector_environment(value: object) -> dict[str, object]:
+    fields = {
+        "connector_version",
+        "have_cext",
+        "platform",
+        "python_version",
+        "requested_use_pure",
+        "threadsafety",
+    }
+    if type(value) is not dict or set(value) != fields:
+        _fail("controller connector environment fields drifted")
+    if (
+        value["connector_version"] != "9.7.0"
+        or type(value["have_cext"]) is not bool
+        or type(value["platform"]) is not str
+        or not value["platform"]
+        or type(value["python_version"]) is not str
+        or not value["python_version"]
+        or value["requested_use_pure"] is not True
+        or _exact_int(value["threadsafety"], "connector threadsafety") != 1
+    ):
+        _fail("controller connector environment changed")
+    return value
+
+
+def _connector_contract(
+    value: object, expected_environment: dict[str, object] | None = None
+) -> dict[str, object]:
+    fields = {
+        "actual_connection_class",
+        "actual_pure",
+        "connector_version",
+        "have_cext",
+        "platform",
+        "python_version",
+        "requested_use_pure",
+        "threadsafety",
+    }
+    if type(value) is not dict or set(value) != fields:
+        _fail("connector contract fields drifted")
+    environment = {key: value[key] for key in fields if key not in {"actual_connection_class", "actual_pure"}}
+    _connector_environment(environment)
+    if (
+        value["actual_connection_class"]
+        != "mysql.connector.connection.MySQLConnection"
+        or value["actual_pure"] is not True
+        or (
+            expected_environment is not None
+            and not _canonical_equal(environment, expected_environment)
+        )
+    ):
+        _fail("connector contract changed")
+    return value
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -417,77 +492,439 @@ def _experiment_binding(
     return value
 
 
+def _trial_contract(value: object, mode: str, duration: int) -> None:
+    expected = {
+        "duration_seconds": duration,
+        "export_mode": mode,
+        "requested_p95_budget_ms": 0.0,
+        "threads": 4,
+        "window_seconds": 1.0,
+    }
+    if type(value) is not dict or not _canonical_equal(value, expected):
+        _fail("ordinary result contract trial settings changed")
+
+
+def _oltp_child(
+    value: object,
+    trial_id: str,
+    accepted: list[dict[str, object]],
+    environment: dict[str, object],
+) -> None:
+    fields = {
+        "connector_contract",
+        "drain_limit_hits",
+        "errors",
+        "max_heartbeat_lateness_ms",
+        "mode",
+        "operations",
+        "p50_ms",
+        "p95_ms",
+        "p99_ms",
+        "status",
+        "threads",
+        "trial_id",
+        "window_history",
+        "window_history_schema",
+        "worker_connections",
+    }
+    if type(value) is not dict or set(value) != fields:
+        _fail("ordinary result contract OLTP child fields changed")
+    _connector_contract(value["connector_contract"], environment)
+    child_history = _validate_window_history(
+        value["window_history"], trial_id, minimum_windows=len(accepted)
+    )
+    if (
+        value["mode"] != "oltp"
+        or value["status"] != "SUCCEEDED"
+        or value["trial_id"] != trial_id
+        or _exact_int(value["threads"], "OLTP child threads", minimum=1) != 4
+        or _exact_int(value["errors"], "OLTP child errors") != 0
+        or _exact_int(value["drain_limit_hits"], "OLTP child drain hits") != 0
+        or _exact_int(value["operations"], "OLTP child operations", minimum=1) <= 0
+        or value["window_history_schema"] != "oltp-window-history-v1"
+        or not _canonical_equal(child_history, accepted)
+    ):
+        _fail("ordinary result contract OLTP child changed")
+    for field in ("p50_ms", "p95_ms", "p99_ms", "max_heartbeat_lateness_ms"):
+        _number(value[field], f"OLTP child {field}")
+    workers = value["worker_connections"]
+    if type(workers) is not list or len(workers) != 4:
+        _fail("ordinary result contract worker connections changed")
+    connection_ids = set()
+    for worker_number, worker in enumerate(workers, 1):
+        if type(worker) is not dict or set(worker) != {
+            "actual_connection_class",
+            "actual_pure",
+            "close_proof",
+            "closed",
+            "connection_id",
+            "connector_version",
+            "have_cext",
+            "platform",
+            "python_version",
+            "requested_use_pure",
+            "threadsafety",
+            "worker",
+        }:
+            _fail("ordinary result contract worker fields changed")
+        contract = {
+            key: worker[key]
+            for key in worker
+            if key not in {"close_proof", "closed", "connection_id", "worker"}
+        }
+        _connector_contract(contract, environment)
+        connection_id = _exact_int(
+            worker["connection_id"], "worker connection ID", minimum=1
+        )
+        if (
+            worker["worker"] != worker_number
+            or type(worker["worker"]) is not int
+            or worker["closed"] is not True
+            or worker["close_proof"] != "is_connected_false"
+            or connection_id in connection_ids
+        ):
+            _fail("ordinary result contract worker connection changed")
+        connection_ids.add(connection_id)
+
+
+def _smoke_result(value: object, environment: dict[str, object]) -> dict[str, object]:
+    fields = {
+        "accepted_windows",
+        "connector_contract",
+        "drain_limit_hits",
+        "duration_seconds",
+        "errors",
+        "excluded_from_control_statistics",
+        "last_window_seq",
+        "max_heartbeat_lateness_ms",
+        "mode",
+        "operations",
+        "status",
+        "threads",
+        "worker_connections",
+    }
+    if type(value) is not dict or set(value) != fields:
+        _fail("ordinary result contract smoke gate fields changed")
+    _connector_contract(value["connector_contract"], environment)
+    if (
+        value["status"] != "SUCCEEDED"
+        or value["mode"] != "preflight-oltp"
+        or value["excluded_from_control_statistics"] is not True
+        or _exact_int(value["duration_seconds"], "smoke duration", minimum=1) != 5
+        or _exact_int(value["threads"], "smoke threads", minimum=1) != 4
+        or _exact_int(value["errors"], "smoke errors") != 0
+        or _exact_int(value["drain_limit_hits"], "smoke drain hits") != 0
+        or _exact_int(value["accepted_windows"], "smoke accepted windows", minimum=2) < 2
+        or _exact_int(value["last_window_seq"], "smoke final window", minimum=2)
+        < value["accepted_windows"]
+        or _exact_int(value["worker_connections"], "smoke workers", minimum=1) != 4
+        or _exact_int(value["operations"], "smoke operations", minimum=1) <= 0
+    ):
+        _fail("ordinary result contract smoke gate changed")
+    _number(value["max_heartbeat_lateness_ms"], "smoke heartbeat lateness")
+    return value
+
+
+def _export_result(
+    value: object, job_id: str, mode: str, seed_rows: int | None = None
+) -> dict[str, object]:
+    fields = {
+        "active_seconds",
+        "connector_contract",
+        "high_cursor",
+        "job_id",
+        "last_cursor",
+        "max_rss_bytes",
+        "mode",
+        "rows",
+        "rows_per_active_second",
+        "sha256",
+        "status",
+    }
+    if mode == "chunked":
+        fields.add("parts")
+    if type(value) is not dict or set(value) != fields:
+        _fail("ordinary result contract export fields changed")
+    _connector_contract(value["connector_contract"])
+    rows = _exact_int(value["rows"], "export rows", minimum=1)
+    if (
+        value["status"] != "SUCCEEDED"
+        or value["mode"] != mode
+        or value["job_id"] != job_id
+        or (seed_rows is not None and rows != seed_rows)
+        or type(value["sha256"]) is not str
+        or not re.fullmatch(r"[0-9a-f]{64}", value["sha256"])
+        or type(value["high_cursor"]) is not list
+        or type(value["last_cursor"]) is not list
+        or value["high_cursor"] != value["last_cursor"]
+    ):
+        _fail("ordinary result contract export changed")
+    active_seconds = _number(value["active_seconds"], "export active seconds")
+    throughput = _number(value["rows_per_active_second"], "export throughput")
+    if active_seconds <= 0 or not math.isclose(
+        throughput, rows / active_seconds, rel_tol=1e-12, abs_tol=1e-12
+    ):
+        _fail("ordinary result contract export throughput changed")
+    _exact_int(value["max_rss_bytes"], "export max RSS", minimum=1)
+    if mode == "chunked":
+        _exact_int(value["parts"], "export parts", minimum=1)
+    return value
+
+
+def _common_result(
+    result: object,
+    invocation_id: str,
+    mode: str,
+    duration: int,
+    runtime_root: Path,
+    programs: dict[str, str],
+    minimum_control_windows: int,
+) -> tuple[list[dict[str, object]], dict[str, object]]:
+    if type(result) is not dict or set(result) != COMMON_RESULT_FIELDS:
+        _fail("ordinary result contract fields changed")
+    environment = _connector_environment(result["controller_connector_environment"])
+    _experiment_binding(result["experiment_binding"], runtime_root, programs)
+    if (
+        result["status"] != "SUCCEEDED"
+        or result["trial_id"] != invocation_id
+        or result["mode"] != mode
+        or type(result["oltp_returncode"]) is not int
+        or result["oltp_returncode"] != 0
+    ):
+        _fail("ordinary result contract identity or status changed")
+    _trial_contract(result["trial_contract"], mode, duration)
+    minimum = minimum_control_windows if invocation_id in CONTROL_IDS else 1
+    accepted = _validate_window_history(
+        result["accepted_windows"], invocation_id, minimum_windows=minimum
+    )
+    _oltp_child(result["oltp_result"], invocation_id, accepted, environment)
+    return accepted, environment
+
+
 def _controller_results(
     runtime_root: Path,
     programs: dict[str, str],
     ledger_terminal: dict[str, dict[str, object]],
     minimum_control_windows: int,
 ) -> tuple[dict[str, dict[str, object]], int]:
-    results = {}
+    expected_stdout = {
+        f"harness-{invocation_id}.stdout.json" for invocation_id in INVOCATIONS
+    }
+    expected_stderr = {
+        f"harness-{invocation_id}.stderr.txt" for invocation_id in INVOCATIONS
+    }
+    expected_persisted = {
+        f"controller-result-{invocation_id}.json"
+        for invocation_id in INVOCATIONS
+        if not invocation_id.startswith("resume-")
+    }
+    if (
+        {path.name for path in runtime_root.glob("harness-*.stdout.json")}
+        != expected_stdout
+        or {path.name for path in runtime_root.glob("harness-*.stderr.txt")}
+        != expected_stderr
+        or {path.name for path in runtime_root.glob("controller-result-*.json")}
+        != expected_persisted
+    ):
+        _fail("stdout or persisted invocation evidence set changed")
+
+    results: dict[str, dict[str, object]] = {}
     histories = 0
+    smoke_authority = None
+    calibration_authority = _read_json(runtime_root / "latency-calibration.json")
     for invocation_id in INVOCATIONS:
-        if invocation_id.startswith("resume-"):
-            stdout_path = runtime_root / f"harness-{invocation_id}.stdout.json"
-            try:
-                lines = stdout_path.read_text(encoding="utf-8").splitlines()
-                result = json.loads(lines[-1])
-            except (OSError, IndexError, UnicodeError, json.JSONDecodeError) as error:
-                raise ValueError(
-                    f"invalid direct-resume stdout evidence: {stdout_path}"
-                ) from error
-            if type(result) is not dict:
-                _fail("direct-resume stdout has the wrong exact type")
-        else:
-            path = runtime_root / f"controller-result-{invocation_id}.json"
-            result = _read_json(path)
+        stdout_path = runtime_root / f"harness-{invocation_id}.stdout.json"
+        try:
+            lines = stdout_path.read_text(encoding="utf-8").splitlines()
+            if len(lines) != 1:
+                _fail("stdout invocation evidence must contain exactly one record")
+            result = json.loads(lines[0])
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise ValueError(f"invalid stdout invocation evidence: {stdout_path}") from error
+        if type(result) is not dict:
+            _fail("stdout invocation evidence has the wrong exact type")
+        stderr_path = runtime_root / f"harness-{invocation_id}.stderr.txt"
+        try:
+            if stderr_path.read_bytes() != b"":
+                _fail("stdout invocation evidence has nonempty stderr")
+        except OSError as error:
+            raise ValueError(f"invalid stdout invocation evidence: {stderr_path}") from error
+        if not invocation_id.startswith("resume-"):
+            persisted = _read_json(
+                runtime_root / f"controller-result-{invocation_id}.json"
+            )
+            if not _canonical_equal(persisted, result):
+                _fail("stdout differs from persisted controller result")
         detail = dict(ledger_terminal[invocation_id])
-        returncode = detail.pop("returncode", 0)
+        if set(detail) != set(result) | {"returncode"}:
+            _fail("invocation returncode or result fields are not exact")
+        returncode = detail.pop("returncode")
         if (
             type(returncode) is not int
             or returncode != 0
             or not _canonical_equal(detail, result)
         ):
-            _fail("controller result differs from authoritative invocation history")
-        if not invocation_id.startswith("resume-"):
-            binding = result.get("experiment_binding")
-            _experiment_binding(binding, runtime_root, programs)
-        if invocation_id != "latency-calibration-1":
-            accepted = result.get("accepted_windows")
-            child = result.get("oltp_result")
+            _fail("invocation returncode or authoritative result changed")
+
+        # Direct resume records have no controller-result file and must be handled
+        # before the generic timed-controller branch.
+        if invocation_id == "resume-interrupt-1":
+            fields = {
+                "active_seconds", "connector_contract", "high_cursor", "job_id",
+                "last_cursor", "max_rss_bytes", "mode", "parts", "reason",
+                "rows", "rows_per_active_second", "status",
+            }
+            if type(result) is not dict or set(result) != fields:
+                _fail("direct resume interruption result contract fields changed")
+            _connector_contract(result["connector_contract"])
             if (
-                type(accepted) is list
-                and type(child) is dict
-                and type(child.get("window_history")) is list
+                result["status"] != "ABORTED"
+                or result["mode"] != "chunked"
+                or result["job_id"] != "resume-1"
+                or result["reason"] != "max_batches"
+                or _exact_int(result["rows"], "resume interruption rows") != 3000
+                or _exact_int(result["parts"], "resume interruption parts") != 3
+                or "sha256" in result
             ):
-                minimum = minimum_control_windows if invocation_id in CONTROL_IDS else 0
-                accepted_history = _validate_window_history(
-                    accepted, invocation_id, minimum_windows=minimum
-                )
-                child_history = _validate_window_history(
-                    child["window_history"], invocation_id, minimum_windows=minimum
-                )
-                if child.get("window_history_schema") != "oltp-window-history-v1":
-                    _fail("authoritative history schema changed")
-                if not _canonical_equal(accepted_history, child_history):
-                    _fail("accepted windows differ from authoritative history")
-                histories += 1
-            elif invocation_id in (
-                "oltp-smoke-1",
-                *CONTROL_IDS,
-                "buffered-1",
-                "buffered-2",
-                "buffered-3",
-                "chunked-1",
-                "chunked-2",
-                "chunked-3",
+                _fail("direct resume interruption result contract changed")
+            active_seconds = _number(
+                result["active_seconds"], "resume interruption active seconds"
+            )
+            throughput = _number(
+                result["rows_per_active_second"], "resume interruption throughput"
+            )
+            if active_seconds <= 0 or not math.isclose(
+                throughput,
+                result["rows"] / active_seconds,
+                rel_tol=1e-12,
+                abs_tol=1e-12,
             ):
-                _fail("timed authoritative history is missing")
-        elif invocation_id == "resume-interrupt-1":
-            if result.get("status") != "ABORTED" or result.get("mode") != "chunked":
-                _fail("direct resume interruption history changed")
-        elif invocation_id == "resume-complete-1":
-            if result.get("status") != "SUCCEEDED" or result.get("mode") != "chunked":
-                _fail("direct resume completion history changed")
+                _fail("direct resume interruption throughput changed")
+            _exact_int(result["max_rss_bytes"], "resume interruption max RSS", minimum=1)
+            results[invocation_id] = result
+            continue
+        if invocation_id == "resume-complete-1":
+            _export_result(result, "resume-1", "chunked")
+            results[invocation_id] = result
+            continue
+
+        if invocation_id == "kill-preflight-1":
+            fields = {
+                "active_polls", "active_query", "cleanup_polls", "connection_id",
+                "connector_connections", "connector_contract",
+                "controller_connector_environment", "experiment_binding", "mode",
+                "observed_errno", "status", "temporary_table_discarded",
+                "trial_contract", "trial_id", "victim_connection_absent",
+            }
+            if type(result) is not dict or set(result) != fields:
+                _fail("ordinary result contract kill fields changed")
+            environment = _connector_environment(result["controller_connector_environment"])
+            _experiment_binding(result["experiment_binding"], runtime_root, programs)
+            _connector_contract(result["connector_contract"], environment)
+            connections = result["connector_connections"]
+            if type(connections) is not dict or set(connections) != {"killer", "victim"}:
+                _fail("ordinary result contract kill connections changed")
+            for connection in connections.values():
+                _connector_contract(connection, environment)
+            _trial_contract(result["trial_contract"], "preflight-kill", 60)
+            if (
+                result["status"] != "SUCCEEDED"
+                or result["mode"] != "preflight-kill"
+                or result["trial_id"] != invocation_id
+                or result["observed_errno"] != 1317
+                or type(result["observed_errno"]) is not int
+                or result["temporary_table_discarded"] is not True
+                or result["victim_connection_absent"] is not True
+                or "mysql_senior_kill_preflight" not in result["active_query"]
+            ):
+                _fail("ordinary result contract kill changed")
+            for field in ("active_polls", "cleanup_polls", "connection_id"):
+                _exact_int(result[field], f"kill {field}", minimum=1)
+        elif invocation_id == "latency-calibration-1":
+            fields = {
+                "calibration", "calibration_artifact",
+                "controller_connector_environment", "experiment_binding", "mode",
+                "smoke_gate", "status", "trial_contract", "trial_id",
+            }
+            if type(result) is not dict or set(result) != fields:
+                _fail("ordinary result contract calibration fields changed")
+            environment = _connector_environment(result["controller_connector_environment"])
+            _experiment_binding(result["experiment_binding"], runtime_root, programs)
+            _trial_contract(result["trial_contract"], "latency-calibration", 60)
+            if (
+                result["status"] != "SUCCEEDED"
+                or result["mode"] != "latency-calibration"
+                or result["trial_id"] != invocation_id
+                or result["calibration_artifact"] != "latency-calibration.json"
+                or not _canonical_equal(result["calibration"], calibration_authority)
+                or not _canonical_equal(result["smoke_gate"], smoke_authority)
+            ):
+                _fail("ordinary result contract calibration changed")
+            _smoke_result(result["smoke_gate"], environment)
+        else:
+            mode = (
+                "preflight-oltp" if invocation_id == "oltp-smoke-1"
+                else "none" if invocation_id in CONTROL_IDS
+                else "buffered" if invocation_id.startswith("buffered-")
+                else "chunked"
+            )
+            duration = 5 if invocation_id == "oltp-smoke-1" else 60
+            accepted, environment = _common_result(
+                result, invocation_id, mode, duration, runtime_root, programs,
+                minimum_control_windows,
+            )
+            histories += 1
+            if invocation_id == "oltp-smoke-1":
+                if (
+                    result["export_result"] is not None
+                    or result["export_returncode"] is not None
+                    or result["latency_calibration"] is not None
+                    or result["smoke_gate"] is not None
+                ):
+                    _fail("ordinary result contract smoke outputs changed")
+                smoke_authority = _smoke_result(result["smoke_result"], environment)
+                child = result["oltp_result"]
+                if (
+                    smoke_authority["accepted_windows"] != len(accepted)
+                    or smoke_authority["last_window_seq"]
+                    != accepted[-1]["window_seq"]
+                    or smoke_authority["operations"] != child["operations"]
+                    or smoke_authority["errors"] != child["errors"]
+                    or smoke_authority["drain_limit_hits"]
+                    != child["drain_limit_hits"]
+                    or smoke_authority["max_heartbeat_lateness_ms"]
+                    != child["max_heartbeat_lateness_ms"]
+                    or not _canonical_equal(
+                        smoke_authority["connector_contract"],
+                        child["connector_contract"],
+                    )
+                ):
+                    _fail("ordinary result contract smoke binding changed")
+            elif invocation_id in CONTROL_IDS:
+                if (
+                    result["export_result"] is not None
+                    or result["export_returncode"] is not None
+                    or result["latency_calibration"] is not None
+                    or result["smoke_result"] is not None
+                    or not _canonical_equal(result["smoke_gate"], smoke_authority)
+                ):
+                    _fail("ordinary result contract control outputs changed")
+                _smoke_result(result["smoke_gate"], environment)
+            else:
+                job_result = _read_json(runtime_root / f"job-{invocation_id}" / "result.json")
+                if (
+                    type(result["export_returncode"]) is not int
+                    or result["export_returncode"] != 0
+                    or result["smoke_result"] is not None
+                    or not _canonical_equal(result["smoke_gate"], smoke_authority)
+                    or not _canonical_equal(result["latency_calibration"], calibration_authority)
+                    or not _canonical_equal(result["export_result"], job_result)
+                ):
+                    _fail(
+                        "ordinary result contract export binding or calibration changed"
+                    )
+                _smoke_result(result["smoke_gate"], environment)
+                _export_result(result["export_result"], invocation_id, mode)
         results[invocation_id] = result
     return results, histories
 
@@ -609,36 +1046,86 @@ def _probe_audit(value: object, seed: dict[str, object]) -> None:
 
 
 def _trigger_names(value: object) -> tuple[str, ...]:
-    if type(value) is not list:
-        _fail("trigger audit has the wrong exact type")
-    names = []
-    for item in value:
-        if type(item) is not dict or type(item.get("name")) is not str:
-            _fail("trigger audit record is malformed")
-        names.append(item["name"])
-    if tuple(names) != tuple(sorted(FREEZE_TRIGGER_NAMES)):
-        _fail("trigger audit names drifted")
-    return tuple(names)
+    fields = {"name", "operation", "statement", "table", "timing"}
+    if type(value) is not list or len(value) != 6 or any(
+        type(item) is not dict or set(item) != fields for item in value
+    ):
+        _fail("trigger audit fields are not exact")
+    rows = [
+        [item["name"], item["operation"], item["table"], item["timing"], item["statement"]]
+        for item in value
+    ]
+    try:
+        validated = validate_freeze_trigger_rows(rows)
+    except RuntimeError as error:
+        raise ValueError("trigger definition drifted") from error
+    if not _canonical_equal(validated, value):
+        _fail("trigger definition or ordering drifted")
+    return tuple(item["name"] for item in value)
+
+
+def _global_variables(value: object) -> list[object]:
+    if type(value) is not list or len(value) != 6:
+        _fail("global variable audit fields are not exact")
+    for index, name in enumerate(
+        ("buffer pool", "tmp table", "max heap table")
+    ):
+        _exact_int(value[index], f"global {name}", minimum=1)
+    if (
+        type(value[3]) is not str
+        or value[3] != "REPEATABLE-READ"
+        or type(value[4]) is not int
+        or value[4] != 0
+        or type(value[5]) is not int
+        or value[5] != 0
+    ):
+        _fail("global variable audit values changed")
+    return value
 
 
 def _verify_source_and_teardown(
     runtime_root: Path,
-    expected_seed_manifest: dict[str, object],
-    expected_probe_schema: list[dict[str, object]],
-) -> None:
+    minimum_artifact_rows: int,
+) -> dict[str, object]:
     seed = _read_json(runtime_root / "seed-manifest.json")
-    if not _canonical_equal(seed, expected_seed_manifest):
-        _fail("source baseline drift")
+    canonical_rows = EXPECTED_SEED_MANIFEST["report_rows"]
+    if minimum_artifact_rows == canonical_rows:
+        if not _canonical_equal(seed, EXPECTED_SEED_MANIFEST):
+            _fail("source baseline drift")
+    else:
+        if set(seed) != set(EXPECTED_SEED_MANIFEST):
+            _fail("source baseline fields drift")
+        rows = _exact_int(seed.get("report_rows"), "source baseline rows", minimum=minimum_artifact_rows)
+        for field in ("orders", "item_orders"):
+            if type(seed.get(field)) is not int or seed[field] != rows:
+                _fail("source baseline row relationships drift")
+        if (
+            type(seed.get("items")) is not int
+            or seed["items"] != rows * 3
+            or type(seed.get("item_count_fingerprint")) is not int
+            or seed["item_count_fingerprint"] != rows * 3
+            or seed.get("min_items_per_order") != 3
+            or seed.get("max_items_per_order") != 3
+            or seed.get("probes") != 10_000
+            or seed.get("probe_counter_sum") != 0
+            or seed.get("min_cursor") != ["2026-01-01 00:00:01.000000", 1]
+            or type(seed.get("high_cursor")) is not list
+            or len(seed["high_cursor"]) != 2
+            or seed["high_cursor"][1] != rows
+            or seed.get("total_amount_fingerprint") != f"{rows}.00"
+        ):
+            _fail("source baseline aggregate relationships drift")
+        for field in ("item_crc32_sum", "order_crc32_sum"):
+            _exact_int(seed.get(field), f"source baseline {field}")
     probe_schema = _read_json(runtime_root / "probe-schema.json", list)
-    if not _canonical_equal(probe_schema, expected_probe_schema):
+    if not _canonical_equal(probe_schema, EXPECTED_PROBE_SCHEMA):
         _fail("source probe schema drift")
     freeze = _read_json(runtime_root / "seed-freeze-audit.json")
     _probe_audit(freeze, seed)
     triggers = _read_json(runtime_root / "freeze-triggers.json", list)
     _trigger_names(triggers)
     globals_before = _read_json(runtime_root / "global-variables.json", list)
-    if not globals_before:
-        _fail("global variable audit is empty")
+    _global_variables(globals_before)
     negative = _read_json(runtime_root / "freeze-negative-probes.json", list)
     if len(negative) != len(NEGATIVE_PROBE_SQL) or any(
         type(item) is not dict
@@ -650,12 +1137,18 @@ def _verify_source_and_teardown(
     ):
         _fail("source negative probe evidence drifted")
     connector = _read_json(runtime_root / "bootstrap-connector.json")
-    if (
-        connector.get("connector_version") != "9.7.0"
-        or connector.get("requested_use_pure") is not True
-        or connector.get("actual_pure") is not True
-        or type(connector.get("threadsafety")) is not int
-        or type(connector.get("have_cext")) is not bool
+    if set(connector) != {
+        "actual_connection_class", "actual_pure", "connector_version",
+        "have_cext", "requested_use_pure", "threadsafety",
+    } or (
+        connector["connector_version"] != "9.7.0"
+        or connector["requested_use_pure"] is not True
+        or connector["actual_pure"] is not True
+        or connector["actual_connection_class"]
+        != "mysql.connector.connection.MySQLConnection"
+        or type(connector["threadsafety"]) is not int
+        or connector["threadsafety"] != 1
+        or type(connector["have_cext"]) is not bool
     ):
         _fail("connector evidence drifted")
     for phase in PHASES[1:-1]:
@@ -664,6 +1157,10 @@ def _verify_source_and_teardown(
             _fail("source audit fields drifted")
         _probe_audit(audit["freeze"], seed)
         _trigger_names(audit["triggers"])
+        if not _canonical_equal(audit["freeze"], freeze) or not _canonical_equal(
+            audit["triggers"], triggers
+        ):
+            _fail("source audit before/after relationship drifted")
     stop = _read_json(runtime_root / "controlled-stop.json")
     if (
         stop.get("requested_success") is not True
@@ -678,6 +1175,13 @@ def _verify_source_and_teardown(
     _trigger_names(stop.get("triggers_before_drop"))
     _probe_audit(stop.get("before_drop_audit"), seed)
     _probe_audit(stop.get("after_drop_audit"), seed)
+    if (
+        not _canonical_equal(stop.get("triggers_before_drop"), triggers)
+        or not _canonical_equal(stop.get("before_drop_audit"), freeze)
+        or not _canonical_equal(stop.get("after_drop_audit"), freeze)
+    ):
+        _fail("controlled stop before/after relationship drifted")
+    return seed
 
 
 def _artifact_signature(
@@ -687,6 +1191,16 @@ def _artifact_signature(
     result = _read_json(job / "result.json")
     expected_mode = "buffered" if job.name.startswith("job-buffered-") else "chunked"
     expected_job_id = job.name.removeprefix("job-")
+    state_fields = {
+        "abort_reason", "active_seconds", "artifact_rows", "artifact_sha256",
+        "connection_id", "connector_contract", "expected_rows",
+        "high_created_at", "high_id", "job_id", "last_created_at", "last_id",
+        "mode", "next_part", "parts", "rows_written", "status",
+    }
+    if type(state) is not dict or set(state) != state_fields:
+        _fail(f"artifact state fields changed: {job.name}")
+    _connector_contract(state["connector_contract"])
+    _export_result(result, expected_job_id, expected_mode)
     if (
         state.get("status") != "SUCCEEDED"
         or result.get("status") != "SUCCEEDED"
@@ -694,6 +1208,10 @@ def _artifact_signature(
         or result.get("mode") != expected_mode
         or state.get("job_id") != expected_job_id
         or result.get("job_id") != expected_job_id
+        or state["abort_reason"] is not None
+        or _exact_int(state["connection_id"], "artifact connection ID", minimum=1) <= 0
+        or _number(state["active_seconds"], "artifact active seconds") <= 0
+        or not _canonical_equal(state["connector_contract"], result["connector_contract"])
     ):
         _fail(f"artifact state changed: {job.name}")
     expected_rows = _exact_int(seed["report_rows"], "expected report rows")
@@ -784,7 +1302,147 @@ def _artifact_signature(
         _fail(f"artifact business aggregate changed: {job.name}")
     if state.get("artifact_sha256") != actual_sha or result.get("sha256") != actual_sha:
         _fail(f"artifact sha mismatch: {job.name}")
+    parts = state["parts"]
+    if expected_mode == "buffered":
+        if (
+            type(parts) is not list
+            or parts != []
+            or _exact_int(state["next_part"], "buffered next part", minimum=1) != 1
+            or "parts" in result
+        ):
+            _fail(f"artifact buffered part state changed: {job.name}")
+    else:
+        if type(parts) is not list or not parts:
+            _fail(f"artifact chunked parts are missing: {job.name}")
+        part_digest = hashlib.sha256()
+        part_rows = 0
+        previous = None
+        for number, part in enumerate(parts, 1):
+            if type(part) is not dict or set(part) != RESUME_PART_FIELDS:
+                _fail(f"artifact part fields changed: {job.name}")
+            name = f"part-{number:06d}.tsv"
+            rows_in_part = _exact_int(part["rows"], "artifact part rows", minimum=1)
+            if (
+                type(part["number"]) is not int
+                or part["number"] != number
+                or part["name"] != name
+                or rows_in_part > 1000
+                or (number < len(parts) and rows_in_part != 1000)
+                or type(part["sha256"]) is not str
+                or not re.fullmatch(r"[0-9a-f]{64}", part["sha256"])
+                or type(part["first_cursor"]) is not list
+                or len(part["first_cursor"]) != 2
+                or type(part["last_cursor"]) is not list
+                or len(part["last_cursor"]) != 2
+                or (previous is not None and part["first_cursor"] <= previous)
+            ):
+                _fail(f"artifact part contract changed: {job.name}")
+            path = job / "parts" / name
+            digest = hashlib.sha256()
+            observed_rows = 0
+            try:
+                with path.open("rb") as source:
+                    for line in source:
+                        digest.update(line)
+                        part_digest.update(line)
+                        observed_rows += 1
+            except OSError as error:
+                raise ValueError(f"artifact part is unreadable: {job.name}") from error
+            if observed_rows != rows_in_part or digest.hexdigest() != part["sha256"]:
+                _fail(f"artifact part bytes changed: {job.name}")
+            part_rows += observed_rows
+            previous = part["last_cursor"]
+        if (
+            _exact_int(state["next_part"], "chunked next part", minimum=1)
+            != len(parts) + 1
+            or result["parts"] != len(parts)
+            or type(result["parts"]) is not int
+            or part_rows != rows
+            or part_digest.hexdigest() != actual_sha
+        ):
+            _fail(f"artifact part manifest changed: {job.name}")
     return {"job": job.name, "rows": rows, "sha256": actual_sha}
+
+
+def _verify_resume_interruption(
+    runtime_root: Path, results: dict[str, dict[str, object]]
+) -> None:
+    audit = _read_json(runtime_root / RESUME_INTERRUPTION_AUDIT)
+    fields = {
+        "artifact_exists", "checkpoint_state", "checkpoint_state_sha256",
+        "job_id", "next_part", "part_count", "parts", "recorded_at",
+        "result_exists", "rows_written", "status",
+    }
+    if set(audit) != fields:
+        _fail("resume interruption audit fields are not exact")
+    _timestamp(audit["recorded_at"], "resume interruption recorded_at")
+    checkpoint = audit["checkpoint_state"]
+    state_fields = {
+        "abort_reason", "active_seconds", "artifact_rows", "artifact_sha256",
+        "connection_id", "connector_contract", "expected_rows",
+        "high_created_at", "high_id", "job_id", "last_created_at", "last_id",
+        "mode", "next_part", "parts", "rows_written", "status",
+    }
+    if type(checkpoint) is not dict or set(checkpoint) != state_fields:
+        _fail("resume interruption checkpoint fields are not exact")
+    expected_sha = hashlib.sha256(_canonical_bytes(checkpoint) + b"\n").hexdigest()
+    if (
+        audit["status"] != "ABORTED"
+        or audit["job_id"] != "resume-1"
+        or type(audit["rows_written"]) is not int
+        or audit["rows_written"] != 3000
+        or type(audit["part_count"]) is not int
+        or audit["part_count"] != 3
+        or type(audit["next_part"]) is not int
+        or audit["next_part"] != 4
+        or audit["artifact_exists"] is not False
+        or audit["result_exists"] is not False
+        or audit["checkpoint_state_sha256"] != expected_sha
+        or checkpoint["status"] != "ABORTED"
+        or checkpoint["mode"] != "chunked"
+        or checkpoint["job_id"] != "resume-1"
+        or checkpoint["abort_reason"] != "max_batches"
+        or checkpoint["artifact_rows"] is not None
+        or checkpoint["artifact_sha256"] is not None
+        or _number(checkpoint["active_seconds"], "resume checkpoint active seconds")
+        <= 0
+        or type(checkpoint["rows_written"]) is not int
+        or checkpoint["rows_written"] != 3000
+        or type(checkpoint["next_part"]) is not int
+        or checkpoint["next_part"] != 4
+        or not _canonical_equal(audit["parts"], checkpoint["parts"])
+    ):
+        _fail("resume interruption audit contract changed")
+    _connector_contract(checkpoint["connector_contract"])
+    interrupted = results["resume-interrupt-1"]
+    if (
+        interrupted["rows"] != audit["rows_written"]
+        or interrupted["parts"] != audit["part_count"]
+        or interrupted["job_id"] != audit["job_id"]
+        or interrupted["reason"] != checkpoint["abort_reason"]
+        or interrupted["active_seconds"] != checkpoint["active_seconds"]
+        or interrupted["high_cursor"]
+        != [checkpoint["high_created_at"], checkpoint["high_id"]]
+        or interrupted["last_cursor"]
+        != [checkpoint["last_created_at"], checkpoint["last_id"]]
+        or not _canonical_equal(
+            interrupted["connector_contract"], checkpoint["connector_contract"]
+        )
+    ):
+        _fail("resume interruption stdout and checkpoint differ")
+    final_state = _read_json(runtime_root / "job-resume-1" / "state.json")
+    final_parts = final_state.get("parts")
+    if (
+        type(checkpoint["parts"]) is not list
+        or len(checkpoint["parts"]) != 3
+        or type(final_parts) is not list
+        or len(final_parts) <= 3
+        or not _canonical_equal(checkpoint["parts"], final_parts[:3])
+        or final_state.get("expected_rows") != checkpoint["expected_rows"]
+        or [final_state.get("high_created_at"), final_state.get("high_id")]
+        != [checkpoint["high_created_at"], checkpoint["high_id"]]
+    ):
+        _fail("resume interruption part prefix differs from final manifest")
 
 
 def _verify_artifacts(
@@ -805,6 +1463,13 @@ def _verify_artifacts(
     resume_result = _read_json(runtime_root / "job-resume-1" / "result.json")
     if not _canonical_equal(resume_result, results["resume-complete-1"]):
         _fail("direct resume completion differs from final atomic snapshot")
+    for invocation_id in INVOCATIONS[6:12]:
+        persisted = _read_json(runtime_root / f"job-{invocation_id}" / "result.json")
+        if not _canonical_equal(
+            persisted, results[invocation_id]["export_result"]
+        ):
+            _fail("ordinary result contract export differs from final job result")
+    _verify_resume_interruption(runtime_root, results)
     return len(signatures), sum(item["rows"] for item in signatures)
 
 
@@ -814,8 +1479,7 @@ def verify_evidence(
     scenario_path: Path,
     expected_commit: str,
     mountinfo_text: str | None = None,
-    expected_seed_manifest: dict[str, object] | None = None,
-    expected_probe_schema: list[dict[str, object]] | None = None,
+    minimum_artifact_rows: int = 100_000,
     minimum_control_windows: int = 55,
 ) -> dict[str, object]:
     """Verify one complete evidence volume without modifying it."""
@@ -852,19 +1516,10 @@ def verify_evidence(
     )
     _verify_calibration(runtime_root, results, experiment)
 
-    seed = (
-        EXPECTED_SEED_MANIFEST
-        if expected_seed_manifest is None
-        else expected_seed_manifest
+    minimum_rows = _exact_int(
+        minimum_artifact_rows, "minimum artifact rows", minimum=1
     )
-    probe_schema = (
-        EXPECTED_PROBE_SCHEMA
-        if expected_probe_schema is None
-        else expected_probe_schema
-    )
-    if type(seed) is not dict or type(probe_schema) is not list:
-        _fail("expected baseline contract has the wrong exact type")
-    _verify_source_and_teardown(runtime_root, seed, probe_schema)
+    seed = _verify_source_and_teardown(runtime_root, minimum_rows)
     artifacts, artifact_rows = _verify_artifacts(runtime_root, seed, results)
     return {
         "checked": {

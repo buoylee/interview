@@ -176,6 +176,7 @@ copy_offline_inputs() {
 copy_verifier_inputs() {
   name=$1
   copy_common_inputs "$name"
+  docker cp "$SCRIPT_DIR/container_harness.py" "$name:/opt/container_harness.py"
   docker cp "$SCRIPT_DIR/container_verifier.py" "$name:/opt/container_verifier.py"
 }
 

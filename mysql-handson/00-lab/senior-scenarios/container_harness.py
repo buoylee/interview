@@ -1337,6 +1337,157 @@ Launch = Callable[[str, tuple[str, ...], Mapping[str, str], Path, Path], dict[st
 ManifestWriter = Callable[[Path, str, EvidenceBinding], object]
 Teardown = Callable[[bool], object]
 
+RESUME_INTERRUPTION_AUDIT = "resume-interruption-audit.json"
+RESUME_PART_FIELDS = {
+    "first_cursor",
+    "last_cursor",
+    "name",
+    "number",
+    "rows",
+    "sha256",
+}
+
+
+def _checkpoint_state_sha256(state: object) -> str:
+    encoded = (
+        json.dumps(
+            state, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+        + "\n"
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _validated_resume_parts(job: Path, value: object) -> list[dict[str, object]]:
+    if type(value) is not list or len(value) != 3:
+        raise RuntimeError("resume interruption parts are not exact")
+    validated = []
+    previous_last = None
+    for number, part in enumerate(value, 1):
+        if type(part) is not dict or set(part) != RESUME_PART_FIELDS:
+            raise RuntimeError("resume interruption part fields are not exact")
+        name = f"part-{number:06d}.tsv"
+        if (
+            part["name"] != name
+            or type(part["number"]) is not int
+            or part["number"] != number
+            or type(part["rows"]) is not int
+            or part["rows"] != 1000
+            or type(part["sha256"]) is not str
+            or not re.fullmatch(r"[0-9a-f]{64}", part["sha256"])
+            or type(part["first_cursor"]) is not list
+            or len(part["first_cursor"]) != 2
+            or type(part["last_cursor"]) is not list
+            or len(part["last_cursor"]) != 2
+            or (previous_last is not None and part["first_cursor"] <= previous_last)
+        ):
+            raise RuntimeError("resume interruption part contract changed")
+        path = job / "parts" / name
+        try:
+            digest = hashlib.sha256()
+            rows = 0
+            with path.open("rb") as source:
+                for line in source:
+                    digest.update(line)
+                    rows += 1
+        except OSError as error:
+            raise RuntimeError("resume interruption part is unreadable") from error
+        if rows != 1000 or digest.hexdigest() != part["sha256"]:
+            raise RuntimeError("resume interruption part bytes changed")
+        validated.append(dict(part))
+        previous_last = part["last_cursor"]
+    return validated
+
+
+def validate_resume_interruption_audit(runtime_root: Path) -> dict[str, object]:
+    """Re-read the immutable pre-resume checkpoint and bind it to part bytes."""
+    root = Path(runtime_root)
+    job = root / "job-resume-1"
+    try:
+        audit = json.loads(
+            (root / RESUME_INTERRUPTION_AUDIT).read_text(encoding="utf-8")
+        )
+        state = json.loads((job / "state.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise RuntimeError("resume interruption audit is unreadable") from error
+    fields = {
+        "artifact_exists",
+        "checkpoint_state",
+        "checkpoint_state_sha256",
+        "job_id",
+        "next_part",
+        "part_count",
+        "parts",
+        "recorded_at",
+        "result_exists",
+        "rows_written",
+        "status",
+    }
+    if type(audit) is not dict or set(audit) != fields:
+        raise RuntimeError("resume interruption audit fields are not exact")
+    try:
+        recorded_at = datetime.fromisoformat(
+            str(audit["recorded_at"]).replace("Z", "+00:00")
+        )
+    except ValueError as error:
+        raise RuntimeError("resume interruption timestamp is invalid") from error
+    if (
+        audit["status"] != "ABORTED"
+        or audit["job_id"] != "resume-1"
+        or type(audit["rows_written"]) is not int
+        or audit["rows_written"] != 3000
+        or type(audit["part_count"]) is not int
+        or audit["part_count"] != 3
+        or type(audit["next_part"]) is not int
+        or audit["next_part"] != 4
+        or audit["artifact_exists"] is not False
+        or audit["result_exists"] is not False
+        or type(audit["recorded_at"]) is not str
+        or not re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z", audit["recorded_at"])
+        or recorded_at.tzinfo != timezone.utc
+        or type(audit["checkpoint_state"]) is not dict
+        or audit["checkpoint_state"] != state
+        or audit["checkpoint_state_sha256"] != _checkpoint_state_sha256(state)
+        or state.get("status") != "ABORTED"
+        or state.get("job_id") != "resume-1"
+        or type(state.get("rows_written")) is not int
+        or state["rows_written"] != 3000
+        or type(state.get("next_part")) is not int
+        or state["next_part"] != 4
+        or job.joinpath("artifact.tsv").exists()
+        or job.joinpath("result.json").exists()
+    ):
+        raise RuntimeError("resume interruption audit contract changed")
+    parts = _validated_resume_parts(job, state.get("parts"))
+    if audit["parts"] != parts:
+        raise RuntimeError("resume interruption audit part prefix changed")
+    return audit
+
+
+def write_resume_interruption_audit(
+    runtime_root: Path, state: dict[str, object]
+) -> dict[str, object]:
+    """Atomically retain the state that will otherwise be overwritten by resume."""
+    root = Path(runtime_root)
+    job = root / "job-resume-1"
+    parts = _validated_resume_parts(job, state.get("parts"))
+    audit = {
+        "artifact_exists": False,
+        "checkpoint_state": state,
+        "checkpoint_state_sha256": _checkpoint_state_sha256(state),
+        "job_id": "resume-1",
+        "next_part": 4,
+        "part_count": 3,
+        "parts": parts,
+        "recorded_at": _utc_text(),
+        "result_exists": False,
+        "rows_written": 3000,
+        "status": "ABORTED",
+    }
+    write_immutable_json(root / RESUME_INTERRUPTION_AUDIT, audit)
+    validate_resume_interruption_audit(root)
+    return audit
+
 
 class HarnessStateMachine:
     """Execute the reviewed phase order exactly once, with no retry path."""
@@ -1370,6 +1521,8 @@ class HarnessStateMachine:
         command = build_invocation_command(invocation_id, self.runtime_root)
         stdout_path = self.runtime_root / f"harness-{invocation_id}.stdout.json"
         stderr_path = self.runtime_root / f"harness-{invocation_id}.stderr.txt"
+        if invocation_id == "resume-complete-1":
+            validate_resume_interruption_audit(self.runtime_root)
         self.ledger.start(invocation_id)
         try:
             result = self.launch(
@@ -1413,6 +1566,7 @@ class HarnessStateMachine:
                     or (self.runtime_root / "job-resume-1" / "result.json").exists()
                 ):
                     raise RuntimeError("resume interruption checkpoint is invalid")
+                write_resume_interruption_audit(self.runtime_root, state)
             if invocation_id == "resume-complete-1":
                 job = self.runtime_root / "job-resume-1"
                 state = json.loads((job / "state.json").read_text(encoding="utf-8"))
