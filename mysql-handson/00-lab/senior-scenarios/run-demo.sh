@@ -13,6 +13,9 @@ MYSQL_IMAGE='mysql:8.0.36'
 PYTHON_IMAGE='python:3.13-slim'
 DEMO_PASSWORD='demo-only-password'
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/../../.." && pwd)
+SCENARIO_SOURCE="$REPO_ROOT/mysql-handson/13-senior-scenarios/04-report-export-isolation.md"
+ROUTING_SOURCE="$REPO_ROOT/mysql-handson/13-senior-scenarios/README.md"
 
 container_exists() {
   docker container inspect "$1" >/dev/null 2>&1
@@ -63,6 +66,8 @@ run_tests() {
   docker cp "$SCRIPT_DIR/demo.py" "$TEST_CONTAINER:/opt/demo.py"
   docker cp "$SCRIPT_DIR/test_demo.py" "$TEST_CONTAINER:/opt/test_demo.py"
   docker cp "$SCRIPT_DIR/run-demo.sh" "$TEST_CONTAINER:/opt/run-demo.sh"
+  docker cp "$SCENARIO_SOURCE" "$TEST_CONTAINER:/opt/04-report-export-isolation.md"
+  docker cp "$ROUTING_SOURCE" "$TEST_CONTAINER:/opt/senior-scenarios-README.md"
   docker start -a "$TEST_CONTAINER"
 }
 

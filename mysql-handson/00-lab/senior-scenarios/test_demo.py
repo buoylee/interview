@@ -14,6 +14,8 @@ import demo
 
 HERE = Path(__file__).resolve().parent
 RUNNER = HERE / "run-demo.sh"
+SCENARIO = HERE / "04-report-export-isolation.md"
+ROUTING = HERE / "senior-scenarios-README.md"
 
 
 class FakeCursor:
@@ -186,6 +188,58 @@ exit 0
             self.assertNotIn("/private/tmp", observed)
             self.assertNotIn("mysql-primary", observed)
             self.assertNotIn("mysql-senior-scenarios-", observed)
+
+
+class DocumentationContractTests(unittest.TestCase):
+    def test_chapter_follows_the_engineering_decision_order(self):
+        text = SCENARIO.read_text(encoding="utf-8")
+        headings = (
+            "## 1. 先定义问题",
+            "## 2. 数据与索引",
+            "## 3. 一致性边界",
+            "## 4. 执行策略",
+            "## 5. 隔离 OLTP",
+            "## 6. 如何观测",
+            "## 7. Docker 缩小实验",
+            "## 8. 失败与恢复",
+        )
+        positions = [text.index(heading) for heading in headings]
+        self.assertEqual(sorted(positions), positions)
+
+    def test_chapter_exposes_the_small_demo_and_exact_boundaries(self):
+        text = SCENARIO.read_text(encoding="utf-8")
+        for required in (
+            "./run-demo.sh test",
+            "./run-demo.sh run",
+            "./run-demo.sh cleanup",
+            "fetchall()",
+            "fetchmany(1000)",
+            "(created_at, id, item_id)",
+            "MVCC",
+            "undo",
+            "OLTP counter",
+            "10,000",
+            "30,000",
+            "不能外推",
+        ):
+            self.assertIn(required, text)
+        for abandoned in (
+            "Task 10",
+            "seventh runtime",
+            "eighth runtime",
+            "one-shot",
+            "calibration matrix",
+            "manifest chain",
+            "run-containerized.sh",
+        ):
+            self.assertNotIn(abandoned, text)
+
+    def test_routing_uses_the_simple_lab_and_truthful_pre_run_status(self):
+        text = ROUTING.read_text(encoding="utf-8")
+        self.assertIn("[container lab](../00-lab/senior-scenarios/README.md)", text)
+        self.assertIn("等待 Docker 缩小实验", text)
+        self.assertIn("`READY_UNRUN`", text)
+        self.assertNotIn("等待 Task 10", text)
 
 
 if __name__ == "__main__":

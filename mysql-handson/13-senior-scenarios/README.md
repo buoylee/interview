@@ -52,15 +52,15 @@
 | 18 | 分片键、热点、扩容与 reshard | `mysql-handson/10-sharding-and-scaling/README.md` | 路由 |
 | 19 | 线上分片迁移、双写与 CDC 校验 | `mysql-handson/10-sharding-and-scaling/README.md` Case C | 路由；CDC 故障闭环连到 `mysql-es-cdc-handson` |
 
-[从 access patterns 设计 schema](01-schema-from-access-patterns.md) 已完成 run ID `20260730T214437Z` 的 `REPRODUCED (S=100000)`；[高效安全地导入 1,000 万行](02-bulk-load-10m.md) 与 [归档、批量删除与空间回收](03-archive-delete-reclaim.md) 已建立并为 `READY_UNRUN`。[大型报表与导出隔离](04-report-export-isolation.md) 已建立为 `READY_UNRUN`，等待 Task 10 记录 S 级实测。
+[从 access patterns 设计 schema](01-schema-from-access-patterns.md) 已完成 run ID `20260730T214437Z` 的 `REPRODUCED (S=100000)`；[高效安全地导入 1,000 万行](02-bulk-load-10m.md) 为 `SCALED_REPRODUCED (M=1,000,000)`；[归档、批量删除与空间回收](03-archive-delete-reclaim.md) 为 `SCALED_REPRODUCED (S=100000)`。[大型报表与导出隔离](04-report-export-isolation.md) 保持 `READY_UNRUN`，等待 Docker 缩小实验。
 
 ## 四个新增场景
 
 | 场景 | 状态 | 负责的问题 |
 |---|---|---|
 | `01-schema-from-access-patterns.md` | `REPRODUCED (S=100000)` | 从 access pattern 推导 schema |
-| [高效安全地导入 1,000 万行](02-bulk-load-10m.md) | `READY_UNRUN` | 1,000 万行安全、高吞吐、可恢复汇入 |
-| [归档、批量删除与空间回收](03-archive-delete-reclaim.md) | `READY_UNRUN` | retention、archive、delete、purge 与 reclaim |
+| [高效安全地导入 1,000 万行](02-bulk-load-10m.md) | `SCALED_REPRODUCED (M=1,000,000)` | 1,000 万行安全、高吞吐、可恢复汇入 |
+| [归档、批量删除与空间回收](03-archive-delete-reclaim.md) | `SCALED_REPRODUCED (S=100000)` | retention、archive、delete、purge 与 reclaim |
 | [大型报表与导出隔离](04-report-export-isolation.md) | `READY_UNRUN` | 报表／汇出与 OLTP 隔离，含深分页到汇出 |
 
 ## 证据等级
