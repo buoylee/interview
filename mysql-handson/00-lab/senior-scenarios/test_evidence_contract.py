@@ -893,6 +893,31 @@ class ContainerVerifierTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+    def _replace_resume_first_cursor_id(
+        self, fixture: dict[str, object], cursor_id: object
+    ) -> None:
+        runtime_root = fixture["runtime_root"]
+        audit_path = runtime_root / RESUME_INTERRUPTION_AUDIT
+        state_path = runtime_root / "job-resume-1" / "state.json"
+        audit = json.loads(audit_path.read_text(encoding="utf-8"))
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        audit["parts"][0]["first_cursor"][1] = cursor_id
+        audit["checkpoint_state"]["parts"][0]["first_cursor"][1] = cursor_id
+        state["parts"][0]["first_cursor"][1] = cursor_id
+        audit["checkpoint_state_sha256"] = hashlib.sha256(
+            (
+                json.dumps(
+                    audit["checkpoint_state"],
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                + "\n"
+            ).encode("utf-8")
+        ).hexdigest()
+        self._write_json(audit_path, audit)
+        self._write_json(state_path, state)
+        self._refresh_manifests(runtime_root, fixture["binding"])
+
     def test_verifier_accepts_complete_read_only_tree(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -1122,6 +1147,57 @@ class ContainerVerifierTests(unittest.TestCase):
                 ):
                     self._verify(root, fixture)
 
+    def test_verifier_rejects_oltp_errors_summary_mismatch(self):
+        for value in (1, True, "0"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as temporary_directory:
+                root = Path(temporary_directory)
+                fixture = self._build_tree(root)
+                path = fixture["runtime_root"] / "controller-result-buffered-1.json"
+                result = json.loads(path.read_text(encoding="utf-8"))
+                result["oltp_result"]["errors"] = value
+                self._replace_invocation_result(fixture, "buffered-1", result)
+                self._refresh_manifests(
+                    fixture["runtime_root"], fixture["binding"]
+                )
+                with self.assertRaisesRegex(
+                    ValueError, "summary.*cumulative|exact integer"
+                ):
+                    self._verify(root, fixture)
+
+    def test_verifier_rejects_oltp_drain_limit_hits_summary_mismatch(self):
+        for value in (1, True, "0"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as temporary_directory:
+                root = Path(temporary_directory)
+                fixture = self._build_tree(root)
+                path = fixture["runtime_root"] / "controller-result-buffered-1.json"
+                result = json.loads(path.read_text(encoding="utf-8"))
+                result["oltp_result"]["drain_limit_hits"] = value
+                self._replace_invocation_result(fixture, "buffered-1", result)
+                self._refresh_manifests(
+                    fixture["runtime_root"], fixture["binding"]
+                )
+                with self.assertRaisesRegex(
+                    ValueError, "summary.*cumulative|exact integer"
+                ):
+                    self._verify(root, fixture)
+
+    def test_verifier_rejects_oltp_heartbeat_lateness_summary_mismatch(self):
+        for value in (6.0, True, "5.0"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as temporary_directory:
+                root = Path(temporary_directory)
+                fixture = self._build_tree(root)
+                path = fixture["runtime_root"] / "controller-result-buffered-1.json"
+                result = json.loads(path.read_text(encoding="utf-8"))
+                result["oltp_result"]["max_heartbeat_lateness_ms"] = value
+                self._replace_invocation_result(fixture, "buffered-1", result)
+                self._refresh_manifests(
+                    fixture["runtime_root"], fixture["binding"]
+                )
+                with self.assertRaisesRegex(
+                    ValueError, "summary.*cumulative|finite number"
+                ):
+                    self._verify(root, fixture)
+
     def test_verifier_rejects_percentile_inversion(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -1218,6 +1294,22 @@ class ContainerVerifierTests(unittest.TestCase):
             self._refresh_manifests(runtime_root, fixture["binding"])
 
             with self.assertRaisesRegex(ValueError, "last cursor"):
+                self._verify(root, fixture)
+
+    def test_verifier_rejects_float_cursor_id_alias(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fixture = self._build_tree(root)
+            self._replace_resume_first_cursor_id(fixture, 1.0)
+            with self.assertRaisesRegex(ValueError, "cursor.*exact|cursor.*type"):
+                self._verify(root, fixture)
+
+    def test_verifier_rejects_bool_cursor_id_alias(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fixture = self._build_tree(root)
+            self._replace_resume_first_cursor_id(fixture, True)
+            with self.assertRaisesRegex(ValueError, "cursor.*exact|cursor.*type"):
                 self._verify(root, fixture)
 
     def test_verifier_rejects_missing_duplicate_or_invalid_returncode_evidence(self):
@@ -1465,6 +1557,8 @@ class HarnessStateTests(unittest.TestCase):
                 (job / "state.json").write_text(
                     json.dumps(
                         {
+                            "high_created_at": parts[-1]["last_cursor"][0],
+                            "high_id": parts[-1]["last_cursor"][1],
                             "job_id": "resume-1",
                             "last_created_at": parts[-1]["last_cursor"][0],
                             "last_id": parts[-1]["last_cursor"][1],
@@ -1511,6 +1605,29 @@ class HarnessStateTests(unittest.TestCase):
             create_manifest=manifest,
             teardown=lambda succeeded: teardown_log.append(succeeded),
         )
+
+    def _replace_harness_resume_first_cursor_id(
+        self, root: Path, cursor_id: object
+    ) -> None:
+        state_path = root / "job-resume-1" / "state.json"
+        audit_path = root / RESUME_INTERRUPTION_AUDIT
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        audit = json.loads(audit_path.read_text(encoding="utf-8"))
+        state["parts"][0]["first_cursor"][1] = cursor_id
+        audit["parts"][0]["first_cursor"][1] = cursor_id
+        audit["checkpoint_state"]["parts"][0]["first_cursor"][1] = cursor_id
+        audit["checkpoint_state_sha256"] = hashlib.sha256(
+            (
+                json.dumps(
+                    audit["checkpoint_state"],
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                + "\n"
+            ).encode("utf-8")
+        ).hexdigest()
+        state_path.write_text(json.dumps(state) + "\n", encoding="utf-8")
+        audit_path.write_text(json.dumps(audit) + "\n", encoding="utf-8")
 
     def test_phase_order_is_exact_and_no_retry(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1619,6 +1736,28 @@ class HarnessStateTests(unittest.TestCase):
             audit_path.write_text(json.dumps(audit) + "\n", encoding="utf-8")
 
             with self.assertRaisesRegex(RuntimeError, "last cursor"):
+                machine.execute("resume-complete-1")
+            self.assertEqual(calls, ["resume-interrupt-1"])
+
+    def test_resume_revalidation_rejects_float_cursor_id_alias(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            calls = []
+            machine = self._machine(root, calls, [], [])
+            machine.execute("resume-interrupt-1")
+            self._replace_harness_resume_first_cursor_id(root, 1.0)
+            with self.assertRaisesRegex(RuntimeError, "cursor.*exact|cursor.*type"):
+                machine.execute("resume-complete-1")
+            self.assertEqual(calls, ["resume-interrupt-1"])
+
+    def test_resume_revalidation_rejects_bool_cursor_id_alias(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            calls = []
+            machine = self._machine(root, calls, [], [])
+            machine.execute("resume-interrupt-1")
+            self._replace_harness_resume_first_cursor_id(root, True)
+            with self.assertRaisesRegex(RuntimeError, "cursor.*exact|cursor.*type"):
                 machine.execute("resume-complete-1")
             self.assertEqual(calls, ["resume-interrupt-1"])
 

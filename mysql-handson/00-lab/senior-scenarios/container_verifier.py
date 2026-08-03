@@ -30,6 +30,7 @@ from container_harness import (
     RESUME_PART_FIELDS,
     SEVENTH_RUNTIME_FILENAME,
     canonical_tsv_part_metadata,
+    strict_canonical_cursor,
     validate_freeze_trigger_rows,
 )
 from evidence_contract import (
@@ -105,6 +106,13 @@ def _number(value: object, field: str) -> float:
     if not math.isfinite(parsed) or parsed < 0:
         _fail(f"{field} must be an exact finite number")
     return parsed
+
+
+def _cursor(value: object, field: str) -> list[object]:
+    try:
+        return strict_canonical_cursor(value, field)
+    except RuntimeError as error:
+        raise ValueError(f"{field} cursor exact type or format changed") from error
 
 
 def _connector_environment(value: object) -> dict[str, object]:
@@ -693,6 +701,8 @@ def _export_result(
         _fail("ordinary result contract export fields changed")
     _connector_contract(value["connector_contract"], expected_environment)
     rows = _exact_int(value["rows"], "export rows", minimum=1)
+    high_cursor = _cursor(value["high_cursor"], "export high")
+    last_cursor = _cursor(value["last_cursor"], "export last")
     if (
         value["status"] != "SUCCEEDED"
         or value["mode"] != mode
@@ -700,9 +710,7 @@ def _export_result(
         or (seed_rows is not None and rows != seed_rows)
         or type(value["sha256"]) is not str
         or not re.fullmatch(r"[0-9a-f]{64}", value["sha256"])
-        or type(value["high_cursor"]) is not list
-        or type(value["last_cursor"]) is not list
-        or value["high_cursor"] != value["last_cursor"]
+        or not _canonical_equal(high_cursor, last_cursor)
     ):
         _fail("ordinary result contract export changed")
     active_seconds = _number(value["active_seconds"], "export active seconds")
@@ -826,6 +834,8 @@ def _controller_results(
             if type(result) is not dict or set(result) != fields:
                 _fail("direct resume interruption result contract fields changed")
             _connector_contract(result["connector_contract"])
+            _cursor(result["high_cursor"], "resume interruption high")
+            _cursor(result["last_cursor"], "resume interruption last")
             if (
                 result["status"] != "ABORTED"
                 or result["mode"] != "chunked"
@@ -1150,6 +1160,8 @@ def _verify_source_and_teardown(
         if set(seed) != set(EXPECTED_SEED_MANIFEST):
             _fail("source baseline fields drift")
         rows = _exact_int(seed.get("report_rows"), "source baseline rows", minimum=minimum_artifact_rows)
+        min_cursor = _cursor(seed.get("min_cursor"), "source minimum")
+        high_cursor = _cursor(seed.get("high_cursor"), "source high")
         for field in ("orders", "item_orders"):
             if type(seed.get(field)) is not int or seed[field] != rows:
                 _fail("source baseline row relationships drift")
@@ -1162,10 +1174,10 @@ def _verify_source_and_teardown(
             or seed.get("max_items_per_order") != 3
             or seed.get("probes") != 10_000
             or seed.get("probe_counter_sum") != 0
-            or seed.get("min_cursor") != ["2026-01-01 00:00:01.000000", 1]
-            or type(seed.get("high_cursor")) is not list
-            or len(seed["high_cursor"]) != 2
-            or seed["high_cursor"][1] != rows
+            or not _canonical_equal(
+                min_cursor, ["2026-01-01 00:00:01.000000", 1]
+            )
+            or high_cursor[1] != rows
             or seed.get("total_amount_fingerprint") != f"{rows}.00"
         ):
             _fail("source baseline aggregate relationships drift")
@@ -1269,16 +1281,31 @@ def _artifact_signature(
     ):
         _fail(f"artifact state changed: {job.name}")
     expected_rows = _exact_int(seed["report_rows"], "expected report rows")
-    high_cursor = seed["high_cursor"]
+    min_cursor = _cursor(seed["min_cursor"], "source minimum")
+    high_cursor = _cursor(seed["high_cursor"], "source high")
+    state_high_cursor = _cursor(
+        [state.get("high_created_at"), state.get("high_id")],
+        f"artifact state high: {job.name}",
+    )
+    state_last_cursor = _cursor(
+        [state.get("last_created_at"), state.get("last_id")],
+        f"artifact state last: {job.name}",
+    )
+    result_high_cursor = _cursor(
+        result.get("high_cursor"), f"artifact result high: {job.name}"
+    )
+    result_last_cursor = _cursor(
+        result.get("last_cursor"), f"artifact result last: {job.name}"
+    )
     if (
         state.get("expected_rows") != expected_rows
         or state.get("rows_written") != expected_rows
         or state.get("artifact_rows") != expected_rows
         or result.get("rows") != expected_rows
-        or [state.get("high_created_at"), state.get("high_id")] != high_cursor
-        or [state.get("last_created_at"), state.get("last_id")] != high_cursor
-        or result.get("high_cursor") != high_cursor
-        or result.get("last_cursor") != high_cursor
+        or not _canonical_equal(state_high_cursor, high_cursor)
+        or not _canonical_equal(state_last_cursor, high_cursor)
+        or not _canonical_equal(result_high_cursor, high_cursor)
+        or not _canonical_equal(result_last_cursor, high_cursor)
     ):
         _fail(f"artifact cursor or row state changed: {job.name}")
 
@@ -1348,7 +1375,7 @@ def _artifact_signature(
     if (
         rows != expected_rows
         or len(keys) != expected_rows
-        or first != (seed["min_cursor"][0], seed["min_cursor"][1])
+        or first != (min_cursor[0], min_cursor[1])
         or previous != (high_cursor[0], high_cursor[1])
         or format(amount, ".2f") != seed["total_amount_fingerprint"]
         or item_count != seed["item_count_fingerprint"]
@@ -1376,6 +1403,12 @@ def _artifact_signature(
                 _fail(f"artifact part fields changed: {job.name}")
             name = f"part-{number:06d}.tsv"
             rows_in_part = _exact_int(part["rows"], "artifact part rows", minimum=1)
+            first_cursor = _cursor(
+                part["first_cursor"], f"artifact part first: {job.name}/{name}"
+            )
+            last_cursor = _cursor(
+                part["last_cursor"], f"artifact part last: {job.name}/{name}"
+            )
             if (
                 type(part["number"]) is not int
                 or part["number"] != number
@@ -1383,11 +1416,7 @@ def _artifact_signature(
                 or rows_in_part > 1000
                 or (number < len(parts) and rows_in_part != 1000)
                 or type(part["sha256"]) is not str
-                or type(part["first_cursor"]) is not list
-                or len(part["first_cursor"]) != 2
-                or type(part["last_cursor"]) is not list
-                or len(part["last_cursor"]) != 2
-                or (previous is not None and part["first_cursor"] <= previous)
+                or (previous is not None and first_cursor <= previous)
             ):
                 _fail(f"artifact part contract changed: {job.name}")
             path = job / "parts" / name
@@ -1397,21 +1426,30 @@ def _artifact_signature(
                 raise ValueError(
                     f"artifact part cursor or bytes changed: {job.name}"
                 ) from error
-            if any(observed[field] != part[field] for field in observed):
+            if (
+                not _canonical_equal(observed["first_cursor"], first_cursor)
+                or not _canonical_equal(observed["last_cursor"], last_cursor)
+                or observed["rows"] != rows_in_part
+                or observed["sha256"] != part["sha256"]
+            ):
                 _fail(f"artifact part cursor or bytes changed: {job.name}")
             with path.open("rb") as source:
                 for chunk in iter(lambda: source.read(1024 * 1024), b""):
                     part_digest.update(chunk)
             part_rows += observed["rows"]
-            previous = observed["last_cursor"]
+            previous = last_cursor
+        final_state_cursor = _cursor(
+            [state["last_created_at"], state["last_id"]],
+            f"artifact final state: {job.name}",
+        )
         if (
             _exact_int(state["next_part"], "chunked next part", minimum=1)
             != len(parts) + 1
-            or result["parts"] != len(parts)
-            or type(result["parts"]) is not int
+            or _exact_int(result["parts"], "chunked result parts", minimum=1)
+            != len(parts)
             or part_rows != rows
             or part_digest.hexdigest() != actual_sha
-            or previous != [state["last_created_at"], state["last_id"]]
+            or not _canonical_equal(previous, final_state_cursor)
         ):
             _fail(f"artifact part manifest changed: {job.name}")
     return {"job": job.name, "rows": rows, "sha256": actual_sha}
@@ -1467,6 +1505,14 @@ def _verify_resume_interruption(
     ):
         _fail("resume interruption audit contract changed")
     _connector_contract(checkpoint["connector_contract"])
+    checkpoint_high_cursor = _cursor(
+        [checkpoint["high_created_at"], checkpoint["high_id"]],
+        "resume checkpoint high",
+    )
+    checkpoint_last_cursor = _cursor(
+        [checkpoint["last_created_at"], checkpoint["last_id"]],
+        "resume checkpoint last",
+    )
     checkpoint_parts = checkpoint["parts"]
     if type(checkpoint_parts) is not list or len(checkpoint_parts) != 3:
         _fail("resume interruption part count changed")
@@ -1481,42 +1527,61 @@ def _verify_resume_interruption(
             or part["name"] != f"part-{number:06d}.tsv"
         ):
             _fail("resume interruption part fields changed")
+        rows_in_part = _exact_int(
+            part["rows"], "resume interruption part rows", minimum=1
+        )
+        if rows_in_part != 1000 or type(part["sha256"]) is not str:
+            _fail("resume interruption part fields changed")
+        first_cursor = _cursor(
+            part["first_cursor"], f"resume interruption part {number} first"
+        )
+        last_cursor = _cursor(
+            part["last_cursor"], f"resume interruption part {number} last"
+        )
         try:
             observed = canonical_tsv_part_metadata(
                 runtime_root / "job-resume-1" / "parts" / part["name"]
             )
         except RuntimeError as error:
             raise ValueError("resume interruption part cursor or bytes changed") from error
-        if any(observed[field] != part[field] for field in observed):
+        if (
+            not _canonical_equal(observed["first_cursor"], first_cursor)
+            or not _canonical_equal(observed["last_cursor"], last_cursor)
+            or observed["rows"] != rows_in_part
+            or observed["sha256"] != part["sha256"]
+        ):
             _fail("resume interruption part cursor or bytes changed")
         if (
             previous_part_cursor is not None
-            and observed["first_cursor"] <= previous_part_cursor
+            and first_cursor <= previous_part_cursor
         ):
             _fail("resume interruption part cursor order changed")
         derived_rows += observed["rows"]
-        previous_part_cursor = observed["last_cursor"]
+        previous_part_cursor = last_cursor
     if (
         derived_rows != checkpoint["rows_written"]
         or audit["rows_written"] != derived_rows
         or checkpoint["next_part"] != len(checkpoint_parts) + 1
         or audit["next_part"] != len(checkpoint_parts) + 1
         or audit["part_count"] != len(checkpoint_parts)
-        or [checkpoint["last_created_at"], checkpoint["last_id"]]
-        != checkpoint_parts[-1]["last_cursor"]
+        or not _canonical_equal(checkpoint_last_cursor, previous_part_cursor)
     ):
         _fail("resume interruption checkpoint last cursor or rows changed")
     interrupted = results["resume-interrupt-1"]
+    interrupted_high_cursor = _cursor(
+        interrupted["high_cursor"], "resume interruption stdout high"
+    )
+    interrupted_last_cursor = _cursor(
+        interrupted["last_cursor"], "resume interruption stdout last"
+    )
     if (
         interrupted["rows"] != audit["rows_written"]
         or interrupted["parts"] != audit["part_count"]
         or interrupted["job_id"] != audit["job_id"]
         or interrupted["reason"] != checkpoint["abort_reason"]
         or interrupted["active_seconds"] != checkpoint["active_seconds"]
-        or interrupted["high_cursor"]
-        != [checkpoint["high_created_at"], checkpoint["high_id"]]
-        or interrupted["last_cursor"]
-        != [checkpoint["last_created_at"], checkpoint["last_id"]]
+        or not _canonical_equal(interrupted_high_cursor, checkpoint_high_cursor)
+        or not _canonical_equal(interrupted_last_cursor, checkpoint_last_cursor)
         or not _canonical_equal(
             interrupted["connector_contract"], checkpoint["connector_contract"]
         )
@@ -1524,15 +1589,28 @@ def _verify_resume_interruption(
         _fail("resume interruption stdout and checkpoint differ")
     final_state = _read_json(runtime_root / "job-resume-1" / "state.json")
     final_parts = final_state.get("parts")
+    final_high_cursor = _cursor(
+        [final_state.get("high_created_at"), final_state.get("high_id")],
+        "resume final state high",
+    )
+    final_last_cursor = _cursor(
+        [final_state.get("last_created_at"), final_state.get("last_id")],
+        "resume final state last",
+    )
+    final_part_last_cursor = (
+        _cursor(final_parts[-1].get("last_cursor"), "resume final part last")
+        if type(final_parts) is list
+        and final_parts
+        and type(final_parts[-1]) is dict
+        else None
+    )
     if (
         type(final_parts) is not list
         or len(final_parts) <= 3
         or not _canonical_equal(checkpoint_parts, final_parts[:3])
         or final_state.get("expected_rows") != checkpoint["expected_rows"]
-        or [final_state.get("high_created_at"), final_state.get("high_id")]
-        != [checkpoint["high_created_at"], checkpoint["high_id"]]
-        or [final_state.get("last_created_at"), final_state.get("last_id")]
-        != final_parts[-1]["last_cursor"]
+        or not _canonical_equal(final_high_cursor, checkpoint_high_cursor)
+        or not _canonical_equal(final_last_cursor, final_part_last_cursor)
     ):
         _fail("resume interruption part prefix differs from final manifest")
 

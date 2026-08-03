@@ -289,9 +289,15 @@ def validate_source_manifest(manifest: object) -> dict[str, object]:
             raise RuntimeError(f"canonical source count changed: {field}")
     for field in ("order_crc32_sum", "item_crc32_sum", "probe_counter_sum"):
         _require_exact_nonnegative(manifest[field], field)
-    if manifest["min_cursor"] != ["2026-01-01 00:00:01.000000", 1]:
+    min_cursor = strict_canonical_cursor(manifest["min_cursor"], "source minimum")
+    high_cursor = strict_canonical_cursor(manifest["high_cursor"], "source high")
+    if not _canonical_json_equal(
+        min_cursor, ["2026-01-01 00:00:01.000000", 1]
+    ):
         raise RuntimeError("canonical source minimum cursor changed")
-    if manifest["high_cursor"] != ["2026-01-02 03:46:40.000000", 100000]:
+    if not _canonical_json_equal(
+        high_cursor, ["2026-01-02 03:46:40.000000", 100000]
+    ):
         raise RuntimeError("canonical source high cursor changed")
     total = manifest["total_amount_fingerprint"]
     if type(total) is not str or not re.fullmatch(r"[0-9]+\.[0-9]{2}", total):
@@ -633,12 +639,21 @@ class ExperimentDatabase:
             if not artifact.is_file() or not state_path.is_file():
                 raise RuntimeError(f"external audit artifact is missing: {job.name}")
             state = json.loads(state_path.read_text(encoding="utf-8"))
+            state_high_cursor = strict_canonical_cursor(
+                [state.get("high_created_at"), state.get("high_id")],
+                f"external audit high: {job.name}",
+            )
+            state_last_cursor = strict_canonical_cursor(
+                [state.get("last_created_at"), state.get("last_id")],
+                f"external audit last: {job.name}",
+            )
+            source_high_cursor = strict_canonical_cursor(
+                self.seed_manifest["high_cursor"], "external audit source high"
+            )
             if (
                 state.get("status") != "SUCCEEDED"
-                or [state.get("high_created_at"), state.get("high_id")]
-                != self.seed_manifest["high_cursor"]
-                or [state.get("last_created_at"), state.get("last_id")]
-                != self.seed_manifest["high_cursor"]
+                or not _canonical_json_equal(state_high_cursor, source_high_cursor)
+                or not _canonical_json_equal(state_last_cursor, source_high_cursor)
             ):
                 raise RuntimeError(f"external audit state is invalid: {job.name}")
             digest = hashlib.sha256()
@@ -1358,6 +1373,35 @@ def _checkpoint_state_sha256(state: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def strict_canonical_cursor(value: object, field: str) -> list[object]:
+    """Require the runner's exact JSON cursor representation without aliases."""
+    if (
+        type(value) is not list
+        or len(value) != 2
+        or type(value[0]) is not str
+        or not value[0]
+        or not re.fullmatch(
+            r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{6}", value[0]
+        )
+        or type(value[1]) is not int
+        or value[1] < 0
+    ):
+        raise RuntimeError(f"{field} cursor exact type or format changed")
+    try:
+        datetime.strptime(value[0], "%Y-%m-%d %H:%M:%S.%f")
+    except ValueError as error:
+        raise RuntimeError(f"{field} cursor exact type or format changed") from error
+    return [value[0], value[1]]
+
+
+def _canonical_json_equal(left: object, right: object) -> bool:
+    return json.dumps(
+        left, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ) == json.dumps(
+        right, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+
+
 def canonical_tsv_part_metadata(path: Path) -> dict[str, object]:
     """Derive the runner's immutable part metadata from canonical TSV bytes."""
     digest = hashlib.sha256()
@@ -1399,7 +1443,10 @@ def canonical_tsv_part_metadata(path: Path) -> dict[str, object]:
                         str(item_count).encode("ascii"),
                     )
                 ) + b"\n"
-                cursor = (created_at, order_id)
+                cursor_list = strict_canonical_cursor(
+                    [created_at, order_id], f"{Path(path).name} row"
+                )
+                cursor = (cursor_list[0], cursor_list[1])
                 if (
                     canonical != line
                     or not re.fullmatch(
@@ -1449,12 +1496,14 @@ def _validated_resume_parts(job: Path, value: object) -> list[dict[str, object]]
             or part["rows"] != 1000
             or type(part["sha256"]) is not str
             or not re.fullmatch(r"[0-9a-f]{64}", part["sha256"])
-            or type(part["first_cursor"]) is not list
-            or len(part["first_cursor"]) != 2
-            or type(part["last_cursor"]) is not list
-            or len(part["last_cursor"]) != 2
         ):
             raise RuntimeError("resume interruption part contract changed")
+        first_cursor = strict_canonical_cursor(
+            part["first_cursor"], "resume interruption part first"
+        )
+        last_cursor = strict_canonical_cursor(
+            part["last_cursor"], "resume interruption part last"
+        )
         path = job / "parts" / name
         try:
             observed = canonical_tsv_part_metadata(path)
@@ -1462,12 +1511,17 @@ def _validated_resume_parts(job: Path, value: object) -> list[dict[str, object]]
             raise RuntimeError(
                 "resume interruption part cursor or bytes changed"
             ) from error
-        if any(observed[field] != part[field] for field in observed):
+        if (
+            not _canonical_json_equal(observed["first_cursor"], first_cursor)
+            or not _canonical_json_equal(observed["last_cursor"], last_cursor)
+            or observed["rows"] != part["rows"]
+            or observed["sha256"] != part["sha256"]
+        ):
             raise RuntimeError("resume interruption part cursor or bytes changed")
-        if previous_last is not None and observed["first_cursor"] <= previous_last:
+        if previous_last is not None and first_cursor <= previous_last:
             raise RuntimeError("resume interruption part cursor order changed")
         validated.append(dict(part))
-        previous_last = observed["last_cursor"]
+        previous_last = last_cursor
     return validated
 
 
@@ -1518,7 +1572,7 @@ def validate_resume_interruption_audit(runtime_root: Path) -> dict[str, object]:
         or not re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z", audit["recorded_at"])
         or recorded_at.tzinfo != timezone.utc
         or type(audit["checkpoint_state"]) is not dict
-        or audit["checkpoint_state"] != state
+        or not _canonical_json_equal(audit["checkpoint_state"], state)
         or audit["checkpoint_state_sha256"] != _checkpoint_state_sha256(state)
         or state.get("status") != "ABORTED"
         or state.get("job_id") != "resume-1"
@@ -1530,20 +1584,29 @@ def validate_resume_interruption_audit(runtime_root: Path) -> dict[str, object]:
         or job.joinpath("result.json").exists()
     ):
         raise RuntimeError("resume interruption audit contract changed")
+    state_high = strict_canonical_cursor(
+        [state.get("high_created_at"), state.get("high_id")],
+        "resume interruption checkpoint high",
+    )
+    state_last = strict_canonical_cursor(
+        [state.get("last_created_at"), state.get("last_id")],
+        "resume interruption checkpoint last",
+    )
     parts = _validated_resume_parts(job, state.get("parts"))
+    audit_parts = _validated_resume_parts(job, audit.get("parts"))
     derived_rows = sum(part["rows"] for part in parts)
     if (
-        audit["parts"] != parts
+        not _canonical_json_equal(audit_parts, parts)
         or audit["part_count"] != len(parts)
         or audit["next_part"] != len(parts) + 1
         or state["rows_written"] != derived_rows
         or state["next_part"] != len(parts) + 1
     ):
         raise RuntimeError("resume interruption audit part prefix changed")
-    if [state.get("last_created_at"), state.get("last_id")] != parts[-1][
-        "last_cursor"
-    ]:
+    if not _canonical_json_equal(state_last, parts[-1]["last_cursor"]):
         raise RuntimeError("resume interruption checkpoint last cursor changed")
+    if state_high < state_last:
+        raise RuntimeError("resume interruption checkpoint high cursor changed")
     return audit
 
 
