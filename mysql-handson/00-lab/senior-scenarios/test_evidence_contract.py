@@ -189,6 +189,73 @@ class ShellPolicyTests(unittest.TestCase):
         self.assertNotIn("MYSQL_PASSWORD=", create_line)
 
 
+class DocumentationContractTests(unittest.TestCase):
+    def test_documented_container_entry_targets_an_executable_repository_script(self):
+        self.assertTrue(os.access(RUN_SCRIPT, os.X_OK))
+        text = SCENARIO.read_text(encoding="utf-8")
+        self.assertIn(
+            "./run-containerized.sh inspect\n"
+            "./run-containerized.sh offline-test\n"
+            "./run-containerized.sh run\n"
+            "./run-containerized.sh verify",
+            text,
+        )
+
+    def test_container_execution_contract_is_complete_and_host_live_examples_absent(self):
+        text = SCENARIO.read_text(encoding="utf-8")
+        required = (
+            "cd mysql-handson/00-lab/senior-scenarios",
+            "./run-containerized.sh inspect",
+            "./run-containerized.sh offline-test",
+            "./run-containerized.sh run",
+            "./run-containerized.sh verify",
+            "mysql-senior-scenarios-net",
+            "mysql-senior-scenarios-evidence-v1",
+            "mysql-senior-scenarios-mysql:3306",
+            "--cpus 2",
+            "--memory 2g",
+            "--pids-limit 256",
+            "read-only",
+            "LOST_BY_EXTERNAL_TMP_CLEANUP",
+            "seventh fresh runtime",
+            "00-seed-freeze",
+            "10-kill-smoke",
+            "20-controls-calibration",
+            "30-buffered",
+            "40-chunked",
+            "50-resume-audit",
+            "60-final",
+            "append-only",
+            "one-shot",
+            "no retry",
+            "retained evidence volume",
+            "resume-interruption-audit.json",
+            "checkpoint_state_sha256",
+            "order_crc32_sum",
+            "item_crc32_sum",
+        )
+        for value in required:
+            self.assertIn(value, text)
+
+        shell_examples = "\n".join(
+            re.findall(r"```(?:bash|sh)\n(.*?)```", text, flags=re.DOTALL)
+        )
+        self.assertIsNone(
+            re.search(r"(?m)^(?:uv run|python(?:3)? |mysql )", shell_examples)
+        )
+        for forbidden in (
+            "127.0.0.1:33306",
+            "mktemp -d /private/tmp/mysql-senior-scenarios",
+            "rm -rf",
+        ):
+            self.assertNotIn(forbidden, shell_examples)
+
+    def test_documented_crc_queries_are_verbatim_harness_contract(self):
+        text = SCENARIO.read_text(encoding="utf-8")
+        self.assertIn(ORDER_CRC32_SQL, text)
+        self.assertIn(ITEM_CRC32_SQL, text)
+
+
 class ContainerVerifierTests(unittest.TestCase):
     read_only_mountinfo = (
         "36 25 0:32 / /private/tmp ro,nosuid,nodev - local /dev rw\n"

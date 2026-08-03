@@ -6,6 +6,22 @@
 > - `REUSED`：MVCC、JOIN／filesort／temporary、keyset pagination 与 replica lag 直接复用 ch05、ch08、ch09 的 owner。
 > - `REASONED`：Primary／shared replica／dedicated reporting replica／analytical store 的生产选择是架构推导，不是本机实测。
 
+## Containerized execution contract（`READY_UNRUN`）
+
+本场景只有一个 Docker lab entry；在 macOS 上不运行 host Python、`uv`、package installer 或 MySQL client，也没有 macOS runtime/artifact 路径。请从 repository root 进入 lab 后按以下顺序执行：
+
+```bash
+cd mysql-handson/00-lab/senior-scenarios
+./run-containerized.sh inspect
+./run-containerized.sh offline-test
+./run-containerized.sh run
+./run-containerized.sh verify
+```
+
+`inspect` 是只读检查；`offline-test` 是 network-none、copy-based 的离线契约 suite；`run` 是 one-shot、no retry 的唯一 live harness 入口；`verify` 用 read-only evidence-volume mount 的 network-none verifier 重读产物。所有 container 都受 `--cpus 2`、`--memory 2g` 与 `--pids-limit 256` 限制。harness 只使用 Docker network `mysql-senior-scenarios-net`，并以 Docker DNS `mysql-senior-scenarios-mysql:3306` 连接 MySQL。程序参数中的 `/private/tmp` 是 harness 内挂载的 named volume `mysql-senior-scenarios-evidence-v1`，不是 macOS 上可操作的目录；该 retained evidence volume 不由此 lab 删除。
+
+运行完成前，所有 reader-visible 状态仍为 `READY_UNRUN`；`SUCCEEDED`、量测结果、artifact SHA 或 S 级结论都不是当前文档事实。lab 使用的环境与只读 verifier 说明见 [report/export container lab](../00-lab/senior-scenarios/README.md)。
+
 ## 题目与先问的约束
 
 > 要导出一份千万级 JOIN 报表，线上 MySQL 不能被拖慢，输出要能重试、续跑并证明完整。你会怎么定义一致性、隔离资源和发布文件？
@@ -248,7 +264,7 @@ CLI interface 固定：
 --min-free-bytes 5419909120
 --duration-seconds 60
 --threads 4
---host 127.0.0.1 --port 3306 --user root --password-env MYSQL_PASSWORD
+--host mysql-senior-scenarios-mysql --port 3306 --user root --password-env MYSQL_PASSWORD
 ```
 
 Task 10 从下方 canonical Python fence 原样物化到 `$MYSQL_SCENARIO_RUN_DIR/export_runner.py`。`--runtime-root`、job、abort、metrics 和 controller evidence 必须 resolve 到同一个 immediate `/private/tmp/mysql-senior-scenarios.<nonempty-suffix>` runtime directory；job 是 immediate nonempty `job-<run-id>` child，控制文件名必须与该 ID 精确对应。export data values 全部 parameterized；buffered 与 chunked 使用相同字段次序与 canonical TSV formatting；密码只来自 `--password-env MYSQL_PASSWORD`。
@@ -1567,44 +1583,33 @@ artifact item_count sum = 300000
 
 只有 row count 不足以证明完整：duplicate 与 missing 可能互相抵消；只有 SHA 也不足以解释语义，所以同时保存 source manifest、high／last cursor、distinct key 与 aggregate fingerprint。
 
+source manifest 的两个 CRC 字段不是说明性伪代码；container harness 使用以下 verbatim SQL（含 `CONCAT_WS('#', ...)` encoding）：
+
+```sql
+SELECT COALESCE(SUM(CAST(CRC32(CONCAT_WS('#',
+  CAST(id AS CHAR),
+  CAST(tenant_id AS CHAR),
+  CAST(status AS CHAR),
+  DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s.%f')
+)) AS UNSIGNED)), 0) AS order_crc32_sum
+FROM report_order
+```
+
+```sql
+SELECT COALESCE(SUM(CAST(CRC32(CONCAT_WS('#',
+  CAST(id AS CHAR),
+  CAST(order_id AS CHAR),
+  CAST(qty AS CHAR),
+  CAST(unit_price AS CHAR)
+)) AS UNSIGNED)), 0) AS item_crc32_sum
+FROM report_item
+```
+
 ### Interruption／resume 固定步骤
 
-第一次只允许完成三个 checkpoint：
+这不是 host command 的操作说明；实际 run/resume 由上方唯一的 container entry 编排。`resume-interruption-audit.json` 是 immutable pre-resume boundary：在 `resume-1` 第一次 invocation 得到 `ABORTED` 后，它必须保留 checkpoint state、`checkpoint_state_sha256`、`rows_written=3000`、三份 part、`next_part=4`，以及每份 part 的 canonical byte SHA-256、first/last cursor。此时没有 published `artifact.tsv`，没有 `result.json`；audit 的 `artifact_exists=false`、`result_exists=false` 与 checkpoint 的 exact prefix 共同绑定这些事实。之后才允许同一 job resume；final phase 必须把该 immutable prefix 绑定到 final artifact／state/result，而不是以 final filesystem 单独证明历史上从未发布 artifact 或 result。
 
-```bash
-uv run --with mysql-connector-python==9.7.0 python "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
-  --mode chunked --runtime-root "$MYSQL_SCENARIO_RUN_DIR" \
-  --job-dir "$MYSQL_SCENARIO_RUN_DIR/job-resume" \
-  --abort-file "$MYSQL_SCENARIO_RUN_DIR/abort-resume.json" \
-  --batch-size 1000 --sleep-ms 20 --max-batches 3 \
-  --min-free-bytes 5419909120 \
-  --host 127.0.0.1 --port 3306 --user root --password-env MYSQL_PASSWORD
-```
-
-验收 first invocation：
-
-```text
-result.status = ABORTED
-state.status = ABORTED
-rows_written = 3000
-next_part = 4
-parts = 3
-artifact.tsv 不存在
-```
-
-再以 **同一 job directory** 续跑：
-
-```bash
-uv run --with mysql-connector-python==9.7.0 python "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
-  --mode chunked --runtime-root "$MYSQL_SCENARIO_RUN_DIR" \
-  --job-dir "$MYSQL_SCENARIO_RUN_DIR/job-resume" \
-  --abort-file "$MYSQL_SCENARIO_RUN_DIR/abort-resume.json" \
-  --batch-size 1000 --sleep-ms 20 --max-batches 0 \
-  --min-free-bytes 5419909120 \
-  --host 127.0.0.1 --port 3306 --user root --password-env MYSQL_PASSWORD
-```
-
-第二次必须成为 `SUCCEEDED`，final artifact 无 duplicate／missing，SHA 与 fresh buffered／chunked 相同。这个步骤验证 ABORTED → resume → SUCCEEDED 的 process-level state machine；没有注入 “rename 后、checkpoint 前” 的精确 crash point，也没有模拟 host power loss，所以不能把这两项写成 observed fact。
+该步骤的语义是 `ABORTED → resume → SUCCEEDED` 的 process-level state machine。它不注入 “rename 后、checkpoint 前” crash，也不模拟 host power loss；因此在 live run/verify 前，这些仍是 contract，不是 observed fact。
 
 ### Task 10 controller 的 fail-closed 契约
 
@@ -1623,10 +1628,10 @@ Task 10 把下方第二个 canonical executable fence 原样物化到 `$MYSQL_SC
 --startup-grace-seconds 12
 --heartbeat-grace-seconds 2.5
 --threads 4 --batch-size 1000 --sleep-ms 20
---host 127.0.0.1 --port 3306 --user root --password-env MYSQL_PASSWORD
+--host mysql-senior-scenarios-mysql --port 3306 --user root --password-env MYSQL_PASSWORD
 ```
 
-`--runtime-root`、runner、job、metrics、abort、stdout/stderr 与 controller-result 全部绑定到同一个 exact runtime root；export mode 的 `job-<run-id>` suffix 必须等于 `trial-id`。
+`--runtime-root`、runner、job、metrics、abort、stdout/stderr 与 controller-result 全部绑定到同一个 exact runtime root；export mode 的 `job-<run-id>` suffix 必须等于 `trial-id`。这里的 host/port 是 harness 容器内的 Docker DNS `mysql-senior-scenarios-mysql:3306`；不是 host loopback。
 
 `latency-calibration` 只能用固定 ID `latency-calibration-1`、60 秒、4 threads、无 job directory；它在 child 创建前严格重建三份 `control-1..3` 的 current-runtime contract。`none`、`buffered`、`chunked` 都拒绝非零 CLI P95 budget；buffered／chunked 在开 stdout/stderr 或第一次 `Popen` 前必须验证 frozen `latency-calibration.json`，该 artifact 是唯一 latency authority。
 
@@ -3764,25 +3769,13 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-The fourth fresh run observed a pause at the OLTP metrics
-publication/process boundary: window 26 was the last complete document, the
-next zero-byte atomic-write temporary file appeared only at the controller's
-termination boundary, and no child stack or queue-depth sample was retained.
-The former unbounded `get_nowait()` drain is therefore the strongest
-code-level hypothesis consistent with the pre-write delay, not a proven unique
-cause; scheduler or other pre-write stalls remain possible. This correction
-does not increase the `2.5 s` heartbeat grace.
+### Historical-loss, phase, and failure boundary
 
-The sixth fresh runtime exposed a different evidence defect: the controller
-polled a later atomically replaced snapshot after one or more earlier snapshots
-had already been replaced, so the old latest-observation tracker omitted runner
-windows that had actually completed. That run established a latest-snapshot
-**observation gap**, not a latency-threshold breach or a valid control result.
-Its controls must not be upgraded, recalibrated or reused. All six stopped
-runtime trees and their results are immutable historical failure evidence; no
-file in any of them may be patched or continued.
+The six former runtime roots are recorded only as historical loss: `/private/tmp/mysql-senior-scenarios.SJ38zd`, `/private/tmp/mysql-senior-scenarios.LxogM8`, `/private/tmp/mysql-senior-scenarios.UJXwDE`, `/private/tmp/mysql-senior-scenarios.VW9rGt`, `/private/tmp/mysql-senior-scenarios.rmovUN`, and `/private/tmp/mysql-senior-scenarios.LjCY6E`. The harness writes immutable `historical-evidence-loss.json` with `status=LOST_BY_EXTERNAL_TMP_CLEANUP`, the six paths, and `current_raw_verification=false`. This is truthful loss metadata, not recovered evidence: no historical control/calibration, raw result, S claim, latency budget, or partial performance conclusion may be reused.
 
-/private/tmp/mysql-senior-scenarios.LjCY6E is immutable sixth-run failed evidence; it must never be resumed, rewritten, upgraded into calibration inputs, or used as a latency budget. No partial performance claim may be made from a stopped runtime.
+The next attempt is a seventh fresh runtime. It is one-shot with no retry path: any malformed evidence, resource gate breach, source divergence, unexpected container identity, or controller/runner failure ends the run as `FAILED` or `ABORTED` according to the persisted outcome, retains the failure record, and does not continue later phases. Its only valid phase order is append-only: `00-seed-freeze` → `10-kill-smoke` → `20-controls-calibration` → `30-buffered` → `40-chunked` → `50-resume-audit` → `60-final`. Each phase manifest binds the same scenario/container/network/volume/resource/program-hash identity and every preceding file-tree prefix; later filesystem state alone cannot prove historical absence.
+
+The controller/harness resource contract stays `--cpus 2`, `--memory 2g`, and `--pids-limit 256`; the verifier is network-none with a read-only evidence-volume mount. All of this remains `READY_UNRUN` until the container lab's run and verify complete.
 
 The runner checks a due publication before every bounded drain slice. A slice
 consumes at most `256` events and at most `10 ms` monotonic wall time; hitting
@@ -3820,21 +3813,9 @@ host/runtime-specific non-SLO boundary.
 
 Materialized runner／controller 必须保留 explicit `use_pure=True` 与 exact-type `MySQLConnection` gate。live work 前记录 Python/platform、Connector version、`threadsafety`、`HAVE_CEXT` 与 requested pure mode；successful result 加 exact pure class，所有 `FAILED` JSON 也保留 observed implementation envelope，包括 unknown／mismatched actual class。OLTP cleanup 即使 cursor close 失败也必须继续尝试 connection close；只有 `is_connected() is False` 才能记录 `closed=true`，缺 proof 或任一 close error 都 fail closed。child thread、worker 与 connection ID 是 exact JSON integer；string／boolean 都不接受。
 
-KILL preflight 后、`control-1` 前，必须用同一 canonical runner 跑一次固定五秒、四 worker 的 client-concurrency smoke：
+KILL preflight 后、`control-1` 前，container harness 以同一 canonical runner／controller 编排固定五秒、四 worker 的 client-concurrency smoke；操作员仍只使用本文件开头的 Docker lab entry。
 
-```bash
-uv run --with mysql-connector-python==9.7.0 python \
-  "$MYSQL_SCENARIO_RUN_DIR/scenario_controller.py" \
-  --runner "$MYSQL_SCENARIO_RUN_DIR/export_runner.py" \
-  --runtime-root "$MYSQL_SCENARIO_RUN_DIR" \
-  --trial-id oltp-smoke-1 --export-mode preflight-oltp \
-  --duration-seconds 5 --threads 4 \
-  --p95-budget-ms 0 --min-free-bytes 5419909120 \
-  --host 127.0.0.1 --port 3306 \
-  --user root --password-env MYSQL_PASSWORD
-```
-
-Require one structured controller `SUCCEEDED`, positive child operations, zero child errors, at least two accepted advancing nonempty metric sequences, four distinct verifiably closed worker connections and an exact pure connector contract. Preserve the smoke result with `excluded_from_control_statistics=true` plus a binding over the exact runtime root, runner/controller SHA-256 values and non-secret connection configuration. For this mode only, any metrics／gate breach, native exit, empty／multiple／malformed child output, shared／unclosed connection or actual-mode mismatch persists controller `FAILED` and exits `2`; it must never use timed-export `ABORTED`／exit-0 semantics. Parse and retain a structured child failure when one exists, otherwise retain the structured-output error and implementation envelope. Never retry this smoke in the same runtime. The prior Python 3.13/macOS arm64/Connector 9.7.0 evidence—canonical one-thread success, default `HAVE_CEXT=true` four-thread exit 139, and the same four-thread workload succeeding with `use_pure=True`—is an excluded client/environment boundary, not a MySQL performance sample.
+Require one structured controller `SUCCEEDED`, positive child operations, zero child errors, at least two accepted advancing nonempty metric sequences, four distinct verifiably closed worker connections and an exact pure connector contract. Preserve the smoke result with `excluded_from_control_statistics=true` plus a binding over the exact runtime root, runner/controller SHA-256 values and non-secret connection configuration. For this mode only, any metrics／gate breach, native exit, empty／multiple／malformed child output, shared／unclosed connection or actual-mode mismatch persists controller `FAILED` and exits `2`; it must never use timed-export `ABORTED`／exit-0 semantics. Parse and retain a structured child failure when one exists, otherwise retain the structured-output error and implementation envelope. Never retry this smoke in the same runtime. No prior client/environment output is a current MySQL performance sample or a substitute for the seventh runtime.
 
 Every later timed `none`／`buffered`／`chunked` invocation must validate `controller-result-oltp-smoke-1.json` as `SUCCEEDED`, excluded, sufficiently progressing, exact-pure and equal to its current runtime／runner／connection binding before starting any child. Missing, failed, malformed, stale-runtime, changed-runner or changed-config smoke evidence fails the timed invocation before `Popen`; timed export breach behavior after this gate remains the documented `ABORTED` contract.
 

@@ -37,7 +37,7 @@
 | 3 | 线上 schema 变更与资料 backfill | `python-data/07-migrations.md` | 路由；MySQL DDL 机制连到 ch11 |
 | 4 | 历史资料归档、大量删除与空间回收 | [归档、批量删除与空间回收](03-archive-delete-reclaim.md) | `SCALED_REPRODUCED (S=100000)` |
 | 5 | 资料分布改变造成执行计划退化 | `mysql-handson/04-execution-and-explain/scenarios/01-plan-flips-by-selectivity.md` | 路由 |
-| 6 | 大型 JOIN、报表与全量汇出如何隔离 OLTP | [大型报表与导出隔离](04-report-export-isolation.md) | `READY_UNRUN`；JOIN 机制连到 ch08 |
+| 6 | 大型 JOIN、报表与全量汇出如何隔离 OLTP | [大型报表与导出隔离](04-report-export-isolation.md)；[container lab](../00-lab/senior-scenarios/README.md) | `READY_UNRUN`；JOIN 机制连到 ch08 |
 | 7 | 深分页到大批量汇出的完整处理 | [大型报表与导出隔离](04-report-export-isolation.md) | `READY_UNRUN`；场景组装；分页机制连到 ch08 scenario 03 |
 | 8 | 高并发扣库存与防超卖 | `system-design-scenarios/16-秒杀与票务.md` | 路由 |
 | 9 | 订单／支付／库存的 UNKNOWN、幂等与对账 | `financial-consistency/03-order-payment-inventory/README.md` | 路由；面试卡作闭卷入口 |
