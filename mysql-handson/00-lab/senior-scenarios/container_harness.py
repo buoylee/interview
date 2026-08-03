@@ -1460,6 +1460,8 @@ class HarnessStateMachine:
     def run(self) -> None:
         succeeded = False
         primary_error: BaseException | None = None
+        failure_record_error: BaseException | None = None
+        teardown_error: BaseException | None = None
         try:
             self.prepare()
             self.create_manifest(self.runtime_root, PHASES[0], self.binding)
@@ -1474,23 +1476,29 @@ class HarnessStateMachine:
             succeeded = True
         except BaseException as error:
             primary_error = error
-            try:
-                self._failure_record(error)
-            except BaseException as record_error:
-                primary_error = _combined_error(
-                    primary_error, record_error, "failure record failed"
-                )
         try:
-            self.teardown(succeeded)
-        except BaseException as teardown_error:
-            if primary_error is None:
-                primary_error = teardown_error
-            else:
+            if primary_error is not None:
+                try:
+                    self._failure_record(primary_error)
+                except BaseException as error:
+                    failure_record_error = error
+        finally:
+            try:
+                self.teardown(succeeded)
+            except BaseException as error:
+                teardown_error = error
+        if primary_error is not None:
+            if failure_record_error is not None:
+                primary_error = _combined_error(
+                    primary_error, failure_record_error, "failure record failed"
+                )
+            if teardown_error is not None:
                 primary_error = _combined_error(
                     primary_error, teardown_error, "controlled teardown failed"
                 )
-        if primary_error is not None:
             raise primary_error
+        if teardown_error is not None:
+            raise teardown_error
         self.create_manifest(self.runtime_root, PHASES[-1], self.binding)
 
 

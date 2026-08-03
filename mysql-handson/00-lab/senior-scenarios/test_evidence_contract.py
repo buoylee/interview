@@ -638,6 +638,43 @@ class HarnessStateTests(unittest.TestCase):
                 machine.run()
             self.assertEqual(teardowns, [False])
 
+    def test_failure_record_baseexception_runs_teardown_once_and_preserves_errors(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            teardowns = []
+
+            class FailureRecordAbort(BaseException):
+                def __str__(self):
+                    if not teardowns:
+                        raise RuntimeError("failure error combined before teardown")
+                    return "failure record baseexception"
+
+            def controlled_teardown(succeeded):
+                teardowns.append(succeeded)
+                (root / "controlled-stop.json").write_text(
+                    "{}\n", encoding="utf-8"
+                )
+
+            machine = HarnessStateMachine(
+                runtime_root=root,
+                binding=self.binding,
+                ledger=InvocationLedger(root / "invocations.jsonl"),
+                environment={"MYSQL_PASSWORD": "secret"},
+                launch=lambda *args: {},
+                create_manifest=lambda *args: None,
+                prepare=lambda: (_ for _ in ()).throw(RuntimeError("primary failure")),
+                teardown=controlled_teardown,
+            )
+            machine._failure_record = lambda error: (_ for _ in ()).throw(
+                FailureRecordAbort()
+            )
+            with self.assertRaises(RuntimeError) as captured:
+                machine.run()
+            self.assertIn("primary failure", str(captured.exception))
+            self.assertIn("failure record baseexception", str(captured.exception))
+            self.assertEqual(teardowns, [False])
+            self.assertTrue((root / "controlled-stop.json").is_file())
+
     def test_reconciliation_failure_records_failed_terminal_only(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
