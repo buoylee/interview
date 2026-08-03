@@ -133,6 +133,11 @@ preflight_harness_inputs() {
   require_input_file "$SCRIPT_DIR/container_harness.py"
 }
 
+preflight_offline_inputs() {
+  preflight_common_inputs
+  require_input_file "$SCRIPT_DIR/container_harness.py"
+}
+
 preflight_verifier_inputs() {
   preflight_common_inputs
   require_input_file "$SCRIPT_DIR/container_verifier.py"
@@ -152,6 +157,12 @@ copy_harness_inputs() {
   docker cp "$SCRIPT_DIR/container_harness.py" "$name:/opt/container_harness.py"
 }
 
+copy_offline_inputs() {
+  name=$1
+  copy_common_inputs "$name"
+  docker cp "$SCRIPT_DIR/container_harness.py" "$name:/opt/container_harness.py"
+}
+
 copy_verifier_inputs() {
   name=$1
   copy_common_inputs "$name"
@@ -159,10 +170,10 @@ copy_verifier_inputs() {
 }
 
 offline_test() {
-  preflight_common_inputs
+  preflight_offline_inputs
   remove_owned_transient "$OFFLINE_TEST_CONTAINER"
-  docker create --name "$OFFLINE_TEST_CONTAINER" --label "$SCOPE_LABEL" --cpus 2 --memory 2g --pids-limit 256 "$PYTHON_IMAGE" python -m unittest -v /opt/test_evidence_contract.py
-  copy_common_inputs "$OFFLINE_TEST_CONTAINER"
+  docker create --name "$OFFLINE_TEST_CONTAINER" --label "$SCOPE_LABEL" --cpus 2 --memory 2g --pids-limit 256 "$PYTHON_IMAGE" sh -c 'python -m pip install --no-cache-dir mysql-connector-python==9.7.0 && python -m unittest -v /opt/test_evidence_contract.py && python /opt/container_harness.py offline-check --scenario /opt/scenario.md --python-input /opt/evidence_contract.py --python-input /opt/test_evidence_contract.py --python-input /opt/container_harness.py'
+  copy_offline_inputs "$OFFLINE_TEST_CONTAINER"
   docker start -a "$OFFLINE_TEST_CONTAINER"
 }
 
@@ -213,6 +224,10 @@ run_live_harness() {
   scenario_commit=$(git -C "$REPO_ROOT" rev-parse HEAD)
   docker create --name "$HARNESS_CONTAINER" --label "$SCOPE_LABEL" --network "$NETWORK" --cpus 2 --memory 2g --pids-limit 256 --mount type=volume,src=mysql-senior-scenarios-evidence-v1,dst=/private/tmp "$PYTHON_IMAGE" sh -c 'python -m pip install --no-cache-dir mysql-connector-python==9.7.0 && exec python /opt/container_harness.py run-all --scenario /opt/scenario.md --expected-commit "$1"' sh "$scenario_commit"
   copy_harness_inputs "$HARNESS_CONTAINER"
+  bootstrap_inspect=$(mktemp)
+  docker inspect "$HARNESS_CONTAINER" "$MYSQL_CONTAINER" > "$bootstrap_inspect"
+  docker cp "$bootstrap_inspect" "$HARNESS_CONTAINER:/opt/bootstrap-inspect.json"
+  rm -f "$bootstrap_inspect"
   docker start -a "$HARNESS_CONTAINER"
 }
 

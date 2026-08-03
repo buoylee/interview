@@ -7,7 +7,9 @@ import tempfile
 import unittest
 from dataclasses import replace
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -15,12 +17,35 @@ from evidence_contract import (
     EvidenceBinding,
     HISTORICAL_LOSS_STATUS,
     HISTORICAL_PATHS,
+    PHASES,
     create_phase_manifest,
     extract_programs,
     require_exact_int,
     verify_phase_manifests,
     verify_final_coverage,
     write_historical_loss,
+)
+from container_harness import (
+    EXPECTED_HOST,
+    EXPECTED_MEMORY,
+    EXPECTED_NETWORK,
+    EXPECTED_PIDS,
+    EXPECTED_PORT,
+    EXPECTED_VOLUME,
+    FREEZE_TRIGGER_NAMES,
+    FREEZE_TRIGGER_SQL,
+    ITEM_CRC32_SQL,
+    INVOCATIONS,
+    ORDER_CRC32_SQL,
+    SEVENTH_RUNTIME_FILENAME,
+    BootstrapBoundary,
+    HarnessStateMachine,
+    InvocationLedger,
+    build_invocation_command,
+    exact_db_int,
+    prepare_bootstrap,
+    verify_connector_contract,
+    validate_source_manifest,
 )
 
 
@@ -141,6 +166,422 @@ class HistoricalLossTests(unittest.TestCase):
             self.assertFalse(record["current_raw_verification"])
             with self.assertRaises(FileExistsError):
                 write_historical_loss(runtime_root)
+
+
+class HarnessStateTests(unittest.TestCase):
+    binding = EvidenceBinding(
+        scenario_commit="11d04a64716624f55860a32e68dc8c0ba71fd65c",
+        scenario_sha256="a" * 64,
+        mysql_image_id="sha256:mysql-image",
+        mysql_container_id="mysql-container-id",
+        harness_image_id="sha256:harness-image",
+        network_name=EXPECTED_NETWORK,
+        volume_name=EXPECTED_VOLUME,
+        cpu_limit="2",
+        memory_limit_bytes=EXPECTED_MEMORY,
+        pids_limit=EXPECTED_PIDS,
+        program_sha256={
+            "export_runner.py": "b" * 64,
+            "scenario_controller.py": "c" * 64,
+            "freeze_audit.py": "d" * 64,
+        },
+    )
+
+    class PureConnection:
+        def close(self):
+            pass
+
+    class OtherConnection:
+        def close(self):
+            pass
+
+    def _module(self, have_cext=True, version="9.7.0"):
+        return SimpleNamespace(
+            __version__=version,
+            threadsafety=1,
+            HAVE_CEXT=have_cext,
+        )
+
+    def _inspect(self):
+        return [
+            {
+                "Name": "/mysql-senior-scenarios-harness",
+                "Id": "harness-container-id",
+                "Image": "sha256:harness-image",
+                "Config": {
+                    "Labels": {
+                        "com.openai.codex.scope": "mysql-senior-scenarios"
+                    }
+                },
+                "HostConfig": {
+                    "NanoCpus": 2_000_000_000,
+                    "Memory": EXPECTED_MEMORY,
+                    "PidsLimit": EXPECTED_PIDS,
+                },
+                "Mounts": [
+                    {
+                        "Type": "volume",
+                        "Name": EXPECTED_VOLUME,
+                        "Destination": "/private/tmp",
+                    }
+                ],
+                "NetworkSettings": {"Networks": {EXPECTED_NETWORK: {}}},
+            },
+            {
+                "Name": f"/{EXPECTED_HOST}",
+                "Id": "mysql-container-id",
+                "Image": "sha256:mysql-image",
+                "Config": {
+                    "Labels": {
+                        "com.openai.codex.scope": "mysql-senior-scenarios"
+                    }
+                },
+                "NetworkSettings": {"Networks": {EXPECTED_NETWORK: {}}},
+            },
+        ]
+
+    def _boundary(
+        self,
+        *,
+        connect=None,
+        connector_module=None,
+        inspect_document=None,
+        cgroups=None,
+        resolve_dns=None,
+        suffix_factory=None,
+    ):
+        cgroup_values = cgroups or {
+            "/sys/fs/cgroup/cpu.max": "200000 100000\n",
+            "/sys/fs/cgroup/memory.max": f"{EXPECTED_MEMORY}\n",
+            "/sys/fs/cgroup/pids.max": f"{EXPECTED_PIDS}\n",
+        }
+        return BootstrapBoundary(
+            connector_module=connector_module or self._module(),
+            pure_connection_type=self.PureConnection,
+            connect=connect or (lambda **kwargs: self.PureConnection()),
+            read_text=lambda path: cgroup_values[str(path)],
+            read_inspect=lambda path: inspect_document or self._inspect(),
+            resolve_dns=resolve_dns or (lambda host, port: ((host, port),)),
+            environ={"MYSQL_PASSWORD": "not-on-command-line"},
+            suffix_factory=suffix_factory or (lambda: "seventh"),
+        )
+
+    def _machine(self, root, call_log, manifest_log, teardown_log, fail=None):
+        def launch(invocation_id, command, environment, stdout_path, stderr_path):
+            call_log.append(invocation_id)
+            if invocation_id == fail:
+                raise RuntimeError(f"injected failure: {invocation_id}")
+            if invocation_id == "resume-interrupt-1":
+                job = root / "job-resume-1"
+                job.mkdir()
+                (job / "state.json").write_text(
+                    json.dumps(
+                        {
+                            "status": "ABORTED",
+                            "rows_written": 3000,
+                            "next_part": 4,
+                            "parts": [{}, {}, {}],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            if invocation_id == "resume-complete-1":
+                job = root / "job-resume-1"
+                (job / "state.json").write_text(
+                    json.dumps({"status": "SUCCEEDED"}), encoding="utf-8"
+                )
+                (job / "result.json").write_text(
+                    json.dumps({"status": "SUCCEEDED"}), encoding="utf-8"
+                )
+                (job / "artifact.tsv").write_bytes(b"evidence\n")
+            result = {
+                "returncode": 0,
+                "status": (
+                    "ABORTED"
+                    if invocation_id == "resume-interrupt-1"
+                    else "SUCCEEDED"
+                ),
+            }
+            if invocation_id == "resume-interrupt-1":
+                result.update({"rows": 3000, "parts": 3})
+            return result
+
+        def manifest(runtime_root, phase, binding):
+            self.assertEqual(runtime_root, root)
+            self.assertIs(binding, self.binding)
+            manifest_log.append(phase)
+
+        return HarnessStateMachine(
+            runtime_root=root,
+            binding=self.binding,
+            ledger=InvocationLedger(root / "invocations.jsonl"),
+            environment={"MYSQL_PASSWORD": "not-on-command-line"},
+            launch=launch,
+            create_manifest=manifest,
+            teardown=lambda succeeded: teardown_log.append(succeeded),
+        )
+
+    def test_phase_order_is_exact_and_no_retry(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            calls = []
+            manifests = []
+            teardowns = []
+
+            self._machine(root, calls, manifests, teardowns).run()
+
+            self.assertEqual(tuple(calls), INVOCATIONS)
+            self.assertEqual(tuple(manifests), PHASES)
+            self.assertEqual(teardowns, [True])
+
+    def test_failure_stops_later_phases_and_runs_teardown_once(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            calls = []
+            manifests = []
+            teardowns = []
+
+            with self.assertRaisesRegex(RuntimeError, "buffered-1"):
+                self._machine(
+                    root, calls, manifests, teardowns, fail="buffered-1"
+                ).run()
+
+            failed_index = INVOCATIONS.index("buffered-1")
+            self.assertEqual(tuple(calls), INVOCATIONS[: failed_index + 1])
+            self.assertEqual(
+                manifests,
+                ["00-seed-freeze", "10-kill-smoke", "20-controls-calibration"],
+            )
+            self.assertEqual(teardowns, [False])
+
+    def test_existing_seventh_runtime_record_fails_before_measurement(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            volume_root = Path(temporary_directory)
+            (volume_root / SEVENTH_RUNTIME_FILENAME).write_text(
+                "{}\n", encoding="utf-8"
+            )
+            connector_calls = []
+            boundary = self._boundary(
+                connect=lambda **kwargs: connector_calls.append(kwargs)
+            )
+
+            with self.assertRaises(FileExistsError):
+                prepare_bootstrap(
+                    volume_root,
+                    Path("/does/not/reach/scenario.md"),
+                    self.binding.scenario_commit,
+                    boundary,
+                )
+
+            self.assertEqual(connector_calls, [])
+
+    def test_connection_is_docker_dns_3306_and_password_is_env_only(self):
+        captured = []
+
+        def connect(**kwargs):
+            captured.append(kwargs)
+            return self.PureConnection()
+
+        environment = {"MYSQL_PASSWORD": "secret-from-environment"}
+        evidence = verify_connector_contract(
+            self._module(have_cext=True),
+            self.PureConnection,
+            connect,
+            environment,
+        )
+        command = build_invocation_command(
+            "control-1", Path("/private/tmp/mysql-senior-scenarios.seventh")
+        )
+
+        self.assertEqual(captured[0]["host"], EXPECTED_HOST)
+        self.assertEqual(captured[0]["port"], EXPECTED_PORT)
+        self.assertEqual(captured[0]["password"], environment["MYSQL_PASSWORD"])
+        self.assertIs(captured[0]["use_pure"], True)
+        self.assertNotIn(environment["MYSQL_PASSWORD"], command)
+        self.assertIn("--password-env", command)
+        self.assertIn("MYSQL_PASSWORD", command)
+        self.assertTrue(evidence["have_cext"])
+        self.assertTrue(evidence["actual_pure"])
+
+    def test_measured_ledger_rejects_second_invocation_id(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            ledger = InvocationLedger(root / "invocations.jsonl")
+            ledger.start("kill-preflight-1")
+            launches = []
+            machine = HarnessStateMachine(
+                runtime_root=root,
+                binding=self.binding,
+                ledger=ledger,
+                environment={"MYSQL_PASSWORD": "secret"},
+                launch=lambda *args: launches.append(args),
+                create_manifest=lambda *args: None,
+                teardown=lambda succeeded: None,
+            )
+
+            with self.assertRaisesRegex(ValueError, "invocation ID"):
+                machine.execute("kill-preflight-1")
+
+            self.assertEqual(launches, [])
+
+    def test_bootstrap_rejects_wrong_connector_or_nonpure_connection(self):
+        calls = []
+        with self.assertRaisesRegex(RuntimeError, "9.7.0"):
+            verify_connector_contract(
+                self._module(version="9.6.0"),
+                self.PureConnection,
+                lambda **kwargs: calls.append(kwargs),
+                {"MYSQL_PASSWORD": "secret"},
+            )
+        self.assertEqual(calls, [])
+
+        with self.assertRaisesRegex(RuntimeError, "pure"):
+            verify_connector_contract(
+                self._module(have_cext=False),
+                self.PureConnection,
+                lambda **kwargs: self.OtherConnection(),
+                {"MYSQL_PASSWORD": "secret"},
+            )
+
+    def test_bootstrap_rejects_wrong_cgroup_limits_mount_or_dns(self):
+        cases = []
+        wrong_cpu = {
+            "/sys/fs/cgroup/cpu.max": "100000 100000\n",
+            "/sys/fs/cgroup/memory.max": f"{EXPECTED_MEMORY}\n",
+            "/sys/fs/cgroup/pids.max": f"{EXPECTED_PIDS}\n",
+        }
+        cases.append(("cpu", {"cgroups": wrong_cpu}))
+        wrong_memory = dict(wrong_cpu)
+        wrong_memory["/sys/fs/cgroup/cpu.max"] = "200000 100000\n"
+        wrong_memory["/sys/fs/cgroup/memory.max"] = "1073741824\n"
+        cases.append(("memory", {"cgroups": wrong_memory}))
+        wrong_pids = dict(wrong_cpu)
+        wrong_pids["/sys/fs/cgroup/cpu.max"] = "200000 100000\n"
+        wrong_pids["/sys/fs/cgroup/pids.max"] = "128\n"
+        cases.append(("pids", {"cgroups": wrong_pids}))
+        wrong_mount = self._inspect()
+        wrong_mount[0]["Mounts"][0]["Type"] = "bind"
+        cases.append(("mount", {"inspect_document": wrong_mount}))
+        cases.append(("dns", {"resolve_dns": lambda host, port: ()}))
+
+        for label, changes in cases:
+            with self.subTest(label=label):
+                with tempfile.TemporaryDirectory() as temporary_directory:
+                    volume_root = Path(temporary_directory)
+                    suffix_calls = []
+                    boundary = self._boundary(
+                        suffix_factory=lambda: suffix_calls.append("called"),
+                        **changes,
+                    )
+                    with self.assertRaises(RuntimeError):
+                        prepare_bootstrap(
+                            volume_root,
+                            Path("/does/not/reach/scenario.md"),
+                            self.binding.scenario_commit,
+                            boundary,
+                        )
+                    self.assertEqual(suffix_calls, [])
+                    self.assertEqual(
+                        list(volume_root.glob("mysql-senior-scenarios.*")), []
+                    )
+
+    def test_controller_and_direct_resume_routing_is_exact(self):
+        root = Path("/private/tmp/mysql-senior-scenarios.seventh")
+        for invocation_id in INVOCATIONS[:-2]:
+            command = build_invocation_command(invocation_id, root)
+            self.assertEqual(command[1], str(root / "scenario_controller.py"))
+            self.assertIn("--trial-id", command)
+        for invocation_id, maximum in (
+            ("resume-interrupt-1", "3"),
+            ("resume-complete-1", "0"),
+        ):
+            command = build_invocation_command(invocation_id, root)
+            self.assertEqual(command[1], str(root / "export_runner.py"))
+            self.assertNotIn("scenario_controller.py", command)
+            self.assertEqual(
+                command[command.index("--job-dir") + 1], str(root / "job-resume-1")
+            )
+            self.assertEqual(command[command.index("--max-batches") + 1], maximum)
+
+    def test_six_owned_freeze_triggers_have_exact_signal_contract(self):
+        self.assertEqual(
+            FREEZE_TRIGGER_NAMES,
+            (
+                "freeze_report_order_insert",
+                "freeze_report_order_update",
+                "freeze_report_order_delete",
+                "freeze_report_item_insert",
+                "freeze_report_item_update",
+                "freeze_report_item_delete",
+            ),
+        )
+        self.assertEqual(len(FREEZE_TRIGGER_SQL), 6)
+        for name, sql in zip(FREEZE_TRIGGER_NAMES, FREEZE_TRIGGER_SQL):
+            self.assertIn(f"CREATE TRIGGER {name}", sql)
+            self.assertIn("FOR EACH ROW", sql)
+            self.assertIn("SIGNAL SQLSTATE '45000'", sql)
+            self.assertIn(
+                "MESSAGE_TEXT='report source is frozen for mysql senior scenario'",
+                sql,
+            )
+
+    def test_canonical_source_counts_and_probe_audit_are_strict(self):
+        manifest = {
+            "orders": 100000,
+            "min_cursor": ["2026-01-01 00:00:01.000000", 1],
+            "high_cursor": ["2026-01-02 03:46:40.000000", 100000],
+            "order_crc32_sum": 123,
+            "items": 300000,
+            "item_orders": 100000,
+            "item_crc32_sum": 456,
+            "min_items_per_order": 3,
+            "max_items_per_order": 3,
+            "probes": 10000,
+            "probe_counter_sum": 0,
+            "report_rows": 100000,
+            "total_amount_fingerprint": "150003000.00",
+            "item_count_fingerprint": 300000,
+        }
+        self.assertEqual(validate_source_manifest(manifest), manifest)
+        for field, invalid in (
+            ("orders", 99999),
+            ("items", 299999),
+            ("probes", True),
+            ("item_count_fingerprint", 299999),
+        ):
+            with self.subTest(field=field):
+                changed = dict(manifest)
+                changed[field] = invalid
+                with self.assertRaises(RuntimeError):
+                    validate_source_manifest(changed)
+
+    def test_crc_queries_and_connector_integer_normalization_are_exact(self):
+        self.assertIn("AS order_crc32_sum", ORDER_CRC32_SQL)
+        self.assertIn("DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s.%f')", ORDER_CRC32_SQL)
+        self.assertEqual(ORDER_CRC32_SQL.count("CAST(id AS CHAR)"), 1)
+        self.assertIn("AS item_crc32_sum", ITEM_CRC32_SQL)
+        self.assertIn("CAST(unit_price AS CHAR)", ITEM_CRC32_SQL)
+        self.assertIn("CONCAT_WS('#'", ITEM_CRC32_SQL)
+        self.assertEqual(exact_db_int(Decimal("123"), "crc"), 123)
+        self.assertEqual(exact_db_int(123, "crc"), 123)
+        for invalid in (True, "123", Decimal("1.5")):
+            with self.assertRaises(RuntimeError):
+                exact_db_int(invalid, "crc")
+
+    def test_teardown_failure_never_writes_final_manifest(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            calls = []
+            manifests = []
+
+            machine = self._machine(root, calls, manifests, [], fail=None)
+            machine.teardown = lambda succeeded: (_ for _ in ()).throw(
+                RuntimeError("teardown audit failed")
+            )
+            with self.assertRaisesRegex(RuntimeError, "teardown audit failed"):
+                machine.run()
+            self.assertEqual(tuple(calls), INVOCATIONS)
+            self.assertEqual(tuple(manifests), PHASES[:-1])
 
 
 class PhaseManifestTests(unittest.TestCase):
