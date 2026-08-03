@@ -328,6 +328,85 @@ POST /suggest_test/_search
 >
 > 使用 Completion Suggester。Mapping 中定义 completion 类型的字段，写入时指定补全候选词和权重。底层基于 FST 数据结构，全部加载到内存中，前缀查找时间复杂度 O(len(prefix))，响应时间通常在 1-5 毫秒，非常适合搜索框联想。相比 match_phrase_prefix（需要到倒排索引中查找），Completion Suggester 性能好一个数量级。
 
+#### 实战进阶：拼音 + 中文自动补全配置
+
+配合 `analysis-pinyin` 插件，可实现输入拼音前缀（如 `h`, `hu`, `hw`）自动提示中文：
+
+```json
+PUT /products_pinyin_completion
+{
+  "settings": {
+    "analysis": {
+      "analyzer": {
+        "pinyin_auto_analyzer": {
+          "type": "custom",
+          "tokenizer": "ik_max_word",
+          "filter": ["pinyin_filter", "lowercase"]
+        }
+      },
+      "filter": {
+        "pinyin_filter": {
+          "type": "pinyin",
+          "keep_full_pinyin": true,
+          "keep_first_letter": true,
+          "keep_original": true,
+          "remove_duplicated_term": true
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "name": { "type": "text", "analyzer": "ik_max_word" },
+      "name_suggest": {
+        "type": "completion",
+        "analyzer": "pinyin_auto_analyzer"
+      }
+    }
+  }
+}
+```
+
+#### 生产级自动补全架构与安全防护
+
+前端**绝对不能直连 ES**（避免密碼/憑證洩漏、全庫刪除風險及 DDoS 擊垮 ES）。生產環境標準 3 層架構：
+
+1. **前端 (Client)**：監聽輸入框 `input` 事件，加 **Debounce (防抖 200~300ms)**，避免每字發 Request。
+2. **後端代理 API / 網關**：
+   * 開放 `/api/suggest?q=hu` 端點。
+   * **Redis 快取**：熱門前綴 (如 `h`, `hu`, `hw`) 直接由 Redis 回傳 (1~2ms)，攔截 80%+ 流量。
+   * **Rate Limit (限流)**：單 IP 限流 (如 30 req/s)，防惡意爬蟲。
+   * **清洗數據**：調用 ES `suggest` API 提取 `options` 乾淨陣列回傳。
+
+```javascript
+// Node.js (Express) 示例：後端 API 代理
+app.get('/api/suggest', async (req, res) => {
+  const { q } = req.query;
+  if (!q || !q.trim()) return res.json([]);
+
+  try {
+    const response = await esClient.search({
+      index: 'products_pinyin_completion',
+      suggest: {
+        my_suggest: {
+          prefix: q,
+          completion: {
+            field: 'name_suggest',
+            skip_duplicates: true,
+            size: 10
+          }
+        }
+      }
+    });
+
+    const suggestions = response.suggest.my_suggest[0].options.map(opt => opt.text);
+    res.json(suggestions);
+  } catch (err) {
+    res.status(500).json({ error: 'Suggest failed' });
+  }
+});
+```
+
 ### Context Suggester——带上下文的补全
 
 ```json

@@ -521,6 +521,9 @@ PUT /products_pinyin
 
 效果：索引 "华为手机" 后，在 `name.pinyin` 子字段上搜索 `"huawei"`、`"hw"`、`"华为"` 都能匹配。
 
+> **易混淆点：拼音搜索 vs 拼音自动补全**
+> 上述配置属于**「拼音搜索」**（需要输入完整拼音 `huawei` 或完整首字母 `hw`），而非搜索框打字即时提示的**「拼音自动补全」**。如果用户输入部分拼音（如 `hu`），由于未配置 `edge_ngram` 或 `completion` 字段，将无法命中任何结果。若需实现打字即时联想，请参阅【阶段 10 Completion Suggester】配合拼音分词器使用。
+
 > **为什么拼音用 Multi-fields 而不是直接配在主字段上？** 如果主字段直接用 pinyin_analyzer，搜索时也会把搜索词转拼音——搜"绑定"会被转成 `bangding`，可能误匹配到"帮顶"（也是 `bangding`）。正确做法是把拼音作为一个 Multi-fields **子字段**，搜索时用 `ik_smart` 而非 pinyin 分词：这样搜中文走精确语义匹配，只有用户输入拼音时才会命中拼音 Term。查询时同时搜 `name`（中文）和 `name.pinyin`（拼音），用 `multi_match` 的 `best_fields` 取最高分。
 
 > **注意**：pinyin 插件需要单独安装（`./bin/elasticsearch-plugin install analysis-pinyin`），不是 ES 自带的。

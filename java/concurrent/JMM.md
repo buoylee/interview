@@ -1,3 +1,7 @@
+> 📌 **想知道 JMM 和事务隔离级别、分布式一致性是什么关系,以及 `volatile` 在你的机器上到底编译成哪条指令** →
+> [`system-design/00a-記憶體模型-從JMM到分布式一致性.md`](../../system-design/00a-記憶體模型-從JMM到分布式一致性.md)
+> 那篇讲:happens-before 的三个常见误解、release/acquire 的词源与半透屏障、x86 vs ARM64 的实际指令、以及为什么 Outbox 是分布式版的 memory barrier。本页只留 Java 侧的原语细节。
+
 JMM 即 **Java Memory Model**, 内存模型, 和 线程间通信有关(共享内存模型)
 
 在多线程环境下，CPU **缓存优化** 和 **指令重排序** 可能导致：
