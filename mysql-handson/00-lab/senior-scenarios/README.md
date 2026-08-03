@@ -1,49 +1,43 @@
-# Report/export container lab
+# Report/export Docker demo
 
-Status: `READY_UNRUN`. This lab defines execution and verification only; it does not publish a completed evidence status or an S-scale result.
+這是一個可重跑的縮小實驗，用來觀察兩件事：buffered 與 chunked export 是否產生相同結果，以及 export 期間一個小型 OLTP counter 是否仍持續前進。它不是 benchmark，也不能代表 production capacity。
 
-## Container lab entry from macOS
+## 執行
 
 ```bash
 cd mysql-handson/00-lab/senior-scenarios
-./run-containerized.sh inspect
-./run-containerized.sh offline-test
-./run-containerized.sh run
-./run-containerized.sh verify
+./run-demo.sh test
+./run-demo.sh run
+./run-demo.sh cleanup
 ```
 
-The macOS side-effect boundary is Docker CLI only: no host Python, package installer, MySQL client, host runtime directory, or host artifact path. `inspect` is read-only; `offline-test` is the existing network-none copy-based suite; `run` is one-shot with no retry path; and `verify` is read-only evidence verification. `run` mutates only dedicated Docker resources and the owned MySQL schema, starts the owned MySQL container at most once, never touches `mysql-primary`, and does not imply production capacity.
+`test` 在 `--network none` 的 Python container 內執行 unit tests、compile 與 shell syntax checks。`run` 建立全新的 demo-only MySQL、network、data volume 和 runner；若同名資源已存在，它會要求先執行 `cleanup`，不會暗中覆寫。`cleanup` 只刪除帶有 `com.openai.codex.scope=mysql-senior-demo` label 的五個固定名稱資源。
 
-## Exact owned Docker resources
+需要查看狀態時可執行：
 
-The scope label is `com.openai.codex.scope=mysql-senior-scenarios`. The owned names are `mysql-senior-scenarios-mysql`, `mysql-senior-scenarios-harness`, `mysql-senior-scenarios-verifier`, `mysql-senior-scenarios-offline-test`, `mysql-senior-scenarios-net`, `mysql-senior-scenarios-data`, and `mysql-senior-scenarios-evidence-v1`. Every harness/verifier/offline-test container is limited to `--cpus 2`, `--memory 2g`, and `--pids-limit 256`.
+```bash
+./run-demo.sh inspect
+```
 
-`/private/tmp` in harness/verifier arguments is the mount destination of named volume `mysql-senior-scenarios-evidence-v1` inside the container, never a macOS execution/artifact directory. The harness reaches the owned MySQL container through Docker DNS `mysql-senior-scenarios-mysql:3306` on `mysql-senior-scenarios-net`.
+## 固定資料量
 
-## Read-only inspection
+- `10,000` 筆 orders
+- 每張 order 恰好 `3` 筆 items，共 `30,000` 筆
+- `1,000` 筆可寫入的 OLTP probe rows
 
-This prints the owned MySQL container's state, image, labels, mounts, network, restart policy, health, and limits, plus read-only `mysql-primary` state.
+報表資料在 export 期間不修改；OLTP worker 只更新獨立的 `oltp_probe`。這讓輸出正確性與「是否還有 OLTP progress」可以分開觀察。
 
-## Offline test
+## 比較內容
 
-This creates a labeled disposable Python container, copies the scenario and tests into it, and runs the contract tests without a bind mount or MySQL connection.
+- buffered：用 `fetchall()` 把結果收進 client memory，再寫 TSV。
+- chunked：用 `fetchmany(1000)` 分批寫 TSV，client memory 隨 batch size 有界。
+- 兩者都使用相同 SQL 與 deterministic `ORDER BY`。
+- 驗收比較 `30,000` rows、first/last key、檔案 SHA-256，以及兩段 export 前後的 OLTP counter delta。
 
-## One-shot live run
+`OLTP delta > 0` 只證明這個小型 demo 中 counter 有前進；它不等於 latency SLO，也不能證明大型報表對 production 沒有影響。
 
-Use this only after inspection. It fails closed on an unexpected label, image, data mount, limits, or `mysql-primary` state; its evidence and harness traffic stay on the dedicated Docker resources.
+## macOS 邊界
 
-## Read-only verification
+Host 只執行 Git 與 Docker CLI：不執行或安裝 host Python、`uv`、`pip`、MySQL，不建立 host runtime/artifact directory，也不使用 writable bind mount。Python、MySQL、seed data 與 TSV artifacts 全部留在帶 scope label 的 Docker resources；`cleanup` 後 demo data 與 artifacts 一起消失。
 
-The verifier mounts the evidence volume read-only, uses `--network none`, and fails if the retained named volume is absent or out of scope.
-
-## Controlled stop
-
-The script intentionally has no stop command. If an operator must stop the owned container, use Docker's exact container name after a fresh `inspect`; never use this lab to stop `mysql-primary`.
-
-## Transient cleanup
-
-`cleanup-transient` is intentionally outside the four-step lab entry. It removes only exact-name, scope-labeled harness, verifier, and offline-test containers.
-
-## Retained evidence volume
-
-`mysql-senior-scenarios-evidence-v1` is a retained evidence volume for append-only audit. Deleting it is deliberately absent from the script and never an operator instruction in this lab.
+所有 demo containers 固定限制為 `2 CPUs`、`2 GiB` memory、`256 PIDs`。它不會操作既有的 `mysql-primary` 或任何 `mysql-senior-scenarios-*` resource。
