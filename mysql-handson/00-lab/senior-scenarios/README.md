@@ -1,5 +1,7 @@
 # Report/export Docker demo
 
+狀態：`SCALED_REPRODUCED (S=10000 orders, 30000 items)`。
+
 這是一個可重跑的縮小實驗，用來觀察兩件事：buffered 與 chunked export 是否產生相同結果，以及 export 期間一個小型 OLTP counter 是否仍持續前進。它不是 benchmark，也不能代表 production capacity。
 
 ## 執行
@@ -41,3 +43,16 @@ cd mysql-handson/00-lab/senior-scenarios
 Host 只執行 Git 與 Docker CLI：不執行或安裝 host Python、`uv`、`pip`、MySQL，不建立 host runtime/artifact directory，也不使用 writable bind mount。Python、MySQL、seed data 與 TSV artifacts 全部留在帶 scope label 的 Docker resources；`cleanup` 後 demo data 與 artifacts 一起消失。
 
 所有 demo containers 固定限制為 `2 CPUs`、`2 GiB` memory、`256 PIDs`。它不會操作既有的 `mysql-primary` 或任何 `mysql-senior-scenarios-*` resource。
+
+## 2026-08-03 实测
+
+环境：`mysql:8.0.36`、`python:3.13-slim`、两个 containers 都限制为 `2 CPUs`／`2 GiB`／`256 PIDs`。
+
+| 模式 | rows | elapsed | OLTP counter delta | SHA-256 |
+|---|---:|---:|---:|---|
+| buffered | 30,000 | 0.068059s | 58 | `b188a6bb93c6cdb3720b2c3594de1e6bfeeabb55e07b5b35442e726dc6981e3e` |
+| chunked | 30,000 | 0.207583s | 72 | `b188a6bb93c6cdb3720b2c3594de1e6bfeeabb55e07b5b35442e726dc6981e3e` |
+
+first key 都是 `(1,1)`，last key 都是 `(10000,30000)`；rows、order 与 SHA-256 全部一致。
+
+第一次执行在 seed 阶段得到 MySQL `1137 Can't reopen table`：原因是同一个 temporary helper table 被一条 self-join statement 多次引用。修正为 demo database 内的普通 helper table、seed 完成后立即 drop，重新执行后通过。失败没有被当成性能结果。

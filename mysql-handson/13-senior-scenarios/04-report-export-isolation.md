@@ -1,8 +1,8 @@
 # 大型报表与导出：如何不拖垮 OLTP
 
-> **状态：`READY_UNRUN`**
+> **状态：`SCALED_REPRODUCED (S=10000 orders, 30000 items)`**
 >
-> 本章的方案与 Docker 缩小实验已经准备好，但新的 10,000 orders／30,000 items 实验尚未执行。执行成功前，不宣称本机结果或生产容量。
+> 2026-08-03 已在 Docker 内完成 10,000 orders／30,000 items 缩小实验；结果只代表该本机容器环境，不代表千万行或生产容量。
 
 ## 先给结论
 
@@ -248,6 +248,17 @@ chunked OLTP counter delta > 0
 ```
 
 所有运行时、MySQL、Python、seed data 和 TSV 都在 scoped Docker resources 内。这个结果只是本机小规模行为观察，不能外推到千万行、其他硬件、其他 schema 或 production capacity。
+
+### 2026-08-03 观察结果
+
+环境是 `mysql:8.0.36` 与 `python:3.13-slim`；MySQL/runner 都限制为 `2 CPUs`、`2 GiB`、`256 PIDs`。
+
+| 模式 | rows | elapsed | OLTP counter delta | first/last key | SHA-256 |
+|---|---:|---:|---:|---|---|
+| buffered | 30,000 | 0.068059s | 58 | `(1,1)` / `(10000,30000)` | `b188a6bb93c6cdb3720b2c3594de1e6bfeeabb55e07b5b35442e726dc6981e3e` |
+| chunked | 30,000 | 0.207583s | 72 | `(1,1)` / `(10000,30000)` | `b188a6bb93c6cdb3720b2c3594de1e6bfeeabb55e07b5b35442e726dc6981e3e` |
+
+这次实验只证明：固定 source、相同 query/order/format 下，两种读取方式产生相同 bytes，而且两个 export 区间都有 OLTP update 完成。chunked 在这次小数据上反而更慢；它的主要价值是 bounded client memory 和可分批处理，不是保证更快。实验没有量测 OLTP latency percentile、undo 压力或生产并发，因此不能外推容量与 SLO。
 
 ## 8. 失败与恢复
 

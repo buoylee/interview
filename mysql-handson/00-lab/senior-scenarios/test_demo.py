@@ -234,11 +234,12 @@ class DocumentationContractTests(unittest.TestCase):
         ):
             self.assertNotIn(abandoned, text)
 
-    def test_routing_uses_the_simple_lab_and_truthful_pre_run_status(self):
+    def test_routing_uses_the_simple_lab_and_observed_scaled_status(self):
         text = ROUTING.read_text(encoding="utf-8")
         self.assertIn("[container lab](../00-lab/senior-scenarios/README.md)", text)
-        self.assertIn("等待 Docker 缩小实验", text)
-        self.assertIn("`READY_UNRUN`", text)
+        self.assertIn(
+            "`SCALED_REPRODUCED (S=10000 orders, 30000 items)`", text
+        )
         self.assertNotIn("等待 Task 10", text)
 
 
