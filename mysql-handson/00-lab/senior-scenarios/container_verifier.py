@@ -29,6 +29,7 @@ from container_harness import (
     RESUME_INTERRUPTION_AUDIT,
     RESUME_PART_FIELDS,
     SEVENTH_RUNTIME_FILENAME,
+    canonical_tsv_part_metadata,
     validate_freeze_trigger_rows,
 )
 from evidence_contract import (
@@ -152,12 +153,12 @@ def _connector_contract(
         value["actual_connection_class"]
         != "mysql.connector.connection.MySQLConnection"
         or value["actual_pure"] is not True
-        or (
-            expected_environment is not None
-            and not _canonical_equal(environment, expected_environment)
-        )
     ):
         _fail("connector contract changed")
+    if expected_environment is not None and not _canonical_equal(
+        environment, expected_environment
+    ):
+        _fail("connector contract differs from controller environment")
     return value
 
 
@@ -373,10 +374,16 @@ def _verify_binding(
 
 
 def _validate_window_history(
-    value: object, trial_id: str, *, minimum_windows: int = 0
+    value: object,
+    trial_id: str,
+    *,
+    minimum_windows: int = 0,
+    maximum_windows: int | None = None,
 ) -> list[dict[str, object]]:
     if type(value) is not list or len(value) < minimum_windows:
         _fail("authoritative history has too few windows")
+    if maximum_windows is not None and len(value) > maximum_windows:
+        _fail("authoritative history has too many windows")
     previous_operations = 0
     previous_errors = 0
     previous_elapsed = 0.0
@@ -492,7 +499,7 @@ def _experiment_binding(
     return value
 
 
-def _trial_contract(value: object, mode: str, duration: int) -> None:
+def _trial_contract(value: object, mode: str, duration: int) -> int:
     expected = {
         "duration_seconds": duration,
         "export_mode": mode,
@@ -502,6 +509,21 @@ def _trial_contract(value: object, mode: str, duration: int) -> None:
     }
     if type(value) is not dict or not _canonical_equal(value, expected):
         _fail("ordinary result contract trial settings changed")
+    duration_seconds = _exact_int(
+        value["duration_seconds"], "trial duration seconds", minimum=1
+    )
+    _exact_int(value["threads"], "trial threads", minimum=1)
+    window_seconds = value["window_seconds"]
+    if (
+        type(window_seconds) is not float
+        or not math.isfinite(window_seconds)
+        or window_seconds <= 0
+        or type(value["requested_p95_budget_ms"]) is not float
+        or not math.isfinite(value["requested_p95_budget_ms"])
+        or value["requested_p95_budget_ms"] < 0
+    ):
+        _fail("ordinary result contract trial numeric settings changed")
+    return math.ceil(duration_seconds / window_seconds) + 1
 
 
 def _oltp_child(
@@ -531,22 +553,42 @@ def _oltp_child(
         _fail("ordinary result contract OLTP child fields changed")
     _connector_contract(value["connector_contract"], environment)
     child_history = _validate_window_history(
-        value["window_history"], trial_id, minimum_windows=len(accepted)
+        value["window_history"],
+        trial_id,
+        minimum_windows=len(accepted),
+        maximum_windows=len(accepted),
     )
+    operations = _exact_int(
+        value["operations"], "OLTP child operations", minimum=1
+    )
+    errors = _exact_int(value["errors"], "OLTP child errors")
+    drain_limit_hits = _exact_int(
+        value["drain_limit_hits"], "OLTP child drain hits"
+    )
+    max_lateness = _number(
+        value["max_heartbeat_lateness_ms"], "OLTP child max heartbeat lateness"
+    )
+    latest = accepted[-1]
     if (
         value["mode"] != "oltp"
         or value["status"] != "SUCCEEDED"
         or value["trial_id"] != trial_id
         or _exact_int(value["threads"], "OLTP child threads", minimum=1) != 4
-        or _exact_int(value["errors"], "OLTP child errors") != 0
-        or _exact_int(value["drain_limit_hits"], "OLTP child drain hits") != 0
-        or _exact_int(value["operations"], "OLTP child operations", minimum=1) <= 0
+        or errors != 0
+        or operations != latest["operations"]
+        or errors != latest["errors"]
+        or drain_limit_hits != latest["drain_limit_hits"]
+        or max_lateness != latest["max_heartbeat_lateness_ms"]
         or value["window_history_schema"] != "oltp-window-history-v1"
         or not _canonical_equal(child_history, accepted)
     ):
-        _fail("ordinary result contract OLTP child changed")
-    for field in ("p50_ms", "p95_ms", "p99_ms", "max_heartbeat_lateness_ms"):
+        _fail("ordinary result contract OLTP summary differs from final cumulative window")
+    percentiles = [
         _number(value[field], f"OLTP child {field}")
+        for field in ("p50_ms", "p95_ms", "p99_ms")
+    ]
+    if percentiles != sorted(percentiles):
+        _fail("ordinary result contract OLTP percentile ordering changed")
     workers = value["worker_connections"]
     if type(workers) is not list or len(workers) != 4:
         _fail("ordinary result contract worker connections changed")
@@ -626,7 +668,11 @@ def _smoke_result(value: object, environment: dict[str, object]) -> dict[str, ob
 
 
 def _export_result(
-    value: object, job_id: str, mode: str, seed_rows: int | None = None
+    value: object,
+    job_id: str,
+    mode: str,
+    seed_rows: int | None = None,
+    expected_environment: dict[str, object] | None = None,
 ) -> dict[str, object]:
     fields = {
         "active_seconds",
@@ -645,7 +691,7 @@ def _export_result(
         fields.add("parts")
     if type(value) is not dict or set(value) != fields:
         _fail("ordinary result contract export fields changed")
-    _connector_contract(value["connector_contract"])
+    _connector_contract(value["connector_contract"], expected_environment)
     rows = _exact_int(value["rows"], "export rows", minimum=1)
     if (
         value["status"] != "SUCCEEDED"
@@ -692,10 +738,13 @@ def _common_result(
         or result["oltp_returncode"] != 0
     ):
         _fail("ordinary result contract identity or status changed")
-    _trial_contract(result["trial_contract"], mode, duration)
+    maximum_windows = _trial_contract(result["trial_contract"], mode, duration)
     minimum = minimum_control_windows if invocation_id in CONTROL_IDS else 1
     accepted = _validate_window_history(
-        result["accepted_windows"], invocation_id, minimum_windows=minimum
+        result["accepted_windows"],
+        invocation_id,
+        minimum_windows=minimum,
+        maximum_windows=maximum_windows,
     )
     _oltp_child(result["oltp_result"], invocation_id, accepted, environment)
     return accepted, environment
@@ -924,7 +973,12 @@ def _controller_results(
                         "ordinary result contract export binding or calibration changed"
                     )
                 _smoke_result(result["smoke_gate"], environment)
-                _export_result(result["export_result"], invocation_id, mode)
+                _export_result(
+                    result["export_result"],
+                    invocation_id,
+                    mode,
+                    expected_environment=environment,
+                )
         results[invocation_id] = result
     return results, histories
 
@@ -1329,7 +1383,6 @@ def _artifact_signature(
                 or rows_in_part > 1000
                 or (number < len(parts) and rows_in_part != 1000)
                 or type(part["sha256"]) is not str
-                or not re.fullmatch(r"[0-9a-f]{64}", part["sha256"])
                 or type(part["first_cursor"]) is not list
                 or len(part["first_cursor"]) != 2
                 or type(part["last_cursor"]) is not list
@@ -1338,20 +1391,19 @@ def _artifact_signature(
             ):
                 _fail(f"artifact part contract changed: {job.name}")
             path = job / "parts" / name
-            digest = hashlib.sha256()
-            observed_rows = 0
             try:
-                with path.open("rb") as source:
-                    for line in source:
-                        digest.update(line)
-                        part_digest.update(line)
-                        observed_rows += 1
-            except OSError as error:
-                raise ValueError(f"artifact part is unreadable: {job.name}") from error
-            if observed_rows != rows_in_part or digest.hexdigest() != part["sha256"]:
-                _fail(f"artifact part bytes changed: {job.name}")
-            part_rows += observed_rows
-            previous = part["last_cursor"]
+                observed = canonical_tsv_part_metadata(path)
+            except RuntimeError as error:
+                raise ValueError(
+                    f"artifact part cursor or bytes changed: {job.name}"
+                ) from error
+            if any(observed[field] != part[field] for field in observed):
+                _fail(f"artifact part cursor or bytes changed: {job.name}")
+            with path.open("rb") as source:
+                for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                    part_digest.update(chunk)
+            part_rows += observed["rows"]
+            previous = observed["last_cursor"]
         if (
             _exact_int(state["next_part"], "chunked next part", minimum=1)
             != len(parts) + 1
@@ -1359,6 +1411,7 @@ def _artifact_signature(
             or type(result["parts"]) is not int
             or part_rows != rows
             or part_digest.hexdigest() != actual_sha
+            or previous != [state["last_created_at"], state["last_id"]]
         ):
             _fail(f"artifact part manifest changed: {job.name}")
     return {"job": job.name, "rows": rows, "sha256": actual_sha}
@@ -1414,6 +1467,45 @@ def _verify_resume_interruption(
     ):
         _fail("resume interruption audit contract changed")
     _connector_contract(checkpoint["connector_contract"])
+    checkpoint_parts = checkpoint["parts"]
+    if type(checkpoint_parts) is not list or len(checkpoint_parts) != 3:
+        _fail("resume interruption part count changed")
+    derived_rows = 0
+    previous_part_cursor = None
+    for number, part in enumerate(checkpoint_parts, 1):
+        if (
+            type(part) is not dict
+            or set(part) != RESUME_PART_FIELDS
+            or type(part["number"]) is not int
+            or part["number"] != number
+            or part["name"] != f"part-{number:06d}.tsv"
+        ):
+            _fail("resume interruption part fields changed")
+        try:
+            observed = canonical_tsv_part_metadata(
+                runtime_root / "job-resume-1" / "parts" / part["name"]
+            )
+        except RuntimeError as error:
+            raise ValueError("resume interruption part cursor or bytes changed") from error
+        if any(observed[field] != part[field] for field in observed):
+            _fail("resume interruption part cursor or bytes changed")
+        if (
+            previous_part_cursor is not None
+            and observed["first_cursor"] <= previous_part_cursor
+        ):
+            _fail("resume interruption part cursor order changed")
+        derived_rows += observed["rows"]
+        previous_part_cursor = observed["last_cursor"]
+    if (
+        derived_rows != checkpoint["rows_written"]
+        or audit["rows_written"] != derived_rows
+        or checkpoint["next_part"] != len(checkpoint_parts) + 1
+        or audit["next_part"] != len(checkpoint_parts) + 1
+        or audit["part_count"] != len(checkpoint_parts)
+        or [checkpoint["last_created_at"], checkpoint["last_id"]]
+        != checkpoint_parts[-1]["last_cursor"]
+    ):
+        _fail("resume interruption checkpoint last cursor or rows changed")
     interrupted = results["resume-interrupt-1"]
     if (
         interrupted["rows"] != audit["rows_written"]
@@ -1433,14 +1525,14 @@ def _verify_resume_interruption(
     final_state = _read_json(runtime_root / "job-resume-1" / "state.json")
     final_parts = final_state.get("parts")
     if (
-        type(checkpoint["parts"]) is not list
-        or len(checkpoint["parts"]) != 3
-        or type(final_parts) is not list
+        type(final_parts) is not list
         or len(final_parts) <= 3
-        or not _canonical_equal(checkpoint["parts"], final_parts[:3])
+        or not _canonical_equal(checkpoint_parts, final_parts[:3])
         or final_state.get("expected_rows") != checkpoint["expected_rows"]
         or [final_state.get("high_created_at"), final_state.get("high_id")]
         != [checkpoint["high_created_at"], checkpoint["high_id"]]
+        or [final_state.get("last_created_at"), final_state.get("last_id")]
+        != final_parts[-1]["last_cursor"]
     ):
         _fail("resume interruption part prefix differs from final manifest")
 

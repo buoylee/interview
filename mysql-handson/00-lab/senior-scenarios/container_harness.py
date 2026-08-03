@@ -21,7 +21,7 @@ import tempfile
 import zlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -1358,6 +1358,80 @@ def _checkpoint_state_sha256(state: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def canonical_tsv_part_metadata(path: Path) -> dict[str, object]:
+    """Derive the runner's immutable part metadata from canonical TSV bytes."""
+    digest = hashlib.sha256()
+    rows = 0
+    first_cursor = None
+    last_cursor = None
+    try:
+        with Path(path).open("rb") as source:
+            for line in source:
+                if not line.endswith(b"\n"):
+                    raise RuntimeError(f"{Path(path).name} has a noncanonical final line")
+                fields = line[:-1].split(b"\t")
+                if len(fields) != 6:
+                    raise RuntimeError(
+                        f"{Path(path).name} has a noncanonical column count"
+                    )
+                try:
+                    created_at = fields[0].decode("ascii")
+                    order_id = int(fields[1])
+                    tenant_id = int(fields[2])
+                    status_value = int(fields[3])
+                    amount = Decimal(fields[4].decode("ascii"))
+                    item_count = int(fields[5])
+                except (UnicodeError, ValueError, InvalidOperation) as error:
+                    raise RuntimeError(
+                        f"{Path(path).name} has a noncanonical TSV value"
+                    ) from error
+                if not amount.is_finite() or amount < 0:
+                    raise RuntimeError(
+                        f"{Path(path).name} has a noncanonical TSV amount"
+                    )
+                canonical = b"\t".join(
+                    (
+                        created_at.encode("ascii"),
+                        str(order_id).encode("ascii"),
+                        str(tenant_id).encode("ascii"),
+                        str(status_value).encode("ascii"),
+                        format(amount, ".2f").encode("ascii"),
+                        str(item_count).encode("ascii"),
+                    )
+                ) + b"\n"
+                cursor = (created_at, order_id)
+                if (
+                    canonical != line
+                    or not re.fullmatch(
+                        r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{6}",
+                        created_at,
+                    )
+                    or order_id < 0
+                    or tenant_id < 0
+                    or status_value < 0
+                    or item_count < 0
+                    or (last_cursor is not None and cursor <= last_cursor)
+                ):
+                    raise RuntimeError(
+                        f"{Path(path).name} has noncanonical cursor or row bytes"
+                    )
+                if first_cursor is None:
+                    first_cursor = cursor
+                last_cursor = cursor
+                digest.update(line)
+                rows += 1
+    except OSError as error:
+        raise RuntimeError(f"{Path(path).name} is unreadable") from error
+    if rows == 0:
+        raise RuntimeError(f"{Path(path).name} is empty")
+    return {
+        "first_cursor": list(first_cursor),
+        "last_cursor": list(last_cursor),
+        "rows": rows,
+        "sha256": digest.hexdigest(),
+    }
+
+
 def _validated_resume_parts(job: Path, value: object) -> list[dict[str, object]]:
     if type(value) is not list or len(value) != 3:
         raise RuntimeError("resume interruption parts are not exact")
@@ -1379,23 +1453,21 @@ def _validated_resume_parts(job: Path, value: object) -> list[dict[str, object]]
             or len(part["first_cursor"]) != 2
             or type(part["last_cursor"]) is not list
             or len(part["last_cursor"]) != 2
-            or (previous_last is not None and part["first_cursor"] <= previous_last)
         ):
             raise RuntimeError("resume interruption part contract changed")
         path = job / "parts" / name
         try:
-            digest = hashlib.sha256()
-            rows = 0
-            with path.open("rb") as source:
-                for line in source:
-                    digest.update(line)
-                    rows += 1
-        except OSError as error:
-            raise RuntimeError("resume interruption part is unreadable") from error
-        if rows != 1000 or digest.hexdigest() != part["sha256"]:
-            raise RuntimeError("resume interruption part bytes changed")
+            observed = canonical_tsv_part_metadata(path)
+        except RuntimeError as error:
+            raise RuntimeError(
+                "resume interruption part cursor or bytes changed"
+            ) from error
+        if any(observed[field] != part[field] for field in observed):
+            raise RuntimeError("resume interruption part cursor or bytes changed")
+        if previous_last is not None and observed["first_cursor"] <= previous_last:
+            raise RuntimeError("resume interruption part cursor order changed")
         validated.append(dict(part))
-        previous_last = part["last_cursor"]
+        previous_last = observed["last_cursor"]
     return validated
 
 
@@ -1459,8 +1531,19 @@ def validate_resume_interruption_audit(runtime_root: Path) -> dict[str, object]:
     ):
         raise RuntimeError("resume interruption audit contract changed")
     parts = _validated_resume_parts(job, state.get("parts"))
-    if audit["parts"] != parts:
+    derived_rows = sum(part["rows"] for part in parts)
+    if (
+        audit["parts"] != parts
+        or audit["part_count"] != len(parts)
+        or audit["next_part"] != len(parts) + 1
+        or state["rows_written"] != derived_rows
+        or state["next_part"] != len(parts) + 1
+    ):
         raise RuntimeError("resume interruption audit part prefix changed")
+    if [state.get("last_created_at"), state.get("last_id")] != parts[-1][
+        "last_cursor"
+    ]:
+        raise RuntimeError("resume interruption checkpoint last cursor changed")
     return audit
 
 

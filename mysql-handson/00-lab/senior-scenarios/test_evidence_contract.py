@@ -1084,6 +1084,142 @@ class ContainerVerifierTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "result contract|calibration"):
                     self._verify(root, fixture)
 
+    def test_verifier_rejects_excessive_window_count(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fixture = self._build_tree(root)
+            path = fixture["runtime_root"] / "controller-result-buffered-1.json"
+            result = json.loads(path.read_text(encoding="utf-8"))
+            windows = [
+                self._window("buffered-1", sequence, 1.0)
+                for sequence in range(1, 63)
+            ]
+            result["accepted_windows"] = windows
+            result["oltp_result"]["window_history"] = windows
+            result["oltp_result"]["operations"] = 620
+            result["oltp_result"]["max_heartbeat_lateness_ms"] = 62.0
+            self._replace_invocation_result(fixture, "buffered-1", result)
+            self._refresh_manifests(fixture["runtime_root"], fixture["binding"])
+
+            with self.assertRaisesRegex(ValueError, "too many windows"):
+                self._verify(root, fixture)
+
+    def test_verifier_rejects_oltp_summary_cumulative_mismatch(self):
+        for value in (51, True, "50"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as temporary_directory:
+                root = Path(temporary_directory)
+                fixture = self._build_tree(root)
+                path = fixture["runtime_root"] / "controller-result-buffered-1.json"
+                result = json.loads(path.read_text(encoding="utf-8"))
+                result["oltp_result"]["operations"] = value
+                self._replace_invocation_result(fixture, "buffered-1", result)
+                self._refresh_manifests(
+                    fixture["runtime_root"], fixture["binding"]
+                )
+
+                with self.assertRaisesRegex(
+                    ValueError, "summary.*cumulative|exact integer"
+                ):
+                    self._verify(root, fixture)
+
+    def test_verifier_rejects_percentile_inversion(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fixture = self._build_tree(root)
+            path = fixture["runtime_root"] / "controller-result-buffered-1.json"
+            result = json.loads(path.read_text(encoding="utf-8"))
+            result["oltp_result"]["p50_ms"] = 4.0
+            self._replace_invocation_result(fixture, "buffered-1", result)
+            self._refresh_manifests(fixture["runtime_root"], fixture["binding"])
+
+            with self.assertRaisesRegex(ValueError, "percentile"):
+                self._verify(root, fixture)
+
+    def test_verifier_rejects_export_connector_environment_mismatch(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fixture = self._build_tree(root)
+            runtime_root = fixture["runtime_root"]
+            controller_path = runtime_root / "controller-result-buffered-1.json"
+            controller = json.loads(controller_path.read_text(encoding="utf-8"))
+            changed_connector = dict(controller["export_result"]["connector_contract"])
+            changed_connector["platform"] = "Linux-different-client"
+            controller["export_result"]["connector_contract"] = changed_connector
+            job = runtime_root / "job-buffered-1"
+            job_result = json.loads((job / "result.json").read_text(encoding="utf-8"))
+            job_state = json.loads((job / "state.json").read_text(encoding="utf-8"))
+            job_result["connector_contract"] = changed_connector
+            job_state["connector_contract"] = changed_connector
+            self._write_json(job / "result.json", job_result)
+            self._write_json(job / "state.json", job_state)
+            self._replace_invocation_result(fixture, "buffered-1", controller)
+            self._refresh_manifests(runtime_root, fixture["binding"])
+
+            with self.assertRaisesRegex(ValueError, "connector.*environment"):
+                self._verify(root, fixture)
+
+    def test_verifier_rejects_checkpoint_cursor_metadata_not_bound_to_bytes(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fixture = self._build_tree(root)
+            runtime_root = fixture["runtime_root"]
+            audit_path = runtime_root / RESUME_INTERRUPTION_AUDIT
+            audit = json.loads(audit_path.read_text(encoding="utf-8"))
+            changed_cursor = ["2026-01-01 00:00:02.000000", 2]
+            audit["parts"][0]["first_cursor"] = changed_cursor
+            audit["checkpoint_state"]["parts"][0]["first_cursor"] = changed_cursor
+            audit["checkpoint_state_sha256"] = hashlib.sha256(
+                (
+                    json.dumps(
+                        audit["checkpoint_state"],
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                    + "\n"
+                ).encode("utf-8")
+            ).hexdigest()
+            final_state_path = runtime_root / "job-resume-1" / "state.json"
+            final_state = json.loads(final_state_path.read_text(encoding="utf-8"))
+            final_state["parts"][0]["first_cursor"] = changed_cursor
+            self._write_json(audit_path, audit)
+            self._write_json(final_state_path, final_state)
+            self._refresh_manifests(runtime_root, fixture["binding"])
+
+            with self.assertRaisesRegex(ValueError, "part.*cursor|part.*bytes"):
+                self._verify(root, fixture)
+
+    def test_verifier_rejects_checkpoint_last_cursor_mismatch(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fixture = self._build_tree(root)
+            runtime_root = fixture["runtime_root"]
+            audit_path = runtime_root / RESUME_INTERRUPTION_AUDIT
+            audit = json.loads(audit_path.read_text(encoding="utf-8"))
+            changed_cursor = ["2026-01-01 00:49:59.000000", 2999]
+            audit["checkpoint_state"]["last_created_at"] = changed_cursor[0]
+            audit["checkpoint_state"]["last_id"] = changed_cursor[1]
+            audit["checkpoint_state_sha256"] = hashlib.sha256(
+                (
+                    json.dumps(
+                        audit["checkpoint_state"],
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                    + "\n"
+                ).encode("utf-8")
+            ).hexdigest()
+            interrupt_path = runtime_root / "harness-resume-interrupt-1.stdout.json"
+            interrupt = json.loads(interrupt_path.read_text(encoding="utf-8"))
+            interrupt["last_cursor"] = changed_cursor
+            self._write_json(audit_path, audit)
+            self._replace_invocation_result(
+                fixture, "resume-interrupt-1", interrupt
+            )
+            self._refresh_manifests(runtime_root, fixture["binding"])
+
+            with self.assertRaisesRegex(ValueError, "last cursor"):
+                self._verify(root, fixture)
+
     def test_verifier_rejects_missing_duplicate_or_invalid_returncode_evidence(self):
         for corruption in (
             "missing",
@@ -1299,13 +1435,27 @@ class HarnessStateTests(unittest.TestCase):
                 parts_dir.mkdir()
                 parts = []
                 for number in range(1, 4):
-                    content = b"checkpoint\n" * 1000
+                    first_id = (number - 1) * 1000 + 1
+                    last_id = number * 1000
+                    content = b"".join(
+                        (
+                            f"2026-01-01 00:{order_id // 60:02d}:{order_id % 60:02d}.000000"
+                            f"\t{order_id}\t1\t0\t1.00\t3\n"
+                        ).encode("ascii")
+                        for order_id in range(first_id, last_id + 1)
+                    )
                     name = f"part-{number:06d}.tsv"
                     (parts_dir / name).write_bytes(content)
                     parts.append(
                         {
-                            "first_cursor": [f"2026-01-01 00:0{number}:00.000000", number],
-                            "last_cursor": [f"2026-01-01 00:0{number}:59.000000", number],
+                            "first_cursor": [
+                                f"2026-01-01 00:{first_id // 60:02d}:{first_id % 60:02d}.000000",
+                                first_id,
+                            ],
+                            "last_cursor": [
+                                f"2026-01-01 00:{last_id // 60:02d}:{last_id % 60:02d}.000000",
+                                last_id,
+                            ],
                             "name": name,
                             "number": number,
                             "rows": 1000,
@@ -1316,6 +1466,8 @@ class HarnessStateTests(unittest.TestCase):
                     json.dumps(
                         {
                             "job_id": "resume-1",
+                            "last_created_at": parts[-1]["last_cursor"][0],
+                            "last_id": parts[-1]["last_cursor"][1],
                             "status": "ABORTED",
                             "rows_written": 3000,
                             "next_part": 4,
@@ -1416,6 +1568,59 @@ class HarnessStateTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "interruption"):
                     machine.execute("resume-complete-1")
                 self.assertEqual(calls, ["resume-interrupt-1"])
+
+    def test_resume_revalidation_rejects_cursor_metadata_not_bound_to_bytes(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            calls = []
+            machine = self._machine(root, calls, [], [])
+            machine.execute("resume-interrupt-1")
+            state_path = root / "job-resume-1" / "state.json"
+            audit_path = root / RESUME_INTERRUPTION_AUDIT
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            audit = json.loads(audit_path.read_text(encoding="utf-8"))
+            changed_cursor = ["2026-01-01 00:01:01.000000", 2]
+            state["parts"][0]["first_cursor"] = changed_cursor
+            audit["parts"] = json.loads(json.dumps(state["parts"]))
+            audit["checkpoint_state"] = state
+            audit["checkpoint_state_sha256"] = hashlib.sha256(
+                (
+                    json.dumps(state, sort_keys=True, separators=(",", ":"))
+                    + "\n"
+                ).encode("utf-8")
+            ).hexdigest()
+            state_path.write_text(json.dumps(state) + "\n", encoding="utf-8")
+            audit_path.write_text(json.dumps(audit) + "\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(RuntimeError, "cursor|bytes"):
+                machine.execute("resume-complete-1")
+            self.assertEqual(calls, ["resume-interrupt-1"])
+
+    def test_resume_revalidation_rejects_checkpoint_last_cursor_mismatch(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            calls = []
+            machine = self._machine(root, calls, [], [])
+            machine.execute("resume-interrupt-1")
+            state_path = root / "job-resume-1" / "state.json"
+            audit_path = root / RESUME_INTERRUPTION_AUDIT
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            audit = json.loads(audit_path.read_text(encoding="utf-8"))
+            state["last_created_at"] = "2026-01-01 00:02:58.000000"
+            state["last_id"] = 2
+            audit["checkpoint_state"] = state
+            audit["checkpoint_state_sha256"] = hashlib.sha256(
+                (
+                    json.dumps(state, sort_keys=True, separators=(",", ":"))
+                    + "\n"
+                ).encode("utf-8")
+            ).hexdigest()
+            state_path.write_text(json.dumps(state) + "\n", encoding="utf-8")
+            audit_path.write_text(json.dumps(audit) + "\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(RuntimeError, "last cursor"):
+                machine.execute("resume-complete-1")
+            self.assertEqual(calls, ["resume-interrupt-1"])
 
     def test_failure_stops_later_phases_and_runs_teardown_once(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
