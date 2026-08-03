@@ -6,6 +6,8 @@ import os
 import re
 import stat
 import tempfile
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -24,8 +26,9 @@ HISTORICAL_PATHS = (
     "/private/tmp/mysql-senior-scenarios.rmovUN",
     "/private/tmp/mysql-senior-scenarios.LjCY6E",
 )
-HISTORICAL_LOSS_FILENAME = "historical-loss.json"
-HISTORICAL_LOSS_STATUS = "historical_evidence_lost"
+HISTORICAL_LOSS_FILENAME = "historical-evidence-loss.json"
+HISTORICAL_LOSS_STATUS = "LOST_BY_EXTERNAL_TMP_CLEANUP"
+PHASE_STATUS = "COMPLETE"
 
 PHASES = (
     "00-seed-freeze",
@@ -36,6 +39,42 @@ PHASES = (
     "50-resume-audit",
     "60-final",
 )
+
+
+@dataclass(frozen=True)
+class EvidenceBinding:
+    """The full JSON-compatible identity shared by every phase manifest."""
+
+    scenario_commit: str
+    scenario_sha256: str
+    mysql_image_id: str
+    mysql_container_id: str
+    harness_image_id: str
+    network_name: str
+    volume_name: str
+    cpu_limit: str
+    memory_limit_bytes: int
+    pids_limit: int
+    program_sha256: dict[str, str]
+
+    def __post_init__(self) -> None:
+        _validate_evidence_binding(self)
+
+    def serialize(self) -> dict[str, object]:
+        _validate_evidence_binding(self)
+        return {
+            "scenario_commit": self.scenario_commit,
+            "scenario_sha256": self.scenario_sha256,
+            "mysql_image_id": self.mysql_image_id,
+            "mysql_container_id": self.mysql_container_id,
+            "harness_image_id": self.harness_image_id,
+            "network_name": self.network_name,
+            "volume_name": self.volume_name,
+            "cpu_limit": self.cpu_limit,
+            "memory_limit_bytes": self.memory_limit_bytes,
+            "pids_limit": self.pids_limit,
+            "program_sha256": self.program_sha256,
+        }
 
 
 def extract_programs(markdown: str) -> dict[str, str]:
@@ -94,15 +133,15 @@ def write_immutable_json(path: Path, value: object) -> None:
         os.fsync(output.fileno())
 
 
-def create_historical_loss(runtime_root: Path) -> Path:
+def write_historical_loss(runtime_root: Path) -> Path:
     """Record the six lost historical roots without claiming verification succeeded."""
     target = runtime_root / HISTORICAL_LOSS_FILENAME
     write_immutable_json(
         target,
         {
+            "current_raw_verification": False,
             "historical_paths": list(HISTORICAL_PATHS),
             "status": HISTORICAL_LOSS_STATUS,
-            "verification_succeeded": False,
         },
     )
     return target
@@ -197,6 +236,42 @@ def _require_json_value(value: object, field: str) -> None:
     raise ValueError(f"{field} is not JSON-compatible")
 
 
+def _validate_evidence_binding(binding: EvidenceBinding) -> None:
+    for field in (
+        "scenario_commit",
+        "scenario_sha256",
+        "mysql_image_id",
+        "mysql_container_id",
+        "harness_image_id",
+        "network_name",
+        "volume_name",
+        "cpu_limit",
+    ):
+        value = getattr(binding, field)
+        if type(value) is not str or not value:
+            raise ValueError(f"binding {field} must be a nonempty exact string")
+    for field in ("memory_limit_bytes", "pids_limit"):
+        value = getattr(binding, field)
+        if type(value) is not int:
+            raise ValueError(f"binding {field} must be an exact int")
+    if type(binding.program_sha256) is not dict:
+        raise ValueError("binding program_sha256 must be an exact dict")
+    for filename, digest in binding.program_sha256.items():
+        if type(filename) is not str or not filename:
+            raise ValueError("binding program_sha256 keys must be nonempty exact strings")
+        if type(digest) is not str or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ValueError("binding program_sha256 values must be lowercase SHA-256")
+
+
+def _binding_from_serialized(value: object) -> EvidenceBinding:
+    if type(value) is not dict:
+        raise ValueError("binding must be an exact dict")
+    try:
+        return EvidenceBinding(**value)
+    except (TypeError, ValueError) as error:
+        raise ValueError("invalid serialized binding") from error
+
+
 def _read_manifest(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -207,15 +282,38 @@ def _read_manifest(path: Path) -> dict[str, Any]:
     return value
 
 
-def _verify_manifest(runtime_root: Path, phase: str, binding: object) -> None:
+def _verify_manifest(
+    runtime_root: Path, phase: str, binding: EvidenceBinding
+) -> dict[str, Any]:
     manifest = _read_manifest(_manifest_path(runtime_root, phase))
-    if set(manifest) != {"binding", "entries", "phase", "tree_hash"}:
+    if set(manifest) != {
+        "binding",
+        "byte_count",
+        "entries",
+        "file_count",
+        "phase",
+        "status",
+        "timestamp",
+        "tree_hash",
+    }:
         raise ValueError(f"invalid phase manifest fields: {phase}")
     if manifest["phase"] != phase or type(manifest["phase"]) is not str:
         raise ValueError(f"invalid phase manifest phase: {phase}")
-    _require_json_value(manifest["binding"], "binding")
-    _require_json_value(binding, "binding")
-    if not _exact_value_equal(manifest["binding"], binding):
+    if manifest["status"] != PHASE_STATUS or type(manifest["status"]) is not str:
+        raise ValueError(f"invalid phase manifest status: {phase}")
+    if (
+        type(manifest["timestamp"]) is not str
+        or not re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z", manifest["timestamp"])
+    ):
+        raise ValueError(f"invalid phase manifest timestamp: {phase}")
+    try:
+        timestamp = datetime.fromisoformat(manifest["timestamp"].replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError(f"invalid phase manifest timestamp: {phase}") from error
+    if timestamp.tzinfo != timezone.utc:
+        raise ValueError(f"invalid phase manifest timestamp: {phase}")
+    serialized_binding = _binding_from_serialized(manifest["binding"])
+    if not _exact_value_equal(manifest["binding"], binding.serialize()):
         raise ValueError(f"phase manifest binding mismatch: {phase}")
     entries = manifest["entries"]
     if type(entries) is not list:
@@ -258,44 +356,80 @@ def _verify_manifest(runtime_root: Path, phase: str, binding: object) -> None:
         previous_path = entry_path
     if type(manifest["tree_hash"]) is not str or manifest["tree_hash"] != _tree_hash(verified_entries):
         raise ValueError(f"phase manifest tree hash mismatch: {phase}")
+    if require_exact_int(manifest["file_count"], "file_count") != len(verified_entries):
+        raise ValueError(f"phase manifest file count mismatch: {phase}")
+    if require_exact_int(manifest["byte_count"], "byte_count") != sum(
+        entry["size"] for entry in verified_entries
+    ):
+        raise ValueError(f"phase manifest byte count mismatch: {phase}")
+    if not _exact_value_equal(serialized_binding.serialize(), manifest["binding"]):
+        raise ValueError(f"invalid phase manifest binding: {phase}")
+    return manifest
 
 
-def verify_final_coverage(runtime_root: Path, binding: object) -> None:
+def verify_phase_manifests(
+    runtime_root: Path, binding: EvidenceBinding
+) -> list[dict[str, Any]]:
+    """Verify the complete contiguous append-only prefix of phase manifests."""
+    if type(binding) is not EvidenceBinding:
+        raise ValueError("binding must be EvidenceBinding")
+    manifests: list[dict[str, Any]] = []
+    missing_phase_seen = False
+    for phase in PHASES:
+        path = _manifest_path(runtime_root, phase)
+        if not path.exists() and not path.is_symlink():
+            missing_phase_seen = True
+            continue
+        if missing_phase_seen or not path.is_file() or path.is_symlink():
+            raise ValueError("phase skip or reordering is not allowed")
+        manifests.append(_verify_manifest(runtime_root, phase, binding))
+    return manifests
+
+
+def verify_final_coverage(runtime_root: Path, final_manifest: dict[str, Any]) -> None:
     """Require the final manifest to cover every regular file except itself."""
+    if type(final_manifest) is not dict:
+        raise ValueError("final manifest must be an exact dict")
     target = _manifest_path(runtime_root, "60-final")
-    _verify_manifest(runtime_root, "60-final", binding)
     manifest = _read_manifest(target)
+    binding = _binding_from_serialized(manifest.get("binding"))
+    _verify_manifest(runtime_root, "60-final", binding)
+    if not _exact_value_equal(manifest, final_manifest):
+        raise ValueError("final manifest argument does not match immutable record")
     actual_entries = _scan_regular_files(runtime_root, target)
     if not _exact_value_equal(manifest["entries"], actual_entries):
         raise ValueError("final manifest does not cover the complete evidence tree")
 
 
-def create_phase_manifest(runtime_root: Path, phase: str, binding: object) -> Path:
+def create_phase_manifest(
+    runtime_root: Path, phase: str, binding: EvidenceBinding
+) -> Path:
     """Append the next phase manifest after verifying every prior phase."""
     root = Path(runtime_root)
     if type(phase) is not str or phase not in PHASES:
         raise ValueError("unknown phase")
-    _require_json_value(binding, "binding")
+    if type(binding) is not EvidenceBinding:
+        raise ValueError("binding must be EvidenceBinding")
     phase_index = PHASES.index(phase)
     target = _manifest_path(root, phase)
     if target.exists() or target.is_symlink():
         raise FileExistsError(target)
-    for later_phase in PHASES[phase_index + 1 :]:
-        if _manifest_path(root, later_phase).exists() or _manifest_path(root, later_phase).is_symlink():
-            raise ValueError("phase skip or reordering is not allowed")
-    for previous_phase in PHASES[:phase_index]:
-        previous_manifest = _manifest_path(root, previous_phase)
-        if not previous_manifest.is_file() or previous_manifest.is_symlink():
-            raise ValueError("phase skip or reordering is not allowed")
-        _verify_manifest(root, previous_phase, binding)
+    previous_manifests = verify_phase_manifests(root, binding)
+    if len(previous_manifests) != phase_index:
+        raise ValueError("phase skip or reordering is not allowed")
     entries = _scan_regular_files(root, target)
     manifest = {
-        "binding": binding,
+        "binding": binding.serialize(),
+        "byte_count": sum(entry["size"] for entry in entries),
         "entries": entries,
+        "file_count": len(entries),
         "phase": phase,
+        "status": PHASE_STATUS,
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "tree_hash": _tree_hash(entries),
     }
     write_immutable_json(target, manifest)
     if phase == "60-final":
-        verify_final_coverage(root, binding)
+        verify_phase_manifests(root, binding)
+        verify_final_coverage(root, manifest)
     return target

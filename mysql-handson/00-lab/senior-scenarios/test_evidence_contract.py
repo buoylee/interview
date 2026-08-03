@@ -4,18 +4,22 @@ import os
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 from evidence_contract import (
+    EvidenceBinding,
     HISTORICAL_LOSS_STATUS,
     HISTORICAL_PATHS,
-    create_historical_loss,
     create_phase_manifest,
     extract_programs,
     require_exact_int,
+    verify_phase_manifests,
     verify_final_coverage,
+    write_historical_loss,
 )
 
 
@@ -59,20 +63,38 @@ class HistoricalLossTests(unittest.TestCase):
     def test_historical_loss_is_truthful_and_exclusive(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             runtime_root = Path(temporary_directory)
-            target = create_historical_loss(runtime_root)
+            target = write_historical_loss(runtime_root)
             record = json.loads(target.read_text(encoding="utf-8"))
 
+            self.assertEqual(target.name, "historical-evidence-loss.json")
             self.assertEqual(tuple(record["historical_paths"]), HISTORICAL_PATHS)
             self.assertIs(type(record["status"]), str)
-            self.assertEqual(record["status"], HISTORICAL_LOSS_STATUS)
-            self.assertIs(type(record["verification_succeeded"]), bool)
-            self.assertFalse(record["verification_succeeded"])
+            self.assertEqual(record["status"], "LOST_BY_EXTERNAL_TMP_CLEANUP")
+            self.assertEqual(HISTORICAL_LOSS_STATUS, record["status"])
+            self.assertIs(type(record["current_raw_verification"]), bool)
+            self.assertFalse(record["current_raw_verification"])
             with self.assertRaises(FileExistsError):
-                create_historical_loss(runtime_root)
+                write_historical_loss(runtime_root)
 
 
 class PhaseManifestTests(unittest.TestCase):
-    binding = {"scenario": "report-export-isolation", "version": 1}
+    binding = EvidenceBinding(
+        scenario_commit="0e927a9534cb214641885d110b4e98ef7a313a54",
+        scenario_sha256="a" * 64,
+        mysql_image_id="sha256:mysql-image",
+        mysql_container_id="mysql-senior-scenarios-primary",
+        harness_image_id="sha256:harness-image",
+        network_name="mysql-senior-scenarios-network",
+        volume_name="mysql-senior-scenarios-evidence",
+        cpu_limit="2",
+        memory_limit_bytes=2 * 1024 * 1024 * 1024,
+        pids_limit=256,
+        program_sha256={
+            "export_runner.py": "b" * 64,
+            "scenario_controller.py": "c" * 64,
+            "freeze_audit.py": "d" * 64,
+        },
+    )
 
     def _write(self, root: Path, relative_path: str, content: bytes) -> None:
         target = root / relative_path
@@ -105,6 +127,48 @@ class PhaseManifestTests(unittest.TestCase):
             create_phase_manifest(runtime_root, "00-seed-freeze", self.binding)
             manifest = self._manifest(runtime_root, "00-seed-freeze")
             entries = manifest["entries"]
+            self.assertEqual(
+                set(manifest),
+                {
+                    "binding",
+                    "byte_count",
+                    "entries",
+                    "file_count",
+                    "phase",
+                    "status",
+                    "timestamp",
+                    "tree_hash",
+                },
+            )
+            self.assertEqual(manifest["binding"], self.binding.serialize())
+            self.assertEqual(
+                set(manifest["binding"]),
+                {
+                    "scenario_commit",
+                    "scenario_sha256",
+                    "mysql_image_id",
+                    "mysql_container_id",
+                    "harness_image_id",
+                    "network_name",
+                    "volume_name",
+                    "cpu_limit",
+                    "memory_limit_bytes",
+                    "pids_limit",
+                    "program_sha256",
+                },
+            )
+            self.assertEqual(manifest["status"], "COMPLETE")
+            self.assertIs(type(manifest["timestamp"]), str)
+            self.assertRegex(
+                manifest["timestamp"],
+                r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z$",
+            )
+            self.assertEqual(
+                datetime.fromisoformat(manifest["timestamp"].replace("Z", "+00:00")).tzinfo,
+                timezone.utc,
+            )
+            self.assertEqual(manifest["file_count"], len(entries))
+            self.assertEqual(manifest["byte_count"], sum(entry["size"] for entry in entries))
             self.assertEqual([entry["path"] for entry in entries], ["b.txt", "nested/a.txt"])
             line_stream = "".join(
                 f"{entry['path']}\0{entry['size']}\0{entry['sha256']}\n"
@@ -114,6 +178,9 @@ class PhaseManifestTests(unittest.TestCase):
                 hashlib.sha256(line_stream.encode("utf-8")).hexdigest(),
                 manifest["tree_hash"],
             )
+            self.assertEqual(
+                verify_phase_manifests(runtime_root, self.binding)[0], manifest
+            )
 
     def test_second_write_of_same_phase_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -122,6 +189,71 @@ class PhaseManifestTests(unittest.TestCase):
             create_phase_manifest(runtime_root, "00-seed-freeze", self.binding)
             with self.assertRaises(FileExistsError):
                 create_phase_manifest(runtime_root, "00-seed-freeze", self.binding)
+
+    def test_phase_manifest_requires_evidence_binding(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            runtime_root = Path(temporary_directory)
+            self._write(runtime_root, "evidence.txt", b"seed")
+            with self.assertRaisesRegex(ValueError, "EvidenceBinding"):
+                create_phase_manifest(
+                    runtime_root,
+                    "00-seed-freeze",
+                    {"scenario_commit": "not-a-binding"},
+                )
+
+    def test_evidence_binding_requires_exact_fields_and_types(self):
+        self.assertEqual(
+            self.binding.serialize(),
+            {
+                "scenario_commit": "0e927a9534cb214641885d110b4e98ef7a313a54",
+                "scenario_sha256": "a" * 64,
+                "mysql_image_id": "sha256:mysql-image",
+                "mysql_container_id": "mysql-senior-scenarios-primary",
+                "harness_image_id": "sha256:harness-image",
+                "network_name": "mysql-senior-scenarios-network",
+                "volume_name": "mysql-senior-scenarios-evidence",
+                "cpu_limit": "2",
+                "memory_limit_bytes": 2 * 1024 * 1024 * 1024,
+                "pids_limit": 256,
+                "program_sha256": {
+                    "export_runner.py": "b" * 64,
+                    "scenario_controller.py": "c" * 64,
+                    "freeze_audit.py": "d" * 64,
+                },
+            },
+        )
+        with self.assertRaisesRegex(ValueError, "memory_limit_bytes"):
+            replace(self.binding, memory_limit_bytes=True)
+        with self.assertRaisesRegex(ValueError, "scenario_commit"):
+            replace(self.binding, scenario_commit="")
+        with self.assertRaisesRegex(ValueError, "lowercase SHA-256"):
+            replace(
+                self.binding,
+                program_sha256={"export_runner.py": "A" * 64},
+            )
+
+    def test_manifest_rejects_bool_count_and_non_utc_timestamp(self):
+        def assert_rejected(mutate) -> None:
+            with tempfile.TemporaryDirectory() as temporary_directory:
+                runtime_root = Path(temporary_directory)
+                self._write(runtime_root, "evidence.txt", b"seed")
+                create_phase_manifest(runtime_root, "00-seed-freeze", self.binding)
+                manifest_path = runtime_root / "phase-manifest-00-seed-freeze.json"
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                mutate(manifest)
+                manifest_path.write_text(
+                    json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n",
+                    encoding="utf-8",
+                )
+                with self.assertRaises(ValueError):
+                    verify_phase_manifests(runtime_root, self.binding)
+
+        assert_rejected(lambda manifest: manifest.__setitem__("file_count", True))
+        assert_rejected(
+            lambda manifest: manifest.__setitem__(
+                "timestamp", "2026-08-02T12:00:00+00:00"
+            )
+        )
 
     def test_prior_file_mutation_is_rejected_before_next_phase(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -191,19 +323,29 @@ class PhaseManifestTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             runtime_root = Path(temporary_directory)
             self._write(runtime_root, "nested/evidence.txt", b"seed")
+            self._write(
+                runtime_root,
+                "nested/phase-manifest-60-final.json",
+                b"legitimate nested evidence",
+            )
             self._create_through_final(runtime_root)
-            verify_final_coverage(runtime_root, self.binding)
 
             manifest = self._manifest(runtime_root, "60-final")
+            verify_final_coverage(runtime_root, manifest)
             expected_paths = {
                 path.relative_to(runtime_root).as_posix()
                 for path in runtime_root.rglob("*")
                 if path.is_file()
                 and not path.is_symlink()
-                and path.name != "phase-manifest-60-final.json"
+                and path.relative_to(runtime_root).as_posix()
+                != "phase-manifest-60-final.json"
             }
             self.assertEqual(
                 {entry["path"] for entry in manifest["entries"]}, expected_paths
+            )
+            self.assertIn(
+                "nested/phase-manifest-60-final.json",
+                {entry["path"] for entry in manifest["entries"]},
             )
 
 
