@@ -128,9 +128,17 @@ preflight_common_inputs() {
   require_input_file "$SCRIPT_DIR/run-containerized.sh"
 }
 
+require_nonempty_mysql_password() {
+  test -n "${MYSQL_PASSWORD-}" || {
+    printf 'MYSQL_PASSWORD must be a nonempty environment variable\n' >&2
+    exit 1
+  }
+}
+
 preflight_harness_inputs() {
   preflight_common_inputs
   require_input_file "$SCRIPT_DIR/container_harness.py"
+  require_nonempty_mysql_password
 }
 
 preflight_offline_inputs() {
@@ -172,7 +180,7 @@ copy_verifier_inputs() {
 offline_test() {
   preflight_offline_inputs
   remove_owned_transient "$OFFLINE_TEST_CONTAINER"
-  docker create --name "$OFFLINE_TEST_CONTAINER" --label "$SCOPE_LABEL" --cpus 2 --memory 2g --pids-limit 256 "$PYTHON_IMAGE" sh -c 'python -m pip install --no-cache-dir mysql-connector-python==9.7.0 && python -m unittest -v /opt/test_evidence_contract.py && python /opt/container_harness.py offline-check --scenario /opt/scenario.md --python-input /opt/evidence_contract.py --python-input /opt/test_evidence_contract.py --python-input /opt/container_harness.py'
+  docker create --name "$OFFLINE_TEST_CONTAINER" --label "$SCOPE_LABEL" --cpus 2 --memory 2g --pids-limit 256 "$PYTHON_IMAGE" sh -c 'python -m pip install --no-cache-dir mysql-connector-python==9.7.0 && python -m unittest -v /opt/test_evidence_contract.py && python /opt/container_harness.py offline-check --scenario /opt/scenario.md --python-input /opt/evidence_contract.py --python-input /opt/test_evidence_contract.py --python-input /opt/container_harness.py && sh -n /opt/run-containerized.sh'
   copy_offline_inputs "$OFFLINE_TEST_CONTAINER"
   docker start -a "$OFFLINE_TEST_CONTAINER"
 }
@@ -222,7 +230,7 @@ run_live_harness() {
   }
   remove_owned_transient "$HARNESS_CONTAINER"
   scenario_commit=$(git -C "$REPO_ROOT" rev-parse HEAD)
-  docker create --name "$HARNESS_CONTAINER" --label "$SCOPE_LABEL" --network "$NETWORK" --cpus 2 --memory 2g --pids-limit 256 --mount type=volume,src=mysql-senior-scenarios-evidence-v1,dst=/private/tmp "$PYTHON_IMAGE" sh -c 'python -m pip install --no-cache-dir mysql-connector-python==9.7.0 && exec python /opt/container_harness.py run-all --scenario /opt/scenario.md --expected-commit "$1"' sh "$scenario_commit"
+  docker create --name "$HARNESS_CONTAINER" --label "$SCOPE_LABEL" --network "$NETWORK" --cpus 2 --memory 2g --pids-limit 256 --env MYSQL_PASSWORD --mount type=volume,src=mysql-senior-scenarios-evidence-v1,dst=/private/tmp "$PYTHON_IMAGE" sh -c 'python -m pip install --no-cache-dir mysql-connector-python==9.7.0 && exec python /opt/container_harness.py run-all --scenario /opt/scenario.md --expected-commit "$1"' sh "$scenario_commit"
   copy_harness_inputs "$HARNESS_CONTAINER"
   bootstrap_inspect=$(mktemp)
   docker inspect "$HARNESS_CONTAINER" "$MYSQL_CONTAINER" > "$bootstrap_inspect"

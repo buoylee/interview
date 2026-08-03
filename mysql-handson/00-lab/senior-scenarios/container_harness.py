@@ -18,6 +18,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import zlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -101,9 +102,12 @@ FREEZE_TRIGGER_SQL = tuple(
         (FREEZE_TRIGGER_NAMES[5], "report_item", "DELETE"),
     )
 )
-DROP_FREEZE_TRIGGER_SQL = tuple(
+RECOVERY_DROP_FREEZE_TRIGGER_SQL = tuple(
     f"DROP TRIGGER IF EXISTS mysql_senior_scenarios.{name}"
     for name in FREEZE_TRIGGER_NAMES
+)
+DROP_FREEZE_TRIGGER_SQL = tuple(
+    f"DROP TRIGGER mysql_senior_scenarios.{name}" for name in FREEZE_TRIGGER_NAMES
 )
 
 SOURCE_MANIFEST_FIELDS = {
@@ -187,6 +191,70 @@ NEGATIVE_PROBE_SQL = (
     "DELETE FROM report_item WHERE id=11",
 )
 
+FREEZE_MESSAGE = "report source is frozen for mysql senior scenario"
+EXPECTED_PROBE_SCHEMA = [
+    {"values": ["COLUMN", "id", 1, "bigint unsigned", "NO", None, ""]},
+    {"values": ["COLUMN", "counter", 2, "bigint unsigned", "NO", "0", ""]},
+    {"values": ["COLUMN", "payload", 3, "varchar(128)", "NO", None, ""]},
+    {"values": ["INDEX", "PRIMARY", 1, "id", 0, "BTREE", None]},
+]
+
+
+def canonical_seed_reference() -> dict[str, object]:
+    """Independently calculate the fixed seed's complete business fingerprint."""
+    order_crc32_sum = 0
+    item_crc32_sum = 0
+    total_cents = 0
+    for order_id in range(1, 100_001):
+        day_offset, day_second = divmod(order_id, 86_400)
+        hour, day_second = divmod(day_second, 3_600)
+        minute, second = divmod(day_second, 60)
+        created_at = (
+            f"2026-01-{day_offset + 1:02d} "
+            f"{hour:02d}:{minute:02d}:{second:02d}.000000"
+        )
+        order_value = "#".join(
+            (
+                str(order_id),
+                str(order_id % 1000 + 1),
+                str(order_id % 4),
+                created_at,
+            )
+        )
+        order_crc32_sum += zlib.crc32(order_value.encode("utf-8"))
+        for quantity in (1, 2, 3):
+            price_cents = (order_id * quantity) % 100_000 + 1
+            price = f"{price_cents // 100}.{price_cents % 100:02d}"
+            item_value = "#".join(
+                (
+                    str(order_id * 10 + quantity),
+                    str(order_id),
+                    str(quantity),
+                    price,
+                )
+            )
+            item_crc32_sum += zlib.crc32(item_value.encode("utf-8"))
+            total_cents += quantity * price_cents
+    return {
+        "orders": 100_000,
+        "min_cursor": ["2026-01-01 00:00:01.000000", 1],
+        "high_cursor": ["2026-01-02 03:46:40.000000", 100_000],
+        "order_crc32_sum": order_crc32_sum,
+        "items": 300_000,
+        "item_orders": 100_000,
+        "item_crc32_sum": item_crc32_sum,
+        "min_items_per_order": 3,
+        "max_items_per_order": 3,
+        "probes": 10_000,
+        "probe_counter_sum": 0,
+        "report_rows": 100_000,
+        "total_amount_fingerprint": f"{total_cents // 100}.{total_cents % 100:02d}",
+        "item_count_fingerprint": 300_000,
+    }
+
+
+EXPECTED_SEED_MANIFEST = canonical_seed_reference()
+
 
 def _utc_text() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -229,6 +297,32 @@ def validate_source_manifest(manifest: object) -> dict[str, object]:
     if type(total) is not str or not re.fullmatch(r"[0-9]+\.[0-9]{2}", total):
         raise RuntimeError("source total amount fingerprint is noncanonical")
     return manifest
+
+
+def validate_seed_baseline(
+    manifest: object, probe_schema: object
+) -> dict[str, object]:
+    validated = validate_source_manifest(manifest)
+    if validated != EXPECTED_SEED_MANIFEST:
+        raise RuntimeError("live seed fingerprint differs from canonical Python reference")
+    if probe_schema != EXPECTED_PROBE_SCHEMA:
+        raise RuntimeError("live oltp_probe schema differs from canonical reference")
+    return validated
+
+
+def require_nonempty_password(environ: Mapping[str, str]) -> str:
+    password = environ.get("MYSQL_PASSWORD")
+    if type(password) is not str or not password:
+        raise RuntimeError("MYSQL_PASSWORD must be a nonempty environment string")
+    return password
+
+
+def validate_negative_probe_error(error: BaseException) -> dict[str, str]:
+    sqlstate = getattr(error, "sqlstate", None)
+    message = getattr(error, "msg", None)
+    if sqlstate != "45000" or message != FREEZE_MESSAGE:
+        raise RuntimeError("freeze probe did not observe the exact SQLSTATE/message")
+    return {"message": message, "sqlstate": sqlstate}
 
 
 def exact_db_int(value: object, field: str) -> int:
@@ -328,6 +422,68 @@ def collect_probe_schema(cursor: object) -> list[dict[str, object]]:
     ]
 
 
+def _normalized_trigger_statement(value: object) -> str:
+    if type(value) is not str:
+        raise RuntimeError("trigger action statement is not an exact string")
+    return re.sub(r"\s*=\s*", "=", re.sub(r"\s+", " ", value.strip()))
+
+
+def validate_freeze_trigger_rows(rows: object) -> list[dict[str, str]]:
+    if type(rows) is not list or len(rows) != 6:
+        raise RuntimeError("schema must contain exactly six owned freeze triggers")
+    expected = {
+        name: (operation, table)
+        for name, table, operation in (
+            (FREEZE_TRIGGER_NAMES[0], "report_order", "INSERT"),
+            (FREEZE_TRIGGER_NAMES[1], "report_order", "UPDATE"),
+            (FREEZE_TRIGGER_NAMES[2], "report_order", "DELETE"),
+            (FREEZE_TRIGGER_NAMES[3], "report_item", "INSERT"),
+            (FREEZE_TRIGGER_NAMES[4], "report_item", "UPDATE"),
+            (FREEZE_TRIGGER_NAMES[5], "report_item", "DELETE"),
+        )
+    }
+    action = _normalized_trigger_statement(
+        "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='" + FREEZE_MESSAGE + "'"
+    )
+    observed: list[dict[str, str]] = []
+    names = set()
+    for row in rows:
+        if type(row) not in (tuple, list) or len(row) != 5:
+            raise RuntimeError("freeze trigger metadata row is malformed")
+        name, operation, table, timing, statement = row
+        if (
+            type(name) is not str
+            or name in names
+            or name not in expected
+            or (operation, table) != expected[name]
+            or timing != "BEFORE"
+            or _normalized_trigger_statement(statement) != action
+        ):
+            raise RuntimeError("freeze trigger name or definition drifted")
+        names.add(name)
+        observed.append(
+            {
+                "name": name,
+                "operation": operation,
+                "table": table,
+                "timing": timing,
+                "statement": action,
+            }
+        )
+    if names != set(FREEZE_TRIGGER_NAMES):
+        raise RuntimeError("freeze trigger set is incomplete")
+    return sorted(observed, key=lambda item: item["name"])
+
+
+def snapshot_freeze_triggers(cursor: object) -> list[dict[str, str]]:
+    cursor.execute(
+        "SELECT TRIGGER_NAME,EVENT_MANIPULATION,EVENT_OBJECT_TABLE,ACTION_TIMING,"
+        "ACTION_STATEMENT FROM information_schema.TRIGGERS "
+        "WHERE TRIGGER_SCHEMA='mysql_senior_scenarios' ORDER BY TRIGGER_NAME"
+    )
+    return validate_freeze_trigger_rows(list(cursor.fetchall()))
+
+
 def _load_freeze_audit(path: Path) -> Callable[..., dict]:
     spec = importlib.util.spec_from_file_location("seventh_freeze_audit", path)
     if spec is None or spec.loader is None:
@@ -358,9 +514,7 @@ class ExperimentDatabase:
         self.global_variables: list[object] | None = None
 
     def _connect(self, database: str = "mysql_senior_scenarios") -> object:
-        password = self.boundary.environ.get("MYSQL_PASSWORD")
-        if password is None:
-            raise RuntimeError("MYSQL_PASSWORD is not set")
+        password = require_nonempty_password(self.boundary.environ)
         connection = self.boundary.connect(
             host=EXPECTED_HOST,
             port=EXPECTED_PORT,
@@ -406,20 +560,21 @@ class ExperimentDatabase:
                 cursor.execute(statement)
             self.seed_manifest = collect_source_manifest(cursor)
             self.seed_probe_schema = collect_probe_schema(cursor)
+            validate_seed_baseline(self.seed_manifest, self.seed_probe_schema)
             self.global_variables = self._globals(cursor)
-            for statement in DROP_FREEZE_TRIGGER_SQL:
+            for statement in RECOVERY_DROP_FREEZE_TRIGGER_SQL:
                 cursor.execute(statement)
             for statement in FREEZE_TRIGGER_SQL:
                 cursor.execute(statement)
+            installed_triggers = snapshot_freeze_triggers(cursor)
             negative_results = []
             for statement in NEGATIVE_PROBE_SQL:
                 try:
                     cursor.execute(statement)
                 except Exception as error:
-                    if getattr(error, "sqlstate", None) != "45000":
-                        raise
+                    observed = validate_negative_probe_error(error)
                     negative_results.append(
-                        {"sql": statement, "sqlstate": "45000", "rejected": True}
+                        {"sql": statement, **observed, "rejected": True}
                     )
                 else:
                     raise RuntimeError("freeze negative probe unexpectedly succeeded")
@@ -436,6 +591,7 @@ class ExperimentDatabase:
             write_immutable_json(self.context.runtime_root / "freeze-negative-probes.json", negative_results)
             write_immutable_json(self.context.runtime_root / "seed-freeze-audit.json", freeze_audit)
             write_immutable_json(self.context.runtime_root / "global-variables.json", self.global_variables)
+            write_immutable_json(self.context.runtime_root / "freeze-triggers.json", installed_triggers)
         finally:
             self._close(cursor)
             self._close(connection)
@@ -447,6 +603,7 @@ class ExperimentDatabase:
         cursor = None
         try:
             cursor = connection.cursor()
+            triggers = snapshot_freeze_triggers(cursor)
             current = collect_source_manifest(cursor)
             schema = collect_probe_schema(cursor)
             result = self.audit_freeze(
@@ -454,7 +611,8 @@ class ExperimentDatabase:
             )
             self.identity_check()
             write_immutable_json(
-                self.context.runtime_root / f"source-audit-{phase}.json", result
+                self.context.runtime_root / f"source-audit-{phase}.json",
+                {"freeze": result, "triggers": triggers},
             )
         finally:
             self._close(cursor)
@@ -534,6 +692,10 @@ class ExperimentDatabase:
             evidence["active_processes"] = active
             if active:
                 errors.append("experiment user still has active processes")
+            try:
+                evidence["triggers_before_drop"] = snapshot_freeze_triggers(cursor)
+            except Exception as error:
+                errors.append(f"before-drop trigger audit: {error}")
             if self.seed_manifest is not None and self.seed_probe_schema is not None:
                 try:
                     before = collect_source_manifest(cursor)
@@ -551,14 +713,13 @@ class ExperimentDatabase:
                     errors.append(f"drop {name}: {error}")
             try:
                 cursor.execute(
-                    "SELECT COUNT(*) FROM information_schema.TRIGGERS WHERE "
-                    "TRIGGER_SCHEMA='mysql_senior_scenarios' AND TRIGGER_NAME IN ("
-                    + ",".join(["%s"] * len(FREEZE_TRIGGER_NAMES))
-                    + ")",
-                    FREEZE_TRIGGER_NAMES,
+                    "SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE "
+                    "TRIGGER_SCHEMA='mysql_senior_scenarios' ORDER BY TRIGGER_NAME"
                 )
-                if exact_db_int(cursor.fetchone()[0], "remaining triggers") != 0:
-                    errors.append("owned freeze triggers remain")
+                remaining = list(cursor.fetchall())
+                evidence["triggers_after_drop"] = remaining
+                if remaining:
+                    errors.append("schema triggers remain after controlled drop")
             except Exception as error:
                 errors.append(f"trigger absence audit: {error}")
             if self.seed_manifest is not None and self.seed_probe_schema is not None:
@@ -573,9 +734,8 @@ class ExperimentDatabase:
             try:
                 if self.global_variables is None or self._globals(cursor) != self.global_variables:
                     errors.append("global variables changed")
-                self.identity_check()
             except Exception as error:
-                errors.append(f"identity audit: {error}")
+                errors.append(f"global-variable audit: {error}")
         except Exception as error:
             errors.append(f"teardown connection/audit: {error}")
             if cursor is not None:
@@ -590,6 +750,10 @@ class ExperimentDatabase:
         finally:
             self._close(cursor)
             self._close(connection)
+        try:
+            self.identity_check()
+        except Exception as error:
+            errors.append(f"identity audit: {error}")
         evidence["errors"] = errors
         evidence["status"] = (
             "COMPLETE" if succeeded and not errors else "FAILED_PHASE_TEARDOWN_COMPLETE"
@@ -597,6 +761,66 @@ class ExperimentDatabase:
         write_immutable_json(self.context.runtime_root / "controlled-stop.json", evidence)
         if errors:
             raise RuntimeError("; ".join(errors))
+
+
+class ControlledTeardownOnce:
+    """Share one teardown attempt between the state machine and outer lifecycle."""
+
+    def __init__(self, teardown: Callable[[bool], object]):
+        self.teardown = teardown
+        self.attempted = False
+
+    def __call__(self, succeeded: bool) -> object:
+        if self.attempted:
+            raise RuntimeError("controlled teardown was attempted more than once")
+        self.attempted = True
+        return self.teardown(succeeded)
+
+
+def _combined_error(primary: BaseException, secondary: BaseException, label: str) -> RuntimeError:
+    return RuntimeError(f"{primary}; {label}: {secondary}")
+
+
+def run_all_lifecycle(
+    *,
+    context: "BootstrapContext",
+    boundary: "BootstrapBoundary",
+    database_factory: Callable[..., object],
+    connector_verifier: Callable[..., dict[str, object]],
+    connector_writer: Callable[[Path, object], object],
+    machine_runner: Callable[["BootstrapContext", object, ControlledTeardownOnce], object],
+) -> object:
+    database = database_factory(
+        context,
+        boundary,
+        lambda: verify_internal_identity(
+            boundary,
+            {
+                "harness_container_id": context.internal_identity["container_id"],
+                "harness_image_id": context.binding.harness_image_id,
+            },
+            context.internal_identity,
+        ),
+    )
+    teardown = ControlledTeardownOnce(database.teardown)
+    try:
+        connector_evidence = connector_verifier(
+            boundary.connector_module,
+            boundary.pure_connection_type,
+            boundary.connect,
+            boundary.environ,
+        )
+        connector_writer(
+            context.runtime_root / "bootstrap-connector.json", connector_evidence
+        )
+        return machine_runner(context, database, teardown)
+    except BaseException as primary:
+        if not teardown.attempted:
+            try:
+                teardown(False)
+            except BaseException as teardown_error:
+                raise _combined_error(primary, teardown_error, "controlled teardown failed")
+        raise
 
 
 def _default_connector_boundary() -> tuple[object, type, Callable[..., object]]:
@@ -639,6 +863,7 @@ class BootstrapContext:
     runtime_root: Path
     binding: EvidenceBinding
     connector_evidence: dict[str, object]
+    internal_identity: dict[str, object]
 
 
 def _connector_environment(connector_module: object) -> dict[str, object]:
@@ -669,9 +894,7 @@ def verify_connector_contract(
 ) -> dict[str, object]:
     """Open and verify one exact pure-Python connection using env-only secret."""
     evidence = _connector_environment(connector_module)
-    password = environ.get("MYSQL_PASSWORD")
-    if password is None:
-        raise RuntimeError("MYSQL_PASSWORD is not set")
+    password = require_nonempty_password(environ)
     connection = connect(
         host=EXPECTED_HOST,
         port=EXPECTED_PORT,
@@ -742,6 +965,12 @@ def verify_resource_contract(boundary: BootstrapBoundary) -> dict[str, str]:
     mysql = _container_by_name(document, EXPECTED_HOST)
     _require_scope(harness)
     _require_scope(mysql)
+    for container in (harness, mysql):
+        if any(
+            type(mount) is dict and mount.get("Type") == "bind"
+            for mount in container.get("Mounts", [])
+        ):
+            raise RuntimeError("bootstrap inspect contains a forbidden bind mount")
     limits = harness.get("HostConfig", {})
     if (
         limits.get("NanoCpus") != 2_000_000_000
@@ -773,10 +1002,86 @@ def verify_resource_contract(boundary: BootstrapBoundary) -> dict[str, str]:
         if type(container.get("Image")) is not str or not container["Image"]:
             raise RuntimeError(f"{field} image ID is missing")
     return {
+        "harness_container_id": harness["Id"],
         "harness_image_id": harness["Image"],
         "mysql_image_id": mysql["Image"],
         "mysql_container_id": mysql["Id"],
     }
+
+
+def _dns_addresses(result: object) -> list[str]:
+    if type(result) not in (tuple, list):
+        raise RuntimeError("Docker DNS result is malformed")
+    addresses = set()
+    for item in result:
+        if type(item) not in (tuple, list) or len(item) < 5:
+            raise RuntimeError("Docker DNS result entry is malformed")
+        sockaddr = item[4]
+        if (
+            type(sockaddr) not in (tuple, list)
+            or not sockaddr
+            or type(sockaddr[0]) is not str
+        ):
+            raise RuntimeError("Docker DNS sockaddr is malformed")
+        addresses.add(sockaddr[0])
+    if not addresses:
+        raise RuntimeError("Docker DNS did not resolve the exact MySQL hostname")
+    return sorted(addresses)
+
+
+def _private_tmp_mount_line(mountinfo: str) -> str:
+    matches = []
+    for line in mountinfo.splitlines():
+        fields = line.split()
+        if len(fields) >= 10 and fields[4] == "/private/tmp" and "-" in fields:
+            matches.append(" ".join(fields))
+    if len(matches) != 1:
+        raise RuntimeError("internal mountinfo lacks one exact /private/tmp mount")
+    return matches[0]
+
+
+def capture_internal_identity(
+    boundary: BootstrapBoundary, bootstrap: Mapping[str, str]
+) -> dict[str, object]:
+    hostname = boundary.read_text(Path("/etc/hostname")).strip()
+    container_id = bootstrap.get("harness_container_id")
+    image_id = bootstrap.get("harness_image_id")
+    if (
+        type(hostname) is not str
+        or not hostname
+        or type(container_id) is not str
+        or not container_id.startswith(hostname)
+        or type(image_id) is not str
+        or not image_id
+    ):
+        raise RuntimeError("internal hostname is not bound to bootstrap container ID")
+    mountinfo = boundary.read_text(Path("/proc/self/mountinfo"))
+    return {
+        "hostname": hostname,
+        "container_id": container_id,
+        "cpu_max": boundary.read_text(Path("/sys/fs/cgroup/cpu.max")).strip(),
+        "memory_max": boundary.read_text(Path("/sys/fs/cgroup/memory.max")).strip(),
+        "pids_max": boundary.read_text(Path("/sys/fs/cgroup/pids.max")).strip(),
+        "private_tmp_mount": _private_tmp_mount_line(mountinfo),
+        "mountinfo_sha256": hashlib.sha256(mountinfo.encode("utf-8")).hexdigest(),
+        "dns_addresses": _dns_addresses(
+            boundary.resolve_dns(EXPECTED_HOST, EXPECTED_PORT)
+        ),
+        # A running container cannot change image ID without process replacement;
+        # the fresh hostname check binds this process to the inspected container.
+        "harness_image_id_process_lifetime": image_id,
+    }
+
+
+def verify_internal_identity(
+    boundary: BootstrapBoundary,
+    bootstrap: Mapping[str, str],
+    expected: Mapping[str, object],
+) -> dict[str, object]:
+    observed = capture_internal_identity(boundary, bootstrap)
+    if observed != expected:
+        raise RuntimeError("live internal container identity drifted from bootstrap")
+    return observed
 
 
 def _reviewed_programs(scenario_text: str) -> tuple[dict[str, str], dict[str, str]]:
@@ -814,11 +1119,13 @@ def prepare_bootstrap(
         raise FileExistsError(seventh_path)
     if historical_path.exists() or historical_path.is_symlink():
         raise FileExistsError(historical_path)
+    require_nonempty_password(boundary.environ)
     if type(expected_commit) is not str or not re.fullmatch(r"[0-9a-f]{40}", expected_commit):
         raise RuntimeError("expected scenario commit must be a lowercase 40-byte Git ID")
 
-    _connector_environment(boundary.connector_module)
+    connector_evidence = _connector_environment(boundary.connector_module)
     identities = verify_resource_contract(boundary)
+    internal_identity = capture_internal_identity(boundary, identities)
     scenario_text = scenario_path.read_text(encoding="utf-8")
     programs, program_hashes = _reviewed_programs(scenario_text)
 
@@ -840,16 +1147,8 @@ def prepare_bootstrap(
             "scenario_commit": expected_commit,
             "scenario_sha256": scenario_sha256,
             "suffix": suffix,
+            "internal_identity": internal_identity,
         },
-    )
-    connector_evidence = verify_connector_contract(
-        boundary.connector_module,
-        boundary.pure_connection_type,
-        boundary.connect,
-        boundary.environ,
-    )
-    write_immutable_json(
-        runtime_root / "bootstrap-connector.json", connector_evidence
     )
     binding = EvidenceBinding(
         scenario_commit=expected_commit,
@@ -864,7 +1163,7 @@ def prepare_bootstrap(
         pids_limit=EXPECTED_PIDS,
         program_sha256=program_hashes,
     )
-    return BootstrapContext(runtime_root, binding, connector_evidence)
+    return BootstrapContext(runtime_root, binding, connector_evidence, internal_identity)
 
 
 def _controller_mode(invocation_id: str) -> str:
@@ -1084,48 +1383,65 @@ class HarnessStateMachine:
             )
             raise
         if type(result) is not dict:
-            self.ledger.finish(invocation_id, "UNKNOWN", {"error": "non-object result"})
+            self.ledger.finish(invocation_id, "FAILED", {"error": "non-object result"})
             raise RuntimeError(f"{invocation_id} returned malformed evidence")
-        returncode = result.get("returncode")
-        status = result.get("status")
-        expected_status = (
-            "ABORTED" if invocation_id == "resume-interrupt-1" else "SUCCEEDED"
-        )
-        terminal = status if status in {"SUCCEEDED", "FAILED", "UNKNOWN", "ABORTED"} else "UNKNOWN"
-        self.ledger.finish(invocation_id, terminal, result)
-        if type(returncode) is not int or returncode != 0 or status != expected_status:
-            raise RuntimeError(
-                f"{invocation_id} stopped with returncode={returncode!r} status={status!r}"
+        try:
+            returncode = result.get("returncode")
+            status = result.get("status")
+            expected_status = (
+                "ABORTED" if invocation_id == "resume-interrupt-1" else "SUCCEEDED"
             )
-        if invocation_id == "resume-interrupt-1":
-            state = json.loads(
-                (self.runtime_root / "job-resume-1" / "state.json").read_text(
-                    encoding="utf-8"
+            if type(returncode) is not int or returncode != 0 or status != expected_status:
+                raise RuntimeError(
+                    f"{invocation_id} stopped with returncode={returncode!r} "
+                    f"status={status!r}"
                 )
+            if invocation_id == "resume-interrupt-1":
+                state = json.loads(
+                    (self.runtime_root / "job-resume-1" / "state.json").read_text(
+                        encoding="utf-8"
+                    )
+                )
+                if (
+                    state.get("status") != "ABORTED"
+                    or state.get("rows_written") != 3000
+                    or state.get("next_part") != 4
+                    or len(state.get("parts", [])) != 3
+                    or result.get("rows") != 3000
+                    or result.get("parts") != 3
+                    or (self.runtime_root / "job-resume-1" / "artifact.tsv").exists()
+                    or (self.runtime_root / "job-resume-1" / "result.json").exists()
+                ):
+                    raise RuntimeError("resume interruption checkpoint is invalid")
+            if invocation_id == "resume-complete-1":
+                job = self.runtime_root / "job-resume-1"
+                state = json.loads((job / "state.json").read_text(encoding="utf-8"))
+                persisted = json.loads(
+                    (job / "result.json").read_text(encoding="utf-8")
+                )
+                if (
+                    state.get("status") != "SUCCEEDED"
+                    or persisted.get("status") != "SUCCEEDED"
+                    or not (job / "artifact.tsv").is_file()
+                    or persisted
+                    != {
+                        key: value
+                        for key, value in result.items()
+                        if key != "returncode"
+                    }
+                ):
+                    raise RuntimeError("resume completion evidence is invalid")
+        except BaseException as error:
+            self.ledger.finish(
+                invocation_id,
+                "FAILED",
+                {
+                    "error": f"{type(error).__name__}: {error}",
+                    "outcome": result,
+                },
             )
-            if (
-                state.get("status") != "ABORTED"
-                or state.get("rows_written") != 3000
-                or state.get("next_part") != 4
-                or len(state.get("parts", [])) != 3
-                or result.get("rows") != 3000
-                or result.get("parts") != 3
-                or (self.runtime_root / "job-resume-1" / "artifact.tsv").exists()
-                or (self.runtime_root / "job-resume-1" / "result.json").exists()
-            ):
-                raise RuntimeError("resume interruption checkpoint is invalid")
-        if invocation_id == "resume-complete-1":
-            job = self.runtime_root / "job-resume-1"
-            state = json.loads((job / "state.json").read_text(encoding="utf-8"))
-            persisted = json.loads((job / "result.json").read_text(encoding="utf-8"))
-            if (
-                state.get("status") != "SUCCEEDED"
-                or persisted.get("status") != "SUCCEEDED"
-                or not (job / "artifact.tsv").is_file()
-                or persisted
-                != {key: value for key, value in result.items() if key != "returncode"}
-            ):
-                raise RuntimeError("resume completion evidence is invalid")
+            raise
+        self.ledger.finish(invocation_id, expected_status, result)
         return result
 
     def _failure_record(self, error: BaseException) -> None:
@@ -1158,15 +1474,20 @@ class HarnessStateMachine:
             succeeded = True
         except BaseException as error:
             primary_error = error
-            self._failure_record(error)
+            try:
+                self._failure_record(error)
+            except BaseException as record_error:
+                primary_error = _combined_error(
+                    primary_error, record_error, "failure record failed"
+                )
         try:
             self.teardown(succeeded)
         except BaseException as teardown_error:
             if primary_error is None:
                 primary_error = teardown_error
             else:
-                primary_error = RuntimeError(
-                    f"{primary_error}; controlled teardown also failed: {teardown_error}"
+                primary_error = _combined_error(
+                    primary_error, teardown_error, "controlled teardown failed"
                 )
         if primary_error is not None:
             raise primary_error
@@ -1247,24 +1568,33 @@ def main() -> int:
     context = prepare_bootstrap(
         args.volume_root, args.scenario, args.expected_commit, boundary
     )
-    database = ExperimentDatabase(
-        context,
-        boundary,
-        identity_check=lambda: verify_resource_contract(boundary),
+    def run_machine(
+        live_context: BootstrapContext,
+        database: ExperimentDatabase,
+        teardown: ControlledTeardownOnce,
+    ) -> None:
+        machine = HarnessStateMachine(
+            runtime_root=live_context.runtime_root,
+            binding=live_context.binding,
+            ledger=InvocationLedger(live_context.runtime_root / "invocations.jsonl"),
+            environment=dict(boundary.environ),
+            launch=default_launch,
+            create_manifest=create_phase_manifest,
+            prepare=database.prepare,
+            phase_audit=database.phase_audit,
+            external_audit=database.external_audit,
+            teardown=teardown,
+        )
+        machine.run()
+
+    run_all_lifecycle(
+        context=context,
+        boundary=boundary,
+        database_factory=ExperimentDatabase,
+        connector_verifier=verify_connector_contract,
+        connector_writer=write_immutable_json,
+        machine_runner=run_machine,
     )
-    machine = HarnessStateMachine(
-        runtime_root=context.runtime_root,
-        binding=context.binding,
-        ledger=InvocationLedger(context.runtime_root / "invocations.jsonl"),
-        environment=dict(boundary.environ),
-        launch=default_launch,
-        create_manifest=create_phase_manifest,
-        prepare=database.prepare,
-        phase_audit=database.phase_audit,
-        external_audit=database.external_audit,
-        teardown=database.teardown,
-    )
-    machine.run()
     print(
         json.dumps(
             {

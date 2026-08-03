@@ -31,6 +31,8 @@ from container_harness import (
     EXPECTED_NETWORK,
     EXPECTED_PIDS,
     EXPECTED_PORT,
+    EXPECTED_PROBE_SCHEMA,
+    EXPECTED_SEED_MANIFEST,
     EXPECTED_VOLUME,
     FREEZE_TRIGGER_NAMES,
     FREEZE_TRIGGER_SQL,
@@ -39,13 +41,23 @@ from container_harness import (
     ORDER_CRC32_SQL,
     SEVENTH_RUNTIME_FILENAME,
     BootstrapBoundary,
+    BootstrapContext,
+    ControlledTeardownOnce,
     HarnessStateMachine,
     InvocationLedger,
     build_invocation_command,
+    capture_internal_identity,
+    canonical_seed_reference,
     exact_db_int,
+    run_all_lifecycle,
+    snapshot_freeze_triggers,
     prepare_bootstrap,
     verify_connector_contract,
     validate_source_manifest,
+    validate_freeze_trigger_rows,
+    validate_negative_probe_error,
+    validate_seed_baseline,
+    verify_internal_identity,
 )
 
 
@@ -119,6 +131,22 @@ class ShellPolicyTests(unittest.TestCase):
         self.assertIn(
             'require_resource_scope_label volume "$DATA_VOLUME"', mysql_gate
         )
+
+    def test_live_password_is_preflighted_and_forwarded_without_cli_value(self):
+        text = RUN_SCRIPT.read_text(encoding="utf-8")
+        run = text.split("run_live_harness() {", 1)[1].split("\n}\n", 1)[0]
+        self.assertLess(
+            run.index("preflight_harness_inputs"), run.index("require_owned_network")
+        )
+        preflight = text.split("preflight_harness_inputs() {", 1)[1].split(
+            "\n}\n", 1
+        )[0]
+        self.assertIn("require_nonempty_mysql_password", preflight)
+        create_line = next(
+            line for line in run.splitlines() if "docker create" in line
+        )
+        self.assertIn("--env MYSQL_PASSWORD", create_line)
+        self.assertNotIn("MYSQL_PASSWORD=", create_line)
 
 
 class ExtractionTests(unittest.TestCase):
@@ -249,11 +277,20 @@ class HarnessStateTests(unittest.TestCase):
         cgroups=None,
         resolve_dns=None,
         suffix_factory=None,
+        hostname="harness-container-id\n",
+        mountinfo=None,
+        environ=None,
     ):
         cgroup_values = cgroups or {
             "/sys/fs/cgroup/cpu.max": "200000 100000\n",
             "/sys/fs/cgroup/memory.max": f"{EXPECTED_MEMORY}\n",
             "/sys/fs/cgroup/pids.max": f"{EXPECTED_PIDS}\n",
+            "/etc/hostname": hostname,
+            "/proc/self/mountinfo": mountinfo
+            or (
+                "100 1 0:1 / / rw - overlay overlay rw\n"
+                "101 100 0:2 / /private/tmp rw - ext4 /dev/vda rw\n"
+            ),
         }
         return BootstrapBoundary(
             connector_module=connector_module or self._module(),
@@ -261,8 +298,13 @@ class HarnessStateTests(unittest.TestCase):
             connect=connect or (lambda **kwargs: self.PureConnection()),
             read_text=lambda path: cgroup_values[str(path)],
             read_inspect=lambda path: inspect_document or self._inspect(),
-            resolve_dns=resolve_dns or (lambda host, port: ((host, port),)),
-            environ={"MYSQL_PASSWORD": "not-on-command-line"},
+            resolve_dns=resolve_dns
+            or (
+                lambda host, port: (
+                    (2, 1, 6, "", ("172.18.0.2", port)),
+                )
+            ),
+            environ=environ or {"MYSQL_PASSWORD": "not-on-command-line"},
             suffix_factory=suffix_factory or (lambda: "seventh"),
         )
 
@@ -485,6 +527,158 @@ class HarnessStateTests(unittest.TestCase):
                         list(volume_root.glob("mysql-senior-scenarios.*")), []
                     )
 
+    def test_empty_password_fails_before_immutable_runtime_records(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            volume_root = Path(temporary_directory)
+            boundary = self._boundary(environ={"IGNORED": "value"})
+            with self.assertRaisesRegex(RuntimeError, "MYSQL_PASSWORD"):
+                prepare_bootstrap(
+                    volume_root, SCENARIO, self.binding.scenario_commit, boundary
+                )
+            self.assertFalse((volume_root / SEVENTH_RUNTIME_FILENAME).exists())
+            self.assertFalse((volume_root / "historical-evidence-loss.json").exists())
+            self.assertEqual(
+                list(volume_root.glob("mysql-senior-scenarios.*")), []
+            )
+
+    def test_bootstrap_rejects_any_additional_bind_mount(self):
+        for container_index in (0, 1):
+            inspect_document = self._inspect()
+            inspect_document[container_index].setdefault("Mounts", []).append(
+                {
+                    "Type": "bind",
+                    "Source": "/host/other",
+                    "Destination": "/opt/other",
+                }
+            )
+            with self.subTest(container_index=container_index):
+                with tempfile.TemporaryDirectory() as temporary_directory:
+                    with self.assertRaisesRegex(RuntimeError, "bind"):
+                        prepare_bootstrap(
+                            Path(temporary_directory),
+                            Path("/does/not/reach/scenario.md"),
+                            self.binding.scenario_commit,
+                            self._boundary(inspect_document=inspect_document),
+                        )
+
+    def test_internal_identity_is_fresh_and_bound_to_bootstrap_container(self):
+        boundary = self._boundary()
+        bootstrap = {
+            "harness_container_id": "harness-container-id",
+            "harness_image_id": "sha256:harness-image",
+        }
+        expected = capture_internal_identity(boundary, bootstrap)
+        observed = verify_internal_identity(boundary, bootstrap, expected)
+        self.assertEqual(observed["hostname"], "harness-container-id")
+        self.assertEqual(
+            observed["harness_image_id_process_lifetime"], "sha256:harness-image"
+        )
+        for changed in (
+            self._boundary(hostname="different-container\n"),
+            self._boundary(resolve_dns=lambda host, port: ()),
+            self._boundary(
+                mountinfo=(
+                    "100 1 0:1 / / rw - overlay overlay rw\n"
+                    "102 100 0:3 / /private/tmp rw - ext4 /dev/changed rw\n"
+                )
+            ),
+        ):
+            with self.assertRaises(RuntimeError):
+                verify_internal_identity(changed, bootstrap, expected)
+
+    def test_outer_db_reach_failure_attempts_controlled_stop_once(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            context = BootstrapContext(
+                root, self.binding, {}, {"hostname": "harness-container-id"}
+            )
+            calls = []
+
+            class Database:
+                def teardown(self, succeeded):
+                    calls.append(succeeded)
+                    (root / "controlled-stop.json").write_text(
+                        "{}\n", encoding="utf-8"
+                    )
+
+            with self.assertRaisesRegex(RuntimeError, "bootstrap connection"):
+                run_all_lifecycle(
+                    context=context,
+                    boundary=self._boundary(),
+                    database_factory=lambda *args: Database(),
+                    connector_verifier=lambda *args: (_ for _ in ()).throw(
+                        RuntimeError("bootstrap connection failed")
+                    ),
+                    connector_writer=lambda *args: None,
+                    machine_runner=lambda *args: self.fail("machine must not start"),
+                )
+            self.assertEqual(calls, [False])
+            self.assertTrue((root / "controlled-stop.json").is_file())
+
+    def test_failure_record_error_cannot_suppress_teardown(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            teardowns = []
+            machine = HarnessStateMachine(
+                runtime_root=root,
+                binding=self.binding,
+                ledger=InvocationLedger(root / "invocations.jsonl"),
+                environment={"MYSQL_PASSWORD": "secret"},
+                launch=lambda *args: {},
+                create_manifest=lambda *args: None,
+                prepare=lambda: (_ for _ in ()).throw(RuntimeError("primary failure")),
+                teardown=lambda succeeded: teardowns.append(succeeded),
+            )
+            machine._failure_record = lambda error: (_ for _ in ()).throw(
+                RuntimeError("failure record failed")
+            )
+            with self.assertRaisesRegex(
+                RuntimeError, "primary failure.*failure record failed"
+            ):
+                machine.run()
+            self.assertEqual(teardowns, [False])
+
+    def test_reconciliation_failure_records_failed_terminal_only(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            job = root / "job-resume-1"
+            job.mkdir()
+            (job / "state.json").write_text(
+                json.dumps(
+                    {
+                        "status": "ABORTED",
+                        "rows_written": 2,
+                        "next_part": 2,
+                        "parts": [{}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            ledger = InvocationLedger(root / "invocations.jsonl")
+            machine = HarnessStateMachine(
+                runtime_root=root,
+                binding=self.binding,
+                ledger=ledger,
+                environment={"MYSQL_PASSWORD": "secret"},
+                launch=lambda *args: {
+                    "returncode": 0,
+                    "status": "ABORTED",
+                    "rows": 2,
+                    "parts": 1,
+                },
+                create_manifest=lambda *args: None,
+                teardown=lambda succeeded: None,
+            )
+            with self.assertRaisesRegex(RuntimeError, "checkpoint"):
+                machine.execute("resume-interrupt-1")
+            records = [
+                json.loads(line)
+                for line in (root / "invocations.jsonl").read_text(
+                    encoding="utf-8"
+                ).splitlines()
+            ]
+            self.assertEqual([record["state"] for record in records], ["STARTING", "FAILED"])
+
     def test_controller_and_direct_resume_routing_is_exact(self):
         root = Path("/private/tmp/mysql-senior-scenarios.seventh")
         for invocation_id in INVOCATIONS[:-2]:
@@ -525,6 +719,63 @@ class HarnessStateTests(unittest.TestCase):
                 sql,
             )
 
+    def test_negative_probe_requires_exact_sqlstate_and_message(self):
+        class ProbeError(Exception):
+            def __init__(self, sqlstate, msg):
+                super().__init__(msg)
+                self.sqlstate = sqlstate
+                self.msg = msg
+
+        expected = "report source is frozen for mysql senior scenario"
+        self.assertEqual(
+            validate_negative_probe_error(ProbeError("45000", expected)),
+            {"message": expected, "sqlstate": "45000"},
+        )
+        for error in (
+            ProbeError("42000", expected),
+            ProbeError("45000", "wrong freeze message"),
+        ):
+            with self.assertRaises(RuntimeError):
+                validate_negative_probe_error(error)
+
+    def test_trigger_snapshot_requires_exact_six_definitions(self):
+        message = "report source is frozen for mysql senior scenario"
+        rows = [
+            (
+                name,
+                operation,
+                table,
+                "BEFORE",
+                f"SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '{message}'",
+            )
+            for name, table, operation in (
+                ("freeze_report_order_insert", "report_order", "INSERT"),
+                ("freeze_report_order_update", "report_order", "UPDATE"),
+                ("freeze_report_order_delete", "report_order", "DELETE"),
+                ("freeze_report_item_insert", "report_item", "INSERT"),
+                ("freeze_report_item_update", "report_item", "UPDATE"),
+                ("freeze_report_item_delete", "report_item", "DELETE"),
+            )
+        ]
+        self.assertEqual(len(validate_freeze_trigger_rows(rows)), 6)
+        for changed in (rows[:-1], rows + [rows[0]], [(*rows[0][:-1], "SET @x=1"), *rows[1:]]):
+            with self.assertRaises(RuntimeError):
+                validate_freeze_trigger_rows(changed)
+
+        class Cursor:
+            def __init__(self):
+                self.calls = []
+
+            def execute(self, sql):
+                self.calls.append(sql)
+
+            def fetchall(self):
+                return rows
+
+        cursor = Cursor()
+        self.assertEqual(len(snapshot_freeze_triggers(cursor)), 6)
+        self.assertIn("information_schema.TRIGGERS", cursor.calls[0])
+
     def test_canonical_source_counts_and_probe_audit_are_strict(self):
         manifest = {
             "orders": 100000,
@@ -554,6 +805,41 @@ class HarnessStateTests(unittest.TestCase):
                 changed[field] = invalid
                 with self.assertRaises(RuntimeError):
                     validate_source_manifest(changed)
+
+    def test_seed_reference_pins_crc_amount_and_probe_schema(self):
+        expected = canonical_seed_reference()
+        self.assertEqual(expected, EXPECTED_SEED_MANIFEST)
+        self.assertEqual(expected["order_crc32_sum"], 214876779439655)
+        self.assertEqual(expected["item_crc32_sum"], 644951398284901)
+        self.assertEqual(expected["total_amount_fingerprint"], "300002000.00")
+        self.assertEqual(expected["item_count_fingerprint"], 300000)
+        self.assertEqual(
+            EXPECTED_PROBE_SCHEMA,
+            [
+                {"values": ["COLUMN", "id", 1, "bigint unsigned", "NO", None, ""]},
+                {"values": ["COLUMN", "counter", 2, "bigint unsigned", "NO", "0", ""]},
+                {"values": ["COLUMN", "payload", 3, "varchar(128)", "NO", None, ""]},
+                {"values": ["INDEX", "PRIMARY", 1, "id", 0, "BTREE", None]},
+            ],
+        )
+        self.assertEqual(
+            validate_seed_baseline(dict(expected), list(EXPECTED_PROBE_SCHEMA)),
+            expected,
+        )
+        wrong_crc = dict(expected)
+        wrong_crc["order_crc32_sum"] += 1
+        wrong_amount = dict(expected)
+        wrong_amount["total_amount_fingerprint"] = "300002001.00"
+        wrong_schema = [dict(row) for row in EXPECTED_PROBE_SCHEMA]
+        wrong_schema[1] = {"values": list(wrong_schema[1]["values"])}
+        wrong_schema[1]["values"][5] = "1"
+        for manifest, schema in (
+            (wrong_crc, EXPECTED_PROBE_SCHEMA),
+            (wrong_amount, EXPECTED_PROBE_SCHEMA),
+            (expected, wrong_schema),
+        ):
+            with self.assertRaises(RuntimeError):
+                validate_seed_baseline(manifest, schema)
 
     def test_crc_queries_and_connector_integer_normalization_are_exact(self):
         self.assertIn("AS order_crc32_sum", ORDER_CRC32_SQL)
