@@ -615,9 +615,9 @@ Day 21: 确认无异常，下线旧库
 
 ---
 
-## Scenarios
+## 延伸场景路由
 
-- [01 - Hash 分片热点分析与修复](scenarios/01-hash-shard-hotspot.md) *(待补)*
-- [02 - Snowflake ID 时钟回拨模拟](scenarios/02-snowflake-clock-skew.md) *(待补)*
-- [03 - 分页深翻页游标改造](scenarios/03-cursor-pagination.md) *(待补)*
-- [04 - 在线迁移双写验证实验](scenarios/04-online-migration-double-write.md) *(待补)*
+- Hash 分片热点：本章 [Case A](#case-a分片键选错了导致热点) 已覆盖诊断与迁移取舍，不再维护重复 scenario。
+- Snowflake 时钟回拨：见 [`distribution/分布式id.md`](../../distribution/分布式id.md)。
+- 深分页与游标：见 [ch08 深分页实机 scenario](../08-sql-tuning/scenarios/03-deep-pagination-deferred-join.md)。
+- 在线分片迁移：本章 [Case C](#case-c在线迁移-100-亿行历史数据) 负责迁移决策；CDC 消费、对账与重建证据见 [`mysql-es-cdc-handson`](../../mysql-es-cdc-handson/README.md)。
