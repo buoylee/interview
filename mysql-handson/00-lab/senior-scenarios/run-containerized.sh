@@ -54,12 +54,20 @@ require_owned_network() {
   fi
 }
 
-require_owned_evidence_volume() {
+create_or_require_owned_evidence_volume() {
   if volume_exists "$EVIDENCE_VOLUME"; then
     require_resource_scope_label volume "$EVIDENCE_VOLUME"
   else
     docker volume create --label "$SCOPE_LABEL" "$EVIDENCE_VOLUME"
   fi
+}
+
+require_existing_owned_evidence_volume() {
+  volume_exists "$EVIDENCE_VOLUME" || {
+    printf 'required evidence volume does not exist: %s\n' "$EVIDENCE_VOLUME" >&2
+    exit 1
+  }
+  require_resource_scope_label volume "$EVIDENCE_VOLUME"
 }
 
 mysql_guard() {
@@ -72,6 +80,7 @@ primary_state() {
 
 require_owned_mysql() {
   require_scope_label container "$MYSQL_CONTAINER"
+  require_resource_scope_label volume "$DATA_VOLUME"
   image=$(docker inspect --format '{{.Config.Image}}' "$MYSQL_CONTAINER")
   test "$image" = 'mysql:8.0.36' || {
     printf '%s has unexpected image reference: %s\n' "$MYSQL_CONTAINER" "$image" >&2
@@ -105,6 +114,30 @@ remove_owned_transient() {
   fi
 }
 
+require_input_file() {
+  test -f "$1" || {
+    printf 'required input file does not exist: %s\n' "$1" >&2
+    exit 1
+  }
+}
+
+preflight_common_inputs() {
+  require_input_file "$SCENARIO_SOURCE"
+  require_input_file "$SCRIPT_DIR/evidence_contract.py"
+  require_input_file "$SCRIPT_DIR/test_evidence_contract.py"
+  require_input_file "$SCRIPT_DIR/run-containerized.sh"
+}
+
+preflight_harness_inputs() {
+  preflight_common_inputs
+  require_input_file "$SCRIPT_DIR/container_harness.py"
+}
+
+preflight_verifier_inputs() {
+  preflight_common_inputs
+  require_input_file "$SCRIPT_DIR/container_verifier.py"
+}
+
 copy_common_inputs() {
   name=$1
   docker cp "$SCENARIO_SOURCE" "$name:/opt/scenario.md"
@@ -126,6 +159,7 @@ copy_verifier_inputs() {
 }
 
 offline_test() {
+  preflight_common_inputs
   remove_owned_transient "$OFFLINE_TEST_CONTAINER"
   docker create --name "$OFFLINE_TEST_CONTAINER" --label "$SCOPE_LABEL" --cpus 2 --memory 2g --pids-limit 256 "$PYTHON_IMAGE" python -m unittest -v /opt/test_evidence_contract.py
   copy_common_inputs "$OFFLINE_TEST_CONTAINER"
@@ -147,8 +181,9 @@ wait_for_healthy() {
 }
 
 run_live_harness() {
+  preflight_harness_inputs
   require_owned_network
-  require_owned_evidence_volume
+  create_or_require_owned_evidence_volume
   require_owned_mysql
   before_mysql_guard=$(mysql_guard)
   before_mysql_state=$(docker inspect --format '{{json .State}}' "$MYSQL_CONTAINER")
@@ -182,7 +217,8 @@ run_live_harness() {
 }
 
 verify_evidence() {
-  require_owned_evidence_volume
+  preflight_verifier_inputs
+  require_existing_owned_evidence_volume
   remove_owned_transient "$VERIFIER_CONTAINER"
   docker create --name "$VERIFIER_CONTAINER" --label "$SCOPE_LABEL" --cpus 2 --memory 2g --pids-limit 256 --mount type=volume,src=mysql-senior-scenarios-evidence-v1,dst=/private/tmp,readonly "$PYTHON_IMAGE" python /opt/container_verifier.py verify --scenario /opt/scenario.md
   copy_verifier_inputs "$VERIFIER_CONTAINER"

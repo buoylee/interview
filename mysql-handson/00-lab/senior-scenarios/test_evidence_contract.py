@@ -59,7 +59,40 @@ class ShellPolicyTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, text)
         self.assertIsNone(
-            re.search(r"(?m)^(?:uv|python|python3|pip|pip3|mysql)\\s", text)
+            re.search(r"(?m)^(?:uv|python|python3|pip|pip3|mysql)\s", text)
+        )
+
+    def test_host_runtime_regex_rejects_python_command_line(self):
+        self.assertIsNotNone(
+            re.search(
+                r"(?m)^(?:uv|python|python3|pip|pip3|mysql)\s",
+                "python command.py\n",
+            )
+        )
+
+    def test_verify_requires_existing_evidence_volume(self):
+        text = RUN_SCRIPT.read_text(encoding="utf-8")
+        verify = text.split("verify_evidence() {", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn("require_existing_owned_evidence_volume", verify)
+        self.assertNotIn("require_owned_evidence_volume", verify)
+
+    def test_live_paths_preflight_inputs_before_docker_mutation(self):
+        text = RUN_SCRIPT.read_text(encoding="utf-8")
+        run = text.split("run_live_harness() {", 1)[1].split("\n}\n", 1)[0]
+        verify = text.split("verify_evidence() {", 1)[1].split("\n}\n", 1)[0]
+        self.assertLess(
+            run.index("preflight_harness_inputs"), run.index("require_owned_network")
+        )
+        self.assertLess(
+            verify.index("preflight_verifier_inputs"),
+            verify.index("remove_owned_transient"),
+        )
+
+    def test_owned_mysql_requires_data_volume_scope_label(self):
+        text = RUN_SCRIPT.read_text(encoding="utf-8")
+        mysql_gate = text.split("require_owned_mysql() {", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn(
+            'require_resource_scope_label volume "$DATA_VOLUME"', mysql_gate
         )
 
 
