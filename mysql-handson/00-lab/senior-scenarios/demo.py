@@ -161,7 +161,7 @@ def prepare_database(connection_factory: Callable[..., object]) -> None:
                        id INT PRIMARY KEY,
                        counter BIGINT NOT NULL DEFAULT 0
                    ) ENGINE=InnoDB""",
-                "CREATE TEMPORARY TABLE seed_digit (n INT PRIMARY KEY)",
+                "CREATE TABLE seed_digit (n INT PRIMARY KEY)",
                 "INSERT INTO seed_digit VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9)",
                 """INSERT INTO report_order (id, created_at, status)
                    SELECT n + 1,
@@ -188,6 +188,7 @@ def prepare_database(connection_factory: Callable[..., object]) -> None:
                        FROM seed_digit a CROSS JOIN seed_digit b CROSS JOIN seed_digit c
                    ) numbers
                    ORDER BY n""",
+                "DROP TABLE seed_digit",
             ),
         )
         connection.commit()
